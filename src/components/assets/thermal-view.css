@@ -1,0 +1,244 @@
+/* ==========================================================================
+   ULTRON · Kiln Thermal tab. Prefix: thm-
+   Built on the Diagnosis skeleton (dxo-*, dxt-*); this file only adds what
+   the shell map needs. Tokens only; heat colours come from --heat-*.
+   ========================================================================== */
+
+.thm-kpis {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 1280px) {
+  .thm-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .thm-kpis { grid-template-columns: 1fr; }
+}
+
+.thm-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* ---------------------------------------------------------------- map */
+.thm-map {
+  position: relative;
+}
+
+.thm-map-bg {
+  fill: var(--heat-mask);
+}
+
+.thm-map-grid {
+  stroke: var(--card-bg);
+  stroke-opacity: 0.35;
+  stroke-dasharray: 2 4;
+  pointer-events: none;
+}
+
+.thm-zone-line {
+  stroke: var(--dx-stroke-soft);
+  stroke-dasharray: 2 4;
+  pointer-events: none;
+}
+
+.thm-ref {
+  stroke: var(--dx-stroke-soft);
+  stroke-dasharray: 3 3;
+}
+
+.thm-axis-line {
+  stroke: var(--dx-stroke-soft);
+}
+
+.thm-hotbox {
+  fill: none;
+  stroke: var(--dx-ink);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+
+.thm-cross {
+  fill: none;
+  stroke: var(--dx-ink);
+  stroke-width: 1.6;
+  pointer-events: none;
+}
+
+.thm-readout-bg {
+  fill: var(--card-bg);
+  stroke: var(--separator);
+}
+
+.thm-readout {
+  fill: var(--dx-ink);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.thm-hit {
+  cursor: crosshair;
+}
+
+/* ---------------------------------------------------------------- map footer */
+.thm-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 20px;
+  padding-left: calc(52 / 1000 * 100%);
+}
+
+.thm-scale {
+  display: block;
+  width: min(100%, 460px);
+  height: auto;
+  overflow: visible;
+}
+
+.thm-scale-limit {
+  fill: var(--tone);
+}
+
+.thm-tick-tone {
+  fill: var(--tone);
+  font-weight: 600;
+}
+
+.thm-key-mask {
+  width: 12px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--heat-mask);
+}
+
+.thm-key-mean {
+  width: 14px;
+  height: 0;
+  border-top: 1.5px solid var(--text-muted);
+}
+
+/* ---------------------------------------------------------------- profile */
+.thm-band {
+  fill: color-mix(in srgb, var(--tone) 8%, transparent);
+}
+
+.thm-zone-label {
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+}
+
+.thm-line-model {
+  fill: none;
+  stroke: var(--diagram-stroke);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+.thm-line-mean {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+}
+
+/* ---------------------------------------------------------------- hottest section */
+.thm-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+}
+
+@media (max-width: 760px) {
+  .thm-section { grid-template-columns: 1fr; }
+}
+
+.thm-polar {
+  display: block;
+  width: 100%;
+  max-width: 260px;
+  height: auto;
+  margin: 0 auto;
+}
+
+.thm-ring {
+  fill: none;
+}
+
+.thm-ring-limit {
+  fill: none;
+  stroke: var(--tone);
+  stroke-opacity: 0.7;
+  stroke-dasharray: 4 4;
+}
+
+.thm-polar-model {
+  fill: none;
+  stroke: var(--diagram-stroke);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+.thm-polar-shape {
+  fill: var(--signal-blue);
+  fill-opacity: 0.12;
+  stroke: var(--signal-blue);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.thm-polar[data-tone="warn"] .thm-polar-shape,
+.thm-polar[data-tone="bad"] .thm-polar-shape {
+  fill: var(--tone);
+  stroke: var(--tone);
+}
+
+.thm-spec {
+  font-size: 0.8rem;
+  gap: 10px 18px;
+}
+
+.thm-spec dd {
+  text-align: right;
+}
+
+/* ---------------------------------------------------------------- registers */
+.thm-table {
+  min-width: 760px;
+}
+
+.thm-row > td:first-child { border-radius: var(--corner-row) 0 0 var(--corner-row); }
+.thm-row > td:last-child { border-radius: 0 var(--corner-row) var(--corner-row) 0; }
+
+.thm-row:hover > td {
+  background: var(--row-hover-bg);
+  border-bottom-color: transparent;
+}
+
+.thm-bar-track {
+  fill: var(--dx-track);
+}
+
+.thm-bar-dot {
+  fill: var(--dx-ink-2);
+  stroke: var(--card-bg);
+  stroke-width: 2;
+}
+
+.thm-bar-dot[data-tone="warn"],
+.thm-bar-dot[data-tone="bad"] {
+  fill: var(--tone);
+}
+
+.thm-wrap {
+  max-width: 360px;
+  white-space: normal;
+  line-height: 1.4;
+}

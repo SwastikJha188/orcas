@@ -1,0 +1,831 @@
+/* =========================================================================
+   Diagnosis › Overview  (prefix: dxo-)
+   Tokens only — every colour resolves from globals.css so light and dark
+   themes are both correct. Colour is reserved for state.
+   ========================================================================= */
+
+/* ---------- Diagnosis shell header (owned by diagnosis-view.tsx) -------- */
+
+.dxo-subtabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---------------------------------- Root -------------------------------- */
+.dxo-root {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  min-width: 0;
+  font-family: var(--font-ui);
+  color: var(--page-fg);
+}
+
+.dxo-root :focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 2px;
+}
+
+/* Toolbar (scope controls that apply to the whole page) */
+.dxo-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dxo-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dxo-field-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* Pill select (dropdown trigger in pill-button form) */
+.dxo-select {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.dxo-select select {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+  background: var(--pill-active-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--corner-pill);
+  padding: 6px 30px 6px 14px;
+  max-width: 320px;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.dxo-select select option {
+  color: initial;
+}
+
+.dxo-select svg {
+  position: absolute;
+  right: 11px;
+  pointer-events: none;
+  color: var(--text-muted);
+}
+
+/* Search pill */
+.dxo-search {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.dxo-search svg {
+  position: absolute;
+  left: 11px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.dxo-search input {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  color: var(--dx-ink);
+  background: var(--dx-track);
+  border: 1px solid transparent;
+  border-radius: var(--corner-pill);
+  padding: 6px 12px 6px 30px;
+  width: 200px;
+}
+
+.dxo-search input::placeholder {
+  color: var(--text-muted);
+}
+
+.dxo-search input:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 1px;
+}
+
+/* ---------------------------------- Card -------------------------------- */
+.dxo-card {
+  background: var(--card-glass-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--corner-card);
+  padding: 16px 20px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.dxo-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-height: 28px;
+}
+
+.dxo-card-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+.dxo-card-title small {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dxo-link {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  border-radius: var(--corner-sm);
+  cursor: pointer;
+}
+
+.dxo-link:hover {
+  color: var(--dx-ink);
+}
+
+/* --------------------------- Tier 1: KPI strip -------------------------- */
+.dxo-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dxo-stat {
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.dxo-stat-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.dxo-stat-label svg {
+  flex-shrink: 0;
+}
+
+.dxo-stat-value {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.dxo-stat-value strong {
+  font-size: 1.65rem;
+  line-height: 1.1;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--dx-ink);
+}
+
+.dxo-stat-value .dxo-unit {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.dxo-stat-value .dxo-aside {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dxo-stat-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Stat cards that jump to a sensor in the register */
+.dxo-stat-btn {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.dxo-stat-btn:hover {
+  background: var(--row-hover-bg);
+}
+
+.dxo-stat-btn:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 2px;
+}
+
+.dxo-stat-value .dxo-stat-tag {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.dxo-tone-text-good { color: var(--dx-ink-2); }
+.dxo-tone-text-warn { color: var(--status-warning); }
+.dxo-tone-text-bad { color: var(--status-danger); }
+
+.dxo-stat-foot b {
+  margin-left: auto;
+  font-weight: 500;
+  color: var(--dx-ink-2);
+  white-space: nowrap;
+}
+
+.dxo-stat-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dxo-key {
+  display: inline-block;
+  width: 2px;
+  height: 10px;
+  border-radius: 1px;
+  background: var(--dx-ink);
+}
+
+.dxo-key.is-peak {
+  background: var(--text-muted);
+}
+
+/* State fills (shared by bars, swatches, cells) */
+.dxo-tone-good { background: var(--status-success); }
+.dxo-tone-warn { background: var(--status-warning); }
+.dxo-tone-bad { background: var(--status-danger); }
+.dxo-tone-neutral { background: var(--dx-stroke); }
+
+/* Banded linear gauge */
+.dxo-gauge {
+  position: relative;
+  padding-bottom: 14px;
+}
+
+.dxo-gauge-track {
+  position: relative;
+  height: 14px;
+}
+
+.dxo-gauge-band {
+  position: absolute;
+  top: 5px;
+  height: 4px;
+  opacity: 0.55;
+}
+
+.dxo-gauge-band:first-child { border-radius: 2px 0 0 2px; }
+.dxo-gauge-band:last-of-type { border-radius: 0 2px 2px 0; }
+
+.dxo-gauge-marker {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 14px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--dx-ink);
+  box-shadow: 0 0 0 2px var(--card-bg);
+}
+
+.dxo-gauge-marker.is-peak {
+  top: 2px;
+  height: 10px;
+  background: var(--text-muted);
+}
+
+.dxo-gauge-tick {
+  position: absolute;
+  top: 16px;
+  transform: translateX(-50%);
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.dxo-gauge-tick.is-first { transform: none; }
+.dxo-gauge-tick.is-last { transform: translateX(-100%); }
+
+/* ----------------------- Tier 2: primary visuals ------------------------ */
+.dxo-primary {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dxo-span-7 { grid-column: span 7; }
+.dxo-span-5 { grid-column: span 5; }
+.dxo-span-12 { grid-column: span 12; }
+
+/* Ranked fault-mode bar chart */
+.dxo-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dxo-mode-row,
+.dxo-mode-axis {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1.1fr) minmax(110px, 1fr) 48px;
+  align-items: center;
+  gap: 12px;
+}
+
+.dxo-mode-row {
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: var(--corner-row);
+  background: transparent;
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.dxo-mode-row:hover {
+  background: var(--row-hover-bg);
+}
+
+.dxo-mode-row[aria-pressed="true"] {
+  background: var(--row-hover-bg);
+  box-shadow: inset 0 0 0 1px var(--signal-blue);
+}
+
+.dxo-mode-code {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dxo-mode-name {
+  font-size: 0.8rem;
+  color: var(--dx-ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dxo-mode-row.is-active .dxo-mode-name {
+  color: var(--dx-ink);
+  font-weight: 500;
+}
+
+.dxo-bar-track {
+  position: relative;
+  height: 8px;
+  border-radius: 0 4px 4px 0;
+  background: var(--dx-track);
+}
+
+.dxo-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 0 4px 4px 0;
+  transition: width 0.4s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.dxo-mode-val {
+  font-size: 0.78rem;
+  text-align: right;
+  color: var(--dx-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.dxo-mode-val.is-zero {
+  color: var(--text-muted);
+}
+
+.dxo-mode-axis {
+  padding: 4px 10px 0;
+  border-top: 1px solid var(--separator);
+}
+
+.dxo-axis-scale {
+  grid-column: 3;
+  position: relative;
+  height: 14px;
+}
+
+.dxo-axis-scale span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dxo-axis-scale span:first-child { transform: none; }
+.dxo-axis-scale span:last-child { transform: translateX(-100%); }
+
+.dxo-axis-unit {
+  grid-column: 4;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+/* ------------------------- Tier 3: register table ----------------------- */
+.dxo-table-card {
+  padding: 16px 12px 10px;
+}
+
+.dxo-table-card > .dxo-card-head {
+  padding: 0 8px;
+}
+
+.dxo-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--dx-ink);
+  background: var(--pill-active-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--corner-pill);
+  padding: 4px 8px 4px 12px;
+  cursor: pointer;
+}
+
+.dxo-table-wrap {
+  /* Positioning context, so absolutely positioned screen-reader text stays
+     inside the scroller instead of widening the page. */
+  position: relative;
+  width: 100%;
+  overflow-x: auto;
+}
+
+.dxo-table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.8rem;
+}
+
+.dxo-table th {
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--separator);
+}
+
+.dxo-table th.is-right,
+.dxo-table td.is-right {
+  text-align: right;
+}
+
+.dxo-table td {
+  padding: 10px 16px;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--separator);
+  color: var(--dx-ink-2);
+}
+
+.dxo-row {
+  cursor: pointer;
+}
+
+.dxo-row > td:first-child { border-radius: var(--corner-row) 0 0 var(--corner-row); }
+.dxo-row > td:last-child { border-radius: 0 var(--corner-row) var(--corner-row) 0; }
+
+.dxo-row:hover > td,
+.dxo-row:focus-within > td,
+.dxo-row.is-open > td {
+  background: var(--row-hover-bg);
+  border-bottom-color: transparent;
+}
+
+.dxo-row.is-open > td:first-child { border-radius: var(--corner-row) 0 0 0; }
+.dxo-row.is-open > td:last-child { border-radius: 0 var(--corner-row) 0 0; }
+
+.dxo-row.is-focus > td {
+  box-shadow: inset 0 1px 0 var(--signal-blue), inset 0 -1px 0 var(--signal-blue);
+}
+
+.dxo-ident {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.dxo-badge {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--text-muted);
+  box-shadow: inset 0 0 0 1px var(--dx-stroke-soft);
+}
+
+.dxo-badge.is-warn { color: var(--status-warning); box-shadow: inset 0 0 0 1px var(--status-warning); }
+.dxo-badge.is-bad { color: var(--status-danger); box-shadow: inset 0 0 0 1px var(--status-danger); }
+
+.dxo-primary-text {
+  display: block;
+  color: var(--dx-ink);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.dxo-secondary-text {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+}
+
+.dxo-readout {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.dxo-readout strong {
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+.dxo-readout.is-warn strong { color: var(--status-warning); }
+.dxo-readout.is-bad strong { color: var(--status-danger); }
+
+.dxo-readout span {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.dxo-limit-bar {
+  display: block;
+  width: 120px;
+  height: 14px;
+}
+
+.dxo-zone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--corner-sm);
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--dx-ink-2);
+  background: var(--dx-track);
+}
+
+.dxo-zone.is-c { color: var(--status-warning); background: color-mix(in srgb, var(--status-warning) 16%, transparent); }
+.dxo-zone.is-d { color: var(--status-danger); background: color-mix(in srgb, var(--status-danger) 16%, transparent); }
+
+.dxo-rule {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 300px;
+  color: var(--dx-ink);
+}
+
+.dxo-rule code {
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-right: 6px;
+}
+
+.dxo-none {
+  color: var(--text-muted);
+}
+
+.dxo-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.dxo-row:hover .dxo-actions,
+.dxo-row:focus-within .dxo-actions,
+.dxo-row.is-open .dxo-actions {
+  opacity: 1;
+}
+
+.dxo-icon-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--corner-pill);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.dxo-icon-btn:hover {
+  background: var(--dx-track);
+  color: var(--dx-ink);
+}
+
+.dxo-icon-btn svg {
+  transition: transform 0.15s ease;
+}
+
+.dxo-icon-btn[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+/* Expanded drawer */
+.dxo-drawer > td {
+  padding: 4px 16px 16px;
+  background: var(--row-hover-bg);
+  border-radius: 0 0 var(--corner-row) var(--corner-row);
+  cursor: default;
+}
+
+.dxo-drawer-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(0, 3fr);
+  gap: 24px;
+  padding-top: 12px;
+  border-top: 1px solid var(--separator);
+}
+
+.dxo-spec {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  margin: 0;
+  font-size: 0.75rem;
+  align-content: start;
+}
+
+.dxo-spec dt {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.dxo-spec dd {
+  margin: 0;
+  color: var(--dx-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.dxo-reasons {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.dxo-reason-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+.dxo-reason-head code {
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.dxo-reason .dxo-spec {
+  grid-template-columns: 76px 1fr;
+  line-height: 1.45;
+}
+
+.dxo-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.dxo-tag-btn {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  color: var(--dx-ink-2);
+  background: var(--dx-track);
+  border: none;
+  border-radius: var(--corner-sm);
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.dxo-tag-btn:hover {
+  color: var(--dx-ink);
+  box-shadow: inset 0 0 0 1px var(--dx-stroke);
+}
+
+.dxo-drawer-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.dxo-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 16px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* ------------------------------- Responsive ------------------------------ */
+@media (max-width: 1280px) {
+  .dxo-span-7,
+  .dxo-span-5,
+  .dxo-span-12 { grid-column: span 12; }
+}
+
+@media (max-width: 760px) {
+  .dxo-kpis { grid-template-columns: 1fr; }
+  .dxo-mode-row,
+  .dxo-mode-axis { grid-template-columns: 0 minmax(0, 1fr) minmax(90px, 1fr) 44px; gap: 8px; }
+  .dxo-mode-code { visibility: hidden; }
+  .dxo-drawer-grid { grid-template-columns: 1fr; }
+  .dxo-search input { width: 150px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dxo-bar-fill,
+  .dxo-stat-btn,
+  .dxo-actions,
+  .dxo-icon-btn svg { transition: none; }
+}
+
+.dxo-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

@@ -1,0 +1,22 @@
+{
+  "name": "liquid-glass",
+  "description": "Apple-style liquid glass: frosted, refracting surfaces for web UI, with the rules that keep them from reading as gray boxes.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Aref Azizian",
+    "url": "https://github.com/stormaref"
+  },
+  "homepage": "https://github.com/stormaref/LiquidGlassSkill",
+  "repository": "https://github.com/stormaref/LiquidGlassSkill",
+  "license": "MIT",
+  "keywords": [
+    "glassmorphism",
+    "liquid-glass",
+    "frosted-glass",
+    "css",
+    "design-system",
+    "ui",
+    "backdrop-filter",
+    "angular"
+  ]
+}

@@ -1,0 +1,292 @@
+/* ==========================================================================
+   ULTRON · Asset hierarchy (tree + contents). Prefix: hx-
+   Builds on assets-shell.css (ast-*). Semantic tokens only.
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- tree */
+.hx-side-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.hx-side-title .ast-num {
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.hx-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.hx-tree :focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: -2px;
+}
+
+.hx-row {
+  position: relative;
+  min-height: 34px;
+  gap: 6px;
+  user-select: none;
+}
+
+.hx-row .ast-tree-name[data-strong] {
+  color: var(--dx-ink);
+  font-weight: 500;
+}
+
+.hx-chev {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.hx-chev[data-open] {
+  transform: rotate(90deg);
+}
+
+/* Filled dot = the machine's own state; ring = worst state inside a collapsed folder. */
+.hx-mark {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.hx-mark[data-mark="dot"] {
+  background: var(--tone);
+}
+
+.hx-mark[data-mark="ring"] {
+  border: 2px solid var(--tone);
+}
+
+.hx-tree-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+}
+
+.hx-tree-empty strong {
+  color: var(--dx-ink);
+  font-weight: 500;
+}
+
+/* ---------------------------------------------------------------- contents */
+.hx-head {
+  align-items: flex-start;
+}
+
+.hx-crumb {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.hx-crumb:hover {
+  color: var(--dx-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.hx-type-badge,
+.hx-type-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  border-radius: var(--corner-sm);
+  background: var(--dx-track);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.hx-summary {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(240px, 3fr);
+  gap: 12px;
+}
+
+.hx-stat {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 18px;
+  border-radius: var(--corner-card);
+  background: var(--card-glass-bg);
+  border: 1px solid var(--card-border);
+  min-width: 0;
+}
+
+.hx-stat-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.hx-stat-value {
+  font-size: 1.5rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+  line-height: 1;
+}
+
+.hx-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.hx-legend i {
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--tone);
+}
+
+.hx-legend i:first-child {
+  margin-left: 0;
+}
+
+.hx-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.hx-toolbar .ast-search {
+  width: 280px;
+  max-width: 100%;
+}
+
+.hx-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hx-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.hx-card {
+  gap: 14px;
+}
+
+.hx-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.hx-card-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hx-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--separator);
+}
+
+.hx-facts dt {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.hx-facts dd {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 3px 0 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+.hx-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.hx-card:hover .hx-open {
+  color: var(--dx-ink);
+}
+
+.hx-empty-title {
+  color: var(--dx-ink);
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+@media (max-width: 640px) {
+  .hx-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------------------------------------------------------------- plant time zone */
+.hx-tz {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(260px, 2fr);
+  gap: 12px 24px;
+  align-items: start;
+}
+
+.hx-tz-clock,
+.hx-tz-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.hx-tz-field .ui-select {
+  max-width: 420px;
+}
+
+@media (max-width: 700px) {
+  .hx-tz {
+    grid-template-columns: 1fr;
+  }
+}

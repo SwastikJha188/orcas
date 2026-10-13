@@ -1,0 +1,2100 @@
+/* ==========================================================================
+   ULTRON · Assets shell (directory, machine header, overview, sensor mapping)
+   Prefix: ast-  ·  Semantic tokens only — no literal colours.
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- tones */
+[data-tone="good"] { --tone: var(--status-success); }
+[data-tone="warn"] { --tone: var(--status-warning); }
+[data-tone="bad"]  { --tone: var(--status-danger); }
+[data-tone="idle"] { --tone: var(--text-muted); }
+[data-tone="info"] { --tone: var(--signal-blue); }
+
+/* ---------------------------------------------------------------- root */
+.ast-root {
+  font-family: var(--font-ui);
+  color: var(--page-fg);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.ast-root :focus-visible,
+.ast-sidebar :focus-visible,
+.ast-head :focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 2px;
+}
+
+.ast-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.ast-muted {
+  color: var(--text-muted);
+}
+
+.ast-caption {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.ast-inline-dot {
+  display: inline-block;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.ast-unit {
+  color: var(--text-muted);
+  font-size: 0.78em;
+  font-weight: 400;
+  margin-left: 3px;
+}
+
+/* ---------------------------------------------------------------- card */
+.ast-card {
+  background: var(--card-glass-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--corner-card);
+  padding: 16px 20px;
+  min-width: 0;
+}
+
+.ast-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  min-height: 24px;
+}
+
+.ast-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+.ast-icon-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--corner-sm);
+  background: var(--dx-track);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.ast-icon-tile[data-tone] {
+  color: var(--tone);
+}
+
+/* 28px rounded-square icon badge (table + tree leading item) */
+.ast-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--separator);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.ast-badge[data-tone] {
+  color: var(--tone);
+  border-color: color-mix(in srgb, var(--tone) 40%, transparent);
+}
+
+/* ---------------------------------------------------------------- chip */
+.ast-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px 2px 8px;
+  border-radius: var(--corner-pill);
+  background: color-mix(in srgb, var(--tone, var(--text-muted)) 12%, transparent);
+  color: var(--page-fg);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.ast-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tone, var(--text-muted));
+  flex-shrink: 0;
+}
+
+.ast-id {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: var(--corner-sm);
+  border: 1px solid var(--separator);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- ticks */
+.ast-ticks {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.ast-ticks > i {
+  width: 3px;
+  height: 100%;
+  border-radius: 1px;
+  background: var(--dx-track);
+}
+
+.ast-ticks > i.on {
+  background: var(--tone);
+}
+
+/* ---------------------------------------------------------------- ring */
+.ast-ring {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.ast-ring svg {
+  display: block;
+}
+
+.ast-ring-track {
+  fill: none;
+  stroke: var(--dx-track);
+}
+
+.ast-ring-arc {
+  fill: none;
+  stroke: var(--tone);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.6s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.ast-ring-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.1;
+}
+
+/* ---------------------------------------------------------------- segment bar */
+.ast-seg {
+  display: flex;
+  gap: 2px;
+  width: 100%;
+  height: 6px;
+}
+
+.ast-seg > span {
+  min-width: 4px;
+  border-radius: 2px;
+  background: var(--tone);
+}
+
+.ast-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.ast-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ast-legend b {
+  color: var(--page-fg);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.ast-legend i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tone);
+}
+
+/* ---------------------------------------------------------------- sparkline */
+.ast-spark {
+  position: relative;
+  width: 100%;
+}
+
+.ast-spark svg {
+  display: block;
+  overflow: visible;
+}
+
+.ast-spark-line {
+  fill: none;
+  stroke: var(--tone);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ast-spark-area {
+  fill: var(--tone);
+  opacity: 0.1;
+}
+
+.ast-spark-cross {
+  stroke: var(--separator);
+  stroke-width: 1;
+}
+
+.ast-spark-dot {
+  fill: var(--tone);
+  stroke: var(--card-bg);
+  stroke-width: 2;
+}
+
+.ast-spark-tip {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  transform: translateX(-50%);
+  padding: 3px 8px;
+  border-radius: var(--corner-sm);
+  background: var(--page-bg);
+  border: 1px solid var(--separator);
+  color: var(--dx-ink);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.ast-spark-tip em {
+  font-style: normal;
+  color: var(--text-muted);
+  margin-left: 6px;
+}
+
+/* ---------------------------------------------------------------- search */
+.ast-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 14px;
+  min-width: 220px;
+  border-radius: var(--corner-pill);
+  background: var(--card-bg);
+  border: 1px solid var(--separator);
+  color: var(--text-muted);
+}
+
+.ast-search:focus-within {
+  border-color: var(--signal-blue);
+}
+
+.ast-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--dx-ink);
+  font-family: var(--font-ui);
+  font-size: 0.84rem;
+}
+
+.ast-search input::placeholder {
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------- toolbar */
+.ast-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-width: 0;
+}
+
+.ast-toolbar-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.ast-toolbar .nav-pill-group {
+  padding: 0;
+}
+
+.ast-toolbar .nav-pill {
+  padding: 6px 14px;
+  font-size: 0.84rem;
+}
+
+.ast-toolbar .nav-pill.active {
+  padding: 6px 16px;
+}
+
+/* Status toggle chips (aria-pressed) */
+.ast-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--corner-pill);
+  border: 1px solid var(--separator);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.ast-filter:hover {
+  background: var(--row-hover-bg);
+  color: var(--page-fg);
+}
+
+.ast-filter[aria-pressed="true"] {
+  background: var(--pill-active-bg);
+  border-color: transparent;
+  color: var(--dx-ink);
+}
+
+.ast-filter b {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- KPI strip */
+.ast-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+/* Rows with fewer tiles widen them instead of leaving empty columns. */
+.ast-kpis:has(> :last-child:nth-child(3)) {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ast-kpis:has(> :last-child:nth-child(2)) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ast-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 104px;
+}
+
+.ast-kpi-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ast-kpi-label {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.ast-kpi-value {
+  font-size: 1.6rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.ast-kpi-foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+@media (max-width: 1100px) {
+  .ast-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .ast-kpis:has(> :last-child:nth-child(3)) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------------------------------------------------------------- section label */
+.ast-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ast-section-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--page-fg);
+}
+
+.ast-section-label span {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* ==========================================================================
+   TABLE (extends ui Table → CLAUDE.md divider list + 10px capsule rows)
+   ========================================================================== */
+.ast-table.ui-table-container {
+  overflow-x: auto;
+}
+
+.ast-table.ui-table-container .ui-table {
+  font-size: 0.84rem;
+}
+
+.ast-table.ui-table-container .ui-table thead th {
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--separator);
+}
+
+.ast-table.ui-table-container .ui-table tbody td {
+  padding: 10px 16px;
+  color: var(--page-fg);
+  border-bottom: 1px solid var(--separator);
+  white-space: nowrap;
+}
+
+.ast-table.ui-table-container .ui-table tbody tr:last-child td {
+  border-bottom-color: transparent;
+}
+
+.ast-table.ui-table-container .ui-table tbody tr:hover td,
+.ast-table.ui-table-container .ui-table tbody tr:focus-within td,
+.ast-table.ui-table-container .ui-table tbody tr.active td {
+  background: var(--row-hover-bg);
+  border-bottom-color: transparent;
+}
+
+.ast-table.ui-table-container .ui-table tbody tr:hover td:first-child,
+.ast-table.ui-table-container .ui-table tbody tr:focus-within td:first-child,
+.ast-table.ui-table-container .ui-table tbody tr.active td:first-child {
+  border-top-left-radius: var(--corner-row);
+  border-bottom-left-radius: var(--corner-row);
+}
+
+.ast-table.ui-table-container .ui-table tbody tr:hover td:last-child,
+.ast-table.ui-table-container .ui-table tbody tr:focus-within td:last-child,
+.ast-table.ui-table-container .ui-table tbody tr.active td:last-child {
+  border-top-right-radius: var(--corner-row);
+  border-bottom-right-radius: var(--corner-row);
+}
+
+.ast-cell-stack {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ast-cell-title {
+  color: var(--dx-ink);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ast-cell-sub {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
+}
+
+.ast-cell-text {
+  color: var(--page-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+
+/* focusable row trigger (keyboard access to row selection) */
+.ast-row-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--corner-sm);
+}
+
+.ast-trail {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  position: relative;
+}
+
+.ast-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--corner-pill);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+.ast-icon-btn:hover {
+  background: var(--dx-track);
+  color: var(--dx-ink);
+}
+
+.ast-table .ast-trail .ast-icon-btn {
+  opacity: 0;
+}
+
+.ast-table tr:hover .ast-trail .ast-icon-btn,
+.ast-table tr:focus-within .ast-trail .ast-icon-btn,
+.ast-table tr.active .ast-trail .ast-icon-btn,
+.ast-table .ast-trail .ast-icon-btn[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.ast-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 176px;
+  padding: 4px;
+  border-radius: var(--corner-card);
+  background: var(--card-glass-bg);
+  border: 1px solid var(--separator);
+  display: flex;
+  flex-direction: column;
+}
+
+.ast-menu--fixed {
+  position: fixed;
+  left: auto;
+}
+
+.ast-menu button {
+  padding: 8px 12px;
+  border: none;
+  border-radius: var(--corner-row);
+  background: transparent;
+  color: var(--page-fg);
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ast-menu button:hover,
+.ast-menu button:focus-visible {
+  background: var(--row-hover-bg);
+  color: var(--dx-ink);
+}
+
+.ast-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ==========================================================================
+   A. DIRECTORY
+   ========================================================================== */
+.ast-dir-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+}
+
+.ast-dir-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+  letter-spacing: -0.01em;
+}
+
+.ast-dir-title span {
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.ast-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  gap: 12px;
+}
+
+.ast-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.ast-tile:hover {
+  background: var(--row-hover-bg);
+  border-color: var(--separator);
+}
+
+.ast-tile-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ast-tile-name {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ast-health-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ---------------------------------------------------------------- directory hierarchy */
+.ast-area {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 4px;
+}
+
+.ast-area + .ast-area {
+  padding-top: 20px;
+  border-top: 1px solid var(--separator);
+}
+
+.ast-area-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+.ast-area-plant {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.ast-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-left: 34px;
+}
+
+.ast-machine-tile {
+  gap: 18px;
+}
+
+.ast-tile-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.ast-tile-status i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tone);
+}
+
+.ast-tile-foot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .ast-group {
+    padding-left: 0;
+  }
+}
+
+/* ==========================================================================
+   A. HIERARCHY SIDEBAR
+   ========================================================================== */
+.ast-sidebar {
+  font-family: var(--font-ui);
+}
+
+.ast-side-head {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 12px 12px;
+  border-bottom: 1px solid var(--separator);
+  flex-shrink: 0;
+}
+
+.ast-plant-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--corner-row);
+  background: transparent;
+  color: var(--dx-ink);
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ast-plant-btn:hover {
+  background: var(--row-hover-bg);
+}
+
+.ast-plant-btn span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ast-plant-btn svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.ast-side-head .ast-menu {
+  top: 52px;
+  left: 12px;
+  right: 12px;
+}
+
+.ast-menu button[aria-checked="true"] {
+  color: var(--dx-ink);
+  font-weight: 500;
+}
+
+.ast-side-head .ast-search {
+  min-width: 0;
+  width: 100%;
+  height: 32px;
+}
+
+.ast-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 8px 16px;
+  list-style: none;
+  margin: 0;
+}
+
+.ast-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ast-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--corner-row);
+  background: transparent;
+  color: var(--page-fg);
+  font-family: var(--font-ui);
+  font-size: 0.84rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.ast-tree-row:hover {
+  background: var(--row-hover-bg);
+}
+
+.ast-tree-row[aria-current="true"] {
+  background: var(--row-hover-bg);
+  color: var(--dx-ink);
+}
+
+.ast-tree-row .ast-tree-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ast-tree-chev {
+  display: inline-flex;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.ast-tree-row[aria-expanded="true"] .ast-tree-chev {
+  transform: rotate(90deg);
+}
+
+.ast-tree-count {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ast-tree-cell {
+  padding: 8px 8px 4px 34px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ast-tree-machine {
+  padding-left: 30px;
+}
+
+.ast-tree-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--tone);
+  flex-shrink: 0;
+}
+
+.ast-tree .ast-badge {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--corner-sm);
+}
+
+.ast-tree-empty {
+  padding: 16px 8px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* ==========================================================================
+   B. MACHINE HEADER
+   ========================================================================== */
+.ast-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  font-family: var(--font-ui);
+}
+
+.ast-head-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ast-crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.ast-crumbs li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ast-crumbs li + li::before {
+  content: "/";
+  color: var(--separator);
+}
+
+.ast-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ast-title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.ast-health {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+.ast-head .btn-pill {
+  padding: 6px 16px;
+  font-size: 0.82rem;
+}
+
+/* ==========================================================================
+   C. OVERVIEW
+   ========================================================================== */
+.ast-ov {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  align-items: stretch;
+}
+
+@media (max-width: 1180px) {
+  .ast-ov {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.ast-ov-schem {
+  display: flex;
+  flex-direction: column;
+}
+
+.ast-sch {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: var(--font-ui);
+}
+
+.ast-sch-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 8px 0 4px;
+}
+
+.ast-sch-dot {
+  cursor: default;
+  transition: opacity 0.15s ease;
+  outline: none;
+}
+
+.ast-sch-dot[role="button"] {
+  cursor: pointer;
+}
+
+.ast-sch-dot.is-dim {
+  opacity: 0.22;
+}
+
+.ast-sch-hit {
+  fill: transparent;
+}
+
+/* TSE measurement pad (machine kit); the pad draws its own fills. */
+.ast-sch-pin {
+  stroke: none;
+}
+
+.ast-sch-sel {
+  fill: none;
+  stroke: var(--dx-ink);
+  stroke-width: 1.5;
+}
+
+.ast-sch-dot:focus-visible .ast-sch-sel,
+.ast-sch-dot:focus-visible .ast-sch-pin {
+  stroke: var(--signal-blue);
+}
+
+.ast-sch-label rect {
+  fill: var(--page-bg);
+  stroke: var(--separator);
+  stroke-width: 1;
+}
+
+.ast-sch-label text {
+  fill: var(--dx-ink);
+  font-size: 15px;
+  font-weight: 500;
+  white-space: pre;
+}
+
+.ast-hp {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.ast-hp-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  text-align: center;
+}
+
+/* ---- instrument dial */
+.ast-dial {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.ast-dial svg {
+  display: block;
+}
+
+.ast-dial-tick {
+  stroke: var(--dx-track);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.ast-dial-tick[data-major] {
+  stroke-width: 2.5;
+}
+
+.ast-dial-tick.on {
+  stroke: var(--tone);
+}
+
+.ast-dial-zone {
+  fill: none;
+  stroke: var(--tone);
+  stroke-width: 2;
+  stroke-linecap: round;
+  opacity: 0.35;
+}
+
+.ast-dial-pointer {
+  fill: var(--dx-ink);
+}
+
+.ast-dial-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ast-dial-value {
+  font-size: 2.6rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--dx-ink);
+}
+
+.ast-dial-scale {
+  position: absolute;
+  left: 16px;
+  right: 10px;
+  bottom: 30px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.62rem;
+  color: var(--text-muted);
+}
+
+.ast-hp-sub {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  /* The dial's open bottom leaves dead space; tuck the status block into it. */
+  margin-top: -28px;
+}
+
+/* Small upper-case section label (matches machine-kit label voice). */
+.ast-hp-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.ast-hp-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--separator);
+  padding-top: 16px;
+}
+
+.ast-hp-block-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Subsystem tiles — 2-up grid, hover links to the schematic. */
+.ast-sys-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ast-sys-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: var(--corner-row);
+  background: color-mix(in srgb, var(--page-fg) 4%, transparent);
+  border: 1px solid var(--card-border);
+  cursor: default;
+  transition: background-color 0.15s ease;
+}
+
+.ast-sys-tile:hover {
+  background: color-mix(in srgb, var(--page-fg) 8%, transparent);
+}
+
+.ast-sys-tile[data-flagged] {
+  border-color: color-mix(in srgb, var(--tone) 35%, transparent);
+}
+
+.ast-sys-tile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ast-sys-tile-name {
+  font-size: 0.8rem;
+  color: var(--page-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ast-sys-tile-value {
+  font-size: 1.4rem;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--dx-ink);
+}
+
+.ast-sys-tile-bar {
+  display: block;
+  height: 3px;
+  border-radius: var(--corner-pill);
+  background: var(--dx-track);
+  overflow: hidden;
+}
+
+.ast-sys-tile-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--tone);
+  transition: width 0.6s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.ast-sys-tile-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.ast-sys-tile[data-flagged] .ast-sys-tile-status {
+  color: var(--tone);
+  font-weight: 500;
+}
+
+.ast-hp .btn-pill {
+  margin-top: auto;
+  width: 100%;
+}
+
+/* ==========================================================================
+   D. SENSOR MAPPING
+   ========================================================================== */
+.ast-sm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.ast-sm.has-panel {
+  grid-template-columns: minmax(0, 1fr) 340px;
+}
+
+@media (max-width: 1180px) {
+  .ast-sm.has-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.ast-sm-table {
+  padding: 8px 8px 10px;
+}
+
+.ast-sm-reading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ast-reading-val {
+  color: var(--dx-ink);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.ast-panel {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ast-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ast-panel-tag {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+.ast-panel-name {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.ast-panel-value {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ast-panel-value strong {
+  font-size: 1.75rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+  line-height: 1;
+}
+
+/* threshold scale: value marker against warn/alarm limits */
+.ast-scale {
+  position: relative;
+  height: 22px;
+}
+
+.ast-scale-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 8px;
+  height: 6px;
+  display: flex;
+  gap: 2px;
+}
+
+.ast-scale-track span {
+  border-radius: 2px;
+  background: var(--tone);
+  opacity: 0.35;
+}
+
+.ast-scale-mark {
+  position: absolute;
+  top: 2px;
+  width: 2px;
+  height: 18px;
+  border-radius: 1px;
+  background: var(--dx-ink);
+  transform: translateX(-1px);
+}
+
+.ast-scale-legend {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ast-dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px 16px;
+  margin: 0;
+  font-size: 0.8rem;
+  border-top: 1px solid var(--separator);
+  padding-top: 12px;
+}
+
+.ast-dl dt {
+  color: var(--text-muted);
+}
+
+.ast-dl dd {
+  margin: 0;
+  color: var(--page-fg);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.ast-panel-sch {
+  border-top: 1px solid var(--separator);
+  padding-top: 12px;
+}
+
+.ast-panel-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ast-panel-actions .btn-pill {
+  flex: 1;
+  padding: 7px 12px;
+  font-size: 0.82rem;
+}
+
+.ast-panel-sub {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+/* ==========================================================================
+   E. SENSOR MAPPING · DIAGRAM + LINKED CARDS, CARD VIEW
+   ========================================================================== */
+.ast-smd {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ast-smd-head {
+  margin-bottom: 0;
+}
+
+.ast-smd-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ast-smd-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ast-smd-nav .nav-pill {
+  font-size: 0.8rem;
+}
+
+.ast-smd-subnav {
+  padding-left: 12px;
+  border-left: 1px solid var(--separator);
+}
+
+.ast-smd {
+  container-type: inline-size;
+}
+
+/* The drawing at full width with one floating glass card per channel,
+   clustered by component and docked above and below it
+   (sensor-widget-stage.tsx). Clusters sit horizontally over the part of the
+   drawing they read; each row of a band stacks its clusters in one grid
+   cell so the row is as tall as its tallest. */
+.ast-smr-scene {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px 20px 20px;
+  border-radius: var(--corner-row);
+}
+
+.ast-smw-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  width: 100%;
+  min-height: 120px;
+}
+
+.ast-smw-band {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.ast-smw-row-stack {
+  display: grid;
+}
+
+.ast-smw-row-stack > .ast-smw-cluster {
+  grid-area: 1 / 1;
+}
+
+.ast-smw-band.is-top .ast-smw-cluster {
+  align-self: end;
+}
+
+.ast-smw-band.is-bottom .ast-smw-cluster {
+  align-self: start;
+}
+
+.ast-smw-drawing {
+  align-self: center;
+}
+
+.ast-smw-drawing.is-static {
+  width: 100%;
+}
+
+/* The scene owns the grid backdrop; the drawing sits on it bare. */
+.ast-smw-drawing > .dxh-schematic {
+  background: none;
+}
+
+/* Cluster: a small technical label over a tight grid of channel cards. */
+.ast-smw-cluster {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.ast-smw-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 2px 5px;
+  border-bottom: 1px solid var(--separator);
+  transition: border-color 0.15s ease;
+}
+
+.ast-smw-label-text {
+  min-width: 0;
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.15s ease;
+}
+
+.ast-smw-label-meta {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 0.66rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.ast-smw-cluster:is([data-tone="warn"], [data-tone="bad"]) .ast-smw-label-meta {
+  color: var(--tone);
+}
+
+.ast-smw-cluster[data-lit] .ast-smw-label {
+  border-bottom-color: var(--dx-ink-2);
+}
+
+.ast-smw-cluster[data-lit] .ast-smw-label-text {
+  color: var(--dx-ink);
+}
+
+.ast-smw-cards {
+  display: grid;
+  gap: 8px;
+}
+
+/* Channel card: frosted graphite, floating on a soft shadow. */
+.ast-smw-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 9px 12px 8px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: var(--widget-glass-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--corner-row);
+  box-shadow: var(--widget-shadow);
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    border-color 0.15s ease,
+    opacity 0.15s ease;
+  animation: ast-smw-in 0.35s ease both;
+}
+
+.ast-smw-card:is([data-tone="warn"], [data-tone="bad"]) {
+  border-color: color-mix(in srgb, var(--tone) 45%, transparent);
+}
+
+.ast-smw-card:hover,
+.ast-smw-card[data-hot] {
+  transform: translateY(-2px);
+  border-color: var(--separator);
+}
+
+.ast-smw-card[aria-pressed="true"] {
+  border-color: var(--dx-ink);
+}
+
+.ast-smw-card:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 1px;
+}
+
+/* While one channel or component is traced, the rest step back. */
+.ast-smw-stage[data-hot] .ast-smw-card:not([data-hot]),
+.ast-smw-stage:has(.ast-smw-cluster[data-lit]) .ast-smw-cluster:not([data-lit]) .ast-smw-card {
+  opacity: 0.6;
+}
+
+@keyframes ast-smw-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ast-smw-card {
+    animation: none;
+    transition: none;
+  }
+
+  .ast-smw-card:is(:hover, [data-hot]) {
+    transform: none;
+  }
+}
+
+.ast-smw-card-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.ast-smw-card-head .ast-chip-dot {
+  flex-shrink: 0;
+}
+
+.ast-smw-name {
+  min-width: 0;
+  font-size: 0.72rem;
+  color: var(--dx-ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ast-smw-card-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ast-smw-value {
+  font-size: 0.98rem;
+  font-weight: 500;
+  line-height: 1.15;
+  color: var(--dx-ink);
+  white-space: nowrap;
+}
+
+.ast-smw-value .ast-unit {
+  margin-left: 3px;
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.ast-smw-card:is([data-tone="warn"], [data-tone="bad"]) .ast-smw-value {
+  color: var(--tone);
+}
+
+.ast-smw-point {
+  flex-shrink: 0;
+  font-size: 0.64rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* Component drawings: larger cards carrying the limit bar. */
+.ast-smw-card[data-detailed] {
+  gap: 7px;
+  padding: 11px 14px 10px;
+  border-radius: var(--corner-card);
+}
+
+.ast-smw-card[data-detailed] .ast-smw-value {
+  font-size: 1.15rem;
+}
+
+.ast-smw-note {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+/* Narrow: drawing on top, clusters flowing below. */
+.ast-smw-flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 22px;
+  align-items: flex-start;
+}
+
+.ast-smd-hint {
+  margin: 0;
+  text-align: center;
+}
+
+/* card view of the allocation matrix */
+.ast-smc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+
+.ast-smc {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.ast-smc:hover {
+  background: var(--row-hover-bg);
+}
+
+.ast-smc[aria-pressed="true"] {
+  background: var(--row-hover-bg);
+  border-color: var(--dx-ink);
+}
+
+.ast-smc-top {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.ast-smc-value {
+  font-size: 1.4rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+  line-height: 1.1;
+}
+
+.ast-smc-dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--separator);
+}
+
+.ast-smc-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ast-smc-k {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.ast-smc-v {
+  font-size: 0.8rem;
+  color: var(--dx-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ==========================================================================
+   F. SENSOR LIMIT GAUGES (sensor-gauge.tsx)
+   ========================================================================== */
+.sg-bar {
+  position: relative;
+  display: block;
+  height: 4px;
+  margin: 3px 0 1px;
+  border-radius: 9999px;
+  background: var(--dx-track);
+}
+
+.sg-bar-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--tone) 30%, transparent);
+}
+
+.sg-bar-zone:last-child,
+.sg-bar-zone[data-tone="bad"] {
+  border-radius: 0 9999px 9999px 0;
+}
+
+.sg-bar-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 9999px;
+  background: var(--tone);
+}
+
+.sg-bar-mark {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 10px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--dx-ink);
+}
+
+.sg-limits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.sg-limits > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.sg-limits i {
+  width: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--tone);
+}
+
+/* sensor card (card view): reading, chart, limits */
+.ast-smc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ast-smc-read {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ast-smc-read .ast-smc-value {
+  font-size: 1.9rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.ast-smc-read .ast-smc-state-value {
+  font-size: 1.5rem;
+  letter-spacing: 0.04em;
+}
+
+.ast-smc-aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+  text-align: right;
+}
+
+.ast-smc-sub {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* ==========================================================================
+   F2. SENSOR CHARTS (sensor-charts.tsx)
+   ========================================================================== */
+.sc-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sc-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.sc-plot {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+.sc-plot svg {
+  display: block;
+  overflow: visible;
+}
+
+.sc-plot--arc {
+  display: flex;
+  justify-content: center;
+}
+
+.sc-axis text {
+  fill: var(--text-muted);
+  font-size: 9px;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.sc-base {
+  stroke: var(--separator);
+  stroke-width: 1;
+}
+
+.sc-zone {
+  fill: color-mix(in srgb, var(--status-warning) 8%, transparent);
+}
+
+.sc-limit {
+  stroke: var(--tone);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.sc-line {
+  fill: none;
+  stroke: var(--dx-ink-2);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.sc-area {
+  fill: color-mix(in srgb, var(--dx-ink-2) 12%, transparent);
+}
+
+.sc-cross {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+}
+
+.sc-dot {
+  fill: var(--dx-ink);
+  stroke: var(--card-bg, var(--surface));
+  stroke-width: 2;
+}
+
+.sc-now {
+  fill: var(--tone);
+  stroke: var(--card-bg, var(--surface));
+  stroke-width: 2;
+}
+
+.sc-col {
+  fill: color-mix(in srgb, var(--dx-ink-2) 45%, transparent);
+}
+
+.sc-col.is-now {
+  fill: var(--dx-ink-2);
+}
+
+.sc-col[data-tone] {
+  fill: var(--tone);
+}
+
+.sc-col.is-hover {
+  fill: var(--dx-ink);
+}
+
+.sc-arc-track {
+  fill: none;
+  stroke: var(--dx-track);
+  stroke-width: 10;
+  stroke-linecap: round;
+}
+
+.sc-arc-zone {
+  fill: none;
+  stroke: color-mix(in srgb, var(--tone) 55%, transparent);
+  stroke-width: 3;
+}
+
+.sc-arc-fill {
+  fill: none;
+  stroke: var(--tone);
+  stroke-width: 10;
+  stroke-linecap: round;
+}
+
+.sc-arc-needle {
+  stroke: var(--dx-ink);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.sc-run {
+  fill: color-mix(in srgb, var(--tone) 70%, transparent);
+}
+
+.sc-run.is-hover {
+  fill: var(--tone);
+}

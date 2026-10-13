@@ -1,0 +1,644 @@
+/* ==========================================================================
+   ULTRON — Prognosis › Remaining Useful Life
+   Semantic tokens only; light + dark via globals.css. Inter.
+   ========================================================================== */
+
+.rul-page {
+  --rul-name-w: 176px;
+  --rul-val-w: 64px;
+  --rul-row-pad: 10px;
+  --rul-col-gap: 12px;
+  --tone: var(--text-muted);
+
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  font-family: var(--font-ui);
+  color: var(--page-fg);
+}
+
+.rul-page .is-bad { --tone: var(--status-danger); }
+.rul-page .is-warn { --tone: var(--status-warning); }
+.rul-page .is-good { --tone: var(--status-success); }
+
+.rul-page :focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 2px;
+}
+
+.rul-page .is-num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ */
+/* Header                                                             */
+/* ------------------------------------------------------------------ */
+
+.rul-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.rul-head-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.rul-back.btn-pill {
+  padding: 6px 14px 6px 10px;
+  font-size: 0.8125rem;
+}
+
+.rul-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--dx-ink);
+  letter-spacing: -0.005em;
+}
+
+.rul-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: var(--corner-pill);
+  background: color-mix(in srgb, var(--tone) 12%, transparent);
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.rul-chip strong {
+  color: var(--dx-ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.rul-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tone);
+  flex-shrink: 0;
+}
+
+.rul-unit-nav.nav-pill-group {
+  padding: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Cards                                                              */
+/* ------------------------------------------------------------------ */
+
+.rul-panel {
+  background: var(--card-glass-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--corner-card);
+  padding: 16px 20px;
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Primary visual row                                                 */
+/* ------------------------------------------------------------------ */
+
+.rul-main {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 14px;
+  align-items: stretch;
+}
+
+.rul-panel--timeline { grid-column: span 7; display: flex; flex-direction: column; }
+.rul-panel--curve { grid-column: span 5; display: flex; flex-direction: column; gap: 12px; }
+
+.rul-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  min-width: 0;
+}
+
+.rul-panel--curve .rul-panel-head { margin-bottom: 0; }
+
+.rul-panel-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--dx-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Legend */
+.rul-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.rul-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.rul-legend--foot { justify-content: flex-start; }
+
+.rul-key {
+  display: inline-block;
+  position: relative;
+  width: 14px;
+  flex-shrink: 0;
+}
+
+.rul-key--bar { height: 6px; border-radius: 0 3px 3px 0; background: var(--dx-stroke); }
+.rul-key--ci { height: 8px; border-left: 1.5px solid var(--page-fg); border-right: 1.5px solid var(--page-fg); }
+.rul-key--ci::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1.5px;
+  transform: translateY(-50%);
+  background: var(--page-fg);
+}
+.rul-key--pm { width: 0; height: 12px; border-left: 1.5px dashed var(--signal-blue); }
+.rul-key--hist { height: 0; border-top: 2px solid var(--dx-ink-2); }
+.rul-key--proj { height: 0; border-top: 2px dashed var(--dx-ink-2); }
+.rul-key--fan {
+  height: 8px;
+  border-radius: 2px;
+  background: var(--chart-fill);
+  outline: 1px solid color-mix(in srgb, var(--signal-blue) 35%, transparent);
+  outline-offset: -1px;
+}
+.rul-key--eol { height: 0; border-top: 1.5px dashed var(--status-danger); }
+
+/* ------------------------------------------------------------------ */
+/* RUL timeline (Gantt)                                               */
+/* ------------------------------------------------------------------ */
+
+.rul-gantt {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  --rul-track-l: calc(var(--rul-row-pad) + var(--rul-name-w) + var(--rul-col-gap));
+  --rul-track-r: calc(var(--rul-row-pad) + var(--rul-val-w) + var(--rul-col-gap));
+}
+
+.rul-gantt-plot {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding-top: 20px;
+}
+
+.rul-gantt-overlay {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--rul-track-l);
+  right: var(--rul-track-r);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.rul-gantt-grid {
+  position: absolute;
+  top: 20px;
+  bottom: 0;
+  width: 1px;
+  background: var(--dx-line);
+}
+
+.rul-gantt-pm {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1.5px dashed var(--signal-blue);
+}
+
+.rul-gantt-pm-label {
+  position: absolute;
+  top: 0;
+  left: 6px;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.rul-gantt-rows {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: 2px;
+}
+
+.rul-gantt-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--rul-name-w) minmax(0, 1fr) var(--rul-val-w);
+  align-items: center;
+  gap: var(--rul-col-gap);
+  height: 34px;
+  padding: 0 var(--rul-row-pad);
+  border: 0;
+  border-radius: var(--corner-row);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.rul-gantt-row:hover,
+.rul-gantt-row.is-selected {
+  background: var(--dx-row-hover);
+}
+
+.rul-gantt-name {
+  font-size: 13px;
+  color: var(--dx-ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rul-gantt-row.is-selected .rul-gantt-name {
+  color: var(--dx-ink);
+  font-weight: 500;
+}
+
+.rul-gantt-track {
+  position: relative;
+  height: 100%;
+}
+
+.rul-gantt-bar,
+.rul-gantt-ci,
+.rul-gantt-pt {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+}
+
+.rul-gantt-bar {
+  left: 0;
+  height: 8px;
+  transform: translateY(-50%);
+  border-radius: 0 4px 4px 0;
+  background: var(--tone);
+  transition: width 0.3s ease;
+}
+
+.rul-gantt-ci {
+  height: 10px;
+  transform: translateY(-50%);
+  border-left: 1.5px solid var(--page-fg);
+  border-right: 1.5px solid var(--page-fg);
+}
+
+.rul-gantt-ci.is-open { border-right: 0; }
+
+.rul-gantt-ci::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1.5px;
+  transform: translateY(-50%);
+  background: var(--page-fg);
+}
+
+.rul-gantt-pt {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--tone);
+  box-shadow: 0 0 0 2px var(--card-bg);
+  z-index: 3;
+}
+
+.rul-gantt-val {
+  font-size: 12.5px;
+  color: var(--page-fg);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rul-gantt-axis {
+  position: relative;
+  height: 22px;
+  margin: 6px var(--rul-track-r) 0 var(--rul-track-l);
+  border-top: 1px solid var(--separator);
+}
+
+.rul-gantt-tick {
+  position: absolute;
+  top: 5px;
+  transform: translateX(-50%);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.rul-gantt-tick.is-first { transform: none; }
+.rul-gantt-tick.is-last { transform: translateX(-100%); }
+
+/* ------------------------------------------------------------------ */
+/* Degradation panel                                                  */
+/* ------------------------------------------------------------------ */
+
+.rul-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--separator);
+}
+
+.rul-facts div { min-width: 0; }
+
+.rul-facts dt {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.rul-facts dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--dx-ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rul-facts .is-bad .rul-facts-tone::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--tone);
+  vertical-align: middle;
+}
+
+.rul-deg-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  touch-action: pan-y;
+}
+
+.rul-grid { stroke: var(--dx-line); stroke-width: 1; }
+
+.rul-tick {
+  fill: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rul-deg-fan { fill: var(--chart-fill); }
+.rul-deg-now { stroke: var(--dx-stroke); stroke-width: 1; }
+.rul-deg-pm { stroke: var(--signal-blue); stroke-width: 1.25; stroke-dasharray: 4 3; }
+.rul-deg-eol { stroke: var(--status-danger); stroke-width: 1.25; stroke-dasharray: 4 3; }
+
+.rul-deg-hist,
+.rul-deg-proj {
+  fill: none;
+  stroke: var(--dx-ink-2);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.rul-deg-proj { stroke-dasharray: 5 4; }
+
+.rul-deg-now-pt { fill: var(--dx-ink-2); stroke: var(--card-bg); stroke-width: 2; }
+.rul-deg-eol-pt { fill: var(--tone); stroke: var(--card-bg); stroke-width: 2; }
+
+.rul-deg-hover line { stroke: var(--dx-stroke); stroke-width: 1; }
+.rul-deg-hover circle { fill: var(--dx-ink); stroke: var(--card-bg); stroke-width: 2; }
+.rul-deg-hover text {
+  fill: var(--dx-ink);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  paint-order: stroke;
+  stroke: var(--card-bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.rul-deg-hover .rul-deg-hover-t { fill: var(--text-muted); font-weight: 400; }
+
+.rul-deg-hit { fill: transparent; cursor: crosshair; }
+
+/* ------------------------------------------------------------------ */
+/* Component table                                                    */
+/* ------------------------------------------------------------------ */
+
+.rul-panel--table .rul-panel-head { margin-bottom: 4px; }
+
+.rul-table-wrap {
+  overflow-x: auto;
+  margin: 0 -8px;
+}
+
+.rul-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+}
+
+.rul-table th {
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-align: left;
+  border-bottom: 1px solid var(--separator);
+  white-space: nowrap;
+}
+
+.rul-table td {
+  padding: 10px 16px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--separator);
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+
+.rul-table .is-num { text-align: right; }
+
+.rul-table tbody tr { cursor: pointer; }
+.rul-table tbody tr:last-child td { border-bottom-color: transparent; }
+
+.rul-table tbody tr:hover td,
+.rul-table tbody tr.is-selected td {
+  background: var(--dx-row-hover);
+  border-bottom-color: transparent;
+}
+
+.rul-table tbody tr:hover td:first-child,
+.rul-table tbody tr.is-selected td:first-child {
+  border-radius: var(--corner-row) 0 0 var(--corner-row);
+}
+
+.rul-table tbody tr:hover td:last-child,
+.rul-table tbody tr.is-selected td:last-child {
+  border-radius: 0 var(--corner-row) var(--corner-row) 0;
+}
+
+.rul-t-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--corner-sm);
+}
+
+.rul-t-badge {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--corner-sm);
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tone) 40%, transparent);
+  flex-shrink: 0;
+}
+
+.rul-t-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rul-t-title {
+  color: var(--dx-ink);
+  font-weight: 500;
+}
+
+.rul-t-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.rul-table td.rul-t-strong {
+  color: var(--dx-ink);
+  font-weight: 600;
+}
+
+.rul-conf,
+.rul-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--page-fg);
+}
+
+.rul-conf-track {
+  position: relative;
+  width: 56px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--dx-track);
+  overflow: hidden;
+}
+
+.rul-conf-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 2px;
+  background: var(--diagram-stroke);
+}
+
+.rul-spark path {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.rul-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--corner-pill);
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+  color: var(--page-fg);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ */
+/* Responsive                                                         */
+/* ------------------------------------------------------------------ */
+
+@media (max-width: 1180px) {
+  .rul-panel--timeline,
+  .rul-panel--curve { grid-column: span 12; }
+}
+
+@media (max-width: 640px) {
+  .rul-page { --rul-name-w: 108px; --rul-val-w: 54px; --rul-col-gap: 8px; }
+  .rul-panel-head { flex-wrap: wrap; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rul-gantt-bar,
+  .rul-gantt-row,
+  .rul-table td { transition: none; }
+}
+
+.rul-empty {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  text-align: center;
+  padding: 40px 20px;
+}

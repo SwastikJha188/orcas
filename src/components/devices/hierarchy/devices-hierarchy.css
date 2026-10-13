@@ -1,0 +1,951 @@
+/* ==========================================================================
+   ULTRON · Devices › Hierarchy. Prefix: dv-
+   Builds on assets-shell.css (ast-*), hierarchy.css (hx-*) and page.css (pg-*).
+   Semantic tokens only.
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- tree */
+.dv-side-title {
+  align-items: center;
+}
+
+.dv-side-tail {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dv-add-btn {
+  width: 24px;
+  height: 24px;
+}
+
+.dv-row[data-disabled] .ast-tree-name,
+.dv-row[data-disabled] .ast-badge {
+  opacity: 0.5;
+}
+
+/* "New" tag on discovered gateways (tree rows and cards). */
+.dv-new {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 7px;
+  border-radius: var(--corner-pill);
+  background: color-mix(in srgb, var(--signal-blue) 14%, transparent);
+  color: var(--signal-blue);
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 18px;
+  flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------- summary */
+.dv-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+/* ---------------------------------------------------------------- cards */
+.dv-card[data-disabled] {
+  opacity: 0.6;
+}
+
+.dv-kpi-foot {
+  gap: 4px;
+}
+
+.dv-wrap {
+  overflow-wrap: anywhere;
+}
+
+.dv-code {
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 1px 6px;
+  border-radius: var(--corner-sm);
+  background: var(--active-faint);
+  color: var(--dx-ink);
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+/* Small text action inside a KPI card ("Open" machine). */
+.dv-link {
+  padding: 2px 10px;
+  border: none;
+  border-radius: var(--corner-pill);
+  background: var(--active-faint);
+  color: var(--dx-ink);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.dv-link:hover {
+  background: var(--row-hover-bg);
+}
+
+/* ---------------------------------------------------------------- tables */
+.dv-lead {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.dv-lead[data-disabled] {
+  opacity: 0.55;
+}
+
+.dv-value {
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+.dv-trend {
+  display: block;
+  width: 140px;
+}
+
+.dv-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+}
+
+.dv-action .btn-pill {
+  padding: 5px 14px;
+  font-size: 0.8rem;
+}
+
+.dv-points tbody tr {
+  cursor: pointer;
+}
+
+.dv-contents .ui-table tbody tr:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: -2px;
+  border-radius: var(--corner-row);
+}
+
+/* Trailing row action: revealed on row hover or keyboard focus, per the table style. */
+.dv-reveal {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.ui-table tbody tr:hover .dv-reveal,
+.ui-table tbody tr:focus-within .dv-reveal,
+.dv-reveal:focus-visible,
+.dv-reveal:has([data-armed]) {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .dv-reveal {
+    opacity: 1;
+  }
+}
+
+/* ---------------------------------------------------------------- dialogs */
+.btn-pill.dv-danger {
+  color: var(--status-danger);
+}
+
+.btn-pill.dv-danger[data-armed] {
+  background: color-mix(in srgb, var(--status-danger) 14%, transparent);
+}
+
+@media (max-width: 640px) {
+  .dv-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================================
+   Phase 2: detected racks / cards / channels, card level, mapping.
+   ========================================================================== */
+
+/* Machine · tag a channel feeds. */
+.dv-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 1px 8px;
+  border: 1px solid var(--separator);
+  border-radius: var(--corner-sm);
+  background: transparent;
+  color: var(--dx-ink);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+button.dv-chip {
+  cursor: pointer;
+}
+
+button.dv-chip:hover {
+  background: var(--row-hover-bg);
+}
+
+.dv-map-btn {
+  padding: 1px 10px;
+  border: none;
+  border-radius: var(--corner-pill);
+  background: var(--active-faint);
+  color: var(--dx-ink);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.dv-map-btn:hover {
+  background: var(--row-hover-bg);
+}
+
+/* Waiting for the first message. */
+.dv-listening {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.dv-pulse {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--signal-blue);
+  flex-shrink: 0;
+  animation: dv-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes dv-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dv-pulse {
+    animation: none;
+  }
+}
+
+/* Rack block: head line, then card tiles. */
+.dv-rack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dv-rack-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.dv-rack-name {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--dx-ink);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+span.dv-rack-name {
+  cursor: default;
+}
+
+button.dv-rack-name:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.dv-rack-tail {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.dv-rack-tail .btn-pill {
+  padding: 5px 14px;
+  font-size: 0.8rem;
+}
+
+.dv-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 8px;
+}
+
+.dv-tile {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-radius: var(--corner-row);
+  background: var(--active-faint);
+  overflow: hidden;
+}
+
+.dv-tile-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    "dot name count"
+    ".   type type";
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 1px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-bottom: 1px solid var(--separator);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+button.dv-tile-head {
+  cursor: pointer;
+}
+
+button.dv-tile-head:hover {
+  background: var(--row-hover-bg);
+}
+
+.dv-tile-dot {
+  grid-area: dot;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--tone);
+}
+
+.dv-tile-name {
+  grid-area: name;
+  color: var(--dx-ink);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.dv-tile-type {
+  grid-area: type;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dv-tile-count {
+  grid-area: count;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.dv-chlist {
+  margin: 0;
+  padding: 2px 0;
+  list-style: none;
+}
+
+.dv-chline {
+  display: grid;
+  grid-template-columns: minmax(28px, auto) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+}
+
+.dv-chline + .dv-chline {
+  border-top: 1px solid var(--separator);
+}
+
+.dv-ch-id {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.dv-ch-id[data-tone] {
+  color: var(--tone);
+}
+
+.dv-ch-label {
+  color: var(--page-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dv-ch-value .dv-value {
+  font-size: 0.78rem;
+}
+
+.dv-ch-map {
+  display: inline-flex;
+  justify-content: flex-end;
+  max-width: 130px;
+  min-width: 0;
+}
+
+/* Map dialog: the live reading line. */
+.dv-map-live {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 10px 14px;
+  border-radius: var(--corner-row);
+  background: var(--active-faint);
+}
+
+.dv-sub-preview {
+  display: block;
+  padding: 7px 10px;
+  border-radius: var(--corner-sm);
+  background: var(--active-faint);
+  color: var(--dx-ink);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+/* Points card head holding the card filter pills. */
+.dv-table-head {
+  flex-wrap: wrap;
+}
+
+.dv-cardnav .nav-pill {
+  padding: 4px 12px;
+  font-size: 0.78rem;
+}
+
+.dv-cardnav .nav-pill.active {
+  padding: 4px 14px;
+}
+
+.dv-row[data-kind="card"] .ast-tree-name {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- gateway setup */
+.dv-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.dv-setup-lead {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* Gateway → broker ← ULTRON, three equal stops. */
+.dv-setup-flow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dv-setup-flow li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: var(--corner-row);
+  background: var(--hover-faint);
+}
+
+.dv-setup-k {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.dv-setup-v {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+  overflow-wrap: anywhere;
+}
+
+.dv-setup-s {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.dv-setup-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dv-setup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.dv-setup-copy.btn-pill {
+  padding: 4px 12px;
+  font-size: 0.75rem;
+}
+
+.dv-setup-code {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--corner-row);
+  border: 1px solid var(--separator);
+  background: var(--workspace-bg);
+  color: var(--dx-ink);
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.dv-setup-foot {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.dv-setup-foot code {
+  font-family: var(--font-ui);
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+@media (max-width: 560px) {
+  .dv-setup-flow { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ==========================================================================
+   Phase 3: connect wizard, card level, "Add detected".
+   ========================================================================== */
+
+.dv-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.dv-section-head .btn-pill {
+  padding: 6px 16px;
+  font-size: 0.82rem;
+}
+
+.dv-tile-name .dv-new {
+  margin-left: 6px;
+}
+
+/* Step indicator. */
+.dv-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 0 0 4px;
+  padding: 0 0 12px;
+  list-style: none;
+  border-bottom: 1px solid var(--separator);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.dv-steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dv-step-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--separator);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.dv-steps li[aria-current="step"] {
+  color: var(--dx-ink);
+  font-weight: 500;
+}
+
+.dv-steps li[aria-current="step"] .dv-step-n {
+  border-color: transparent;
+  background: var(--dx-ink);
+  color: var(--workspace-bg);
+}
+
+.dv-steps li[data-done] .dv-step-n {
+  border-color: transparent;
+  background: var(--active-faint);
+  color: var(--dx-ink);
+}
+
+.dv-wizard-line {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 10px 14px;
+  border-radius: var(--corner-row);
+  background: var(--active-faint);
+}
+
+.dv-wizard-line .btn-pill {
+  padding: 5px 14px;
+  font-size: 0.8rem;
+}
+
+.dv-topic-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+
+.dv-topic-row > .ui-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.dv-topic-row > .ui-field-note {
+  flex-basis: 100%;
+}
+
+.dv-topic-row[data-invalid] > .ui-input {
+  border-color: var(--status-danger);
+}
+
+.dv-topic-row[data-invalid] > .ui-field-note {
+  color: var(--status-danger);
+}
+
+.dv-topic-add {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dv-connect-racks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.dv-connect-racks li {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 8px 12px;
+  border-radius: var(--corner-row);
+  background: var(--active-faint);
+}
+
+.dv-listening-compact {
+  gap: 10px;
+}
+
+/* Found gateways: a divider list of selectable rows. */
+.dv-found {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.dv-found li + li {
+  border-top: 1px solid var(--separator);
+}
+
+.dv-found-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: var(--corner-row);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dv-found-row:hover:not(:disabled),
+.dv-found-row[aria-selected="true"] {
+  background: var(--row-hover-bg);
+}
+
+.dv-found-row:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.dv-found-row:focus-visible,
+.dv-review-add:focus-visible,
+.dv-map-btn:focus-visible,
+.dv-chip:focus-visible,
+.dv-tile-head:focus-visible,
+.dv-rack-name:focus-visible,
+.dv-link:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 1px;
+}
+
+.dv-found-radio {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text-muted);
+  flex-shrink: 0;
+}
+
+.dv-found-radio[data-on] {
+  border: 4px solid var(--dx-ink);
+}
+
+.dv-found-tail {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Review rows. */
+.dv-review-total {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--page-fg);
+}
+
+.dv-review-total b {
+  color: var(--dx-ink);
+  font-weight: 500;
+}
+
+.dv-review {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dv-review-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--corner-row);
+  background: var(--active-faint);
+}
+
+.dv-review-row[data-off] {
+  opacity: 0.6;
+}
+
+.dv-review-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dv-check {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--signal-blue);
+  flex-shrink: 0;
+}
+
+.dv-review-remove {
+  margin-left: auto;
+}
+
+.dv-review-cards {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.dv-cardchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 9px;
+  border-radius: var(--corner-sm);
+  border: 1px solid var(--separator);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.dv-cardchip b {
+  color: var(--dx-ink);
+  font-weight: 500;
+}
+
+.dv-cardedit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dv-cardedit .ui-input {
+  width: 76px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+}
+
+.dv-cardedit .ui-input[type="number"] {
+  width: 56px;
+}
+
+.dv-review-error {
+  color: var(--status-danger);
+}
+
+.dv-review-add {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px dashed var(--separator);
+  border-radius: var(--corner-pill);
+  background: transparent;
+  color: var(--dx-ink);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.dv-review-add:hover {
+  background: var(--row-hover-bg);
+}
+
+.dv-wizard-done {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ---------------------------------------------------------------- gateway topics */
+.hx-topic-filter {
+  overflow-wrap: anywhere;
+}
+
+.hx-topic-payload {
+  min-width: 0;
+  max-width: 420px;
+}
+
+.hx-topic-from,
+.hx-topic-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.hx-topic-detail {
+  margin: 4px 12px 8px;
+  padding: 12px 14px;
+  border-radius: var(--corner-row);
+  background: var(--active-faint);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.hx-topic-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.hx-topic-json {
+  margin: 0;
+  max-height: 280px;
+  overflow: auto;
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--dx-ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.hx-topic-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 6px;
+}
+
+.hx-topic-add .ui-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.hx-topic-note,
+.hx-topic-hint {
+  padding: 0 12px 8px;
+  margin: 0;
+}
+
+.hx-topic-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}

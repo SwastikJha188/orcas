@@ -1,0 +1,241 @@
+/* ==========================================================================
+   ULTRON · Devices › MQTT. Prefix: mq-  ·  Builds on ast-* and pg-*.
+   Semantic tokens only.
+   ========================================================================== */
+
+.mq-diag {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mq-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.mq-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mq-lead {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mq-value {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+.mq-trend {
+  display: block;
+  width: 160px;
+}
+
+.mq-topic {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.mq-flags {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mq-broker-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--page-fg);
+}
+
+/* ---------------------------------------------------------------- brokers */
+.mq-state {
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.mq-error {
+  max-width: 280px;
+  color: var(--status-danger);
+}
+
+/* A disabled broker reads as switched off; its actions stay at full strength. */
+.mq-brokers .ui-table tbody tr:has([data-broker-off]) td:not(:last-child) {
+  opacity: 0.55;
+}
+
+.mq-brokers .ui-table tbody tr.is-clickable {
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------- row actions */
+.mq-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  width: 100%;
+}
+
+.mq-action .btn-pill {
+  padding: 5px 14px;
+  font-size: 0.8rem;
+}
+
+/* Trailing row action: revealed on row hover or keyboard focus, per the table style. */
+.mq-reveal {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.ui-table tbody tr:hover .mq-reveal,
+.ui-table tbody tr:focus-within .mq-reveal,
+.ui-table tbody tr.active .mq-reveal,
+.mq-reveal:focus-visible,
+.mq-reveal:disabled {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .mq-reveal {
+    opacity: 1;
+  }
+}
+
+/* Inline on/off switch for a row (enable / disable a broker). */
+.mq-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 6px;
+  border: none;
+  border-radius: var(--corner-pill);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.mq-switch:hover:not(:disabled) {
+  background: var(--hover-faint);
+  color: var(--dx-ink);
+}
+
+.mq-switch:disabled {
+  cursor: progress;
+}
+
+.mq-switch-track {
+  position: relative;
+  flex: none;
+  width: 28px;
+  height: 16px;
+  border-radius: var(--corner-pill);
+  background: var(--dx-track);
+  transition: background 0.15s ease;
+}
+
+.mq-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.mq-switch[data-on] {
+  color: var(--page-fg);
+}
+
+.mq-switch[data-on] .mq-switch-track {
+  background: var(--status-success);
+}
+
+.mq-switch[data-on] .mq-switch-thumb {
+  transform: translateX(12px);
+  background: var(--on-status-fg);
+}
+
+.mq-switch-label {
+  min-width: 52px;
+  text-align: left;
+}
+
+/* ---------------------------------------------------------------- empty */
+.mq-empty-title {
+  color: var(--dx-ink);
+  font-weight: 500;
+}
+
+.mq-empty-body {
+  max-width: 560px;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.mq-subs {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mq-root code,
+.mq-code {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+  padding: 1px 6px;
+  border-radius: var(--corner-sm);
+  background: var(--active-faint);
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------- dialog */
+.mq-confirm {
+  font-size: 0.8rem;
+  color: var(--dx-ink);
+}
+
+.btn-pill.mq-danger {
+  color: var(--status-danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mq-reveal,
+  .mq-switch-track,
+  .mq-switch-thumb {
+    transition: none;
+  }
+}
+
+.mq-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}

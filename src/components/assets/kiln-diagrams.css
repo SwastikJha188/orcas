@@ -1,0 +1,130 @@
+/* KLN-01 diagrams. Tokens are scoped to the canvas so the drawings follow
+   the active theme without touching globals.css. */
+
+.kd-canvas {
+  --kd-canvas: #121214;
+  --kd-body: #242528;
+  --kd-raised: #2e2f33;
+  --kd-inset: #18191b;
+  --kd-stroke: #6c6e73;
+  --kd-stroke-hi: #b9bbc0;
+  --kd-detail: #4a4c51;
+  --kd-hair: #333438;
+  --kd-pier: #1b1c1e;
+  --kd-label: #85878c;
+  --kd-ink: #ececee;
+  --kd-ink-2: #b4b5ba;
+
+  position: relative;
+  width: 100%;
+  background: var(--kd-canvas);
+  border-radius: var(--corner-card, 14px);
+  overflow: hidden;
+}
+
+html[data-theme="light"] .kd-canvas {
+  --kd-canvas: #f6f6f7;
+  --kd-body: #ececee;
+  --kd-raised: #e1e1e4;
+  --kd-inset: #fafafb;
+  --kd-stroke: #8b8d93;
+  --kd-stroke-hi: #2f3034;
+  --kd-detail: #b2b4b9;
+  --kd-hair: #d5d6da;
+  --kd-pier: #e6e6e9;
+  --kd-label: #6e6e73;
+  --kd-ink: #111111;
+  --kd-ink-2: #3a3a3c;
+}
+
+.kd-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: var(--font-ui);
+  user-select: none;
+}
+
+/* Drawing classes */
+.kd-body,
+.kd-raised,
+.kd-inset,
+.kd-pier,
+.kd-bolt,
+.kd-stroke,
+.kd-line,
+.kd-hair,
+.kd-flow {
+  vector-effect: non-scaling-stroke;
+  transition: stroke 140ms ease;
+}
+.kd-body { fill: var(--kd-body); stroke: var(--kd-stroke); stroke-width: 1.25; }
+.kd-raised { fill: var(--kd-raised); stroke: var(--kd-stroke); stroke-width: 1.25; }
+.kd-inset { fill: var(--kd-inset); stroke: var(--kd-detail); stroke-width: 1; }
+.kd-pier { fill: var(--kd-pier); stroke: var(--kd-detail); stroke-width: 1; }
+.kd-bolt { fill: var(--kd-inset); stroke: var(--kd-stroke); stroke-width: 1; }
+.kd-stroke { fill: none; stroke: var(--kd-stroke); stroke-width: 1.25; }
+.kd-line { fill: none; stroke: var(--kd-detail); stroke-width: 1; }
+.kd-hair { fill: none; stroke: var(--kd-hair); stroke-width: 1; }
+.kd-flow { fill: none; stroke: var(--kd-stroke); stroke-width: 1.25; stroke-linecap: round; stroke-linejoin: round; }
+.kd-dash { stroke-dasharray: 4 3; }
+.kd-centre { stroke-dasharray: 14 3 2 3; }
+
+/* Text */
+.kd-label {
+  fill: var(--kd-label);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+}
+.kd-heading {
+  fill: var(--kd-label);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+}
+.kd-tick { fill: var(--kd-label); font-size: 8.5px; }
+
+/* Measurement points */
+.kd-point { cursor: default; outline: none; }
+.kd-point[role="button"] { cursor: pointer; }
+.kd-point-hit { fill: transparent; }
+.kd-point-ring { fill: none; stroke: var(--kd-ink); stroke-width: 1; opacity: 0; transition: opacity 140ms ease; }
+.kd-point-dot { stroke: var(--kd-canvas); stroke-width: 1.5; }
+.kd-leader { fill: none; stroke: var(--kd-hair); stroke-width: 1; transition: stroke 140ms ease; }
+.kd-read-name { fill: var(--kd-ink-2); font-size: 10.5px; font-weight: 500; }
+.kd-read-line { font-size: 9px; }
+.kd-read-value { fill: var(--kd-ink); font-size: 14px; font-weight: 600; }
+.kd-read-unit { fill: var(--kd-label); font-size: 9.5px; }
+.kd-read-tag { fill: var(--kd-label); letter-spacing: 0.08em; }
+
+.kd-point:hover .kd-leader,
+.kd-point.is-selected .kd-leader,
+.kd-point:focus-visible .kd-leader { stroke: var(--kd-stroke); }
+.kd-point:hover .kd-point-ring,
+.kd-point.is-selected .kd-point-ring,
+.kd-point:focus-visible .kd-point-ring { opacity: 1; }
+
+/* Overview regions: highlight by brightening strokes — no boxes. */
+.kd-region { outline: none; }
+.kd-region.is-interactive { cursor: pointer; }
+.kd-region-label {
+  fill: var(--kd-label);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  transition: fill 140ms ease;
+}
+.kd-region-dot { font-size: 8px; }
+.kd-region.is-interactive:hover :is(.kd-body, .kd-raised, .kd-stroke, .kd-flow),
+.kd-region.is-selected :is(.kd-body, .kd-raised, .kd-stroke, .kd-flow),
+.kd-region:focus-visible :is(.kd-body, .kd-raised, .kd-stroke, .kd-flow) {
+  stroke: var(--kd-stroke-hi);
+}
+.kd-region.is-interactive:hover .kd-region-label,
+.kd-region.is-selected .kd-region-label,
+.kd-region:focus-visible .kd-region-label { fill: var(--kd-ink); }
+
+@media (prefers-reduced-motion: reduce) {
+  .kd-svg * { transition: none !important; }
+}

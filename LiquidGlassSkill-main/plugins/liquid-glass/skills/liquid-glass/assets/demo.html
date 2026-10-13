@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Liquid Glass — CSS layer</title>
+    <script>
+      // Pre-paint theme resolution. Shipping without this flashes the wrong theme.
+      (function () {
+        var saved = null;
+        try {
+          saved = localStorage.getItem('theme');
+        } catch (e) {
+          /* file:// and private modes can throw on storage access */
+        }
+        var dark = saved
+          ? saved === 'dark'
+          : matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      })();
+    </script>
+    <link rel="stylesheet" href="liquid-glass.css" />
+    <style>
+      /* Demo chrome only — not part of the recipe. */
+      body {
+        margin: 0;
+        min-height: 100vh;
+        padding: 3rem 1.5rem;
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+        line-height: 1.55;
+      }
+      .wrap {
+        max-width: 62rem;
+        margin: 0 auto;
+        display: grid;
+        gap: 1.25rem;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.25rem;
+        align-items: flex-start;
+      }
+      .card {
+        flex: 1 1 16rem;
+        padding: 1.5rem;
+      }
+      /* Children of a glass panel paint no surface of their own — rule 3. */
+      .card h2 {
+        margin: 0 0 0.4rem;
+        font-size: 1.05rem;
+      }
+      .card p {
+        margin: 0;
+        opacity: 0.75;
+        font-size: 0.9rem;
+      }
+      .control {
+        --topbar-h: 3rem;
+        width: var(--topbar-h);
+        height: var(--topbar-h);
+        border-radius: calc(var(--topbar-h) / 2);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font: inherit;
+        color: inherit;
+        cursor: pointer;
+      }
+      .menu {
+        width: 14rem;
+        padding: 0.4rem;
+      }
+      .menu button {
+        display: block;
+        width: 100%;
+        padding: 0.45rem 0.6rem;
+        text-align: left;
+        font: inherit;
+        color: inherit;
+        background: none;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .menu button:hover {
+        background: rgba(128, 128, 128, 0.18);
+      }
+      .note {
+        font-size: 0.85rem;
+        opacity: 0.7;
+        max-width: 46rem;
+      }
+    </style>
+  </head>
+  <body class="liquid-glass-backdrop">
+    <div class="wrap">
+      <p class="note">
+        The <strong>CSS layer only</strong>. Panels here are tint + rim over the ambient
+        mesh; the edge refraction needs the directive
+        (<code>liquid-glass.directive.ts</code>). Toggle the theme, then try deleting
+        <code>class="liquid-glass-backdrop"</code> from <code>&lt;body&gt;</code> — that is
+        what glass over a flat page looks like.
+      </p>
+
+      <div class="row">
+        <button class="liquid-glass control" onclick="toggleTheme()" title="Toggle theme">
+          ◐
+        </button>
+        <span class="liquid-glass-chip">chip tier</span>
+        <span class="liquid-glass-chip">no directive</span>
+      </div>
+
+      <div class="row">
+        <article class="liquid-glass liquid-glass--hover card">
+          <h2>Panel tier</h2>
+          <p>Hover lifts and raises the tint from 6% to 11%.</p>
+        </article>
+        <article class="liquid-glass liquid-glass--hover card">
+          <h2>Colorless</h2>
+          <p>The tint is white→gray in both themes; the colour comes from behind.</p>
+        </article>
+        <article class="liquid-glass liquid-glass--hover card">
+          <h2>One rim</h2>
+          <p>Three inset highlights read as a polished edge. Never nest two.</p>
+        </article>
+      </div>
+
+      <div class="row">
+        <div class="liquid-glass-menu menu">
+          <button>Menu tier</button>
+          <button>Heavy blur + surface wash</button>
+          <button>Readable over anything</button>
+        </div>
+        <article class="liquid-glass liquid-glass--modal card" style="flex: 0 1 22rem">
+          <h2>Modal tier</h2>
+          <p>Frost over the tint, flipping per theme, so body text survives the scrim.</p>
+        </article>
+      </div>
+    </div>
+
+    <script>
+      function toggleTheme() {
+        var next =
+          document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = next;
+        try {
+          localStorage.setItem('theme', next);
+        } catch (e) {}
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,653 @@
+/* ==========================================================================
+   ULTRON — Analysis › Fault diagnosis (flt-*)
+   Semantic tokens only. Light + dark via globals.css.
+   ========================================================================== */
+
+.flt-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  min-width: 0;
+  color: var(--page-fg);
+  font-family: var(--font-ui);
+  box-sizing: border-box;
+}
+
+.flt-page *,
+.flt-page *::before,
+.flt-page *::after {
+  box-sizing: border-box;
+}
+
+/* ---- tone tokens --------------------------------------------------------- */
+.flt-tone-good { --flt-tone: var(--status-success); }
+.flt-tone-warn { --flt-tone: var(--status-warning); }
+.flt-tone-bad { --flt-tone: var(--status-danger); }
+.flt-tone-neutral { --flt-tone: var(--diagram-stroke); }
+.flt-tone-sel { --flt-tone: var(--signal-blue); }
+
+.flt-dot {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--flt-tone, var(--diagram-stroke));
+}
+
+/* ---- header -------------------------------------------------------------- */
+.flt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  min-height: 40px;
+}
+
+.flt-head-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+
+.flt-back.btn-pill {
+  padding: 7px 10px;
+}
+
+.flt-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--dx-ink);
+  letter-spacing: 0;
+}
+
+.flt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 420px;
+  padding: 5px 12px;
+  border-radius: var(--corner-pill);
+  background: var(--row-hover-bg);
+  font-size: 13px;
+  color: var(--dx-ink-2);
+}
+
+.flt-chip .flt-dot {
+  background: var(--flt-tone);
+}
+
+.flt-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flt-chip strong,
+.flt-meta strong {
+  font-weight: 600;
+  color: var(--dx-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.flt-meta {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.flt-channels {
+  flex-wrap: wrap;
+}
+
+/* ---- card ---------------------------------------------------------------- */
+.flt-card {
+  min-width: 0;
+  padding: 16px 20px;
+  border-radius: var(--corner-card);
+  background: var(--card-glass-bg);
+  border: 1px solid var(--card-border);
+}
+
+.flt-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* ---- panels -------------------------------------------------------------- */
+.flt-primary {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.flt-primary > :first-child {
+  grid-column: span 5;
+}
+
+.flt-primary > :last-child {
+  grid-column: span 7;
+}
+
+.flt-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.flt-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.flt-panel-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+.flt-panel-meta,
+.flt-legend {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.flt-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.flt-legend-key {
+  display: inline-block;
+  width: 2px;
+  height: 12px;
+  border-radius: 1px;
+  background: var(--flt-tone);
+}
+
+.flt-legend-key ~ .flt-legend-key {
+  margin-left: 8px;
+}
+
+/* ---- probability bars ---------------------------------------------------- */
+.flt-bars {
+  --flt-pad: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.flt-bar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 100%;
+  padding: 9px var(--flt-pad);
+  border: 0;
+  border-radius: var(--corner-row);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.flt-bar-row:hover {
+  background: var(--dx-row-hover);
+}
+
+.flt-bar-row.is-selected {
+  background: var(--row-hover-bg);
+}
+
+.flt-bar-row:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: -2px;
+}
+
+.flt-bar-text {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.flt-bar-rank {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.flt-bar-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dx-ink-2);
+}
+
+.flt-bar-row.is-selected .flt-bar-name {
+  color: var(--dx-ink);
+  font-weight: 500;
+}
+
+.flt-bar-val {
+  flex: none;
+  font-weight: 600;
+  color: var(--dx-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.flt-bar-track {
+  position: relative;
+  display: block;
+  height: 8px;
+  background: var(--dx-track);
+  border-radius: 0 4px 4px 0;
+}
+
+/* threshold ticks: 50 % advisory, 80 % danger */
+.flt-bar-track::before,
+.flt-bar-track::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  z-index: 1;
+}
+
+.flt-bar-track::before {
+  left: 50%;
+  background: var(--status-warning);
+}
+
+.flt-bar-track::after {
+  left: 80%;
+  background: var(--status-danger);
+}
+
+.flt-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--flt-tone);
+  border-radius: 0 4px 4px 0;
+  transition: width 0.3s ease;
+}
+
+.flt-bar-axis {
+  position: relative;
+  height: 14px;
+  margin: 0 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.flt-bar-axis span {
+  position: absolute;
+  left: calc(100% * var(--flt-at));
+  transform: translateX(-50%);
+}
+
+.flt-bar-axis span:first-child {
+  transform: none;
+}
+
+.flt-bar-axis span:last-child {
+  transform: translateX(-100%);
+}
+
+/* ---- SVG charts ---------------------------------------------------------- */
+.flt-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  font-family: var(--font-ui);
+}
+
+.flt-spectrum {
+  position: relative;
+  border-radius: var(--corner-sm);
+  touch-action: none;
+}
+
+.flt-spectrum:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 4px;
+}
+
+.flt-grid {
+  stroke: var(--dx-line);
+  stroke-width: 1;
+}
+
+.flt-baseline {
+  stroke: var(--dx-stroke);
+  stroke-width: 1;
+}
+
+.flt-axis-text {
+  font-size: 10px;
+  fill: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.flt-axis-unit {
+  font-size: 10px;
+  fill: var(--text-muted);
+  font-weight: 500;
+}
+
+.flt-marker {
+  stroke: var(--dx-stroke);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.flt-marker-text {
+  font-size: 10px;
+  font-weight: 500;
+  fill: var(--dx-ink-2);
+}
+
+.flt-area {
+  fill: var(--chart-fill);
+  stroke: none;
+}
+
+.flt-line {
+  fill: none;
+  stroke: var(--signal-blue);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.flt-sig circle {
+  fill: var(--flt-tone);
+  stroke: var(--card-bg);
+  stroke-width: 2;
+}
+
+.flt-peak-text {
+  font-size: 10.5px;
+  font-weight: 600;
+  fill: var(--dx-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.flt-peak-text.is-muted {
+  font-weight: 500;
+  fill: var(--dx-ink-2);
+}
+
+.flt-cross line {
+  stroke: var(--dx-stroke);
+  stroke-width: 1;
+}
+
+.flt-cross circle {
+  fill: var(--signal-blue);
+  stroke: var(--card-bg);
+  stroke-width: 2;
+}
+
+.flt-tip {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 10px;
+  border-radius: var(--corner-sm);
+  background: var(--page-bg);
+  border: 1px solid var(--separator);
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(10px, -110%);
+  font-variant-numeric: tabular-nums;
+}
+
+.flt-tip.is-left {
+  transform: translate(calc(-100% - 10px), -110%);
+}
+
+.flt-tip strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dx-ink);
+}
+
+/* ---- ISO strip ----------------------------------------------------------- */
+.flt-iso {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 12px;
+  border-top: 1px solid var(--separator);
+}
+
+.flt-iso-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.flt-iso-seg {
+  fill: var(--flt-tone);
+}
+
+.flt-iso-zone {
+  font-size: 10.5px;
+  font-weight: 500;
+  fill: var(--text-muted);
+}
+
+.flt-iso-zone.is-current {
+  font-weight: 700;
+  fill: var(--dx-ink);
+}
+
+.flt-iso-marker path {
+  fill: var(--dx-ink);
+}
+
+.flt-iso-marker line {
+  stroke: var(--dx-ink);
+  stroke-width: 1.5;
+}
+
+/* ---- table --------------------------------------------------------------- */
+.flt-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.flt-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+}
+
+.flt-table th {
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  color: var(--text-muted);
+  background: none;
+  border-bottom: 1px solid var(--separator);
+  white-space: nowrap;
+}
+
+.flt-table td {
+  padding: 10px 16px;
+  vertical-align: middle;
+  color: var(--dx-ink-2);
+  border-bottom: 1px solid var(--separator);
+}
+
+.flt-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.flt-table .is-num {
+  text-align: right;
+}
+
+.flt-table tbody tr {
+  cursor: pointer;
+  outline: none;
+}
+
+.flt-table tbody tr:hover td,
+.flt-table tbody tr.is-selected td {
+  background: var(--row-hover-bg);
+  border-bottom-color: transparent;
+}
+
+.flt-table tbody tr:hover td:first-child,
+.flt-table tbody tr.is-selected td:first-child {
+  border-radius: var(--corner-row) 0 0 var(--corner-row);
+}
+
+.flt-table tbody tr:hover td:last-child,
+.flt-table tbody tr.is-selected td:last-child {
+  border-radius: 0 var(--corner-row) var(--corner-row) 0;
+}
+
+.flt-table tbody tr:focus-visible td {
+  box-shadow: inset 0 2px 0 var(--signal-blue), inset 0 -2px 0 var(--signal-blue);
+}
+
+.flt-table tbody tr:focus-visible td:first-child {
+  box-shadow: inset 2px 2px 0 var(--signal-blue), inset 0 -2px 0 var(--signal-blue);
+}
+
+.flt-table tbody tr:focus-visible td:last-child {
+  box-shadow: inset -2px 2px 0 var(--signal-blue), inset 0 -2px 0 var(--signal-blue);
+}
+
+.flt-lead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.flt-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: var(--flt-tone);
+  border: 1px solid var(--flt-tone);
+  background: transparent;
+}
+
+.flt-lead-text,
+.flt-sigcell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.flt-lead-name {
+  color: var(--dx-ink);
+  font-weight: 500;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flt-lead-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.flt-num {
+  font-weight: 600;
+  color: var(--dx-ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.flt-feats {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.flt-feat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.flt-feat .flt-num {
+  font-weight: 500;
+  color: var(--dx-ink-2);
+}
+
+.flt-feat-tag {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.flt-action {
+  color: var(--dx-ink);
+  white-space: nowrap;
+}
+
+/* ---- responsive ---------------------------------------------------------- */
+@media (max-width: 1180px) {
+  .flt-primary > :first-child,
+  .flt-primary > :last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 520px) {
+  .flt-card {
+    padding: 14px 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flt-bar-row,
+  .flt-bar-fill {
+    transition: none;
+  }
+}
+
+.flt-panel-note { font-weight: 400; font-size: 12px; color: var(--text-muted); }

@@ -1,0 +1,831 @@
+:root {
+  --font-ui: "Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --corner-sm: 6px;
+  --corner-shell: 16px;
+  --corner-intersection: 16px;
+  --corner-card: 14px;
+  --corner-pill: 9999px;
+  --corner-row: 10px;
+  --corner-widget: 22px;
+  --corner-widget-lg: 26px;
+  --widget-bg: #1c1c1f;
+  --widget-border: rgba(255, 255, 255, 0.08);
+  --widget-shadow: 0 4px 24px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --widget-header-fg: #8e8e93;
+  --glass-radius: var(--corner-sm);
+  --glass-tint-top: rgb(255 255 255 / 6%);
+  --glass-tint-bottom: rgb(179 179 179 / 6%);
+  --glass-border: transparent;
+  --glass-shadow: none;
+  --page-bg: #141417;
+  --outer-bg: #101013;
+  --page-fg: #d8d8da;
+  --text-muted: #8e8e93;
+  --topbar-bg: #28282d;
+  --rail-bg: #28282d;
+  --workspace-bg: #18181c;
+  --separator: #35343a;
+  --card-bg: #262528;
+  --card-border: rgba(255, 255, 255, 0.04);
+  /* Frosted card glass: neutral graphite tint over a backdrop blur. --card-bg stays
+     opaque for knockout strokes and dot fills inside charts. */
+  --card-glass-bg: rgb(38 37 40 / 72%);
+  --widget-glass-bg: rgb(28 28 31 / 72%);
+  --card-glass-filter: blur(20px) saturate(140%);
+  --row-hover-bg: #28272a;
+  --pill-active-bg: #2a292c;
+  --btn-primary-bg: #ffffff;
+  --btn-primary-fg: #141416;
+  --status-success: #34d399;
+  --status-warning: #fbbf24;
+  --status-danger: #f87171;
+  --signal-blue: #60a5fa;
+  /* Ink for text on a solid status / signal-blue fill (value tags, badges). */
+  --on-status-fg: #141416;
+  --hover-faint: rgba(255, 255, 255, 0.05);
+  --active-faint: rgba(255, 255, 255, 0.08);
+  --diagram-stroke: #aaa9af;
+  --chart-fill: rgb(96 165 250 / 9%);
+  background: var(--page-bg);
+  color-scheme: dark;
+}
+
+html[data-theme="light"] {
+  --glass-border: transparent;
+  --glass-shadow: none;
+  --page-bg: #f3f3f3;
+  --outer-bg: #dedede;
+  --page-fg: #242424;
+  --text-muted: #6e6e73;
+  --topbar-bg: #ebebeb;
+  --rail-bg: #ebebeb;
+  --workspace-bg: #ffffff;
+  --separator: #d6d6d8;
+  --card-bg: #f4f4f5;
+  --card-border: rgba(0, 0, 0, 0.06);
+  --card-glass-bg: rgb(244 244 245 / 72%);
+  --widget-glass-bg: rgb(255 255 255 / 70%);
+  --row-hover-bg: #ebebed;
+  --pill-active-bg: #e2e2e4;
+  --btn-primary-bg: #141416;
+  --btn-primary-fg: #ffffff;
+  --status-success: #047857;
+  --status-warning: #9a6700;
+  --status-danger: #b42318;
+  --signal-blue: #2563eb;
+  --on-status-fg: #ffffff;
+  --hover-faint: rgba(0, 0, 0, 0.04);
+  --active-faint: rgba(0, 0, 0, 0.08);
+  --diagram-stroke: #5e5e66;
+  --chart-fill: rgb(37 99 235 / 8%);
+  --widget-bg: #ffffff;
+  --widget-border: rgba(0, 0, 0, 0.08);
+  --widget-shadow: 0 4px 20px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  --widget-header-fg: #6e6e73;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html, body { min-height: 100%; margin: 0; background: var(--rail-bg); }
+body {
+  font-family: var(--font-ui);
+  /* Inter tuned for operations: tabular figures so live values never jitter,
+     tailed l (cv05) and slashed zero so tags like KLN-01 / I1 / O0 are unambiguous. */
+  font-feature-settings: "tnum" 1, "cv05" 1, "zero" 1;
+  font-optical-sizing: auto;
+  color: var(--page-fg);
+}
+button, input, select, textarea { font-family: inherit; font-feature-settings: inherit; }
+
+.liquid-glass-backdrop {
+  position: relative;
+  isolation: isolate;
+  background: var(--page-bg);
+  color: var(--page-fg);
+}
+
+.liquid-glass {
+  position: relative;
+  border: 0;
+  border-radius: var(--glass-radius);
+  background: transparent;
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(3px) saturate(125%);
+  -webkit-backdrop-filter: blur(3px) saturate(125%);
+}
+
+/* Frosted glass on every card surface (CSS-only tier: cheap enough for repeated cards). */
+:is(.ui-card, .dx-card, .dx-hero, .dx-stat, .ph-inspector, .ph-twin-label, .xai-card,
+    .ano-card, .ano-chain, .flt-card, .mnt-kpi, .deg-card, .src-card, .hx-stat,
+    .pgo-module, .pgo-rail, .pgo-sensors, .rel-card, .anom-card, .rul-panel, .cond-card,
+    .risk-card, .fcm-card, .rack-card, .ast-card, .ast-menu, .dxo-card,
+    .dxh-tile, .dxh-card, .dxt-card, .ast-smw-card) {
+  -webkit-backdrop-filter: var(--card-glass-filter);
+  backdrop-filter: var(--card-glass-filter);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root, html[data-theme="light"] { --card-glass-bg: var(--card-bg); --widget-glass-bg: var(--widget-bg); }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root, html[data-theme="light"] {
+    --card-glass-bg: var(--card-bg);
+    --widget-glass-bg: var(--widget-bg);
+    --card-glass-filter: none;
+  }
+}
+
+.app-shell {
+  --navbar-height: 52px;
+  --rail-width: 60px;
+  --info-bar-height: 24px;
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--rail-width) minmax(0, 1fr);
+  grid-template-rows: var(--navbar-height) minmax(0, 1fr) var(--info-bar-height);
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+  border-radius: 0;
+  background: var(--rail-bg);
+}
+
+/* NAVBAR */
+.navbar {
+  z-index: 2;
+  grid-column: 1 / -1;
+  block-size: var(--navbar-height);
+  background: var(--topbar-bg);
+  border-radius: 0;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px 0 1.25rem;
+}
+
+.brand-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  outline: none;
+}
+
+.brand-logo {
+  height: 20px;
+  width: auto;
+  display: block;
+}
+
+html:not([data-theme="light"]) .brand-logo-light { display: none; }
+html[data-theme="light"] .brand-logo-dark { display: none; }
+
+/* NAVIGATION RAIL (PRIMARY SIDEBAR) */
+.nav-rail {
+  z-index: 1;
+  grid-column: 1;
+  grid-row: 2;
+  background: var(--rail-bg);
+  border-radius: 0;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  gap: 4px;
+}
+
+.nav-rail-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.rail-btn {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+  outline: none;
+  position: relative;
+}
+
+.rail-btn:hover {
+  background: var(--hover-faint);
+  color: var(--dx-ink);
+}
+
+.rail-btn.active {
+  background: var(--active-faint);
+  color: var(--dx-ink);
+}
+
+.rail-btn:focus-visible,
+.brand-btn:focus-visible,
+.theme-toggle:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 2px;
+}
+
+/* Theme toggle: one quiet icon button at the end of the top bar. */
+.theme-toggle {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--corner-pill);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.theme-toggle:hover {
+  background: var(--hover-faint);
+  color: var(--dx-ink);
+}
+
+.rail-divider {
+  width: 32px;
+  height: 1px;
+  background: var(--separator);
+  margin: 6px 0;
+}
+
+/* WORKSPACE CONTAINER */
+.workspace {
+  z-index: 1;
+  grid-column: 2;
+  grid-row: 2;
+  overflow: hidden;
+  border-radius: var(--corner-intersection) 0 0 0;
+  background: var(--workspace-bg);
+  border: 1px solid var(--separator);
+  border-right: none;
+  border-bottom: none;
+  display: flex;
+  height: 100%;
+  max-height: 100%;
+}
+
+/* INFO BAR: build tag left, copyright right, along the bottom of the shell. */
+.info-bar {
+  z-index: 2;
+  grid-column: 1 / -1;
+  grid-row: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  background: var(--topbar-bg);
+  border-top: 1px solid var(--separator);
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   MANDATORY COMPONENT STYLES (REQUIRED EVERYWHERE)
+   ========================================================================== */
+
+/* 1. NAVIGATION STYLE (HORIZONTAL PILL TABS) */
+.nav-pill-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.nav-pill-group.nav-pill-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.nav-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 18px;
+  border-radius: var(--corner-pill);
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 0.875rem;
+  font-weight: 400;
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+}
+
+.nav-pill:hover {
+  background: var(--hover-faint);
+  color: var(--dx-ink);
+}
+
+.nav-pill.active {
+  background: var(--pill-active-bg);
+  color: var(--dx-ink);
+  font-weight: 500;
+}
+
+.nav-pill:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 2px;
+}
+
+/* 2. CARD STYLE (ROUNDED GRAPHITE CARDS) — quiet surface, no lift, no glow */
+.ui-card {
+  background: var(--card-glass-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--corner-card);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  color: inherit;
+}
+
+.ui-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--text-muted);
+}
+
+.ui-card-title {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.ui-card-description {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+/* 3. TABLE STYLE (DIVIDER LIST WITH CAPSULE ROW HOVER) */
+.ui-table-container {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.ui-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.84rem;
+  text-align: left;
+}
+
+.ui-table th {
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--separator);
+  background: transparent;
+  white-space: nowrap;
+}
+
+.ui-table td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--separator);
+  color: var(--page-fg);
+  vertical-align: middle;
+  line-height: 1.4;
+}
+
+.ui-table tbody tr:last-child td {
+  border-bottom-color: transparent;
+}
+
+.ui-table tbody tr.is-clickable {
+  cursor: pointer;
+}
+
+/* Capsule row highlight on hover / selected */
+.ui-table tbody tr:hover td,
+.ui-table tbody tr:focus-within td,
+.ui-table tbody tr.active td {
+  background: var(--row-hover-bg);
+  border-bottom-color: transparent;
+}
+
+.ui-table tbody tr:hover td:first-child,
+.ui-table tbody tr:focus-within td:first-child,
+.ui-table tbody tr.active td:first-child {
+  border-top-left-radius: var(--corner-row);
+  border-bottom-left-radius: var(--corner-row);
+}
+
+.ui-table tbody tr:hover td:last-child,
+.ui-table tbody tr:focus-within td:last-child,
+.ui-table tbody tr.active td:last-child {
+  border-top-right-radius: var(--corner-row);
+  border-bottom-right-radius: var(--corner-row);
+}
+
+/* 4. BUTTON STYLE (PILL BUTTONS) */
+.btn-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border-radius: var(--corner-pill);
+  font-family: var(--font-ui);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  transition: opacity 0.15s ease, background 0.15s ease, transform 0.1s ease;
+  white-space: nowrap;
+}
+
+.btn-pill:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 2px;
+}
+
+.btn-pill:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn-pill:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn-pill-primary {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
+}
+
+.btn-pill-primary:hover:not(:disabled) {
+  opacity: 0.92;
+}
+
+.btn-pill-secondary {
+  background: var(--active-faint);
+  color: var(--dx-ink);
+}
+
+.btn-pill-secondary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--dx-ink) 12%, transparent);
+}
+
+/* ==========================================================================
+   ASSETS MODULE LAYOUT & SECONDARY HIERARCHY SIDEBAR
+   ========================================================================== */
+
+.assets-module-container {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+/* INDUSTRIAL ASSETS HIERARCHY SIDEBAR */
+.assets-industrial-sidebar {
+  width: 300px;
+  flex-shrink: 0;
+  background: var(--rail-bg);
+  border-right: 1px solid var(--separator);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+/* MACHINE DETAIL WORKSPACE */
+.assets-machine-workspace {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  max-height: 100%;
+  padding: 24px 32px 40px 32px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  background: var(--workspace-bg);
+}
+
+.assets-machine-workspace::-webkit-scrollbar {
+  width: 6px;
+}
+.assets-machine-workspace::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+}
+
+.machine-tabs-bar {
+  flex: 0 0 auto;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.subpage-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ==========================================================================
+   MACHINE DIAGRAM SCHEMATIC COMPONENT
+   ========================================================================== */
+
+@media (max-width: 900px) {
+  .app-shell { --rail-width: 60px; }
+  
+  .assets-machine-workspace { padding: 16px; }
+}
+
+@media (max-width: 700px) {
+  .assets-module-container { flex-direction: column; }
+  
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .liquid-glass { backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+
+/* ==========================================================================
+   DIAGNOSIS MODULE (dx-*)
+   Matches Overview / Sensor Mapping card language. Theme-aware.
+   ========================================================================== */
+
+:root {
+  --dx-ink: #ffffff;
+  --dx-ink-2: #d1d1d6;
+  --dx-inset: #1b1a1e;
+  --dx-line: rgba(255, 255, 255, 0.06);
+  --dx-track: rgba(255, 255, 255, 0.08);
+  --dx-card-border: rgba(255, 255, 255, 0.08);
+  --dx-card-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+  --dx-canvas: radial-gradient(ellipse at 50% 30%, #17181c 0%, #0e0e11 100%);
+  --dx-body: #1d1c20;
+  --dx-body-2: #2a292e;
+  --dx-stroke: #57565c;
+  --dx-stroke-soft: #343338;
+  --dx-good: #34d399;
+  --dx-warn: #fbbf24;
+  --dx-bad: #f87171;
+  --dx-blue: #0a84ff;
+  --dx-row-stripe: rgba(255, 255, 255, 0.035);
+  --dx-row-hover: rgba(255, 255, 255, 0.07);
+}
+
+html[data-theme="light"] {
+  --dx-ink: #111111;
+  --dx-ink-2: #3a3a3c;
+  --dx-inset: #ebebed;
+  --dx-line: rgba(0, 0, 0, 0.07);
+  --dx-track: rgba(0, 0, 0, 0.08);
+  --dx-card-border: rgba(0, 0, 0, 0.06);
+  --dx-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --dx-canvas: radial-gradient(ellipse at 50% 30%, #fbfbfc 0%, #ececef 100%);
+  --dx-body: #f6f6f8;
+  --dx-body-2: #e4e4e8;
+  --dx-stroke: #a9a9b0;
+  --dx-stroke-soft: #d3d3d8;
+  --dx-good: var(--status-success);
+  --dx-warn: var(--status-warning);
+  --dx-bad: var(--status-danger);
+  --dx-blue: var(--signal-blue);
+  --dx-row-stripe: rgba(0, 0, 0, 0.03);
+  --dx-row-hover: rgba(0, 0, 0, 0.06);
+}
+
+/* Sub navigation (segmented pill tabs) */
+
+.dx-segment {
+  display: inline-flex; align-items: center; gap: 2px; padding: 3px;
+  border-radius: var(--corner-pill); background: var(--dx-inset); border: 1px solid var(--dx-line);
+}
+.dx-segment button {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 18px; border: none; border-radius: var(--corner-pill);
+  background: transparent; color: var(--text-muted);
+  font-family: var(--font-ui); font-size: 0.84rem; font-weight: 400;
+  cursor: pointer; transition: background 0.18s ease, color 0.18s ease; white-space: nowrap;
+}
+.dx-segment button:hover { color: var(--dx-ink); background: rgba(255, 255, 255, 0.04); }
+.dx-segment button.active { background: var(--pill-active-bg); color: var(--dx-ink); font-weight: 500; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); }
+.dx-segment.sm button { padding: 5px 14px; font-size: 0.78rem; }
+html[data-theme="light"] .dx-segment button.active { background: #ffffff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.dx-segment .dx-count {
+  font-size: 0.66rem; font-weight: 600; padding: 0 6px; border-radius: 9999px;
+  background: rgba(251, 191, 36, 0.16); color: var(--dx-warn); line-height: 16px;
+}
+
+/* Cards */
+.dx-card {
+  background: var(--widget-glass-bg); border: 1px solid var(--widget-border, var(--dx-card-border)); border-radius: var(--corner-widget, 22px);
+  padding: 20px 22px; box-shadow: var(--widget-shadow, var(--dx-card-shadow));
+  display: flex; flex-direction: column; gap: 14px; min-width: 0;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+}
+.dx-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.dx-eyebrow { display: block; font-size: 0.66rem; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-muted); }
+.dx-title { font-size: 1rem; font-weight: 600; color: var(--dx-ink); margin: 2px 0 0; }
+
+.dx-unit { font-size: 0.78rem; font-weight: 500; color: var(--text-muted); margin-left: 3px; letter-spacing: 0; }
+
+.dx-label { font-size: 0.7rem; color: var(--text-muted); }
+
+.dx-mono { font-family: var(--font-ui); }
+
+/* Chips */
+.dx-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: var(--corner-pill);
+  font-size: 0.68rem; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap;
+  background: rgba(255, 255, 255, 0.06); color: var(--dx-ink-2);
+}
+.dx-chip.good { color: var(--dx-good); background: rgba(52, 211, 153, 0.12); }
+.dx-chip.warn { color: var(--dx-warn); background: rgba(251, 191, 36, 0.14); }
+.dx-chip.bad { color: var(--dx-bad); background: rgba(248, 113, 113, 0.14); }
+.dx-chip.blue { color: #64b5ff; background: rgba(10, 132, 255, 0.14); }
+.dx-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px currentColor; flex-shrink: 0; }
+.dx-dot.live { animation: dx-pulse 1.8s ease-in-out infinite; }
+
+/* Animations */
+
+@keyframes dx-flow { to { stroke-dashoffset: -28; } }
+@keyframes dx-spin { to { transform: rotate(360deg); } }
+@keyframes dx-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@keyframes dx-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(3px); } }
+@keyframes dx-rise { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 0.9; } 100% { transform: translateY(-26px); opacity: 0; } }
+@keyframes dx-ripple { 0% { transform: scale(0.6); opacity: 0.85; } 100% { transform: scale(2.6); opacity: 0; } }
+@keyframes dx-travel { from { transform: translateX(0); } to { transform: translateX(120px); } }
+@keyframes dx-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.9); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .dx-flow, .dx-spin, .dx-bob, .dx-rise, .dx-ripple, .dx-travel, .dx-dot.live, .dx-stagger > *, .dx-fade-in { animation: none !important; }
+}
+
+/* ==========================================================================
+   ASSETS DIRECTORY HOMEPAGE STYLES
+   ========================================================================== */
+
+.assets-directory-workspace {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  max-height: 100%;
+  padding: 24px 32px 40px 32px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  background: var(--workspace-bg);
+}
+
+.assets-directory-workspace::-webkit-scrollbar {
+  width: 6px;
+}
+.assets-directory-workspace::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+}
+
+/* ==========================================================================
+   MACHINE DRAWING KIT (--mx-*) — mandatory for every machine diagram.
+   Style reference: ULTRON Twin Screw Extruder drawing. Graphite bodies with a
+   soft top-lit gradient, one mid-grey rim, near-black recesses, brushed-metal
+   shafts, muted brass for process material only, TSE measurement pads.
+   See src/components/assets/machine-kit/machine-kit.tsx.
+   ========================================================================== */
+:root {
+  --mx-body: #1c1e23;
+  --mx-body-deep: #14161a;
+  --mx-raised: #2a2d34;
+  --mx-raised-hi: #363a42;
+  --mx-deep: #0c0d10;
+  --mx-edge: #60646d;
+  --mx-fine: #3b3e46;
+  --mx-label: #8e8e93;
+  --mx-metal: #565b65;
+  --mx-metal-hi: #8d929c;
+  --mx-metal-dark: #25282e;
+  --mx-material: #9a7a3c;
+  --mx-material-hi: #b39352;
+  --mx-material-deep: #5e4415;
+  --mx-pad-panel: #0b0c0e;
+  --mx-pad-dot: #ffffff;
+  --mx-canvas: #151619;
+  --mx-grid: rgba(255, 255, 255, 0.035);
+}
+
+/* 3D twin paints (machine twin, built in code). Real-world finishes matching the
+   plant twin's CAD/Blender models, so they are the same in both themes. */
+:root {
+  --twin-concrete: #b4b5b8;
+  --twin-steel: #d3d5d8;
+  --twin-steel-dark: #7c828a;
+  --twin-shell: #9198a0;
+  --twin-machined: #5c6169;
+  --twin-paint: #3d82c2;
+  --twin-housing: #858b93;
+  /* Warm key light of the 3D twins. */
+  --twin-sun: #fff6ea;
+}
+
+html[data-theme="light"] {
+  --mx-body: #e3e5e9;
+  --mx-body-deep: #d3d6dc;
+  --mx-raised: #f3f4f6;
+  --mx-raised-hi: #ffffff;
+  --mx-deep: #c2c6cd;
+  --mx-edge: #5a616c;
+  --mx-fine: #a4aab3;
+  --mx-label: #6e6e73;
+  --mx-metal: #8a93a0;
+  --mx-metal-hi: #e3e7ec;
+  --mx-metal-dark: #5c6572;
+  --mx-material: #c69d4f;
+  --mx-material-hi: #dcbb73;
+  --mx-material-deep: #a57427;
+  --mx-pad-panel: #ffffff;
+  --mx-pad-dot: #ffffff;
+  --mx-canvas: #f6f6f7;
+  --mx-grid: rgba(0, 0, 0, 0.045);
+}
+
+/* Drawing canvas: quiet grid, owned by the container (never by the drawing). */
+.mx-canvas {
+  background-color: var(--mx-canvas);
+  background-image:
+    linear-gradient(var(--mx-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--mx-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+  border-radius: var(--corner-row);
+}
+
+/* Shell thermal scale (°C stops 150 → 520). A measurement scale, identical in
+   both themes so a colour always means the same temperature; hex only, the
+   Thermal tab parses these to paint the scanner map. */
+:root {
+  --heat-150: #1e3a8a;
+  --heat-200: #2563eb;
+  --heat-240: #0ea5e9;
+  --heat-275: #22c55e;
+  --heat-315: #eab308;
+  --heat-355: #f97316;
+  --heat-400: #dc2626;
+  --heat-460: #7f1d1d;
+  --heat-520: #450a0a;
+  --heat-mask: #3a3e44;
+}
+
+html[data-theme="light"] {
+  --heat-mask: #b9bcc2;
+}
+
+.mx-pad-halo {
+  animation: mx-pad-pulse 2.4s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@keyframes mx-pad-pulse {
+  0%, 100% { opacity: 0.16; }
+  50% { opacity: 0.32; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mx-pad-halo { animation: none; }
+}

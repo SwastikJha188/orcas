@@ -1,0 +1,77 @@
+/* Machine twin on Home: the HUD's machine bar and the component inspector.
+   The stage, legend, hint, labels and panels reuse the plant twin's classes. */
+
+/* Floating machine bar, top-left of the stage (HUD grid row 1, column 1). */
+.mt3-bar {
+  grid-area: 1 / 1;
+  align-self: start;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  padding: 6px 6px 6px 6px;
+  border-radius: var(--corner-pill);
+  border: 1px solid var(--card-border);
+  background: var(--card-glass-bg);
+  -webkit-backdrop-filter: var(--card-glass-filter);
+  backdrop-filter: var(--card-glass-filter);
+  pointer-events: auto;
+}
+
+.mt3-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0 4px;
+}
+.mt3-name {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mt3-sub {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Sensors of the selected component: divider list. */
+.mt3-sensors {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.mt3-sensors li {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 6px;
+  border-bottom: 1px solid var(--separator);
+  font-size: 0.75rem;
+}
+.mt3-sensors li:last-child { border-bottom: none; }
+.mt3-sensor-tag { color: var(--dx-ink); font-weight: 500; }
+.mt3-sensor-name { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mt3-sensor-value { color: var(--dx-ink); }
+
+.mt3-pad-tip { white-space: nowrap; }
+
+@media (max-width: 1100px) {
+  .mt3-bar {
+    order: 0;
+    margin: 16px 16px 0;
+    flex-wrap: wrap;
+    border-radius: var(--corner-card);
+  }
+}

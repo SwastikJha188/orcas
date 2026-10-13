@@ -1,0 +1,1163 @@
+/* ==========================================================================
+   ULTRON · Home (plant overview). Prefix: ph-
+   Builds on assets-shell.css (ast-*). Semantic tokens only.
+   ========================================================================== */
+
+/* The page fills the workspace: the map and the alerts list take the spare
+   height, so the workspace column and the sidebar share top and bottom edges.
+   Below the min heights the page scrolls instead of squeezing. */
+.ph-root {
+  flex: 1;
+  height: 100%;
+  overflow-y: auto;
+  padding: 20px 28px 28px;
+  background: var(--workspace-bg);
+}
+
+.ph-root :focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 2px;
+}
+
+.ph-head {
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.ph-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.ph-live i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-success);
+}
+
+.ph-empty-workspace strong {
+  color: var(--dx-ink);
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+/* ---------------------------------------------------------------- layout */
+.ph-body {
+  flex: 1 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-rows: 1fr;
+  grid-template-areas: "main side";
+  gap: 12px;
+}
+
+.ph-side {
+  grid-area: side;
+}
+
+.ph-main {
+  grid-area: main;
+}
+
+.ph-main,
+.ph-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.ph-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Map takes the workspace height left over by the trend card. */
+.ph-map {
+  flex: 1 1 0;
+  min-height: 360px;
+}
+
+.ph-trend {
+  flex: none;
+}
+
+/* ULTRON graph strip: plant health over time, one fixed height. The chart
+   fills what the card head leaves. */
+.ph-strip {
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  height: 204px;
+}
+
+.ph-strip > .ph-card {
+  min-height: 0;
+  min-width: 0;
+}
+
+.ph-head-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Movement badge over the period tabs, right-aligned. */
+.ph-head-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.ph-move {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.ph-move b {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.ph-move b[data-tone] {
+  color: var(--tone);
+}
+
+/* Gauge keeps its size; the alerts list takes the rest of the sidebar. */
+.ph-gauge {
+  flex: none;
+}
+
+.ph-alerts {
+  flex: 1 1 0;
+  min-height: 240px;
+}
+
+/* Card heads use the shared ast-card-head / ast-card-title; the card's own
+   gap provides the spacing below the head. */
+.ph-card > .ast-card-head {
+  margin-bottom: 0;
+  flex-wrap: wrap;
+}
+
+.ph-head-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ph-head-nav {
+  padding: 0;
+}
+
+.ph-sub {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------- plant map */
+.ph-map-body {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.ph-canvas {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  align-content: start;
+  gap: 12px;
+  padding: 14px;
+}
+
+.ph-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--corner-card);
+  border: 1px dashed var(--separator);
+  background: color-mix(in srgb, var(--card-bg) 70%, transparent);
+}
+
+.ph-zone[data-tone="warn"],
+.ph-zone[data-tone="bad"] {
+  border-color: color-mix(in srgb, var(--tone) 45%, var(--separator));
+}
+
+.ph-zone-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ph-zone-icon {
+  display: inline-flex;
+  color: var(--text-muted);
+}
+
+.ph-zone-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--page-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ph-zone-meta {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.ph-zone-mark {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid var(--tone);
+  flex-shrink: 0;
+}
+
+.ph-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ph-group-name {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.ph-zone-units {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.ph-unit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--corner-row);
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  color: var(--page-fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.ph-unit:hover {
+  background: var(--row-hover-bg);
+}
+
+.ph-unit[aria-pressed="true"] {
+  border-color: var(--signal-blue);
+  background: var(--row-hover-bg);
+}
+
+.ph-unit-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ph-unit-icon {
+  display: inline-flex;
+  color: var(--tone);
+}
+
+.ph-unit-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ph-unit-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--tone);
+  flex-shrink: 0;
+}
+
+.ph-unit-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.ph-unit-meta > span:last-child {
+  color: var(--dx-ink);
+  font-weight: 500;
+}
+
+.ph-unit .ast-ticks {
+  height: 10px;
+}
+
+/* ---------------------------------------------------------------- inspector */
+.ph-inspector {
+  width: 268px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--corner-card);
+  background: var(--card-glass-bg);
+  border: 1px solid var(--separator);
+  align-self: flex-start;
+}
+
+.ph-insp-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ph-insp-name {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+.ph-inspector .ast-chip {
+  align-self: flex-start;
+}
+
+.ph-insp-rows {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ph-insp-rows > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--separator);
+  font-size: 0.78rem;
+}
+
+.ph-insp-rows dt {
+  color: var(--text-muted);
+}
+
+.ph-insp-rows dd {
+  margin: 0;
+  color: var(--dx-ink);
+  text-align: right;
+}
+
+.ph-inspector .btn-pill {
+  align-self: stretch;
+  justify-content: center;
+}
+
+/* ---------------------------------------------------------------- gauge */
+.ph-gauge-meter {
+  position: relative;
+  width: 100%;
+  max-width: 256px;
+  align-self: center;
+}
+
+.ph-gauge-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.ph-seg {
+  fill: none;
+  stroke: color-mix(in srgb, var(--tone) 14%, transparent);
+  stroke-width: 12;
+}
+
+.ph-seg.on {
+  stroke: var(--tone);
+}
+
+.ph-grad {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+  opacity: 0.5;
+}
+
+.ph-grad.major {
+  opacity: 0.9;
+}
+
+.ph-target {
+  fill: var(--dx-ink);
+  opacity: 0.85;
+}
+
+.ph-gauge-tick {
+  font-size: 9.5px;
+  fill: var(--text-muted);
+  font-family: var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+
+.ph-gauge-read {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+
+.ph-gauge-value {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  font-size: 36px;
+  line-height: 40px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--dx-ink);
+}
+
+.ph-gauge-of {
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--text-muted);
+}
+
+.ph-gauge-target {
+  margin-top: 2px;
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------- alerts
+   Stacked feed: each entry is its own quiet rounded tile — time at left,
+   status tag at right, finding, then the reading in muted text. */
+.ph-alert-list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.ph-feed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ph-feed-label {
+  margin: 8px 0 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.ph-feed-quiet {
+  padding: 12px 14px;
+  border-radius: var(--corner-row);
+  background: var(--hover-faint);
+}
+
+.ph-alert {
+  border-radius: var(--corner-row);
+  background: var(--hover-faint);
+  animation: ph-feed-in 0.35s ease-out;
+}
+
+@keyframes ph-feed-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ph-alert { animation: none; }
+}
+
+.ph-alert-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 12px 14px;
+  border: none;
+  border-radius: var(--corner-row);
+  background: transparent;
+  color: var(--page-fg);
+  font: inherit;
+  text-align: left;
+}
+
+button.ph-alert-row {
+  cursor: pointer;
+}
+
+button.ph-alert-row:hover {
+  background: var(--active-faint);
+}
+
+.ph-alert-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ph-level {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: var(--corner-sm);
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+  color: var(--tone);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.ph-alert-machine {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ph-alert-age {
+  flex: none;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.ph-alert-finding {
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--dx-ink);
+  line-height: 1.35;
+}
+
+.ph-alert[data-cleared] .ph-alert-finding {
+  color: var(--text-muted);
+}
+
+.ph-alert-reading {
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+/* Live marker next to the card title. */
+.ph-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--status-success);
+}
+.ph-live i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: ph-live-pulse 1.6s ease-in-out infinite;
+}
+@keyframes ph-live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ph-live i { animation: none; }
+}
+
+.ph-alert-more {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 0 14px 12px;
+}
+
+.ph-alert-more p {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--page-fg);
+}
+
+.ph-alert-more .btn-pill {
+  padding: 5px 14px;
+  font-size: 0.75rem;
+}
+
+/* ---------------------------------------------------------------- charts */
+.ph-chart {
+  position: relative;
+  width: 100%;
+}
+
+.ph-chart svg {
+  display: block;
+  font-family: var(--font-ui);
+}
+
+/* Plot that takes the card's remaining height (graph strip). */
+.ph-chart-fill {
+  flex: 1 1 0;
+  min-height: 80px;
+  overflow: hidden;
+}
+
+.ph-chart-fill > svg {
+  position: absolute;
+  inset: 0;
+}
+
+.ph-stop {
+  stop-color: var(--tone);
+}
+
+.ph-grid.dashed {
+  stroke-dasharray: 2 4;
+}
+
+.ph-axis.on {
+  fill: var(--dx-ink);
+}
+
+.ph-grid {
+  stroke: var(--dx-line);
+  stroke-width: 1;
+}
+
+.ph-axis {
+  font-size: 9px;
+  fill: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ph-band {
+  fill: color-mix(in srgb, var(--tone) 7%, transparent);
+}
+
+/* The trend line takes the colour of the level the score sits in. */
+.ph-line {
+  fill: none;
+  stroke: var(--tone, var(--signal-blue));
+  stroke-width: 1.8;
+}
+
+.ph-cross {
+  stroke: var(--separator);
+  stroke-dasharray: 3 3;
+}
+
+.ph-dot {
+  fill: var(--tone, var(--signal-blue));
+  stroke: var(--card-bg);
+  stroke-width: 2;
+}
+
+.ph-tip {
+  font-size: 10px;
+  font-weight: 500;
+  fill: var(--dx-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- responsive */
+@media (max-width: 1280px) {
+  .ph-body {
+    grid-template-columns: minmax(0, 1fr) 300px;
+  }
+  .ph-strip {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .ph-strip > .ph-card {
+    height: 240px;
+  }
+}
+
+/* Single column: sections stack at their natural height and the page scrolls. */
+@media (max-width: 1100px) {
+  .ph-body {
+    flex: none;
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    grid-template-areas: "side" "main";
+  }
+  .ph-map {
+    flex: none;
+  }
+  .ph-side {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ph-alerts {
+    flex: none;
+    min-height: 0;
+  }
+  .ph-alert-list {
+    max-height: 420px;
+  }
+  .ph-map-body {
+    flex-direction: column;
+  }
+  .ph-inspector {
+    width: auto;
+    align-self: stretch;
+  }
+}
+
+@media (max-width: 640px) {
+  .ph-root {
+    padding: 16px;
+  }
+  .ph-side {
+    grid-template-columns: 1fr;
+  }
+  .ph-canvas {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================================
+   3D plant twin (ph-twin-*). The floating legend uses the cheap CSS glass tier;
+   labels and the inspector are opaque — they sit over moving geometry.
+   ========================================================================== */
+.ph-twin {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  border-radius: var(--corner-row);
+  overflow: hidden;
+  background: var(--mx-canvas);
+}
+
+/* Own stacking context: label z-indexes stay under the legend and inspector. */
+.ph-twin-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.ph-twin-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+/* --twin-* (set by PlantTwin) is the canvas hidden under the page's floating
+   panels; the twin's own legend, hint and inspector sit in what is left. */
+.ph-twin-hint {
+  position: absolute;
+  right: calc(var(--twin-right, 0px) + 12px);
+  bottom: calc(var(--twin-bottom, 0px) + 10px);
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.ph-twin-legend {
+  position: absolute;
+  left: calc(var(--twin-left, 0px) + 12px);
+  bottom: calc(var(--twin-bottom, 0px) + 10px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 5px 10px;
+  border-radius: var(--corner-pill);
+  background: color-mix(in srgb, var(--topbar-bg) 72%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.ph-twin-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ph-twin-legend i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tone);
+}
+
+.ph-twin-legend b {
+  width: 14px;
+  height: 0;
+  border-top: 2px dashed var(--text-muted);
+}
+
+.ph-twin-legend b[data-kind="network"] {
+  border-top-color: var(--signal-blue);
+}
+
+/* Floating building label (drei <Html>). `--dx`/`--dy` are set by the canvas
+   label layout when the label has to clear another one; a hairline leader
+   then runs from the label's edge back to its building. */
+.ph-twin-label {
+  position: relative;
+  transform: translate(var(--dx, 0px), var(--dy, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 136px;
+  max-width: 260px;
+  padding: 6px 9px;
+  border-radius: var(--corner-sm);
+  background: var(--card-glass-bg);
+  border: 1px solid var(--separator);
+  font-family: var(--font-ui);
+  white-space: nowrap;
+  transition: border-color 0.15s ease;
+}
+
+.ph-twin-label[data-active] {
+  border-color: var(--signal-blue);
+}
+
+.ph-twin-label::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--leader-length, 0px);
+  height: 1px;
+  transform-origin: 0 50%;
+  transform: rotate(var(--leader-angle, 0rad)) translateX(var(--leader-start, 0px));
+  background: var(--text-muted);
+  opacity: 0.6;
+}
+
+.ph-twin-label-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dx-ink);
+  min-width: 0;
+}
+
+.ph-twin-label-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ph-twin-label-head i {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--tone);
+}
+
+.ph-twin-label-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding-left: 12px;
+  font-size: 0.66rem;
+  color: var(--tone);
+}
+
+.ph-twin-label-meta b {
+  color: var(--dx-ink);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.ph-twin-label-more {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--separator);
+  font-size: 0.64rem;
+  color: var(--text-muted);
+}
+
+.ph-twin-label-more span {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ph-twin-label-more b {
+  color: var(--dx-ink);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.ph-twin-inspector {
+  position: absolute;
+  top: calc(var(--twin-top, 0px) + 12px);
+  right: calc(var(--twin-right, 0px) + 12px);
+  max-height: calc(100% - var(--twin-top, 0px) - var(--twin-bottom, 0px) - 24px);
+  overflow-y: auto;
+  z-index: 30;
+}
+
+.ph-twin-machines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ph-twin-machines button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: var(--corner-row);
+  background: transparent;
+  color: var(--page-fg);
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ph-twin-machines button:hover {
+  background: var(--row-hover-bg);
+  color: var(--dx-ink);
+}
+
+.ph-twin-mname {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ph-twin-mhealth {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.ph-twin-note {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+@media (max-width: 1100px) {
+  .ph-twin {
+    flex: none;
+    height: 420px;
+  }
+  .ph-twin-inspector {
+    width: auto;
+    left: 12px;
+  }
+}
+
+@media (max-width: 640px) {
+  .ph-twin-hint {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   Immersive home (3D twin view). The twin fills the page, with no header; the
+   health gauge, alerts and trend float over it as HUD panels, angled slightly toward
+   the viewer like a cockpit display. The HUD grid ignores the pointer, so the
+   empty middle orbits the twin; only the panels themselves take input.
+   ========================================================================== */
+.ph-immersive {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+}
+
+.ph-stage {
+  position: absolute;
+  inset: 0;
+}
+
+.ph-stage > .ph-twin {
+  position: absolute;
+  inset: 0;
+  height: auto;
+  border-radius: 0;
+}
+
+.ph-hud {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas:
+    ". side"
+    "bottom side";
+  gap: 12px;
+  padding: 20px 24px 24px;
+  pointer-events: none;
+  perspective: 1600px;
+}
+
+.ph-hud-side {
+  grid-area: side;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  pointer-events: auto;
+  transform: rotateY(-3deg);
+  transform-origin: right center;
+}
+
+.ph-hud-side .ph-alerts {
+  min-height: 0;
+}
+
+.ph-hud-bottom {
+  grid-area: bottom;
+  min-width: 0;
+  pointer-events: auto;
+  transform: rotateX(4deg);
+  transform-origin: center bottom;
+}
+
+/* HUD panels use the shared frosted card glass (globals.css). */
+
+@media (max-width: 1280px) {
+  .ph-hud {
+    grid-template-columns: minmax(0, 1fr) 290px;
+  }
+  /* The HUD keeps the trend strip short. */
+  .ph-hud-bottom.ph-strip {
+    grid-template-columns: minmax(0, 1fr);
+    height: 204px;
+  }
+  .ph-hud-bottom.ph-strip > .ph-card {
+    height: auto;
+  }
+}
+
+/* Narrow: the twin becomes a block at the top and the panels stack below it,
+   flat and opaque, in a page that scrolls. */
+@media (max-width: 1100px) {
+  .ph-immersive {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .ph-stage {
+    position: relative;
+    inset: auto;
+    order: 1;
+    flex: none;
+    height: 460px;
+    margin: 16px 16px 0;
+    border-radius: var(--corner-row);
+    overflow: hidden;
+  }
+  .ph-hud {
+    display: contents;
+  }
+  .ph-hud-side,
+  .ph-hud-bottom {
+    order: 2;
+    /* Natural height: in the scrolling column a shrinkable panel collapses
+       to 0 and its cards spill under the next one. */
+    flex: none;
+    min-height: auto;
+    margin: 12px 16px 0;
+    transform: none;
+  }
+  .ph-hud-bottom {
+    order: 3;
+    margin-bottom: 16px;
+  }
+  .ph-hud-bottom.ph-strip {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .ph-hud-bottom.ph-strip > .ph-card {
+    height: 240px;
+  }
+  .ph-hud-side .ph-alert-list {
+    max-height: 420px;
+  }
+}

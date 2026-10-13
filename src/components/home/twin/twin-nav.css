@@ -1,0 +1,32 @@
+/* Shared 3D twin camera controls (twin-nav.tsx). Semantic tokens only. */
+
+.twin-nav {
+  position: absolute;
+  right: calc(var(--twin-right, 0px) + 12px);
+  bottom: calc(var(--twin-bottom, 0px) + 32px);
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border-radius: var(--corner-pill);
+  border: 1px solid var(--card-border);
+  background: var(--card-glass-bg);
+  -webkit-backdrop-filter: var(--card-glass-filter);
+  backdrop-filter: var(--card-glass-filter);
+}
+.twin-nav .nav-pill-group { gap: 2px; }
+.twin-nav-reset {
+  inline-size: 30px;
+  block-size: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--corner-pill);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.twin-nav-reset:hover { background: var(--hover-faint); color: var(--dx-ink); }
+.twin-nav-reset:focus-visible { outline: 2px solid var(--signal-blue); outline-offset: 2px; }
