@@ -7,9 +7,13 @@ const connectionString =
   process.env.DATABASE_URL ||
   "postgresql://swastikjha@localhost:5432/ultron";
 
+// Hosted Postgres (Supabase) requires TLS; local development does not.
+const isLocal = /@(localhost|127\.0\.0\.1)[:/]/.test(connectionString);
+
 const pool = new Pool({
   connectionString,
-  max: 20,
+  ssl: isLocal ? undefined : { rejectUnauthorized: false },
+  max: isLocal ? 20 : 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
 });
