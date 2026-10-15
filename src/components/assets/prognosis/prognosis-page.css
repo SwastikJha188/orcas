@@ -1,0 +1,515 @@
+/* ==========================================================================
+   ULTRON · Machine Prognosis page (prefix pg-prog-).
+   One card per section, tables flush, monochrome by default; status colour
+   only on a dot / value that is actually in warning or alarm.
+   Shared primitives (pg-analysis-*) come from ../analysis/analysis-page.css.
+   Semantic tokens only.
+   ========================================================================== */
+
+.pg-prog {
+  gap: 16px;
+}
+
+/* ---------------------------------------------------------------- section card */
+.pg-prog-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.pg-prog-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+/* Tables sit flush in the card: no inner box, aligned to the card edge. */
+.pg-prog-table.ui-table-container {
+  margin: 0 -16px;
+  border: none;
+  background: transparent;
+}
+
+.pg-prog-table .ui-table {
+  font-size: var(--fs-md);
+}
+
+.pg-prog-table .ui-table thead th {
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.pg-prog-table .ui-table th.pg-prog-r,
+.pg-prog-table .ui-table td.pg-prog-r {
+  text-align: right;
+}
+
+.pg-prog-table .ui-table tbody tr.is-clickable {
+  cursor: pointer;
+}
+
+.pg-prog-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--fs-sm);
+}
+
+.pg-prog-note {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.pg-prog-subtable {
+  padding-top: 8px;
+  border-top: 1px solid var(--separator);
+}
+
+/* ---------------------------------------------------------------- text bits */
+.pg-prog-strong {
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+.pg-prog-tone[data-tone="warn"],
+.pg-prog-tone[data-tone="bad"] {
+  color: var(--tone);
+}
+
+.pg-prog-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.pg-prog-clip {
+  display: block;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pg-prog-wrap {
+  display: block;
+  max-width: 340px;
+  white-space: normal;
+  line-height: 1.35;
+}
+
+.pg-prog-driver {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.pg-prog-why-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------- log time track */
+.pg-prog-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px solid var(--separator);
+  opacity: 0.6;
+}
+
+.pg-prog-tick-label {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.pg-prog-cell-track {
+  position: relative;
+  display: block;
+  height: 16px;
+  min-width: 220px;
+  --tone: var(--dx-ink);
+}
+
+.pg-prog-cell-track[data-tone="warn"] {
+  --tone: var(--status-warning);
+}
+
+.pg-prog-cell-track[data-tone="bad"] {
+  --tone: var(--status-danger);
+}
+
+.pg-prog-cell-track.is-head {
+  height: 14px;
+}
+
+.pg-prog-cell-track.is-head .pg-prog-tick-label:first-child {
+  transform: translate(0, -50%);
+}
+
+.pg-prog-rul-band {
+  position: absolute;
+  top: 50%;
+  height: 8px;
+  margin-top: -4px;
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+}
+
+.pg-prog-rul-mark {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 12px;
+  margin: -6px 0 0 -1px;
+  background: var(--tone);
+}
+
+/* ---------------------------------------------------------------- charts */
+.pg-prog-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 240px;
+  overflow: visible;
+  font-family: var(--font-ui);
+}
+
+.pg-prog-grid {
+  stroke: var(--separator);
+  stroke-width: 1;
+  opacity: 0.6;
+}
+
+.pg-prog-axis {
+  font-size: var(--fs-xs);
+  fill: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pg-prog-dlabel {
+  font-size: var(--fs-xs);
+  fill: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pg-prog-dlabel.is-main {
+  fill: var(--dx-ink);
+  font-weight: 500;
+}
+
+[data-tone] > .pg-prog-dlabel {
+  fill: var(--tone);
+}
+
+.pg-prog-limband {
+  fill: var(--text-muted);
+  opacity: 0.06;
+}
+
+.pg-prog-lim {
+  stroke: var(--tone);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.7;
+}
+
+.pg-prog-hist {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+}
+
+.pg-prog-fcline,
+.pg-prog-overall {
+  fill: none;
+  stroke: var(--dx-ink);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.pg-prog-bound {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  opacity: 0.8;
+}
+
+.pg-prog-now {
+  stroke: var(--separator);
+  stroke-width: 1;
+}
+
+.pg-prog-cross {
+  stroke: var(--tone);
+  stroke-width: 1;
+}
+
+.pg-prog-sysline {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1;
+  opacity: 0.55;
+}
+
+.pg-prog-sysline[data-tone="warn"],
+.pg-prog-sysline[data-tone="bad"] {
+  stroke: var(--tone);
+  opacity: 0.8;
+}
+
+/* ---------------------------------------------------------------- risk matrix */
+.pg-prog-riskgrid {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.4fr);
+  gap: 32px;
+  align-items: start;
+}
+
+.pg-prog-matrix {
+  display: grid;
+  gap: 2px;
+}
+
+.pg-prog-matrix-row {
+  display: grid;
+  grid-template-columns: 64px repeat(5, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.pg-prog-matrix-h {
+  align-self: center;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pg-prog-matrix-row.is-foot .pg-prog-matrix-h {
+  text-align: center;
+  padding-top: 4px;
+}
+
+.pg-prog-matrix-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 64px;
+  padding: 6px;
+  background: color-mix(in srgb, var(--text-muted) calc(4% + var(--lvl, 0) * 14%), transparent);
+  min-width: 0;
+}
+
+.pg-prog-mdot {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 0 4px;
+  border: none;
+  border-radius: var(--corner-sm);
+  background: transparent;
+  color: var(--page-fg);
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.pg-prog-mdot i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tone, var(--text-muted));
+  flex-shrink: 0;
+}
+
+.pg-prog-mdot:hover,
+.pg-prog-mdot.is-active {
+  background: var(--row-hover-bg);
+}
+
+.pg-prog-mmore {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  padding: 0 4px;
+}
+
+/* ---------------------------------------------------------------- forecast multiples */
+.pg-prog-multiples {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 32px;
+}
+
+.pg-prog-multiple {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--separator);
+}
+
+.pg-prog-multiple figcaption {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: var(--fs-md);
+}
+
+.pg-prog-multiple figcaption .pg-prog-dot {
+  margin-left: auto;
+}
+
+.pg-prog-multiple.is-focus {
+  border-top-color: var(--dx-ink);
+}
+
+/* ---------------------------------------------------------------- P-F bracket */
+.pg-prog-pfhead {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: var(--fs-md);
+}
+
+.pg-prog-pf {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  --tone: var(--dx-ink);
+}
+
+.pg-prog-pf[data-tone="warn"] {
+  --tone: var(--status-warning);
+}
+
+.pg-prog-pf[data-tone="bad"] {
+  --tone: var(--status-danger);
+}
+
+.pg-prog-pf-track {
+  position: relative;
+  margin-top: 14px;
+  height: 14px;
+  border-bottom: 1px solid var(--separator);
+}
+
+.pg-prog-pf-elapsed {
+  position: absolute;
+  bottom: 0;
+  height: 6px;
+  background: var(--text-muted);
+  opacity: 0.45;
+}
+
+.pg-prog-pf-band {
+  position: absolute;
+  bottom: 0;
+  height: 10px;
+  background: color-mix(in srgb, var(--tone) 22%, transparent);
+}
+
+.pg-prog-pf-now,
+.pg-prog-pf-est {
+  position: absolute;
+  bottom: 0;
+  width: 1.5px;
+  height: 14px;
+  margin-left: -0.75px;
+  background: var(--dx-ink);
+}
+
+.pg-prog-pf-est {
+  background: var(--tone);
+}
+
+.pg-prog-pf-tag {
+  position: absolute;
+  top: -14px;
+  transform: translateX(-50%);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.pg-prog-pf-tag:first-of-type {
+  transform: none;
+}
+
+.pg-prog-pf-legend {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+}
+
+.pg-prog-pf-legend div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pg-prog-pf-legend dt {
+  font-size: var(--fs-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.pg-prog-pf-legend dd {
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+.pg-prog-sysline.is-focus {
+  stroke: var(--dx-ink);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  opacity: 1;
+}
+
+/* ---------------------------------------------------------------- responsive */
+@media (max-width: 1100px) {
+  .pg-prog-riskgrid,
+  .pg-prog-multiples {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+}
+
+@media (max-width: 680px) {
+  .pg-prog-pf-legend {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

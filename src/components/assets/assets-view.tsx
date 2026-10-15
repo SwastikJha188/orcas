@@ -1,13 +1,14 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { PillNav, PillButton } from "@/components/ui";
 import { AssetHierarchyPage } from "./hierarchy/asset-hierarchy-page";
 import { MachineDiagram } from "./machine-diagram";
 import { MachineSensorMappingView } from "./machine-sensor-mapping-view";
-import { MachineAnalysisTab, MachinePrognosisTab } from "./insights-view";
-import type { AnalysisTabPage } from "./analysis-view";
-import { DiagnosisView, MachineHealthView } from "./diagnosis-view";
+import { MachineAnalysisPage } from "./analysis/analysis-page";
+import { MachinePrognosisPage } from "./prognosis/prognosis-page";
+import { DiagnosisView } from "./diagnosis-view";
+import { MachineHealthPage } from "./health-page";
 import { TrendsView } from "./trends-view";
 import type { AssetMachine } from "./assets-data";
 import { MachineRackTab } from "./acquisition/acquisition-view";
@@ -17,7 +18,7 @@ import { SimulationView } from "./simulation-view";
 import { ThermalView } from "./thermal-view";
 import "./assets-shell.css";
 
-// One flat row of machine tabs, ordered by the operator's questions:
+// Machine tabs, ordered by the operator's questions:
 // is it OK → which part → what's wrong → why → what's next → history → setup.
 export type AssetsSubPage =
   | "overview"
@@ -31,20 +32,40 @@ export type AssetsSubPage =
   | "thermal"
   | "simulation";
 
-const SUB_PAGE_TABS = [
-  { id: "overview", label: "Overview" },
-  { id: "sensors", label: "Sensors" },
-  { id: "diagnosis", label: "Diagnosis" },
-  { id: "prognosis", label: "Prognosis" },
-  { id: "analysis", label: "Analysis" },
-  { id: "health", label: "Health" },
-  { id: "trends", label: "Trends" },
-  { id: "rack", label: "Rack" },
+// Five tabs. Diagnosis and Sensors each hold several pages, switched by a view
+// control at the end of the tab row. Page ids stay addressable on their own
+// (deep links, cross-page buttons), the tab row just groups them.
+type TabGroup = { id: string; label: string; views: { id: AssetsSubPage; label: string; requires?: "live" | "shell" }[] };
+
+const TAB_GROUPS: TabGroup[] = [
+  { id: "overview", label: "Overview", views: [{ id: "overview", label: "Overview" }] },
+  {
+    id: "diagnosis",
+    label: "Diagnosis",
+    views: [
+      { id: "diagnosis", label: "Diagnosis" },
+      { id: "health", label: "Health" },
+      // Machines with a kiln shell scanner profile (frame.defs.hasShell).
+      { id: "thermal", label: "Thermal", requires: "shell" },
+    ],
+  },
+  { id: "prognosis", label: "Prognosis", views: [{ id: "prognosis", label: "Prognosis" }] },
+  { id: "analysis", label: "Analysis", views: [{ id: "analysis", label: "Analysis" }] },
+  {
+    id: "sensors",
+    label: "Sensors",
+    views: [
+      { id: "sensors", label: "Mapping" },
+      { id: "trends", label: "Trends" },
+      { id: "rack", label: "Rack" },
+      // Live machines only: the demonstration that drives the signals.
+      { id: "simulation", label: "Simulation", requires: "live" },
+    ],
+  },
 ];
 
-// Kiln-only: the shell scanner map and the live demonstration controls get their own tabs.
-const THERMAL_TAB = { id: "thermal", label: "Thermal" };
-const SIMULATION_TAB = { id: "simulation", label: "Simulation" };
+const groupOf = (page: AssetsSubPage) =>
+  TAB_GROUPS.find((g) => g.views.some((v) => v.id === page)) ?? TAB_GROUPS[0];
 
 import { useIndustrialData } from "@/providers/industrial-data-context";
 
@@ -104,12 +125,13 @@ export function AssetsView({
     onSubPageChange?.(page);
   };
 
-  // Analysis sub-page is lifted so Prognosis tiles can open their module there.
-  const [analysisPage, setAnalysisPage] = useState<AnalysisTabPage>("overview");
-  const handleOpenAnalysis = (page: AnalysisTabPage) => {
-    setAnalysisPage(page);
-    setActiveSubPage("analysis");
-  };
+
+  // Last view opened inside each grouped tab.
+  const [lastView, setLastView] = useState<Record<string, AssetsSubPage>>({});
+  useEffect(() => {
+    const group = groupOf(activeSubPage);
+    setLastView((prev) => (prev[group.id] === activeSubPage ? prev : { ...prev, [group.id]: activeSubPage }));
+  }, [activeSubPage]);
 
   const handleNavigateToTrends = () => setActiveSubPage("trends");
   const handleNavigateToDiagnosis = () => setActiveSubPage("diagnosis");
@@ -121,23 +143,41 @@ export function AssetsView({
     ? (contextSelectedMachine?.id === selectedMachineId ? contextSelectedMachine : null)
     : null;
 
-  // Only a kiln workspace follows the 1 s tick; other machines get null.
+  // Only a live machine (kiln fleet or pyro line) follows the 1 s tick; other machines get null.
   const kilnSimulation = useKilnSimulationFor(selectedMachine?.id) ?? undefined;
+
+  // Narrow screens scroll the tab row sideways: keep the active tab and view in view.
+  // Phones stack the view switcher under the tabs, so each group may scroll on its own.
+  const tabsRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const bar = tabsRef.current;
+    if (!bar) return;
+    for (const tab of bar.querySelectorAll<HTMLElement>(".nav-pill.active")) {
+      const group = tab.closest<HTMLElement>(".nav-pill-group");
+      const scroller = group && group.scrollWidth > group.clientWidth ? group : bar;
+      if (scroller.scrollWidth <= scroller.clientWidth) continue;
+      const b = scroller.getBoundingClientRect();
+      const t = tab.getBoundingClientRect();
+      const uz = b.width / (scroller.offsetWidth || b.width) || 1; // rects are zoomed px on TV, scrollLeft is CSS px
+      if (t.left < b.left || t.right > b.right) scroller.scrollLeft += (t.left - b.left - (b.width - t.width) / 2) / uz;
+    }
+  }, [activeSubPage, selectedMachine?.id]);
 
   // If no machine is selected, display the Assets Directory Homepage with the sidebar!
   if (!selectedMachineId || !selectedMachine) {
     return (
-      <AssetHierarchyPage
-        onOpenMachine={(machId) => {
-          setActiveSubPage("overview");
-          setSelectedMachineId(machId);
-        }}
-      />
+      <AssetHierarchyPage />
     );
   }
 
-  // The Thermal and Simulation tabs only exist on kiln machines; elsewhere show Overview.
-  const page = (activeSubPage === "simulation" || activeSubPage === "thermal") && !kilnSimulation ? "overview" : activeSubPage;
+  // Simulation exists on live machines, Thermal on those with a shell scanner; elsewhere show Overview.
+  const hasShell = Boolean(kilnSimulation?.frame.defs.hasShell);
+  const available = (req: "live" | "shell" | undefined) => !req || (req === "shell" ? hasShell : Boolean(kilnSimulation));
+  const page =
+    (activeSubPage === "simulation" && !available("live")) || (activeSubPage === "thermal" && !available("shell")) ? "overview" : activeSubPage;
+  const groupViews = (g: TabGroup) => g.views.filter((v) => available(v.requires));
+  const activeGroup = groupOf(page);
+  const activeViews = groupViews(activeGroup);
 
   return (
     <div className="assets-module-container">
@@ -165,15 +205,26 @@ export function AssetsView({
         </header>
 
         {/* 1. HORIZONTAL PILL NAVIGATION (Tabs) */}
-        <div className="machine-tabs-bar">
+        <div className="machine-tabs-bar" ref={tabsRef}>
           <PillNav
-            items={kilnSimulation ? [...SUB_PAGE_TABS.slice(0, 3), THERMAL_TAB, ...SUB_PAGE_TABS.slice(3), SIMULATION_TAB] : SUB_PAGE_TABS}
-            activeId={page}
+            items={TAB_GROUPS}
+            activeId={activeGroup.id}
             onChange={(id) => {
-              if (id === "analysis") setAnalysisPage("overview");
-              setActiveSubPage(id as AssetsSubPage);
+              const group = TAB_GROUPS.find((g) => g.id === id);
+              if (!group) return;
+              // Return to the view last opened in that tab.
+              const last = lastView[group.id];
+              setActiveSubPage(last && groupViews(group).some((v) => v.id === last) ? last : group.views[0].id);
             }}
           />
+          {activeViews.length > 1 && (
+            <PillNav
+              className="machine-views-nav"
+              items={activeViews}
+              activeId={page}
+              onChange={(id) => setActiveSubPage(id as AssetsSubPage)}
+            />
+          )}
         </div>
 
         {/* ==============================================================
@@ -191,11 +242,7 @@ export function AssetsView({
 
         {page === "health" && (
           <section className="subpage-content" aria-label="Health">
-            <MachineHealthView
-              key={selectedMachine.id}
-              machine={selectedMachine}
-              onNavigateToSensors={handleNavigateToSensors}
-            />
+            <MachineHealthPage key={selectedMachine.id} machine={selectedMachine} />
           </section>
         )}
 
@@ -213,21 +260,18 @@ export function AssetsView({
 
         {page === "analysis" && (
           <section className="subpage-content" aria-label="Analysis">
-            <MachineAnalysisTab
+            <MachineAnalysisPage
               key={selectedMachine.id}
               machine={selectedMachine}
-              page={analysisPage}
-              onPageChange={setAnalysisPage}
             />
           </section>
         )}
 
         {page === "prognosis" && (
           <section className="subpage-content" aria-label="Prognosis">
-            <MachinePrognosisTab
+            <MachinePrognosisPage
               key={selectedMachine.id}
               machine={selectedMachine}
-              onOpenModule={handleOpenAnalysis}
             />
           </section>
         )}
@@ -255,13 +299,9 @@ export function AssetsView({
           </section>
         )}
         {/* Shell scanner map to scale, profile, hottest section, zones. */}
-        {page === "thermal" && kilnSimulation && (
+        {page === "thermal" && hasShell && (
           <section className="subpage-content" aria-label="Thermal">
-            <ThermalView
-              simulation={kilnSimulation}
-              onNavigateToTrends={handleNavigateToTrends}
-              onNavigateToDiagnosis={handleNavigateToDiagnosis}
-            />
+            <ThermalView machine={selectedMachine} />
           </section>
         )}
 

@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { DIAGRAM as D, diagramStateColor } from "./kiln-diagram-theme";
 import { CornerBolts, Fan, GearWheel, MX, MachinePad, MachineSvg, PAINT } from "./machine-kit/machine-kit";
+import { SUBASSEMBLY_DRAWINGS } from "./pyro/pyro-subassemblies";
 import "./diagnosis/health.css";
 
 export interface DiagramPin {
@@ -20,6 +21,7 @@ export interface DiagramPin {
 }
 
 interface ComponentSvgProps {
+  machineId?: string;
   subAssemblyId: string;
   pins: DiagramPin[];
   selectedPinId?: string | null;
@@ -257,7 +259,7 @@ export function DiagramPinLayer({
               />
             )}
 
-            <circle cx={pin.x} cy={pin.y} r={14} fill="transparent" />
+            <circle cx={pin.x} cy={pin.y} r={14} fill="transparent" data-pad-center={pin.tag} />
             <circle
               className="dxh-pin-ring"
               cx={pin.x}
@@ -269,6 +271,39 @@ export function DiagramPinLayer({
               opacity={selected ? 1 : 0}
             />
             <MachinePad x={pin.x} y={pin.y} status={pin.status} selected={hot && !selected} />
+
+            {!hasCallout && hot && (() => {
+              const badgeText = `${pin.id || pin.tag} · ${pin.value} ${pin.unit !== "state" ? pin.unit : ""}`.trim();
+              const pillW = Math.max(36, badgeText.length * 4.8 + 12);
+              const placeLeft = pin.x > 520;
+              const bx = placeLeft ? pin.x - 10 - pillW : pin.x + 10;
+              const by = pin.y - 8;
+              return (
+                <g pointerEvents="none">
+                  <rect
+                    x={bx}
+                    y={by}
+                    width={pillW}
+                    height={16}
+                    rx={4}
+                    fill={D.surface}
+                    stroke={color}
+                    strokeWidth={1}
+                  />
+                  <text
+                    x={bx + pillW / 2}
+                    y={by + 10.8}
+                    textAnchor="middle"
+                    fill={D.ink}
+                    fontSize={7}
+                    fontWeight={600}
+                    letterSpacing="0.04em"
+                  >
+                    {badgeText}
+                  </text>
+                </g>
+              );
+            })()}
 
             {hasCallout && (
               <g>
@@ -316,7 +351,7 @@ export function DiagramCanvas({
   interactive: boolean;
 }) {
   return (
-    <div className={`dxh-schematic mx-canvas ${className ?? ""}`.trim()} style={{ position: "relative", width: "100%", overflow: "hidden" }}>
+    <div className={`dxh-schematic mx-canvas ${className ?? ""}`.trim()} style={{ position: "relative", width: "100%" }}>
       <MachineSvg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} label={ariaLabel} interactive={interactive}>
         {children}
       </MachineSvg>
@@ -449,6 +484,9 @@ function LubricationSchematic() {
       <line x1={124} y1={145} x2={236} y2={145} {...P.detail} strokeDasharray="4 3" />
       <Label x={180} y={200} tone="ink">OIL TANK 800 L</Label>
       <Label x={180} y={214} size={8}>ISO VG 320</Label>
+      {/* sample drain port on oil tank */}
+      <rect x={174} y={240} width={12} height={8} rx={2} {...P.raised} />
+      <Label x={180} y={260} size={7}>SAMPLE PORT</Label>
 
       <circle cx={280} cy={165} r={20} {...P.body} />
       <circle cx={280} cy={165} r={14} {...P.hair} />
@@ -459,6 +497,9 @@ function LubricationSchematic() {
 
       <rect x={340} y={140} width={34} height={60} rx={4} {...P.body} />
       <line x1={340} y1={170} x2={374} y2={170} {...P.detail} />
+      {/* differential pressure bridge above duplex filter */}
+      <path d="M 346 140 V 126 H 368 V 140" fill="none" stroke={D.detail} strokeWidth={1.1} />
+      <circle cx={357} cy={126} r={5} {...P.raised} />
       <Label x={357} y={215}>FILTER</Label>
 
       <rect x={410} y={135} width={48} height={70} rx={6} {...P.body} />
@@ -491,6 +532,7 @@ function AuxDriveSchematic() {
       <Label x={167} y={174} size={7.5}>15 kW</Label>
 
       <rect x={215} y={138} width={30} height={50} rx={3} {...P.body} />
+      <rect x={222} y={128} width={16} height={10} rx={2} {...P.raised} />
       <Label x={230} y={203} size={7.5}>BRAKE</Label>
 
       <rect x={255} y={130} width={38} height={65} rx={4} {...P.raised} />
@@ -627,6 +669,11 @@ function ShellRefractorySchematic() {
 
       <Label x={300} y={240} size={8}>SHELL 25–40 mm · BRICK 200 mm · COATING</Label>
 
+      {/* handheld IR pyrometer target point on left shell arc */}
+      <rect x={82} y={114} width={44} height={20} rx={4} {...P.raised} />
+      <line x1={126} y1={124} x2={166} y2={124} {...P.hair} strokeDasharray="3 3" />
+      <Label x={104} y={106} size={7}>SPOT PYRO</Label>
+
       <g transform="translate(270, 15)">
         <rect x={0} y={0} width={60} height={22} rx={5} {...P.body} />
         <rect x={22} y={16} width={16} height={6} rx={1.5} {...P.recess} />
@@ -757,14 +804,72 @@ function BurnerHoodSchematic() {
   );
 }
 
-function renderSubAssembly(subAssemblyId: string) {
+/** Pad coordinates for PYR-KLN-01 sub-assemblies that share the standalone kiln schematics. */
+const KILN_PYRO_PADS: Record<string, Record<string, [number, number]>> = {
+  "kln-motor": {
+    "TMP-KLN-20": [216, 171],
+    "TMP-KLN-21": [280, 152],
+    "ELE-KLN-01": [405, 52],
+    "VIB-KLN-01": [464, 151],
+    "TMP-KLN-19": [464, 191],
+    "SPD-KLN-01": [535, 172],
+  },
+  "kln-gearbox": {
+    "VIB-KLN-02": [265, 160],
+    "TMP-KLN-22": [265, 195],
+    "VIB-KLN-03": [430, 170],
+    "TMP-KLN-23": [430, 205],
+  },
+  "kln-lube": {
+    "LEV-KLN-01": [230, 166],
+    "LAB-KLN-01": [230, 264],
+    "TMP-KLN-15": [330, 185],
+    "PRS-KLN-05": [407, 146],
+    "PRS-KLN-04": [530, 185],
+    "FLO-KLN-05": [550, 130],
+  },
+  "kln-aux": {
+    "LIM-KLN-01": [290, 162],
+    "STS-KLN-11": [334, 192],
+  },
+  "kln-thrust": {
+    "POS-KLN-02": [204, 268],
+    "POS-KLN-01": [420, 135],
+    "PRS-KLN-07": [430, 205],
+  },
+  "kln-shell": {
+    "MAN-KLN-01": [164, 144],
+    "STS-KLN-08": [330, 27],
+    "CAL-KLN-03": [360, 220],
+  },
+};
+
+export function subAssemblyPadMap(machineId: string | undefined, subAssemblyId: string): Record<string, [number, number]> | null {
+  const key = machineId ? `${machineId}:${subAssemblyId}` : subAssemblyId;
+  return (
+    SUBASSEMBLY_DRAWINGS[key]?.pads ??
+    SUBASSEMBLY_DRAWINGS[subAssemblyId]?.pads ??
+    KILN_PYRO_PADS[subAssemblyId] ??
+    null
+  );
+}
+
+function renderSubAssembly(subAssemblyId: string, machineId?: string) {
+  const key = machineId ? `${machineId}:${subAssemblyId}` : subAssemblyId;
+  const custom = SUBASSEMBLY_DRAWINGS[key] ?? SUBASSEMBLY_DRAWINGS[subAssemblyId];
+  if (custom) {
+    const Art = custom.Art;
+    return <Art />;
+  }
   switch (subAssemblyId) {
     case "main-motor":
+    case "kln-motor":
     case "P1-drv":
     case "motor-m101":
     case "motor":
       return <MotorSchematic />;
     case "gearbox":
+    case "kln-gearbox":
     case "P2-drv":
     case "impeller":
       return <GearboxSchematic />;
@@ -772,9 +877,11 @@ function renderSubAssembly(subAssemblyId: string) {
     case "P3-drv":
       return <PinionGirthSchematic />;
     case "lubrication":
+    case "kln-lube":
     case "P4-drv":
       return <LubricationSchematic />;
     case "auxiliary-drive":
+    case "kln-aux":
     case "P5-drv":
       return <AuxDriveSchematic />;
     case "station-2":
@@ -789,9 +896,11 @@ function renderSubAssembly(subAssemblyId: string) {
     case "bearing":
       return <SupportStationSchematic station={1} />;
     case "thrust":
+    case "kln-thrust":
     case "P3-sup":
       return <ThrustSchematic />;
     case "shell-refractory":
+    case "kln-shell":
     case "P3-shl":
       return <ShellRefractorySchematic />;
     case "inlet-seal":
@@ -814,7 +923,13 @@ function renderSubAssembly(subAssemblyId: string) {
   }
 }
 
+/** The equipment art of a component drawing alone (720 × 310 drawing units), for hosts that frame it themselves. */
+export function KilnSubAssemblyArt({ machineId, subAssemblyId }: { machineId?: string; subAssemblyId: string }) {
+  return <>{renderSubAssembly(subAssemblyId, machineId)}</>;
+}
+
 export function KilnSubAssemblyDiagram({
+  machineId,
   subAssemblyId,
   pins,
   selectedPinId,
@@ -828,7 +943,7 @@ export function KilnSubAssemblyDiagram({
       ariaLabel={ariaLabel ?? `Schematic of ${subAssemblyId} with ${pins.length} measurement points`}
       interactive={Boolean(onSelectPin)}
     >
-      {renderSubAssembly(subAssemblyId)}
+      {renderSubAssembly(subAssemblyId, machineId)}
       <DiagramPinLayer pins={pins} selectedPinId={selectedPinId} onSelectPin={onSelectPin} />
     </DiagramCanvas>
   );

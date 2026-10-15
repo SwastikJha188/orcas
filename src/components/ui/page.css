@@ -25,7 +25,7 @@
 
 /* KPI whose value is a short phrase rather than a number. */
 .pg-kpi-text {
-  font-size: 0.95rem;
+  font-size: var(--fs-lg);
   font-weight: 500;
   color: var(--dx-ink);
   line-height: 1.35;
@@ -78,7 +78,7 @@
 }
 
 .pg-note {
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   color: var(--text-muted);
 }
 

@@ -1,0 +1,388 @@
+/* ==========================================================================
+   Pyro-line diagram sheet (line-sheet.tsx). Prefix: lsh-
+   Detail: drawing + monitoring-points panel side by side (stacked when
+   narrow). Overview / line: drawing, then the parts or sheet index.
+   Semantic tokens only.
+   ========================================================================== */
+.lsh-host {
+  container-type: inline-size;
+}
+
+.lsh {
+  display: grid;
+  gap: 14px;
+}
+
+.lsh-detail {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 330px);
+  align-items: start;
+}
+
+.lsh-draw {
+  border-radius: var(--corner-card, 14px);
+  overflow: hidden;
+  padding: 6px;
+}
+
+.lsh-point {
+  outline: none;
+}
+
+.lsh-point[role="button"] {
+  cursor: pointer;
+}
+
+.lsh-point:focus-visible rect,
+.lsh-link:focus-visible .lsh-link-hit {
+  stroke: var(--signal-blue);
+  stroke-width: 1.6;
+}
+
+/* PYR-0 machine hotspots */
+.lsh-link {
+  cursor: pointer;
+  outline: none;
+}
+
+.lsh-link-hit {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 1;
+  transition: stroke 0.15s ease, fill 0.15s ease;
+}
+
+.lsh-link:hover .lsh-link-hit {
+  fill: var(--hover-faint);
+  stroke: var(--mx-fine);
+}
+
+/* ---------------------------------------------------------------- panel */
+.lsh-panel,
+.lsh-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.lsh-panel-title {
+  margin: 0;
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.lsh-points {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.lsh-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 8px 10px;
+  border-top: 1px solid var(--separator);
+  border-radius: var(--corner-row, 10px);
+  outline: none;
+}
+
+.lsh-row:first-child {
+  border-top-color: transparent;
+}
+
+.lsh-row[role="button"] {
+  cursor: pointer;
+}
+
+.lsh-row[role="button"]:hover,
+.lsh-row[data-hot],
+.lsh-row[data-selected] {
+  background: var(--row-hover-bg);
+  border-top-color: transparent;
+}
+
+.lsh-row:hover + .lsh-row,
+.lsh-row[data-hot] + .lsh-row,
+.lsh-row[data-selected] + .lsh-row {
+  border-top-color: transparent;
+}
+
+.lsh-row:focus-visible,
+.lsh-chiprow:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--signal-blue);
+}
+
+.lsh-row[data-other],
+.lsh-chiprow[data-other] {
+  opacity: 0.6;
+}
+
+.lsh-glyph {
+  display: block;
+  margin-top: 1px;
+  flex: none;
+}
+
+.lsh-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.lsh-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.lsh-tag {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--dx-ink);
+  white-space: nowrap;
+}
+
+.lsh-req {
+  font-size: var(--fs-2xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.lsh-desc {
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+  color: var(--page-fg);
+}
+
+.lsh-loc {
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.lsh-val {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--dx-ink);
+  white-space: nowrap;
+  text-align: right;
+}
+
+.lsh-val[data-tone="warn"] {
+  color: var(--status-warning);
+}
+
+.lsh-val[data-tone="bad"] {
+  color: var(--status-danger);
+}
+
+/* ---------------------------------------------------------------- note */
+.lsh-note {
+  padding: 12px 14px;
+  border-radius: var(--corner-sm, 8px);
+  background: var(--hover-faint);
+}
+
+.lsh-note h4 {
+  margin: 0 0 4px;
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.lsh-note p {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--page-fg);
+}
+
+.lsh-note b {
+  font-weight: 600;
+  color: var(--dx-ink);
+  white-space: nowrap;
+}
+
+.lsh-ref {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--dx-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--separator);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.lsh-ref:hover {
+  text-decoration-color: currentColor;
+}
+
+.lsh-ref:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* ---------------------------------------------------------------- overview parts / sheet index */
+.lsh-parts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px 22px;
+}
+
+.lsh-part {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.lsh-part-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 10px;
+  margin: 0 -10px;
+  border: none;
+  border-radius: var(--corner-row, 10px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lsh-part-head:disabled {
+  cursor: default;
+}
+
+.lsh-part-head:not(:disabled):hover {
+  background: var(--row-hover-bg);
+}
+
+.lsh-part-head:focus-visible,
+.lsh-index-item:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: -2px;
+}
+
+.lsh-part-id {
+  flex: none;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--dx-ink);
+}
+
+.lsh-part-title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--page-fg);
+}
+
+.lsh-part-go {
+  color: var(--text-muted);
+}
+
+.lsh-part-tags {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.lsh-chiprow {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 3px 10px;
+  margin: 0 -10px;
+  border-radius: var(--corner-row, 10px);
+  outline: none;
+}
+
+.lsh-chiprow .lsh-tag {
+  font-weight: 500;
+}
+
+.lsh-chiprow[role="button"] {
+  cursor: pointer;
+}
+
+.lsh-chiprow[role="button"]:hover,
+.lsh-chiprow[data-hot],
+.lsh-chiprow[data-selected] {
+  background: var(--row-hover-bg);
+}
+
+.lsh-index-group {
+  margin: 0 0 2px;
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.lsh-index-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.lsh-index-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: calc(100% + 20px);
+  padding: 4px 10px;
+  margin: 0 -10px;
+  border: none;
+  border-radius: var(--corner-row, 10px);
+  background: transparent;
+  color: var(--page-fg);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.lsh-index-item:disabled {
+  cursor: default;
+}
+
+.lsh-index-item:not(:disabled):hover {
+  background: var(--row-hover-bg);
+}
+
+/* ---------------------------------------------------------------- narrow */
+@container (max-width: 860px) {
+  .lsh-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lsh-link-hit {
+    transition: none;
+  }
+}

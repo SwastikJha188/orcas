@@ -9,10 +9,10 @@ import type { MachineAcquisition } from "@/types/edge";
    Live layers over the cabinet model. Structure always comes from
    /api/rack-units; only value, status and the channel LED change here.
    Precedence matches the Acquisition view: an MQTT reading wins, the
-   KLN-01 simulation fills channels MQTT has nothing for.
+   live simulation (kiln fleet or pyro line) fills channels MQTT has nothing for.
    ------------------------------------------------------------------ */
 
-type Override = Pick<CabinetChannel, "currentValue"> & Partial<Pick<CabinetChannel, "status" | "ledOk">>;
+type Override = Pick<CabinetChannel, "currentValue"> & Partial<Pick<CabinetChannel, "status" | "ledOk" | "quality">>;
 
 function overlay(racks: MachineRackInfo[], pick: (ch: CabinetChannel) => Override | undefined): MachineRackInfo[] {
   return racks.map((rack) => ({
@@ -27,17 +27,22 @@ function overlay(racks: MachineRackInfo[], pick: (ch: CabinetChannel) => Overrid
   }));
 }
 
-/** The full live KLN-01 frame: value, alarm status, dark LED for invalid / suspect channels. */
+/**
+ * The full live frame of any live machine (kiln fleet or pyro line), by
+ * channel tag: value, process status, and the signal quality the
+ * acquisition chain flags (R-DQ-01): the LED goes dark for invalid / suspect
+ * channels only — a process alarm is not a hardware fault.
+ */
 export function applyRackLive(racks: MachineRackInfo[], frame?: SimFrame | null): MachineRackInfo[] {
   if (!frame) return racks;
   return overlay(racks, (ch) => {
     const sig = frame.signals[ch.tag];
     if (!sig) return undefined;
-    return { currentValue: sig.display, status: sig.status, ledOk: sig.quality === "Good" && sig.limitSeverity !== "Critical" };
+    return { currentValue: sig.display, status: sig.status, ledOk: sig.quality === "Good", quality: sig.quality };
   });
 }
 
-/** Seals-only simulation (older demo pages): the channels it models. */
+/** Seals-only simulation (older demo pages, kiln-seal fleet only): the channels it models. */
 export function applyRackSimulation(racks: MachineRackInfo[], d?: KilnSealsSensorData): MachineRackInfo[] {
   if (!d) return racks;
   const signed = (v: number, digits: number) => (v > 0 ? `+${v.toFixed(digits)}` : v.toFixed(digits));
@@ -78,6 +83,7 @@ export function applyRackMqtt(racks: MachineRackInfo[], acq?: MachineAcquisition
       currentValue: l.value !== null ? fmt(l.value) : l.display ?? "—",
       status,
       ledOk: l.state !== "stale",
+      ...(l.state === "stale" ? { quality: "Stale" } : {}),
     };
   });
 }

@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useLayoutEffect, useRef, useState } from "react";
 import type { AssetMachine } from "./assets-data";
 import { severityTone } from "./assets-shell-ui";
 import {
   Bolt,
+  CadEngineeringFrame,
   CornerBolts,
   Coupling,
   Fan,
@@ -18,12 +19,14 @@ import {
   kitStyle,
   useKitId,
 } from "./machine-kit/machine-kit";
+import { pyroDrawingForType } from "./pyro/pyro-drawings";
 
 /* ==========================================================================
    Monoline machine schematic. Neutral bodies + var(--diagram-stroke) lines,
-   sensor dots colour-coded by state. Coordinate space: 1000 × 372, sensor
-   positions are DB percentages (x, y ∈ 0–100) mapped 1:1 onto that space —
-   the same space the DB part/system bounding boxes use.
+   sensor dots colour-coded by state. Coordinate space: 1000 × 372 for the
+   original diagram types, or the pyro drawing's own width × height for a
+   pyro-line type (`pyroDrawingForType`). Sensor positions are DB percentages
+   (x, y ∈ 0–100) of that space.
    ========================================================================== */
 
 export interface SchematicDot {
@@ -39,11 +42,15 @@ export interface SchematicDot {
 
 const W = 1000;
 const H = 372;
-/** Drawing space of every schematic; sensor x/y are % of it. */
+/** Drawing space of the original schematics (mill, crusher, pump, blower, kiln); sensor x/y are % of it. */
 export const SCHEMATIC_W = W;
 export const SCHEMATIC_H = H;
-const px = (p: number) => (p / 100) * W;
-const py = (p: number) => (p / 100) * H;
+
+/** Drawing space of a diagram type: a pyro drawing's own size, else 1000 × 372. Sensor x/y are % of it. */
+export function schematicSize(diagramType: string | null | undefined): { w: number; h: number } {
+  const d = pyroDrawingForType(diagramType);
+  return d ? { w: d.width, h: d.height } : { w: W, h: H };
+}
 
 export function MachineSchematic({
   diagramType,
@@ -65,79 +72,153 @@ export function MachineSchematic({
 }) {
   const [hoverTag, setHoverTag] = useState<string | null>(null);
   const kitId = useKitId();
+  const svgRef = useRef<SVGSVGElement>(null);
+  const groupRef = useRef<SVGGElement>(null);
+  const [tightBox, setTightBox] = useState<[number, number, number, number] | null>(null);
   const interactive = Boolean(onSelect) && !compact;
   const placed = dots.filter((d) => d.x > 0 || d.y > 0);
   const labelTag = hoverTag ?? (interactive ? selectedTag : null);
   const labelDot = labelTag ? placed.find((d) => d.tag === labelTag) : undefined;
   const r = compact ? 7 : 6;
+  const pyro = pyroDrawingForType(diagramType);
+  const w = pyro?.width ?? W;
+  const h = pyro?.height ?? H;
+  const px = (p: number) => (p / 100) * w;
+  const py = (p: number) => (p / 100) * h;
+
+  useLayoutEffect(() => {
+    if (compact) {
+      setTightBox(null);
+      return;
+    }
+    const svgEl = svgRef.current;
+    const g = groupRef.current;
+    if (!svgEl || !g) return;
+
+    const updateBox = () => {
+      try {
+        const b = g.getBBox();
+        if (b.width > 20 && b.height > 20) {
+          const padX = Math.max(16, b.width * 0.025);
+          const padY = Math.max(14, b.height * 0.045);
+          const minX = b.x - padX;
+          const maxX = b.x + b.width + padX;
+          const minY = Math.min(0, b.y - padY);
+          const maxY = Math.max(h, b.y + b.height + padY);
+          const baseW = maxX - minX;
+          const baseH = maxY - minY;
+          const cx = (minX + maxX) / 2;
+          const cy = (minY + maxY) / 2;
+
+          let finalW = baseW;
+          const finalH = baseH;
+          if (svgEl.clientWidth > 0 && svgEl.clientHeight > 0) {
+            const svgAspect = svgEl.clientWidth / svgEl.clientHeight;
+            if (svgAspect > baseW / baseH + 0.04) {
+              finalW = baseH * svgAspect;
+            }
+          }
+
+          const next: [number, number, number, number] = [
+            +(cx - finalW / 2).toFixed(1),
+            +(cy - finalH / 2).toFixed(1),
+            +finalW.toFixed(1),
+            +finalH.toFixed(1),
+          ];
+          setTightBox((prev) =>
+            prev &&
+            Math.abs(prev[0] - next[0]) < 0.5 &&
+            Math.abs(prev[1] - next[1]) < 0.5 &&
+            Math.abs(prev[2] - next[2]) < 0.5 &&
+            Math.abs(prev[3] - next[3]) < 0.5
+              ? prev
+              : next
+          );
+        }
+      } catch {
+        // ignore if hidden
+      }
+    };
+
+    updateBox();
+    const ro = new ResizeObserver(updateBox);
+    ro.observe(svgEl);
+    return () => ro.disconnect();
+  }, [compact, diagramType, placed.length, h]);
+
+  const activeBox: [number, number, number, number] = tightBox ?? [0, 0, w, h];
 
   return (
     <svg
+      ref={svgRef}
       className={`ast-sch ${compact ? "ast-sch--compact" : ""}`}
-      viewBox={`0 0 ${W} ${H}`}
+      viewBox={`${activeBox[0]} ${activeBox[1]} ${activeBox[2]} ${activeBox[3]}`}
       role="img"
       aria-label={label}
       preserveAspectRatio="xMidYMid meet"
       style={kitStyle(kitId)}
     >
       <MachineDefs id={kitId} />
-      <MachineLines type={diagramType} />
+      {!compact && <CadEngineeringFrame x={activeBox[0]} y={activeBox[1]} w={activeBox[2]} h={activeBox[3]} />}
+      <g ref={groupRef}>
+        {pyro ? <pyro.Art /> : <MachineLines type={diagramType} />}
 
-      <g>
-        {placed.map((d) => {
-          const isSel = d.tag === selectedTag;
-          const isHover = d.tag === hoverTag;
-          const dim =
-            (focusSystemId && d.systemId !== focusSystemId) || (compact && selectedTag && !isSel);
-          const cx = px(d.x);
-          const cy = py(d.y);
-          return (
-            <g
-              key={d.tag}
-              className={`ast-sch-dot ${dim ? "is-dim" : ""}`}
-              data-pad={d.tag}
-              data-tone={severityTone(d.status)}
-              transform={`translate(${cx} ${cy})`}
-              {...(interactive
-                ? {
-                    tabIndex: 0,
-                    role: "button",
-                    "aria-label": `${d.tag} ${d.name}: ${d.value} ${d.unit}, ${d.status}`,
-                    "aria-pressed": isSel,
-                    onClick: () => onSelect?.(isSel ? null : d.tag),
-                    onKeyDown: (e: React.KeyboardEvent) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onSelect?.(isSel ? null : d.tag);
-                      }
-                    },
-                    onMouseEnter: () => setHoverTag(d.tag),
-                    onMouseLeave: () => setHoverTag(null),
-                    onFocus: () => setHoverTag(d.tag),
-                    onBlur: () => setHoverTag(null),
-                  }
-                : {})}
-            >
-              {interactive && <circle className="ast-sch-hit" r={14} />}
-              {(isSel || isHover) && <circle className="ast-sch-sel" r={r + 5} />}
-              <MachinePad x={0} y={0} status={d.status} scale={(isSel && compact ? r + 2 : r) / 5} className="ast-sch-pin" />
-            </g>
-          );
-        })}
+        <g>
+          {placed.map((d) => {
+            const isSel = d.tag === selectedTag;
+            const isHover = d.tag === hoverTag;
+            const dim =
+              (focusSystemId && d.systemId !== focusSystemId) || (compact && selectedTag && !isSel);
+            const cx = px(d.x);
+            const cy = py(d.y);
+            return (
+              <g
+                key={d.tag}
+                className={`ast-sch-dot ${dim ? "is-dim" : ""}`}
+                data-pad={d.tag}
+                data-tone={severityTone(d.status)}
+                transform={`translate(${cx} ${cy})`}
+                {...(interactive
+                  ? {
+                      tabIndex: 0,
+                      role: "button",
+                      "aria-label": `${d.tag} ${d.name}: ${d.value} ${d.unit}, ${d.status}`,
+                      "aria-pressed": isSel,
+                      onClick: () => onSelect?.(isSel ? null : d.tag),
+                      onKeyDown: (e: React.KeyboardEvent) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onSelect?.(isSel ? null : d.tag);
+                        }
+                      },
+                      onMouseEnter: () => setHoverTag(d.tag),
+                      onMouseLeave: () => setHoverTag(null),
+                      onFocus: () => setHoverTag(d.tag),
+                      onBlur: () => setHoverTag(null),
+                    }
+                  : {})}
+              >
+                {interactive && <circle className="ast-sch-hit" r={14} />}
+                {(isSel || isHover) && <circle className="ast-sch-sel" r={r + 5} />}
+                <MachinePad x={0} y={0} status={d.status} scale={(isSel && compact ? r + 2 : r) / 5} className="ast-sch-pin" />
+              </g>
+            );
+          })}
+        </g>
+
+        {labelDot && !compact && <DotLabel dot={labelDot} r={r} w={w} h={h} />}
       </g>
-
-      {labelDot && !compact && <DotLabel dot={labelDot} r={r} />}
     </svg>
   );
 }
 
-function DotLabel({ dot, r }: { dot: SchematicDot; r: number }) {
+function DotLabel({ dot, r, w: spaceW, h: spaceH }: { dot: SchematicDot; r: number; w: number; h: number }) {
   const text = `${dot.tag}  ${dot.value} ${dot.unit}`.trim();
   const w = text.length * 8.2 + 22;
   const h = 28;
-  const cx = px(dot.x);
-  const cy = py(dot.y);
-  const x = Math.min(Math.max(cx - w / 2, 4), W - w - 4);
+  const cx = (dot.x / 100) * spaceW;
+  const cy = (dot.y / 100) * spaceH;
+  const x = Math.min(Math.max(cx - w / 2, 4), spaceW - w - 4);
   const above = cy - r - 10 - h > 2;
   const y = above ? cy - r - 10 - h : cy + r + 10;
   return (

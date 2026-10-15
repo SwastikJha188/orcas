@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SIGNAL_BY_TAG, limitPair } from "@/lib/kiln-sim/signals";
+import { invalidateApi } from "@/lib/api-cache";
+import { limitNum, limitPair, type SignalDef } from "@/lib/kiln-sim/signals";
 import { formatDuration, type SimFrame } from "@/lib/kiln-sim/engine";
 import {
   parseDurationMinutes,
@@ -14,9 +15,10 @@ import {
 /* Records what the AI predicts and later checks it against what the plant did.
    One prediction per tag/rule episode; a resolved episode rests before it can
    be predicted again. The simulated clock restarts with the page, so a run id
-   ties predictions to one simulation lifetime. */
+   ties predictions to one simulation lifetime. The ledger is per machine: the
+   shared one (AiEngineProvider) records the active plant's primary machine
+   (`PredictionLedger.machineId`). */
 
-const MACHINE_ID = "KLN-01";
 const RUN_ID = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 const HORIZON_MIN = 240;
 const STREAK_TO_RECORD = 8;
@@ -41,10 +43,13 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const json = await res.json().catch(() => null);
   if (!res.ok || !json?.data)
     throw new Error(json?.error?.message ?? `HTTP ${res.status}`);
+  if (init?.method && init.method !== "GET") invalidateApi("/api/predictions");
   return json.data as T;
 }
 
 export interface PredictionLedger {
+  /** Machine the ledger records predictions for. */
+  machineId: string;
   items: Prediction[];
   stats: PredictionStats;
   isLoading: boolean;
@@ -54,6 +59,7 @@ export interface PredictionLedger {
 export function usePredictionLedger(
   frame: SimFrame | null,
   emit: PushTicker,
+  machineId: string,
 ): PredictionLedger {
   const [items, setItems] = useState<Prediction[]>([]);
   const [stats, setStats] = useState<PredictionStats>(EMPTY_STATS);
@@ -67,15 +73,21 @@ export function usePredictionLedger(
   const lastT = useRef<number | null>(null);
   const ready = useRef(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const machineRef = useRef(machineId);
+  machineRef.current = machineId;
+  /** Bumped on a machine switch so late responses for the previous machine are dropped. */
+  const generation = useRef(0);
 
   const refresh = useCallback(() => {
     if (refreshTimer.current) return;
     refreshTimer.current = setTimeout(() => {
       refreshTimer.current = null;
+      const g = generation.current;
       api<{ items: Prediction[]; stats: PredictionStats }>(
-        `/api/predictions?machineId=${MACHINE_ID}`,
+        `/api/predictions?machineId=${encodeURIComponent(machineRef.current)}`,
       )
         .then((d) => {
+          if (g !== generation.current) return;
           setItems(d.items);
           setStats(d.stats);
           setError(null);
@@ -87,16 +99,27 @@ export function usePredictionLedger(
   }, []);
 
   // Load history; retire open predictions from earlier simulation runs; resume this run's.
+  // Runs again when the active plant (and so the primary machine) changes.
   useEffect(() => {
     let cancelled = false;
+    generation.current++;
+    open.current.clear();
+    streak.current.clear();
+    restUntil.current.clear();
+    lastT.current = null;
+    ready.current = false;
+    setItems([]);
+    setStats(EMPTY_STATS);
+    setIsLoading(true);
+    setError(null);
     (async () => {
       try {
         await api(`/api/predictions`, {
           method: "PATCH",
-          body: JSON.stringify({ machineId: MACHINE_ID, keepRunId: RUN_ID }),
+          body: JSON.stringify({ machineId, keepRunId: RUN_ID }),
         });
         const d = await api<{ items: Prediction[]; stats: PredictionStats }>(
-          `/api/predictions?machineId=${MACHINE_ID}`,
+          `/api/predictions?machineId=${encodeURIComponent(machineId)}`,
         );
         if (cancelled) return;
         for (const p of d.items)
@@ -116,7 +139,7 @@ export function usePredictionLedger(
       if (refreshTimer.current) clearTimeout(refreshTimer.current);
       refreshTimer.current = null;
     };
-  }, []);
+  }, [machineId]);
 
   useEffect(() => {
     if (!frame || !ready.current || lastT.current === frame.t) return;
@@ -205,10 +228,11 @@ export function usePredictionLedger(
       )
         return;
       inflight.current.add(key);
+      const g = generation.current;
       api<Prediction>("/api/predictions", {
         method: "POST",
         body: JSON.stringify({
-          machineId: MACHINE_ID,
+          machineId,
           runId: RUN_ID,
           episodeKey: `${key}@${t}`,
           createdT: t,
@@ -217,6 +241,7 @@ export function usePredictionLedger(
         }),
       })
         .then((p) => {
+          if (g !== generation.current) return;
           open.current.set(key, p);
           emit({
             t,
@@ -238,7 +263,7 @@ export function usePredictionLedger(
       (p) => p.kind === "signal",
     ).length;
     for (const sig of Object.values(frame.signals)) {
-      const def = SIGNAL_BY_TAG[sig.tag];
+      const def = frame.defs.signalByTag[sig.tag];
       if (
         !def ||
         def.type !== "analog" ||
@@ -254,7 +279,8 @@ export function usePredictionLedger(
       const n = (streak.current.get(key) ?? 0) + 1;
       streak.current.set(key, n);
       if (n < STREAK_TO_RECORD || openSignals >= MAX_OPEN_SIGNAL) continue;
-      const lim = limitPair(def);
+      // limitPair only reads `limit`, which kiln and pyro definitions share; relative limits (pyro D5) at the live model.
+      const lim = limitPair(def as SignalDef, undefined, sig.model);
       const limitValue = lim
         ? level === "warning"
           ? lim.warn
@@ -263,7 +289,7 @@ export function usePredictionLedger(
       const limitText =
         limitValue === null
           ? ""
-          : ` (${limitValue}${def.unit ? ` ${def.unit}` : ""})`;
+          : ` (${limitNum(limitValue)}${def.unit ? ` ${def.unit}` : ""})`;
       const confidence = Math.max(
         55,
         Math.min(95, Math.round(92 - minutes / 12)),
@@ -307,10 +333,114 @@ export function usePredictionLedger(
           predictedT: t + remaining,
           expiresT: t + rule.threshold * 4 + 10,
         },
-        `Predicted rule ${rule.id} (${rule.name}) confirms within ~${remaining} min · ${confidence}% confidence`,
+        `Predicted rule ${rule.id} (${rule.name}) confirms within ~${formatDuration(remaining)} · ${confidence}% confidence`,
       );
     }
-  }, [frame, emit, refresh]);
+  }, [frame, emit, refresh, machineId]);
 
-  return { items, stats, isLoading, error };
+  return { machineId, items, stats, isLoading, error };
+}
+
+/* ---------------------------------------------------------------------------
+   Shared read-outs. Prognosis, Analysis and AssetIQ · Accuracy all read the
+   one ledger above (useAiEngine().ledger) through these helpers, so counts,
+   precision and lead times agree on every page. Durations are simulated
+   minutes and always pass through formatDuration (leadLabel).
+   ------------------------------------------------------------------------- */
+
+export interface LedgerSummary {
+  made: number;
+  resolved: number;
+  confirmed: number;
+  missed: number;
+  pending: number;
+  /** Confirmed / resolved, %; null before anything resolved. */
+  precision: number | null;
+  /** Mean warning given before confirmed events, simulated minutes. */
+  meanLeadMinutes: number | null;
+  /** Mean lead time as shown (formatDuration). */
+  meanLead: string;
+}
+
+/** Headline figures of the ledger, identical on every page that shows them. */
+export function summarizeLedger(stats: PredictionStats | null | undefined): LedgerSummary {
+  const s = stats ?? EMPTY_STATS;
+  return {
+    made: s.made,
+    resolved: s.confirmed + s.missed,
+    confirmed: s.confirmed,
+    missed: s.missed,
+    pending: s.pending,
+    precision: s.precision === null ? null : Math.round(s.precision),
+    meanLeadMinutes: s.meanLeadMinutes,
+    meanLead: s.meanLeadMinutes === null ? "—" : formatDuration(s.meanLeadMinutes),
+  };
+}
+
+/** Brier score over resolved predictions (0 = perfect); null when none resolved. */
+export function ledgerBrier(items: Prediction[]): number | null {
+  const r = items.filter((p) => p.status === "confirmed" || p.status === "missed");
+  if (!r.length) return null;
+  return r.reduce((a, p) => a + (p.confidence / 100 - (p.status === "confirmed" ? 1 : 0)) ** 2, 0) / r.length;
+}
+
+/** Relative tolerance for "predicted time to event was right" (±20 %). */
+export const LEAD_ALPHA = 0.2;
+
+export interface LedgerEventStat {
+  id: string;
+  label: string;
+  kind: Prediction["kind"];
+  n: number;
+  confirmed: number;
+  missed: number;
+  precision: number | null;
+  /** Median actual lead, simulated minutes. */
+  medianLead: number | null;
+  /** Share of confirmed predictions whose predicted time was within ±LEAD_ALPHA, %. */
+  coverage: number | null;
+  /** Median predicted − actual time to event, simulated minutes (+ = late). */
+  bias: number | null;
+}
+
+const medianOf = (v: number[]): number | null => {
+  if (!v.length) return null;
+  const s = [...v].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+
+/** Predicted vs actual minutes to the event for each confirmed prediction. */
+export function ledgerLeadPoints(items: Prediction[]): { id: string; pred: number; actual: number }[] {
+  return items
+    .filter((p) => p.status === "confirmed" && p.outcomeT !== null)
+    .map((p) => ({ id: p.id, pred: p.predictedT - p.createdT, actual: (p.outcomeT as number) - p.createdT }))
+    .filter((x) => x.actual >= 0 && x.pred > 0);
+}
+
+/** Resolved predictions grouped per predicted event (tag or rule), most frequent first. */
+export function ledgerByEvent(items: Prediction[]): LedgerEventStat[] {
+  const by = new Map<string, Prediction[]>();
+  for (const p of items) {
+    if (p.status !== "confirmed" && p.status !== "missed") continue;
+    by.set(p.subject, [...(by.get(p.subject) ?? []), p]);
+  }
+  return [...by.entries()]
+    .map(([id, ps]) => {
+      const hit = ps.filter((p) => p.status === "confirmed");
+      const lp = ledgerLeadPoints(hit);
+      return {
+        id,
+        label: ps[0].label,
+        kind: ps[0].kind,
+        n: ps.length,
+        confirmed: hit.length,
+        missed: ps.length - hit.length,
+        precision: ps.length ? (hit.length / ps.length) * 100 : null,
+        medianLead: medianOf(lp.map((x) => x.actual)),
+        coverage: lp.length ? (lp.filter((x) => Math.abs(x.pred - x.actual) <= LEAD_ALPHA * Math.max(1, x.actual)).length / lp.length) * 100 : null,
+        bias: medianOf(lp.map((x) => x.pred - x.actual)),
+      };
+    })
+    .sort((a, b) => b.n - a.n);
 }

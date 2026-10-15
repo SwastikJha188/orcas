@@ -72,11 +72,13 @@ export interface RuntimeBrokerConfig {
 }
 
 // ---------------------------------------------------------------- bootstrap
-let ready: Promise<void> | null = null;
+// On globalThis, not module scope: Next compiles each route separately in dev,
+// so a module variable re-ran the whole schema on the first hit of every route.
+const globalForEdge = globalThis as typeof globalThis & { __orcasEdgeReady?: Promise<void> | null };
 
 /** Creates the edge tables on first use and seeds them from the plant data once. */
 export function ensureEdgeRegistry(): Promise<void> {
-  ready ??= (async () => {
+  globalForEdge.__orcasEdgeReady ??= (async () => {
     const before = await query<{ t: string | null }>("SELECT to_regclass('public.edge_gateways')::text AS t");
     const existed = before.rows[0]?.t !== null;
     const init = await initDatabase();
@@ -85,10 +87,10 @@ export function ensureEdgeRegistry(): Promise<void> {
     await backfillCards();
     if (!existed) await seedEdgeRegistry();
   })().catch((err) => {
-    ready = null;
+    globalForEdge.__orcasEdgeReady = null;
     throw err;
   });
-  return ready;
+  return globalForEdge.__orcasEdgeReady;
 }
 
 /** The ULTRON contract is always present as a read-only format row. */
@@ -196,6 +198,7 @@ function toGateway(r: Row): EdgeGateway {
     firmware: str(r.firmware),
     enabled: r.enabled === true,
     notes: str(r.notes),
+    securityZone: str(r.security_zone),
     createdAt: iso(r.created_at),
     updatedAt: iso(r.updated_at),
   };
@@ -216,6 +219,7 @@ function toSource(r: Row): EdgeSource {
     pollIntervalMs: numOrNull(r.poll_interval_ms),
     enabled: r.enabled === true,
     notes: str(r.notes),
+    securityZone: str(r.security_zone),
     createdAt: iso(r.created_at),
     updatedAt: iso(r.updated_at),
   };
@@ -258,12 +262,13 @@ function toPoint(r: Row): EdgePoint {
     channel: String(r.channel),
     address: str(r.address),
     unit: str(r.unit),
-    dataType: (["float", "int", "bool", "string"].includes(String(r.data_type)) ? r.data_type : "float") as PointDataType,
+    dataType: (["float", "int", "bool", "string", "video", "status+map"].includes(String(r.data_type)) ? r.data_type : "float") as PointDataType,
     sampleRate: str(r.sample_rate),
     alertLimit: numOrNull(r.alert_limit),
     dangerLimit: numOrNull(r.danger_limit),
     machineId: str(r.machine_id),
     signalTag: str(r.signal_tag),
+    sourceTag: str(r.source_tag),
     enabled: r.enabled === true,
   };
 }
@@ -569,7 +574,7 @@ function pointColumns(body: Record<string, unknown>, partial: boolean): Columns 
     channel: r.ident("channel"),
     address: r.text("address"),
     unit: r.text("unit", { max: 32 }),
-    data_type: r.oneOf("dataType", ["float", "int", "bool", "string"] as const),
+    data_type: r.oneOf("dataType", ["float", "int", "bool", "string", "video", "status+map"] as const),
     sample_rate: r.text("sampleRate", { max: 128 }),
     alert_limit: r.num("alertLimit"),
     danger_limit: r.num("dangerLimit"),
@@ -781,20 +786,25 @@ export async function mapEdgeChannel(body: Record<string, unknown>): Promise<Edg
     let signalCreated = false;
     if (!known) {
       const fmtLimit = (n: number | null) => (n === null ? null : String(n));
+      const sensorDefId = `sdef-${v.tag.toLowerCase().replace(/[^a-z0-9_-]/g, "-")}`;
       await client.query(
-        `INSERT INTO mapped_signals (id, machine_id, tag, name, instrument, sensor_type, edge_rack, card_slot, modbus_address,
-           current_value, unit, quality, sample_rate, status, source, warning_threshold, alarm_threshold, warning_val, alarm_val)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, '—', $10, 'Awaiting data', $11, 'Normal', 'Edge', $12, $13, $14, $15)`,
+        `INSERT INTO sensor_definitions (
+           id, name, instrument, sensor_type, unit, sample_rate, source,
+           warning_threshold, alarm_threshold, warning_val, alarm_val
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, 'Edge', $7, $8, $9, $10)
+         ON CONFLICT (id) DO UPDATE SET
+           name = EXCLUDED.name,
+           unit = EXCLUDED.unit,
+           warning_threshold = COALESCE(EXCLUDED.warning_threshold, sensor_definitions.warning_threshold),
+           alarm_threshold = COALESCE(EXCLUDED.alarm_threshold, sensor_definitions.alarm_threshold),
+           warning_val = COALESCE(EXCLUDED.warning_val, sensor_definitions.warning_val),
+           alarm_val = COALESCE(EXCLUDED.alarm_val, sensor_definitions.alarm_val)`,
         [
-          `sig-${randomUUID().slice(0, 8)}`,
-          v.machineId,
-          v.tag,
+          sensorDefId,
           v.name,
           "Edge-mapped channel",
           "MQTT",
-          `${gw.code} › ${v.rack}`,
-          `Card ${v.card} · Ch ${v.channel}`,
-          `${gw.code}/${v.rack}/${v.card}/${v.channel}`,
           v.unit ?? "",
           "As published",
           fmtLimit(v.alertLimit),
@@ -803,7 +813,22 @@ export async function mapEdgeChannel(body: Record<string, unknown>): Promise<Edg
           v.dangerLimit,
         ],
       );
-      await client.query("UPDATE machines SET signals_count = (SELECT COUNT(*) FROM mapped_signals WHERE machine_id = $1) WHERE id = $1", [v.machineId]);
+      await client.query(
+        `INSERT INTO mapped_signals (
+           id, machine_id, sensor_def_id, tag, edge_rack, card_slot, modbus_address,
+           current_value, quality, status
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, '—', 'Awaiting data', 'Normal')`,
+        [
+          `sig-${randomUUID().slice(0, 8)}`,
+          v.machineId,
+          sensorDefId,
+          v.tag,
+          `${gw.code} › ${v.rack}`,
+          `Card ${v.card} · Ch ${v.channel}`,
+          `${gw.code}/${v.rack}/${v.card}/${v.channel}`,
+        ],
+      );
       signalCreated = true;
     }
 
@@ -855,12 +880,13 @@ export async function getMachineCabinet(machineId: string): Promise<MachineRackI
             s.id AS source_id, s.code AS source_code, s.name AS source_name, s.kind, s.protocol, s.sort_order,
             g.code AS gateway_code, g.name AS gateway_name, g.sort_order AS gateway_order,
             c.card_type, c.model AS card_model, c.notes AS card_notes, c.channel_count,
-            m.instrument, m.sensor_type, m.current_value, m.quality, m.status, m.normal_threshold, m.component
+            sd.instrument, sd.sensor_type, m.current_value, m.quality, m.status, sd.normal_threshold, sd.component
        FROM edge_points p
        JOIN edge_sources s ON s.id = p.source_id
        JOIN edge_gateways g ON g.id = s.gateway_id
        LEFT JOIN edge_cards c ON c.source_id = p.source_id AND c.code = p.slot
        LEFT JOIN mapped_signals m ON m.machine_id = $1 AND m.tag = COALESCE(p.signal_tag, p.tag)
+       LEFT JOIN sensor_definitions sd ON sd.id = m.sensor_def_id
       WHERE p.machine_id = $1 OR (p.machine_id IS NULL AND s.machine_id = $1)`,
     [machineId],
   );
@@ -1275,10 +1301,12 @@ export async function seedEdgeRegistry(): Promise<{ brokers: number; gateways: n
     const racks = (await client.query("SELECT id, machine_id, name, cabinet_location, ip_address, firmware FROM rack_chassis")).rows as Row[];
     const signals = (
       await client.query<SignalRow>(
-        `SELECT machine_id, tag, name, card_slot, modbus_address, unit, sample_rate, warning_val, alarm_val, source
-           FROM mapped_signals
-          WHERE source IS DISTINCT FROM 'Calculated' AND machine_id = ANY($1)
-          ORDER BY machine_id, tag`,
+        `SELECT m.machine_id, m.tag, sd.name, m.card_slot, m.modbus_address, sd.unit, sd.sample_rate,
+                sd.warning_val::text AS warning_val, sd.alarm_val::text AS alarm_val, sd.source
+           FROM mapped_signals m
+           JOIN sensor_definitions sd ON sd.id = m.sensor_def_id
+          WHERE sd.source IS DISTINCT FROM 'Calculated' AND m.machine_id = ANY($1)
+          ORDER BY m.machine_id, m.tag`,
         // Only the machines with live acquisition: the KLN-01 demonstration.
         // Other machines' gateways are added by connecting them (Devices › Hierarchy).
         [SEEDED_MACHINES],

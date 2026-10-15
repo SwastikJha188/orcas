@@ -1,25 +1,271 @@
 /* ==========================================================================
-   ULTRON · Kiln Thermal tab. Prefix: thm-
-   Built on the Diagnosis skeleton (dxo-*, dxt-*); this file only adds what
-   the shell map needs. Tokens only; heat colours come from --heat-*.
+   ULTRON · Kiln Thermal sub-page. Prefix: thm-
+   Builds on assets-shell.css (ast-*), ui/page.css (pg-*) and the shared
+   AI-page primitives (pg-analysis-*, analysis-page.css). Tokens only.
    ========================================================================== */
 
-.thm-kpis {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+.thm-root {
+  /* Sober heat scale: neutral graphite ramp up to the top of the normal band
+     (330 °C), status colour only from the 380 °C alert. Built from semantic
+     tokens, so both themes resolve on their own (hotter = more contrast). */
+  --thm-heat-150: color-mix(in srgb, var(--dx-ink) 7%, var(--card-bg));
+  --thm-heat-250: color-mix(in srgb, var(--dx-ink) 20%, var(--card-bg));
+  --thm-heat-330: color-mix(in srgb, var(--dx-ink) 46%, var(--card-bg));
+  --thm-heat-360: color-mix(in srgb, var(--status-warning) 45%, color-mix(in srgb, var(--dx-ink) 55%, var(--card-bg)));
+  --thm-heat-380: var(--status-warning);
+  --thm-heat-420: var(--status-danger);
+  --thm-heat-480: color-mix(in srgb, var(--status-danger) 70%, var(--dx-ink));
+  --thm-hatch: color-mix(in srgb, var(--dx-ink) 22%, transparent);
+  font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 1280px) {
-  .thm-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.thm-heat-probe {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
-@media (max-width: 760px) {
-  .thm-kpis { grid-template-columns: 1fr; }
+.thm-root :focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 2px;
 }
 
+.thm-ink {
+  color: var(--dx-ink);
+}
+
+.thm-tone-text[data-tone] {
+  color: var(--tone);
+}
+
+.thm-tone-text[data-tone] .ast-unit {
+  color: inherit;
+  opacity: 0.8;
+}
+
+.thm-r {
+  text-align: right;
+}
+
+.thm-wrap {
+  white-space: normal;
+  max-width: 420px;
+}
+
+.thm-flag {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: var(--corner-pill);
+  background: var(--hover-faint);
+  color: var(--text-muted);
+  font-size: var(--fs-2xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  vertical-align: 1px;
+}
+
+.thm-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: var(--corner-pill);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.thm-link:hover {
+  background: var(--hover-faint);
+  color: var(--dx-ink);
+}
+
+/* ---------------------------------------------------------------- cards */
+.thm-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.thm-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 16px;
+}
+
+/* ---------------------------------------------------------------- KPIs */
+
+.thm-bar {
+  display: block;
+  width: 100%;
+  height: 10px;
+}
+
+.thm-bar-track {
+  fill: var(--dx-track);
+}
+
+.thm-bar-mark {
+  fill: var(--dx-stroke);
+}
+
+.thm-bar-value {
+  fill: var(--dx-ink-2);
+}
+
+.thm-bar-value[data-tone],
+.thm-limit {
+  fill: var(--tone);
+}
+
+/* ---------------------------------------------------------------- small text */
+.thm-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.thm-est {
+  margin-left: 3px;
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.thm-rank {
+  color: var(--text-muted);
+}
+
+.thm-divider {
+  height: 1px;
+  margin: 8px 0 0;
+  background: var(--separator);
+}
+
+.thm-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px 0;
+}
+
+.thm-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.thm-dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+  margin: 0;
+}
+
+.thm-dl > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.thm-dl dt {
+  font-size: var(--fs-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.thm-dl dd {
+  margin: 0;
+  font-size: var(--fs-base);
+  color: var(--dx-ink);
+}
+
+.thm-dl-rows {
+  grid-template-columns: 1fr;
+  gap: 0;
+}
+
+.thm-dl-rows > div {
+  display: grid;
+  grid-template-columns: 140px 120px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--separator);
+}
+
+.thm-dl-rows > div:last-child {
+  border-bottom: 0;
+}
+
+.thm-dl-rows dt {
+  font-size: var(--fs-sm);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.thm-dl-rows dd {
+  text-align: right;
+  font-size: var(--fs-md);
+}
+
+.thm-dl-note {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------- SVG text, axes */
 .thm-svg {
   display: block;
   width: 100%;
   height: auto;
+}
+
+.thm-tick {
+  fill: var(--text-muted);
+  font-size: var(--fs-xs);
+  font-family: var(--font-ui);
+}
+
+.thm-tick-tone {
+  fill: var(--tone);
+  font-weight: 600;
+}
+
+.thm-grid {
+  stroke: var(--dx-line);
+  stroke-width: 1;
+}
+
+.thm-axis {
+  stroke: var(--dx-stroke);
+}
+
+.thm-zone-line {
+  stroke: var(--dx-stroke);
+  stroke-dasharray: 2 4;
+  pointer-events: none;
+}
+
+.thm-ref {
+  stroke: var(--dx-stroke-soft);
+  stroke-dasharray: 3 3;
+  pointer-events: none;
 }
 
 /* ---------------------------------------------------------------- map */
@@ -28,37 +274,101 @@
 }
 
 .thm-map-bg {
-  fill: var(--heat-mask);
+  fill: var(--dx-inset);
+}
+
+.thm-hatch-line {
+  stroke: var(--thm-hatch);
+  stroke-width: 1.5;
 }
 
 .thm-map-grid {
   stroke: var(--card-bg);
+  stroke-opacity: 0.45;
+  stroke-dasharray: 2 4;
+  pointer-events: none;
+}
+
+.thm-coldband {
+  fill: none;
+  stroke: var(--dx-ink);
   stroke-opacity: 0.35;
-  stroke-dasharray: 2 4;
+  stroke-width: 1;
+  stroke-dasharray: 1 3;
   pointer-events: none;
-}
-
-.thm-zone-line {
-  stroke: var(--dx-stroke-soft);
-  stroke-dasharray: 2 4;
-  pointer-events: none;
-}
-
-.thm-ref {
-  stroke: var(--dx-stroke-soft);
-  stroke-dasharray: 3 3;
-}
-
-.thm-axis-line {
-  stroke: var(--dx-stroke-soft);
 }
 
 .thm-hotbox {
   fill: none;
   stroke: var(--dx-ink);
-  stroke-width: 1.5;
+  stroke-width: 1.2;
   stroke-dasharray: 4 3;
   pointer-events: none;
+}
+
+.thm-spot {
+  fill: none;
+  stroke: var(--tone, var(--dx-ink));
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.thm-spot[data-tone="good"] {
+  stroke: var(--dx-ink-2);
+}
+
+.thm-spot.is-selected {
+  stroke-width: 2.5;
+}
+
+.thm-spot-no circle {
+  fill: var(--card-bg);
+  stroke: var(--tone, var(--dx-ink));
+  stroke-width: 1.2;
+}
+
+.thm-spot-no[data-tone="good"] circle {
+  stroke: var(--dx-ink-2);
+}
+
+.thm-spot-no text {
+  fill: var(--dx-ink);
+  font-size: var(--fs-3xs);
+  font-weight: 600;
+  font-family: var(--font-ui);
+}
+
+.thm-sel-line {
+  stroke: var(--dx-ink);
+  stroke-opacity: 0.55;
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  pointer-events: none;
+}
+
+.thm-sel-dot {
+  fill: var(--card-bg);
+  stroke: var(--dx-ink);
+  stroke-width: 2;
+}
+
+/* Live map or a map kept around a finding (D5 Table 9.5 snapshot): two pill rows above the map. */
+.thm-snap {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+/* Handheld comparison point (MAN-KLN-01) on the map: hollow marker, status colour only when it disagrees. */
+.thm-hand path {
+  fill: var(--card-bg);
+  stroke: var(--dx-ink);
+  stroke-width: 1.4;
+}
+
+.thm-hand[data-tone="warn"] path {
+  stroke: var(--status-warning);
+  stroke-width: 2;
 }
 
 .thm-cross {
@@ -75,23 +385,60 @@
 
 .thm-readout {
   fill: var(--dx-ink);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
+  font-family: var(--font-ui);
   pointer-events: none;
 }
 
 .thm-hit {
   cursor: crosshair;
+  outline: none;
 }
 
-/* ---------------------------------------------------------------- map footer */
-.thm-foot {
+.thm-hit:focus-visible {
+  stroke: var(--signal-blue);
+  stroke-width: 2px;
+}
+
+.thm-tip {
+  position: absolute;
+  z-index: 2;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 20px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 170px;
+  padding: 8px 10px;
+  border: 1px solid var(--separator);
+  border-radius: var(--corner-sm);
+  background: var(--card-bg);
+  pointer-events: none;
+  font-size: var(--fs-sm);
+}
+
+.thm-tip-where,
+.thm-tip-hint {
+  color: var(--text-muted);
+}
+
+.thm-tip-hint {
+  font-size: var(--fs-xs);
+}
+
+.thm-tip-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.thm-tip-row strong {
+  font-size: var(--fs-base);
+  color: var(--dx-ink);
+}
+
+/* Heat scale under the map, aligned with the map's left axis. */
+.thm-axis-pad {
   padding-left: calc(52 / 1000 * 100%);
 }
 
@@ -102,36 +449,69 @@
   overflow: visible;
 }
 
-.thm-scale-limit {
-  fill: var(--tone);
+/* ---------------------------------------------------------------- legend */
+.thm-legend {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
 }
 
-.thm-tick-tone {
-  fill: var(--tone);
-  font-weight: 600;
+.thm-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.thm-key {
+  display: inline-block;
+  width: 14px;
+  height: 0;
 }
 
 .thm-key-mask {
   width: 12px;
   height: 8px;
   border-radius: 2px;
-  background: var(--heat-mask);
+  background: repeating-linear-gradient(45deg, var(--thm-hatch) 0 1.5px, transparent 1.5px 4px), var(--dx-inset);
 }
 
-.thm-key-mean {
-  width: 14px;
-  height: 0;
-  border-top: 1.5px solid var(--text-muted);
+.thm-key-spot {
+  width: 12px;
+  height: 8px;
+  border: 1.5px solid var(--dx-ink-2);
+  border-radius: 2px;
 }
+
+.thm-key-box {
+  width: 12px;
+  height: 8px;
+  border: 1.5px dashed var(--dx-ink);
+  border-radius: 1px;
+}
+
+.thm-key-cold {
+  width: 12px;
+  height: 8px;
+  border: 1px dotted var(--dx-ink);
+  border-radius: 1px;
+  opacity: 0.6;
+}
+
+.thm-key-line { border-top: 1.5px solid var(--dx-ink); }
+.thm-key-mean { border-top: 1.5px solid var(--text-muted); }
+.thm-key-model { border-top: 1.5px dashed var(--diagram-stroke); }
 
 /* ---------------------------------------------------------------- profile */
 .thm-band {
-  fill: color-mix(in srgb, var(--tone) 8%, transparent);
+  fill: color-mix(in srgb, var(--tone) 5%, transparent);
 }
 
-.thm-zone-label {
-  font-size: 10.5px;
-  letter-spacing: 0.04em;
+.thm-limit-line {
+  stroke: var(--tone);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 4;
 }
 
 .thm-line-model {
@@ -144,26 +524,94 @@
 .thm-line-mean {
   fill: none;
   stroke: var(--text-muted);
-  stroke-width: 1.4;
+  stroke-opacity: 0.6;
+  stroke-width: 1;
   stroke-linejoin: round;
 }
 
-/* ---------------------------------------------------------------- hottest section */
-.thm-section {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 16px;
+.thm-line-max {
+  fill: none;
+  stroke: var(--dx-ink);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
 }
 
-@media (max-width: 760px) {
-  .thm-section { grid-template-columns: 1fr; }
+.thm-end {
+  fill: var(--dx-ink-2);
+  stroke: var(--card-bg);
+  stroke-width: 2;
+}
+
+.thm-end:is([data-tone="warn"], [data-tone="bad"]) {
+  fill: var(--tone);
+}
+
+/* ---------------------------------------------------------------- hot spots */
+.thm-spots {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr);
+  min-width: 0;
+}
+
+.thm-spots.is-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.thm-spots-table {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.thm-spots-detail {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  min-width: 0;
+  padding: 0 4px 0 20px;
+  border-left: 1px solid var(--separator);
+}
+
+.thm-spots.is-single .thm-spots-detail {
+  grid-template-columns: 260px 220px minmax(0, 1fr);
+  align-items: start;
+  padding: 0;
+  border-left: 0;
+}
+
+@media (max-width: 1100px) {
+  .thm-spots.is-single .thm-spots-detail { grid-template-columns: 240px minmax(0, 1fr); }
+  .thm-spots.is-single .thm-detail-trend { grid-column: 1 / -1; }
+}
+
+.thm-detail-polar,
+.thm-detail-trend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.thm-spots:not(.is-single) .thm-dl {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.thm-spots.is-single .thm-dl {
+  padding-top: 28px;
+}
+
+@media (max-width: 1180px) {
+  .thm-spots { grid-template-columns: 1fr; }
+  .thm-spots-detail { padding: 16px 0 0; border-left: 0; border-top: 1px solid var(--separator); }
+}
+
+.thm-root .ast-table tr.is-clickable {
+  cursor: pointer;
 }
 
 .thm-polar {
   display: block;
   width: 100%;
-  max-width: 260px;
+  max-width: 280px;
   height: auto;
   margin: 0 auto;
 }
@@ -175,70 +623,206 @@
 .thm-ring-limit {
   fill: none;
   stroke: var(--tone);
-  stroke-opacity: 0.7;
+  stroke-width: 1.2;
   stroke-dasharray: 4 4;
 }
 
 .thm-polar-model {
   fill: none;
   stroke: var(--diagram-stroke);
-  stroke-width: 1.5;
+  stroke-width: 1.4;
   stroke-dasharray: 5 4;
 }
 
 .thm-polar-shape {
-  fill: var(--signal-blue);
-  fill-opacity: 0.12;
-  stroke: var(--signal-blue);
-  stroke-width: 2;
+  fill: none;
+  stroke: var(--dx-ink);
+  stroke-width: 1.5;
   stroke-linejoin: round;
 }
 
-.thm-polar[data-tone="warn"] .thm-polar-shape,
-.thm-polar[data-tone="bad"] .thm-polar-shape {
-  fill: var(--tone);
+.thm-polar-shape:is([data-tone="warn"], [data-tone="bad"]) {
   stroke: var(--tone);
 }
 
-.thm-spec {
-  font-size: 0.8rem;
-  gap: 10px 18px;
+/* ---------------------------------------------------------------- rules, scanner */
+
+.thm-scanner {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(300px, 1fr);
+  gap: 24px;
+  align-items: start;
 }
 
-.thm-spec dd {
+@media (max-width: 1180px) {
+  .thm-scanner { grid-template-columns: 1fr; }
+}
+
+/* ==========================================================================
+   Zero-specificity fallbacks for the shared AI-page primitives
+   (Section, SectionIndex, verdict, facts, evidence chips, "Why?", notes,
+   pointer cards, provenance tags). The owners' styles in analysis-page.css /
+   prognosis-page.css win whenever they exist; these only fill gaps so the
+   page renders correctly on its own.
+   ========================================================================== */
+
+:where(.thm-root) :where(.pg-analysis-index-list .nav-pill) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+}
+
+:where(.thm-root) :where(.pg-analysis-section) {
+  scroll-margin-top: 64px;
+  min-width: 0;
+}
+
+:where(.thm-root) :where(.pg-analysis-ai) {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: var(--corner-pill);
+  background: var(--hover-faint);
+  color: var(--text-muted);
+  font-size: var(--fs-2xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+:where(.thm-root) :where(.pg-prog-r) {
   text-align: right;
 }
 
-/* ---------------------------------------------------------------- registers */
-.thm-table {
-  min-width: 760px;
+:where(.thm-root) :where(.pg-prog-strong) {
+  font-weight: 600;
+  color: var(--dx-ink);
 }
 
-.thm-row > td:first-child { border-radius: var(--corner-row) 0 0 var(--corner-row); }
-.thm-row > td:last-child { border-radius: 0 var(--corner-row) var(--corner-row) 0; }
-
-.thm-row:hover > td {
-  background: var(--row-hover-bg);
-  border-bottom-color: transparent;
+:where(.thm-root) :where(.pg-analysis-verdict) {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.thm-bar-track {
-  fill: var(--dx-track);
+:where(.thm-root) :where(.pg-analysis-verdict-top) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.thm-bar-dot {
-  fill: var(--dx-ink-2);
-  stroke: var(--card-bg);
-  stroke-width: 2;
+:where(.thm-root) :where(.pg-analysis-verdict-headline) {
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: 500;
+  color: var(--dx-ink);
 }
 
-.thm-bar-dot[data-tone="warn"],
-.thm-bar-dot[data-tone="bad"] {
-  fill: var(--tone);
+:where(.thm-root) :where(.pg-analysis-fact) {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
-.thm-wrap {
-  max-width: 360px;
-  white-space: normal;
-  line-height: 1.4;
+:where(.thm-root) :where(.pg-analysis-fact-label) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+:where(.thm-root) :where(.pg-analysis-fact-value) {
+  font-size: var(--fs-xl);
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+:where(.thm-root) :where(.pg-analysis-fact-foot) {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+:where(.thm-root) :where(.pg-analysis-evidence-chips) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+:where(.thm-root) :where(.pg-analysis-ev) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: var(--corner-pill);
+  background: var(--hover-faint);
+  color: var(--dx-ink);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+:where(.thm-root) :where(.pg-analysis-ev:hover) {
+  background: var(--active-faint);
+}
+
+:where(.thm-root) :where(.pg-analysis-ev-detail) {
+  color: var(--text-muted);
+}
+
+:where(.thm-root) :where(.pg-analysis-why summary) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+:where(.thm-root) :where(.pg-analysis-why summary::-webkit-details-marker) {
+  display: none;
+}
+
+:where(.thm-root) :where(.pg-analysis-why[open] .pg-analysis-why-chev) {
+  transform: rotate(90deg);
+}
+
+:where(.thm-root) :where(.pg-analysis-why-body) {
+  padding: 6px 0 0 18px;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--dx-ink-2);
+}
+
+:where(.thm-root) :where(.pg-analysis-why-body p) {
+  margin: 0;
+}
+
+:where(.thm-root) :where(.pg-analysis-missing) {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px dashed var(--separator);
+  border-radius: var(--corner-sm);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+:where(.thm-root) :where(.pg-analysis-pointer) {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.thm-scanner-trend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
 }

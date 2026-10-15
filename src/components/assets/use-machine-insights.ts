@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useApi } from "@/lib/api-cache";
 import { useKilnSimulationFor } from "@/providers/kiln-simulation-context";
 import { buildLiveInsights, type DbSensorMeta } from "@/lib/kiln-sim/live-insights";
 import { useStoredCatalog } from "./use-machine-catalog";
@@ -17,14 +18,15 @@ export interface MachineInsightsState {
 /**
  * Prognosis & analysis payload for a machine.
  *
- * KLN-01 runs on the live demonstration engine, so its payload is built from
- * the running frame (refreshed every 5 simulated minutes) over the sensors in
- * the DB catalog. Other machines use
- * the server-computed snapshot. Same contract either way.
+ * Live machines (kiln-seal fleet, pyro line) run on a demonstration engine,
+ * so their payload is built from the running frame and its `defs` (refreshed
+ * every 5 simulated minutes) over the sensors in the DB catalog. Other
+ * machines use the server-computed snapshot. Same contract either way.
  */
 export function useMachineInsights(machine: AssetMachine): MachineInsightsState {
-  const stored = useStoredInsights(machine);
   const frame = useKilnSimulationFor(machine.id)?.frame ?? null;
+  // A live machine's payload comes from the frame; skip the server snapshot.
+  const stored = useStoredInsights(frame ? null : machine);
   // The DB catalog decides which sensors exist and their names, units, limits
   // and locations; the engine only supplies live values and history.
   const catalog = useStoredCatalog(machine);
@@ -53,37 +55,13 @@ export function useMachineInsights(machine: AssetMachine): MachineInsightsState 
     [bucket, machine.id, db, catalog.isLive],
   );
   if (live) return { data: live, isLoading: false, isError: false, error: null };
+  if (frame) return { data: null, isLoading: catalog.isLoading, isError: false, error: null };
   return stored;
 }
 
-function useStoredInsights(machine: AssetMachine): MachineInsightsState {
-  const [data, setData] = useState<InsightsResponse | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setIsLoading(true);
-    setError(null);
-    fetch(`/api/insights?machineId=${encodeURIComponent(machine.id)}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((j) => {
-        if (cancelled) return;
-        if (j?.data) setData(j.data as InsightsResponse);
-        else setData(null);
-      })
-      .catch((e: unknown) => {
-        if (cancelled) return;
-        setError(e instanceof Error ? e.message : String(e));
-        setData(null);
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [machine.id]);
-
-  return { data, isLoading, isError: error !== null, error };
+function useStoredInsights(machine: AssetMachine | null): MachineInsightsState {
+  const { data, isLoading, error } = useApi<InsightsResponse | null>(
+    machine ? `/api/insights?machineId=${encodeURIComponent(machine.id)}` : null,
+  );
+  return { data: data ?? null, isLoading, isError: error !== null, error };
 }

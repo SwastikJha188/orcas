@@ -27,7 +27,7 @@
 .fmt-root code {
   font-family: var(--font-ui);
   font-variant-numeric: tabular-nums;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   color: var(--dx-ink);
   overflow-wrap: anywhere;
 }
@@ -55,13 +55,13 @@
 
 .fmt-muted {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   color: var(--text-muted);
   line-height: 1.5;
 }
 
 .fmt-label {
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   font-weight: 500;
   color: var(--text-muted);
 }
@@ -90,7 +90,7 @@
 }
 
 .fmt-confirm {
-  font-size: 0.82rem;
+  font-size: var(--fs-md);
   color: var(--dx-ink);
 }
 
@@ -158,7 +158,6 @@
   border-radius: var(--corner-row);
   background: transparent;
   color: var(--page-fg);
-  font-family: var(--font-ui);
   text-align: left;
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease;
@@ -174,13 +173,13 @@
 }
 
 .fmt-preset-name {
-  font-size: 0.82rem;
+  font-size: var(--fs-md);
   font-weight: 500;
   color: var(--dx-ink);
 }
 
 .fmt-preset-hint {
-  font-size: 0.72rem;
+  font-size: var(--fs-sm);
   color: var(--text-muted);
   overflow-wrap: anywhere;
 }
@@ -199,8 +198,7 @@
   border-radius: var(--corner-pill);
   background: var(--active-faint);
   color: var(--dx-ink);
-  font-family: var(--font-ui);
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
@@ -243,20 +241,20 @@
 }
 
 .fmt-map-name {
-  font-size: 0.84rem;
+  font-size: var(--fs-md);
   font-weight: 500;
   color: var(--dx-ink);
 }
 
 .fmt-map-hint {
-  font-size: 0.72rem;
+  font-size: var(--fs-sm);
   color: var(--text-muted);
 }
 
 .fmt-path {
   min-height: 32px;
   padding: 6px 10px;
-  font-size: 0.82rem;
+  font-size: var(--fs-md);
 }
 
 .fmt-path[data-target] {
@@ -300,7 +298,7 @@
 
 .fmt-source-bar .btn-pill {
   padding: 6px 14px;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 
 .fmt-select {
@@ -311,7 +309,7 @@
   min-height: 32px;
   padding: 6px 30px 6px 12px;
   border-radius: var(--corner-pill);
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 
 .fmt-samples {
@@ -336,8 +334,7 @@
   border-radius: var(--corner-row);
   background: transparent;
   color: var(--page-fg);
-  font-family: var(--font-ui);
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   text-align: left;
   cursor: pointer;
 }
@@ -359,7 +356,7 @@
 }
 
 .fmt-sample-meta {
-  font-size: 0.72rem;
+  font-size: var(--fs-sm);
   color: var(--text-muted);
   white-space: nowrap;
 }
@@ -380,13 +377,13 @@
 }
 
 .fmt-capture {
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   color: var(--dx-ink);
 }
 
 .fmt-structure {
   margin: 0;
-  font-size: 0.86rem;
+  font-size: var(--fs-base);
   font-weight: 500;
   color: var(--dx-ink);
 }
@@ -404,7 +401,7 @@
   gap: 6px;
   max-height: 180px;
   overflow-y: auto;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 
 .fmt-tree ul {
@@ -468,7 +465,7 @@
   background: var(--workspace-bg);
   border: 1px solid var(--separator);
   font-family: var(--font-ui);
-  font-size: 0.76rem;
+  font-size: var(--fs-sm);
   line-height: 1.55;
   font-variant-numeric: tabular-nums;
   color: var(--page-fg);

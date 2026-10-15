@@ -1,13 +1,11 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
-import { StatusTag } from "@/components/assets/assets-shell-ui";
+import { useEffect, useRef, useState } from "react";
 import { naturalCompare, parseMessage, topicMatchesFilter } from "@/lib/edge-format";
 import { useEdge } from "@/providers/edge-context";
 import type { EdgeFormat } from "@/types/edge";
 import type { LinkState } from "@/types/mqtt";
-import { type EdgeIndex, LINK_LABEL, LINK_TONE, ago, sep } from "../edge-model";
-import { plural } from "./edge-tree-model";
+import { type EdgeIndex, sep } from "../edge-model";
 
 /* ==========================================================================
    Connect wizard · finding gateways. ULTRON gateways come from the live
@@ -39,8 +37,6 @@ export interface FoundGateway {
   /** Messages it was seen in (samples only). */
   messages: number;
 }
-
-const fromState = (s: LinkState) => (s === "ONLINE" ? "online" : s === "STALE" ? "stale" : "offline");
 
 /** Is a gateway code already registered for this broker (or unassigned)? */
 export function isRegistered(ix: EdgeIndex, brokerId: string, code: string): boolean {
@@ -183,57 +179,3 @@ export function foundTotals(racks: FoundRack[]) {
   return { racks: racks.length, cards, channels };
 }
 
-export function FoundList({
-  found,
-  picked,
-  now,
-  onPick,
-}: {
-  found: FoundGateway[];
-  picked: string | null;
-  now: number;
-  onPick: (g: FoundGateway) => void;
-}) {
-  return (
-    <ul className="dv-found" role="listbox" aria-label="Gateways publishing on this broker">
-      {found.map((g) => {
-        const t = foundTotals(g.racks);
-        const key = g.code || `${sep}anon`;
-        const selected = picked === key;
-        const state = g.state ? fromState(g.state) : null;
-        return (
-          <li key={key}>
-            <button
-              type="button"
-              role="option"
-              aria-selected={selected}
-              aria-disabled={g.registered || undefined}
-              disabled={g.registered}
-              className="dv-found-row"
-              onClick={() => onPick(g)}
-            >
-              <span className="dv-found-radio" data-on={selected || undefined} aria-hidden="true" />
-              <span className="ast-cell-stack">
-                <span className="ast-cell-title ast-num">{g.code || "Matched topics (no gateway id in the topic)"}</span>
-                <span className="ast-cell-sub ast-num">
-                  {[g.ip, `${plural(t.racks, "rack")} · ${plural(t.cards, "card")} · ${plural(t.channels, "channel")}`, g.lastSeenAt ? `seen ${ago(g.lastSeenAt, now)}` : null]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </span>
-              </span>
-              <span className="dv-found-tail">
-                {g.registered ? (
-                  <StatusTag tone="idle" label="Registered" />
-                ) : state ? (
-                  <StatusTag tone={LINK_TONE[state]} label={LINK_LABEL[state]} />
-                ) : (
-                  <span className="ast-caption ast-num">{plural(g.messages, "message")}</span>
-                )}
-              </span>
-            </button>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}

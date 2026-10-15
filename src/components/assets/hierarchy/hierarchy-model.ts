@@ -3,7 +3,7 @@ import { machineTone, type Tone } from "../assets-shell-ui";
 
 /* ==========================================================================
    Plant hierarchy model (ported from ULTRON lib/hierarchy + tree/treeModel).
-   Works on any depth: Plant → Area → Machine group → … → Machine.
+   Works on any depth: Plant → Area → Process cell → … → Machine.
    ========================================================================== */
 
 export type NodeType = HierarchyNode["type"];
@@ -11,7 +11,7 @@ export type NodeType = HierarchyNode["type"];
 export const TYPE_LABEL: Record<NodeType, string> = {
   plant: "Plant",
   area: "Area",
-  group: "Machine group",
+  group: "Process cell",
   machine: "Machine",
 };
 
@@ -132,4 +132,70 @@ export function filterVisible(root: HierarchyNode, q: string, lookup: MachineLoo
 export function orderedChildren(node: HierarchyNode): HierarchyNode[] {
   const kids = node.children ?? [];
   return [...kids.filter((k) => k.type === "machine"), ...kids.filter(isFolder)];
+}
+
+/** Status filter buckets used by the register and the condition map. */
+export type ToneBucket = "attention" | "normal" | "standby";
+
+export function toneBucket(tone: Tone): ToneBucket {
+  if (tone === "bad" || tone === "warn") return "attention";
+  if (tone === "idle") return "standby";
+  return "normal";
+}
+
+/** Sort rank: critical first, then advisory, standby, normal. */
+export function toneRank(tone: Tone): number {
+  return tone === "bad" ? 0 : tone === "warn" ? 1 : tone === "idle" ? 2 : 3;
+}
+
+/** Status label for a rolled-up tone. */
+export function rollupLabel(tone: Tone): string {
+  return tone === "bad" ? "Critical" : tone === "warn" ? "Advisory" : tone === "idle" ? "Standby" : "Normal";
+}
+
+/** Machine sub-page an operator lands on: attention opens Diagnosis, otherwise Overview. */
+export function landingSubPage(tone: Tone): "diagnosis" | "overview" {
+  return tone === "bad" || tone === "warn" ? "diagnosis" : "overview";
+}
+
+export interface MachineEntry {
+  node: HierarchyNode;
+  machineId: string;
+  /** Folder names between the plant and the machine ("Area › Process cell"). */
+  location: string[];
+  status: string;
+  tone: Tone;
+  health: number;
+  isLive: boolean;
+  machine: AssetMachine | undefined;
+}
+
+/**
+ * Every machine below `node`, with its location under the plant. `prefix`
+ * is the path from the plant root to `node` (inclusive), as from `findPath`.
+ */
+export function machineEntries(node: HierarchyNode, prefix: HierarchyNode[], lookup: MachineLookup): MachineEntry[] {
+  const out: MachineEntry[] = [];
+  const walk = (n: HierarchyNode, trail: string[]) => {
+    if (n.type === "machine") {
+      if (!n.machineId) return;
+      const c = machineCondition(n, lookup);
+      out.push({
+        node: n,
+        machineId: n.machineId,
+        location: trail,
+        status: c.status,
+        tone: machineTone(c.status),
+        health: c.health,
+        isLive: c.isLive,
+        machine: c.machine,
+      });
+      return;
+    }
+    const next = n.type === "plant" ? trail : [...trail, n.name];
+    (n.children ?? []).forEach((k) => walk(k, next));
+  };
+  const base = prefix.slice(0, -1).filter((p) => p.type !== "plant").map((p) => p.name);
+  walk(node, base);
+  return out;
 }

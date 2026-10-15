@@ -1,81 +1,76 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
-import { PillButton, PillNav } from "@/components/ui";
+import React, { useMemo } from "react";
+import { KpiCard, KpiCards, PillButton } from "@/components/ui";
 import type { HierarchyNode } from "../assets-data";
-import {
-  HealthRing,
-  IconChevron,
-  SearchPill,
-  SegmentBar,
-  StatusTag,
-  machineTone,
-} from "../assets-shell-ui";
+import type { AssetsSubPage } from "../assets-view";
+import { SegmentBar, StatusTag } from "../assets-shell-ui";
 import { TypeIcon } from "./hierarchy-icons";
-import { PlantTimeZone } from "./plant-time-zone";
+import { MachineRegister } from "./hierarchy-register";
 import {
   TYPE_LABEL,
   type MachineLookup,
-  averageHealth,
-  distribution,
   findPath,
-  isFolder,
-  machineCondition,
-  matchesQuery,
+  landingSubPage,
+  machineEntries,
   nodeLabel,
-  rollupTone,
+  rollupLabel,
   subtreeFolders,
-  subtreeMachines,
+  toneRank,
+  worstTone,
 } from "./hierarchy-model";
+import type { Tone } from "../assets-shell-ui";
+import { toCondition } from "@/components/ui/status";
+import { PyroLineOverview } from "../pyro/pyro-line-overview";
+import { PYRO_PLANT_ID } from "@/providers/kiln-simulation-context";
 
 /* ==========================================================================
-   Hierarchy contents (ULTRON HierarchyContents): breadcrumb · title · type
-   badge · search · All / Areas / Machines · area cards · machine cards.
+   Assets directory contents for the selected plant / area / process cell.
+   Skeleton: header → KPI strip → machine register.
    ========================================================================== */
-
-type Filter = "all" | "areas" | "machines";
 
 export interface HierarchyContentsProps {
   roots: HierarchyNode[];
   lookup: MachineLookup;
   node: HierarchyNode;
   onSelectNode: (node: HierarchyNode) => void;
-  onOpenMachine: (machineId: string) => void;
+  onOpenMachine: (machineId: string, subPage: AssetsSubPage) => void;
 }
 
 export function HierarchyContents({ roots, lookup, node, onSelectNode, onOpenMachine }: HierarchyContentsProps) {
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
-  const q = query.trim().toLowerCase();
-
   const path = useMemo(() => findPath(roots, node.id), [roots, node.id]);
-  const allMachines = useMemo(() => subtreeMachines(node), [node]);
-  const allFolders = useMemo(() => subtreeFolders(node), [node]);
+  const entries = useMemo(() => machineEntries(node, path, lookup), [node, path, lookup]);
+  const folders = useMemo(() => subtreeFolders(node), [node]);
 
-  // A query searches the whole subtree; without one, "All" and "Areas" show
-  // this level, while "Machines" lists every machine below it.
-  const folders = useMemo(() => {
-    const base = q ? allFolders : (node.children ?? []).filter(isFolder);
-    return base.filter((f) => matchesQuery(f, q, lookup));
-  }, [q, allFolders, node, lookup]);
+  const areas = folders.filter((f) => f.type === "area").length;
+  const cells = folders.filter((f) => f.type === "group").length;
+  const tone = entries.reduce<Tone>((t, e) => worstTone(t, e.tone), "good");
+  const critical = entries.filter((e) => e.tone === "bad").length;
+  const advisory = entries.filter((e) => e.tone === "warn").length;
+  const standby = entries.filter((e) => e.tone === "idle").length;
+  const normal = entries.length - critical - advisory - standby;
+  const sensors = entries.reduce((n, e) => n + (e.machine?.signalsCount ?? 0), 0);
+  const withSensors = entries.filter((e) => (e.machine?.signalsCount ?? 0) > 0).length;
+  const live = entries.filter((e) => e.isLive).length;
+  const worst = [...entries].sort((a, b) => toneRank(a.tone) - toneRank(b.tone) || a.health - b.health)[0];
+  const needsAttention = critical + advisory;
 
-  const machines = useMemo(() => {
-    const base = q || filter === "machines" ? allMachines : (node.children ?? []).filter((c) => c.type === "machine");
-    return base.filter((m) => matchesQuery(m, q, lookup));
-  }, [q, filter, allMachines, node, lookup]);
-
-  const showFolders = filter !== "machines" && folders.length > 0;
-  const showMachines = filter !== "areas" && machines.length > 0;
-  const dist = distribution(allMachines, lookup);
-  const health = averageHealth(allMachines, lookup);
-  const tone = rollupTone(node, lookup);
-  const isEmpty = allMachines.length === 0 && allFolders.length === 0;
+  const context = [
+    node.type === "plant" ? null : nodeLabel(path[0] ?? node),
+    areas ? `${areas} ${areas === 1 ? "area" : "areas"}` : null,
+    cells ? `${cells} ${cells === 1 ? "process cell" : "process cells"}` : null,
+    `${entries.length} ${entries.length === 1 ? "machine" : "machines"}`,
+    live ? `${live} on live telemetry` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
-    <div className="assets-directory-workspace ast-root hx-contents" aria-label={`${node.name} contents`}>
+    <div className="assets-directory-workspace ast-root hx-contents" aria-label={`${node.name} assets`}>
       <header className="ast-head hx-head">
         <div className="ast-head-main">
           <ol className="ast-crumbs" aria-label="Location">
+            <li>Assets</li>
             {path.map((p, i) => (
               <li key={p.id}>
                 {i < path.length - 1 ? (
@@ -92,215 +87,73 @@ export function HierarchyContents({ roots, lookup, node, onSelectNode, onOpenMac
             <h1 className="ast-title">{node.name}</h1>
             <span className="hx-type-badge">
               <TypeIcon type={node.type} size={12} />
-              {node.type === "plant" ? "Plant root" : TYPE_LABEL[node.type]}
+              {TYPE_LABEL[node.type]}
             </span>
-            {allMachines.length > 0 && (
-              <StatusTag
-                tone={tone}
-                label={tone === "bad" ? "Critical" : tone === "warn" ? "Advisory" : tone === "idle" ? "Standby" : "Normal"}
-              />
-            )}
+            {entries.length > 0 && <StatusTag tone={tone} label={rollupLabel(tone)} />}
           </div>
+          <span className="ast-caption ast-num">{context}</span>
         </div>
+        {worst && needsAttention > 0 && (
+          <div className="pg-actions">
+            <PillButton variant="secondary" onClick={() => onOpenMachine(worst.machineId, landingSubPage(worst.tone))}>
+              Diagnose {worst.machineId}
+            </PillButton>
+          </div>
+        )}
       </header>
 
-      {node.type === "plant" && <PlantTimeZone plant={node} />}
-
-      {!isEmpty && (
-        <div className="hx-summary" aria-label="Level summary">
-          <div className="hx-stat">
-            <span className="hx-stat-label">Average health</span>
-            <span className="hx-stat-value ast-num">
-              {health ?? "—"}
-              {health !== null && <span className="ast-unit">/100</span>}
-            </span>
-          </div>
-          <div className="hx-stat">
-            <span className="hx-stat-label">Condition</span>
-            <SegmentBar
-              label={`${dist.healthy} normal, ${dist.atRisk} advisory, ${dist.critical} critical, ${dist.offline} standby`}
-              segments={[
-                { id: "ok", value: dist.healthy, tone: "good" },
-                { id: "warn", value: dist.atRisk, tone: "warn" },
-                { id: "bad", value: dist.critical, tone: "bad" },
-                { id: "idle", value: dist.offline, tone: "idle" },
-              ]}
-            />
-            <span className="hx-legend ast-num">
-              <i data-tone="good" />
-              {dist.healthy} normal
-              <i data-tone="warn" />
-              {dist.atRisk} advisory
-              <i data-tone="bad" />
-              {dist.critical} critical
-              <i data-tone="idle" />
-              {dist.offline} standby
-            </span>
-          </div>
-        </div>
-      )}
-
-      {!isEmpty && (
-        <div className="hx-toolbar">
-          <SearchPill value={query} onChange={setQuery} placeholder="Search areas or equipment" label="Search areas or equipment" />
-          <PillNav
-            items={[
-              { id: "all", label: `All ${allFolders.length + allMachines.length}` },
-              { id: "areas", label: `Areas ${allFolders.length}` },
-              { id: "machines", label: `Machines ${allMachines.length}` },
-            ]}
-            activeId={filter}
-            onChange={(id) => setFilter(id as Filter)}
+      {entries.length > 0 && (
+        <KpiCards label="Level summary">
+          <KpiCard
+            label="Machines"
+            value={entries.length}
+            unit={` ${entries.length === 1 ? "machine" : "machines"}`}
+            footClassName="ast-kpi-foot"
+            foot={
+              <>
+                <SegmentBar
+                  label={`${normal} normal, ${advisory} advisory, ${critical} critical, ${standby} standby`}
+                  segments={[
+                    { id: "ok", value: normal, tone: "good" },
+                    { id: "warn", value: advisory, tone: "warn" },
+                    { id: "bad", value: critical, tone: "bad" },
+                    { id: "idle", value: standby, tone: "idle" },
+                  ]}
+                />
+                <span className="ast-caption ast-num">
+                  {normal} normal · {advisory} advisory · {critical} critical · {standby} standby
+                </span>
+              </>
+            }
           />
-        </div>
+          <KpiCard
+            label="Needs attention"
+            value={needsAttention}
+            unit={` ${needsAttention === 1 ? "machine" : "machines"}`}
+            tone={critical ? "bad" : advisory ? "warn" : undefined}
+            footClassName="ast-kpi-foot"
+            foot={<span className="ast-caption">{needsAttention && worst ? `Worst: ${worst.node.name} · ${toCondition(worst.status)}` : "No advisory or critical machine"}</span>}
+          />
+          <KpiCard
+            label="Sensors mapped"
+            value={sensors}
+            unit={` ${sensors === 1 ? "sensor" : "sensors"}`}
+            footClassName="ast-kpi-foot"
+            foot={<span className="ast-caption ast-num">Database total across {withSensors} of {entries.length} machines, incl. calculated</span>}
+          />
+        </KpiCards>
       )}
 
-      {isEmpty ? (
+      {node.id === PYRO_PLANT_ID && <PyroLineOverview onOpenMachine={onOpenMachine} />}
+
+      {entries.length === 0 && folders.length === 0 ? (
         <div className="ast-card ast-empty">
           <strong className="hx-empty-title">No assets at this level</strong>
-        </div>
-      ) : !showFolders && !showMachines ? (
-        <div className="ast-card ast-empty">
-          <strong className="hx-empty-title">No match</strong>
-          {q ? `Nothing here matches “${query.trim()}”.` : "Nothing at this level for this filter."}
-          <PillButton
-            variant="secondary"
-            onClick={() => {
-              setQuery("");
-              setFilter("all");
-            }}
-          >
-            Reset filters
-          </PillButton>
+          Nothing is registered under {node.name} in the plant hierarchy.
         </div>
       ) : (
-        <>
-          {showFolders && (
-            <section className="hx-section" aria-label="Areas">
-              <h2 className="ast-section-label">
-                Areas<span>{folders.length}</span>
-              </h2>
-              <div className="hx-grid">
-                {folders.map((f) => (
-                  <FolderCard key={f.id} node={f} lookup={lookup} onOpen={() => onSelectNode(f)} />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {showMachines && (
-            <section className="hx-section" aria-label="Machines">
-              <h2 className="ast-section-label">
-                Machines<span>{machines.length}</span>
-              </h2>
-              <div className="hx-grid">
-                {machines.map((m) => (
-                  <MachineCard key={m.id} node={m} lookup={lookup} onOpen={onOpenMachine} />
-                ))}
-              </div>
-            </section>
-          )}
-        </>
+        <MachineRegister key={node.id} entries={entries} onOpenMachine={onOpenMachine} />
       )}
     </div>
-  );
-}
-
-function FolderCard({ node, lookup, onOpen }: { node: HierarchyNode; lookup: MachineLookup; onOpen: () => void }) {
-  const machines = subtreeMachines(node);
-  const folders = subtreeFolders(node);
-  const dist = distribution(machines, lookup);
-  const tone = rollupTone(node, lookup);
-  const health = averageHealth(machines, lookup);
-  return (
-    <button type="button" className="ast-card ast-tile hx-card" onClick={onOpen} aria-label={`Open ${node.name}`}>
-      <div className="ast-tile-top">
-        <span className="ast-icon-tile">
-          <TypeIcon type={node.type} size={14} />
-        </span>
-        <span className="hx-type-tag">{TYPE_LABEL[node.type]}</span>
-      </div>
-      <div className="hx-card-body">
-        <span className="ast-tile-name">{node.name}</span>
-        <span className="hx-card-meta ast-num">
-          {folders.length > 0 && `${folders.length} ${folders.length === 1 ? "group" : "groups"} · `}
-          {machines.length} {machines.length === 1 ? "machine" : "machines"}
-          {health !== null && ` · ${health}/100`}
-        </span>
-      </div>
-      {machines.length > 0 && (
-        <SegmentBar
-          label={`${dist.healthy} normal, ${dist.atRisk} advisory, ${dist.critical} critical, ${dist.offline} standby`}
-          segments={[
-            { id: "ok", value: dist.healthy, tone: "good" },
-            { id: "warn", value: dist.atRisk, tone: "warn" },
-            { id: "bad", value: dist.critical, tone: "bad" },
-            { id: "idle", value: dist.offline, tone: "idle" },
-          ]}
-        />
-      )}
-      <div className="ast-tile-foot">
-        <span className="ast-tile-status" data-tone={tone}>
-          <i aria-hidden="true" />
-          {tone === "bad" ? "Critical inside" : tone === "warn" ? "Advisory inside" : tone === "idle" ? "Standby inside" : "All normal"}
-        </span>
-        <span className="hx-open">
-          Open <IconChevron size={10} />
-        </span>
-      </div>
-    </button>
-  );
-}
-
-function MachineCard({ node, lookup, onOpen }: { node: HierarchyNode; lookup: MachineLookup; onOpen: (id: string) => void }) {
-  const c = machineCondition(node, lookup);
-  const m = c.machine;
-  const tone = machineTone(c.status);
-  if (!node.machineId) return null;
-  return (
-    <button
-      type="button"
-      className="ast-card ast-tile hx-card"
-      onClick={() => onOpen(node.machineId!)}
-      aria-label={`${node.name}, ${node.machineId}, ${c.status}, health ${c.health} %`}
-    >
-      <div className="ast-tile-top">
-        <span className="ast-icon-tile" data-tone={tone}>
-          <TypeIcon type="machine" size={14} />
-        </span>
-        <StatusTag tone={tone} label={c.status} />
-      </div>
-      <div className="hx-card-body">
-        <span className="ast-tile-name">{node.name}</span>
-        <span className="hx-card-meta ast-num">
-          {node.machineId}
-          {m?.type ? ` · ${m.type}` : ""}
-        </span>
-      </div>
-      <dl className="hx-facts">
-        <div>
-          <dt>Health</dt>
-          <dd className="ast-num">
-            <HealthRing value={c.health} size={14} stroke={2.2} />
-            {c.health}
-            <span className="ast-unit">/100</span>
-          </dd>
-        </div>
-        <div>
-          <dt>Signals</dt>
-          <dd className="ast-num">{m?.signalsCount ?? "—"}</dd>
-        </div>
-        <div>
-          <dt>Criticality</dt>
-          <dd>{m?.criticality?.split(" ")[0] ?? "—"}</dd>
-        </div>
-      </dl>
-      <div className="ast-tile-foot">
-        <span className="ast-caption">{c.isLive ? "Live telemetry" : m?.manufacturer ?? ""}</span>
-        <span className="hx-open">
-          Open <IconChevron size={10} />
-        </span>
-      </div>
-    </button>
   );
 }

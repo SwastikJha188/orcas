@@ -4,7 +4,7 @@
    One builder serves every machine. Its input is one row per channel, from
    either source of truth:
      · the edge registry (edge_sources / edge_cards / edge_points), when the
-       machine has points mapped there (KLN-01) — the same rows the
+       machine has points mapped there (kiln fleet, pyro line) — the same rows the
        Acquisition view reads, so both views show the same hardware;
      · mapped_signals (edge_rack / card_slot), for machines with no registry
        points yet.
@@ -27,7 +27,7 @@ export type SensorTypeCode =
 
 export type ChannelStatus = "Normal" | "Advisory" | "Critical";
 
-/** Module positions in one 19" 3U chassis (72 HP of 6 HP modules). */
+/** Minimum module positions drawn for a chassis (72 HP of 6 HP modules). */
 export const CHASSIS_POSITIONS = 12;
 
 export interface CabinetChannel {
@@ -54,7 +54,7 @@ export interface CabinetChannel {
 }
 
 export interface CabinetModule {
-  /** Chassis position, 1…CHASSIS_POSITIONS. */
+  /** Chassis position, 1…rack.positions. */
   position: number;
   positionLabel: string;
   /** Card id (registry card code / card number on the wire). */
@@ -65,8 +65,10 @@ export interface CabinetModule {
   cardType: string | null;
   /** Free note, e.g. the documented field slot ("Slot 04"). */
   note: string | null;
-  /** Channels the card carries (at least the mapped ones). */
+  /** Channels this slot carries — always 1 (one channel per slot). */
   capacity: number;
+  /** Channels the parent card carries (at least the mapped ones). */
+  cardCapacity: number;
   /** Glyph for the module face. */
   sensorType: SensorTypeCode;
   channels: CabinetChannel[];
@@ -235,10 +237,8 @@ function parseCardSlot(cardSlot: string): { slot: number | null; family: string;
 /* ---------------------------------------------------------------- builder */
 
 /**
- * Rows → chassis. One chassis per source (chassisKey), one module per card in
- * position order, one channel per row. A card takes its preferred position
- * when it is free and inside the chassis, else the next free one; more cards
- * than positions continue on a further chassis of the same source.
+ * Rows → chassis. One chassis per source (chassisKey). Cards are taken in
+ * position order and each channel occupies its own slot.
  */
 export function buildCabinet(rows: CabinetRow[], source: MachineRackInfo["source"] = "mapped_signals"): MachineRackInfo[] {
   const bySource = new Map<string, CabinetRow[]>();
@@ -286,52 +286,49 @@ export function buildCabinet(rows: CabinetRow[], source: MachineRackInfo["source
         cardType: c.cardType,
         note: c.cardNote,
         capacity: Math.max(c.cardCapacity ?? 0, channels.length, highest),
+        cardCapacity: Math.max(c.cardCapacity ?? 0, channels.length, highest),
         sensorType: moduleType(c.cardType, channels[0]?.sensorType ?? "STS"),
         channels,
       };
     });
 
-    const parts = Math.max(1, Math.ceil(modules.length / CHASSIS_POSITIONS));
-    for (let part = 0; part < parts; part++) {
-      const chunk = modules.slice(part * CHASSIS_POSITIONS, (part + 1) * CHASSIS_POSITIONS);
-      // The documented field slot ("Slot 02") wins, so the chassis matches the
-      // Acquisition view's "Card n · Slot 0x"; else the card sequence. Two
-      // passes: every uncontested documented slot first, then cards that share
-      // a slot take the next free position after it (no knock-on shifts).
-      const wants = chunk.map((_, i) => {
-        const c0 = cards[part * CHASSIS_POSITIONS + i][0];
-        const documented = Number(c0.cardNote?.match(/slot\s*0*(\d+)/i)?.[1] ?? NaN);
-        const want = Number.isFinite(documented) ? documented : c0.cardPosition;
-        return want !== null && want >= 1 && want <= CHASSIS_POSITIONS ? want : null;
-      });
-      const used = new Set<number>();
-      const pos = wants.map((w) => (w !== null && !used.has(w) ? (used.add(w), w) : 0));
-      pos.forEach((p, i) => {
-        if (p) return;
-        const w = wants[i];
-        let next = 0;
-        if (w !== null) for (let q = w + 1; q <= CHASSIS_POSITIONS && !next; q++) if (!used.has(q)) next = q;
-        if (!next) for (next = 1; used.has(next); next++);
-        used.add(next);
-        pos[i] = next;
-      });
-      const placed = chunk.map((m, i) => ({ ...m, position: pos[i], positionLabel: String(pos[i]).padStart(2, "0") }));
-      placed.sort((a, b) => a.position - b.position);
-      const suffix = parts > 1 ? ` · ${part + 1}` : "";
-      racks.push({
-        rackId: `${head.chassisKey}${parts > 1 ? `-${part + 1}` : ""}`,
-        rackNumber: racks.length + 1,
-        code: head.chassisCode,
-        name: `${head.chassisName}${suffix}`,
-        tabLabel: `${head.chassisCode} · ${head.kindLabel}${suffix}`,
-        kindLabel: head.kindLabel,
-        protocol: head.protocol,
-        gateway: head.gateway,
-        positions: CHASSIS_POSITIONS,
-        modules: placed,
-        source,
-      });
+    // One channel = one slot, for every source. A card's channels take
+    // consecutive positions in channel order; its unmapped channels stay as
+    // spare positions so the card's full width is visible on the chassis.
+    const placed: CabinetModule[] = [];
+    let next = 1;
+    for (const m of modules) {
+      const byCh = new Map(m.channels.map((ch) => [ch.channel, ch]));
+      const ids = Array.from({ length: m.capacity }, (_, i) => String(i + 1));
+      for (const ch of m.channels) if (!ids.includes(ch.channel)) ids.push(ch.channel);
+      for (const id of ids) {
+        const ch = byCh.get(id);
+        if (ch)
+          placed.push({
+            ...m,
+            position: next,
+            positionLabel: String(next).padStart(2, "0"),
+            capacity: 1,
+            cardCapacity: m.capacity,
+            sensorType: ch.sensorType,
+            channels: [ch],
+          });
+        next++;
+      }
     }
+    racks.push({
+      rackId: head.chassisKey,
+      rackNumber: racks.length + 1,
+      code: head.chassisCode,
+      name: head.chassisName,
+      tabLabel: `${head.chassisCode} · ${head.kindLabel}`,
+      kindLabel: head.kindLabel,
+      protocol: head.protocol,
+      gateway: head.gateway,
+      positions: Math.max(CHASSIS_POSITIONS, next - 1),
+      modules: placed,
+      source,
+    });
   }
   return racks;
 }
@@ -400,17 +397,19 @@ export function hardwareCountLine(
   sources: number,
   cards: number,
   channels: number,
-  /** The machine's DB catalog: total sensors and how many are calculated (no wiring). */
-  catalog?: { total: number; calculated: number },
+  /** The machine's DB catalog: total sensors, how many are calculated and how many are manual records (no wiring). */
+  catalog?: { total: number; calculated: number; manual?: number },
 ): string {
   const n = (v: number, one: string, many: string) => `${v} ${v === 1 ? one : many}`;
   const wiring = `${n(sources, "source", "sources")} · ${n(cards, "card", "cards")}`;
   if (!catalog || catalog.total === 0) return `${wiring} · ${n(channels, "channel", "channels")}`;
   // Same total as every other page (mapped_signals), split by where each sensor comes from.
-  const unwired = Math.max(0, catalog.total - channels - catalog.calculated);
+  const manual = catalog.manual ?? 0;
+  const unwired = Math.max(0, catalog.total - channels - catalog.calculated - manual);
   return [
     `${n(catalog.total, "sensor", "sensors")}: ${channels} wired (${wiring})`,
     catalog.calculated ? `${catalog.calculated} calculated on the gateway` : null,
+    manual ? `${n(manual, "manual record", "manual records")}` : null,
     unwired ? `${unwired} not wired yet` : null,
   ]
     .filter(Boolean)

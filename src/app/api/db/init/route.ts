@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { seedDatabase } from "@/server/db/seed";
 import { isDatabaseHealthy } from "@/server/db";
+import { rebuildPyroLine, resetSeedCheckCache } from "@/server/services/industrial-service";
 import { ensureEdgeRegistry, seedEdgeRegistry } from "@/server/services/edge-service";
 import { getMqttRuntime } from "@/server/mqtt/runtime";
 
@@ -9,9 +10,12 @@ export const runtime = "nodejs";
 export async function POST() {
   try {
     const result = await seedDatabase();
+    resetSeedCheckCache();
     // The edge registry is derived from the plant data, so a reset rebuilds it too.
     await ensureEdgeRegistry();
     const edge = await seedEdgeRegistry();
+    // The registry reset clears every gateway; put the pyro line's back.
+    await rebuildPyroLine();
     await getMqttRuntime().reload();
     const health = await isDatabaseHealthy();
     return NextResponse.json({

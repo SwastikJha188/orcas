@@ -19,13 +19,15 @@ export function useCoveredInset(stage: React.RefObject<HTMLElement | null>, pane
     if (!el || !active) return;
     const measure = () => {
       const s = el.getBoundingClientRect();
+      // Rects are zoomed px under the TV `body { zoom }`; the inset is CSS px.
+      const zoom = el.offsetWidth > 0 ? s.width / el.offsetWidth : 1;
       const next: TwinInset = { top: 0, right: 0, bottom: 0, left: 0 };
       for (const [side, ref] of panelsRef.current) {
         const p = ref.current?.getBoundingClientRect();
         if (!p || p.width === 0 || p.height === 0) continue;
         if (p.right <= s.left || p.left >= s.right || p.bottom <= s.top || p.top >= s.bottom) continue;
         const reach = side === "top" ? p.bottom - s.top : side === "left" ? p.right - s.left : side === "bottom" ? s.bottom - p.top : s.right - p.left;
-        next[side] = Math.max(next[side], Math.round(reach));
+        next[side] = Math.max(next[side], Math.round(reach / zoom));
       }
       setInset((cur) =>
         cur.top === next.top && cur.right === next.right && cur.bottom === next.bottom && cur.left === next.left ? cur : next,

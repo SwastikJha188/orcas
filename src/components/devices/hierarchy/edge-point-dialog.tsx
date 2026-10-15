@@ -20,6 +20,8 @@ const DATA_TYPES: Array<{ value: PointDataType; label: string }> = [
   { value: "int", label: "Integer" },
   { value: "bool", label: "Boolean" },
   { value: "string", label: "Text" },
+  { value: "video", label: "Video stream" },
+  { value: "status+map", label: "Status + map" },
 ];
 
 export interface PointDialogProps {
@@ -183,14 +185,14 @@ export function PointDialog({ open, ix, sourceId, point, prefill, onClose, onSav
 
       <FieldSection title="Limits">
         <FieldGrid>
-          <Field label={`Alert limit${unitLabel}`} error={errors.alertLimit}>
+          <Field label={`Warning limit${unitLabel}`} error={errors.alertLimit}>
             {(id, d) => <NumberInput id={id} describedBy={d} value={alertLimit} onChange={setAlertLimit} step="any" disabled={busy} />}
           </Field>
-          <Field label={`Danger limit${unitLabel}`} error={errors.dangerLimit}>
+          <Field label={`Alarm limit${unitLabel}`} error={errors.dangerLimit}>
             {(id, d) => <NumberInput id={id} describedBy={d} value={dangerLimit} onChange={setDangerLimit} step="any" disabled={busy} />}
           </Field>
         </FieldGrid>
-        {inverted && <FormNote tone="warn">Danger is below alert. That is right only for a low limit; high limits need danger at or above alert.</FormNote>}
+        {inverted && <FormNote tone="warn">Alarm is below warning. That is right only for a low limit; high limits need the alarm at or above the warning.</FormNote>}
       </FieldSection>
 
       <FieldSection title="Asset model">

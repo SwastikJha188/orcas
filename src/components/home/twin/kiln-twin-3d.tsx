@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useContext, useLayoutEffect, useMemo, useRef } from "react";
+import React, { useContext, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { Beam, Block, Column, PartCtx, Pipe, Platform, Stair, TwinPart, lathe, type TwinPaint } from "./twin-part";
+import { finishKitGroup, kitBuilder, type KitMats } from "./machine-kit-3d";
 
 /* ==========================================================================
    KLN-01 rotary kiln, built in real metres from D4-OSW-PE-KLN Rev. 02:
@@ -496,6 +497,183 @@ function Process({ sys }: { sys: string | null }) {
   );
 }
 
+/* ---------------------------------------------------------------- detail layer */
+
+/**
+ * Machine-kit (TSE) finishing detail on the built kiln, in the kiln frame, merged per
+ * subsystem and material: shell weld seams, tyre chairs, shell-cooling fans, bolted
+ * bearing caps, pier handrails and ladders, gearbox inset panels / bearing caps /
+ * sight window, motor terminal box, feet and grille, coupling bolts, cable tray with
+ * junction boxes, hood and inlet inspection doors, air cannons, burner bands and
+ * trolley wheels, and a field transmitter behind every scheduled sensor point.
+ */
+function buildKilnDetail(mats: KitMats, edgeMat: THREE.LineBasicMaterial, owners: Record<KilnRole, string | null>): THREE.Group {
+  const root = new THREE.Group();
+  const k = kitBuilder(mats);
+  const role = (r: KilnRole | null) => {
+    const grp = new THREE.Group();
+    grp.userData.role = r;
+    root.add(grp);
+    k.into(grp);
+    return grp;
+  };
+
+  /* shell: weld seams, shell-cooling fans */
+  role("shl");
+  for (let x = 3; x < L - 1; x += 6) {
+    if (STATIONS.some((s) => Math.abs(s - x) < 1.4) || Math.abs(GEAR_X - x) < 1) continue;
+    k.tube([x - 0.05, axisY(x - 0.05), 0], [x + 0.05, axisY(x + 0.05), 0], R + 0.035, mats.steel, 64);
+  }
+  for (const fx of [44, 50, 56, 63]) {
+    const fy = axisY(fx);
+    const fz = -(R + 3.1);
+    k.box(1.8, 0.35, 1.4, fx, 0, fz, mats.concrete);
+    for (const dx of [-0.65, 0.65]) k.box(0.16, fy - 1.2, 0.16, fx + dx, 0.35, fz, mats.steel);
+    k.box(1.6, 0.14, 0.4, fx, fy - 1.3, fz, mats.steel);
+    k.disc(1.15, 0.7, fx, fy, fz, "z", mats.model, 32); // fan ring
+    k.disc(0.86, 0.04, fx, fy, fz + 0.37, "z", mats.recess, 28); // grille toward the shell
+    k.disc(0.3, 1.0, fx, fy, fz - 0.1, "z", mats.machined, 14); // hub motor
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      k.bolt(fx + Math.cos(a) * 1.02, fy + Math.sin(a) * 1.02, fz + 0.37, "z", 0.045);
+    }
+  }
+
+  /* supports: tyre chairs, bearing cap bolts, pier handrails and ladders, anchor bolts */
+  role("sup");
+  STATIONS.forEach((xs) => {
+    const ay = axisY(xs);
+    for (let i = 0; i < 36; i++) {
+      const a = (i / 36) * Math.PI * 2;
+      const c = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.09, 0.34), mats.machined);
+      c.position.set(xs, ay + Math.cos(a) * (R + 0.05), Math.sin(a) * (R + 0.05));
+      c.rotation.x = a;
+      k.add(c);
+    }
+    const ry = rollerY(xs);
+    const top = ry - ROLLER_R - 0.35;
+    for (const side of [-1, 1]) {
+      const z = side * ROLLER_Z;
+      for (const dx of [-BEARING_DX, BEARING_DX]) {
+        for (const bx of [-0.26, 0.26]) for (const bz of [-0.38, 0.38]) k.bolt(xs + dx + bx, ry + 0.64, z + bz, "y", 0.045);
+        k.box(0.5, 0.06, 0.9, xs + dx, top + 0.02, z, mats.machined); // sole-plate shim pack
+      }
+      k.box(3.6, 0.04, 0.12, xs, top - 0.02, z + side * 0.66, mats.steel); // grease line
+    }
+    for (const bx of [-2.4, 2.4]) for (const bz of [-4.1, 4.1]) k.bolt(xs + bx, 0.72, bz, "y", 0.07);
+    k.railRect(xs - 2.15, xs + 2.15, -3.5, 3.5, top - 0.3);
+    k.ladder(xs + 1.4, 3.54, 0.7, top - 0.3, 1);
+  });
+
+  /* drive: gearbox panels, caps, window, split-flange bolts; motor box, feet, grille; coupling bolts; cable tray */
+  role("drv");
+  const [gx0, gy0, gz0] = GBX.min;
+  const [gx1, gy1, gz1] = GBX.max;
+  k.panel("+z", gx0, gx1, gy0, 3.75, gz0, gz1, 0.22);
+  k.panel("+z", gx0 + 0.05, gx1 - 0.05, 3.9, gy1, gz0, gz1, 0.2);
+  k.panel("-x", gx0, gx1, gy0, 3.75, gz0, gz1, 0.2);
+  for (let x = gx0 + 0.15; x < gx1; x += 0.32) k.bolt(x, 3.83, gz1 + 0.1, "z", 0.045);
+  for (const [cx, cy] of [[gx0 + 0.55, PINION_Y], [gx1 - 0.55, MOTOR.y]] as Array<[number, number]>) {
+    k.disc(0.38, 0.12, cx, cy, gz1 + 0.06, "z", mats.steel, 28); // bearing cap
+    k.disc(0.16, 0.18, cx, cy, gz1 + 0.12, "z", mats.machined, 16);
+  }
+  k.box(0.8, 0.28, 0.04, (gx0 + gx1) / 2, 4.35, gz1 + 0.12, mats.recess); // sight window
+  const mz = MOTOR.z;
+  for (const fx of [MOTOR.x0 + 0.35, MOTOR.x1 - 0.35]) for (const fz of [mz - 0.8, mz + 0.8]) k.bolt(fx, MOTOR.y - MOTOR.r + 0.24, fz, "y", 0.06);
+  k.box(0.46, 0.24, 0.04, 24.5, MOTOR.y + MOTOR.r + 0.12, mz + 0.44, mats.recess); // terminal box window
+  k.disc(MOTOR.r - 0.22, 0.04, MOTOR.x1 + 0.62, MOTOR.y, mz, "x", mats.recess, 32); // fan grille
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    k.bolt(gx1 + 0.55, MOTOR.y + Math.cos(a) * 0.28, mz + Math.sin(a) * 0.28, "x", 0.04); // coupling bolts
+  }
+  // Cable tray from the drive to the thrust HPU, on stands, with junction boxes.
+  for (let x = 27; x <= HPU.x - 1; x += 3) {
+    k.box(0.1, 0.55, 0.1, x, 0, 6.5, mats.steel);
+    k.box(0.1, 0.55, 0.1, x, 0, 7.1, mats.steel);
+  }
+  k.beam([26.5, 0.6, 6.8], [HPU.x - 0.6, 0.6, 6.8], 0.7, 0.1, mats.machined);
+  for (const jx of [27.5, 41]) {
+    k.box(0.5, 0.6, 0.25, jx, 0.7, 6.8, mats.model);
+    k.panel("+z", jx - 0.25, jx + 0.25, 0.7, 1.3, 6.675, 6.925, 0.08);
+  }
+
+  /* process: inlet and hood doors, air cannons, burner bands, trolley wheels */
+  role("prc");
+  const c = CHAMBER;
+  for (const dx of [c.x0 + 1.4, c.x1 - 1.2]) {
+    k.box(1.1, 1.3, 0.06, dx, 3.4, c.z + 0.17, mats.steel);
+    for (const bx of [-0.45, 0.45]) for (const by of [0.12, 1.18]) k.bolt(dx + bx, 3.4 + by, c.z + 0.21, "z", 0.045);
+  }
+  const h = HOOD;
+  for (const dx of [h.x0 + 1.2, h.x1 - 1.2]) {
+    k.box(1.2, 1.4, 0.06, dx, 3.2, h.z + 0.17, mats.steel);
+    for (const bx of [-0.5, 0.5]) for (const by of [0.12, 1.28]) k.bolt(dx + bx, 3.2 + by, h.z + 0.21, "z", 0.045);
+    k.box(0.5, 0.5, 0.06, dx, 6.2, h.z + 0.17, mats.recess); // sight glass
+  }
+  for (const dz of [-2.2, 0, 2.2]) {
+    k.disc(0.36, 1.1, h.x0 + 1.6, h.y1 + 0.5, dz, "x", mats.steel, 16); // air cannon
+    k.tube([h.x0 + 1.05, h.y1 + 0.5, dz], [h.x0 + 0.7, h.y1, dz], 0.06, mats.machined, 8);
+  }
+  for (let x = 79.5; x < 87.4; x += 0.7) k.disc(0.33, 0.05, x, axisY(L), 0, "x", mats.steel, 24); // burner jacket bands
+  const deck = axisY(L) - 0.85;
+  for (const wx of [84.7, 86.3]) for (const wz of [-0.6, 0.6]) k.disc(0.16, 0.12, wx, deck + 0.28, wz, "z", mats.machined, 14); // trolley wheels
+
+  /* field transmitters behind every sensor pad (structure, no subsystem) */
+  role(null);
+  for (const [x, y, z] of Object.values(KILN_ANCHORS)) {
+    const n = Math.abs(z) > 1 ? new THREE.Vector3(0, 0, Math.sign(z)) : new THREE.Vector3(0, 1, 0);
+    const head = new THREE.Vector3(x, y, z).addScaledVector(n, -0.12);
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), n);
+    const hb = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.2, 0.24), mats.model);
+    hb.position.copy(head);
+    hb.quaternion.copy(q);
+    k.add(hb);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 0.3, 10), mats.machined);
+    neck.position.copy(head).addScaledVector(n, -0.24);
+    neck.quaternion.copy(q);
+    k.add(neck);
+  }
+
+  for (const grp of root.children as THREE.Group[]) {
+    const r = grp.userData.role as KilnRole | null;
+    for (const m of finishKitGroup(grp, edgeMat, [mats.rail, mats.material, mats.bolt])) m.userData.system = r ? owners[r] : null;
+  }
+  return root;
+}
+
+function KilnDetail({ owners }: { owners: Record<KilnRole, string | null> }) {
+  const ctx = useContext(PartCtx);
+  const edgeMat = useMemo(() => new THREE.LineBasicMaterial({ transparent: true, opacity: 0.85 }), []);
+  useEffect(() => {
+    if (ctx) edgeMat.color.set(ctx.edgeColor);
+  }, [ctx, edgeMat]);
+  const materials = ctx?.materials;
+  const group = useMemo(() => {
+    if (!materials) return null;
+    const mats: KitMats = {
+      model: materials.housing,
+      steel: materials.steelDark,
+      shell: materials.shell,
+      machined: materials.machined,
+      recess: materials.deep,
+      concrete: materials.concrete,
+      rail: materials.steel,
+      material: materials.material,
+      bolt: materials.deep,
+      plate: materials.grating,
+    };
+    return buildKilnDetail(mats, edgeMat, owners);
+  }, [materials, edgeMat, owners]);
+  useEffect(
+    () => () => {
+      group?.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
+    },
+    [group],
+  );
+  useEffect(() => () => edgeMat.dispose(), [edgeMat]);
+  return group ? <primitive object={group} /> : null;
+}
+
 /** Subsystem id that owns each kiln role, matched on the DB system ids / names. */
 export function kilnOwners(systems: Array<{ id: string; name: string }>): Record<KilnRole, string | null> {
   const find = (re: RegExp) => systems.find((s) => re.test(`${s.id} ${s.name}`))?.id ?? null;
@@ -517,6 +695,7 @@ export function KilnModel({ owners }: { owners: Record<KilnRole, string | null> 
       ))}
       <Drive sys={owners.drv} />
       <Process sys={owners.prc} />
+      <KilnDetail owners={owners} />
     </group>
   );
 }

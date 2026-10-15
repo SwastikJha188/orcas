@@ -42,8 +42,8 @@ export const FIELD_META: Record<keyof FormatFields, { label: string; hint: strin
   cardType: { label: "Card type", hint: "Module model or measurement type" },
   quality: { label: "Quality", hint: "true / good / OPC 192+ = valid" },
   timestamp: { label: "Timestamp", hint: "Source time of the sample" },
-  alert: { label: "Alert limit", hint: "First threshold" },
-  danger: { label: "Danger limit", hint: "Trip threshold" },
+  alert: { label: "Warning limit", hint: "First threshold" },
+  danger: { label: "Alarm limit", hint: "Second threshold" },
 };
 
 export const TIMESTAMP_OPTIONS: { value: TimestampFormat; label: string }[] = [

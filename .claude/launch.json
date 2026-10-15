@@ -4,9 +4,46 @@
     {
       "name": "ultron-dev",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["next", "dev", "--turbopack", "-p", "3100"],
-      "env": { "NEXT_DIST_DIR": ".next-preview" },
+      "runtimeArgs": [
+        "next",
+        "dev",
+        "--turbopack",
+        "-p",
+        "3100"
+      ],
+      "env": {
+        "NEXT_DIST_DIR": ".next-preview"
+      },
       "port": 3100
+    },
+    {
+      "name": "ultron-responsive",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "next",
+        "dev",
+        "--turbopack"
+      ],
+      "env": {
+        "NEXT_DIST_DIR": ".next-responsive"
+      },
+      "port": 3200,
+      "autoPort": true
+    },
+    {
+      "name": "ultron-health",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "next",
+        "dev",
+        "--turbopack",
+        "-p",
+        "3110"
+      ],
+      "env": {
+        "NEXT_DIST_DIR": ".next-health"
+      },
+      "port": 3110
     }
   ]
 }

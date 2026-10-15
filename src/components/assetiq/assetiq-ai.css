@@ -44,14 +44,14 @@
 
 .aiq-model-name {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: var(--fs-lg);
   font-weight: 500;
   color: var(--dx-ink);
 }
 
 .aiq-model-spec {
   margin: -4px 0 0;
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   color: var(--text-muted);
 }
 
@@ -70,7 +70,7 @@
 }
 
 .aiq-model-num {
-  font-size: 1.6rem;
+  font-size: var(--fs-6xl);
   font-weight: 500;
   line-height: 1.1;
   letter-spacing: -0.01em;
@@ -78,7 +78,7 @@
 }
 
 .aiq-model-unit {
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -95,13 +95,13 @@
 }
 
 .aiq-model-meta dt {
-  font-size: 0.72rem;
+  font-size: var(--fs-sm);
   color: var(--text-muted);
 }
 
 .aiq-model-meta dd {
   margin: 2px 0 0;
-  font-size: 0.85rem;
+  font-size: var(--fs-base);
   color: var(--dx-ink);
 }
 
@@ -149,7 +149,7 @@
   gap: 10px;
   padding: 7px 0;
   border-top: 1px solid var(--separator);
-  font-size: 0.82rem;
+  font-size: var(--fs-md);
 }
 
 .aiq-ticker-row:first-child {
@@ -159,7 +159,7 @@
 .aiq-ticker-dot {
   width: 6px;
   height: 6px;
-  border-radius: 9999px;
+  border-radius: var(--corner-pill);
   background: var(--tone, var(--text-muted));
   align-self: center;
 }
@@ -184,7 +184,7 @@
 .aiq-ticker-empty {
   padding: 12px 0;
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: var(--fs-md);
 }
 
 /* accuracy */
@@ -216,7 +216,7 @@
 
 .aiq-hist-tick {
   fill: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--fs-2xs);
 }
 
 .aiq-learn {
@@ -235,13 +235,7 @@
 
 .aiq-learn-pct {
   color: var(--dx-ink);
-  font-size: 0.85rem;
-}
-
-.aiq-section-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  font-size: var(--fs-base);
 }
 
 @media (max-width: 1280px) {
@@ -261,5 +255,132 @@
   }
   .aiq-ticker-model {
     display: none;
+  }
+}
+
+/* ==========================================================================
+   Hub frame, KPI strips, cross-links (hub redesign)
+   ========================================================================== */
+
+/* Five-tile KPI strip: one row on wide screens. */
+.aiq-kpis:has(> :last-child:nth-child(5)) {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.aiq-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 0 4px;
+}
+
+.aiq-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+  border-radius: var(--corner-sm);
+  background: var(--row-hover-bg);
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  vertical-align: 1px;
+}
+
+.aiq-links {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 4px 0;
+}
+
+.aiq-links .ast-caption {
+  margin-right: 4px;
+}
+
+.aiq-table-note {
+  margin: 0;
+  padding: 0 16px 6px;
+}
+
+/* legend */
+.aiq-legend {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.aiq-legend-bar {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--tone, var(--text-muted));
+  margin-left: 6px;
+}
+
+.aiq-legend-bar {
+  opacity: 0.55;
+}
+
+.aiq-legend-tick {
+  display: inline-block;
+  width: 14px;
+  height: 2px;
+  margin-left: 10px;
+  background: var(--signal-blue);
+  border-radius: 1px;
+}
+
+/* calibration chart */
+.aiq-cal {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  height: auto;
+}
+
+.aiq-cal-grid {
+  stroke: var(--separator);
+  stroke-width: 1;
+}
+
+.aiq-cal-bar {
+  fill: var(--text-muted);
+  opacity: 0.55;
+}
+
+.aiq-cal-stated {
+  stroke: var(--signal-blue);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.aiq-cal-tick {
+  fill: var(--text-muted);
+  font-size: var(--fs-2xs);
+}
+
+.aiq-cal-label {
+  fill: var(--dx-ink);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+}
+
+@media (max-width: 1280px) {
+  .aiq-kpis:has(> :last-child:nth-child(5)) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .aiq-kpis:has(> :last-child:nth-child(5)) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

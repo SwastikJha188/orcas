@@ -1,0 +1,588 @@
+/* Responsive layer — assets-workspace. See foundation.css for tiers and the :root prefix rule.
+   Owns: Assets directory (hierarchy tree + contents), the machine workspace chrome
+   (header + tab row + padding), the Simulation tab and the .mx-canvas drawing frame.
+   Other machine sub-pages are styled in their own responsive files. */
+
+/* ==========================================================================
+   1. ASSETS DIRECTORY · hierarchy tree + contents
+   ========================================================================== */
+
+/* The drawer toggle and scrim only exist below laptop width. */
+:root .hx-tree-toggle,
+:root .hx-tree-scrim {
+  display: none;
+}
+
+/* Desktop: a little more room for deep plant paths. */
+@media (min-width: 1440px) {
+  :root .hx-module > .assets-industrial-sidebar {
+    width: 320px;
+  }
+}
+
+/* Wide: tree 340px. */
+@media (min-width: 1920px) {
+  :root .hx-module > .assets-industrial-sidebar {
+    width: 340px;
+  }
+  :root .hx-contents {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    align-content: start;
+    align-items: start;
+    gap: 20px;
+    padding: 28px 40px 48px;
+  }
+  :root .hx-contents > * {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Tablet + phone: the tree becomes a drawer behind a full-width toggle bar. */
+@media (max-width: 1023px) {
+  :root .hx-module {
+    position: relative;
+    flex-direction: column;
+  }
+
+  :root .hx-tree-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: none;
+    width: 100%;
+    min-height: 44px;
+    padding: 0 16px;
+    border: none;
+    border-bottom: 1px solid var(--separator);
+    background: var(--rail-bg);
+    color: var(--page-fg);
+    font: inherit;
+    font-size: var(--fs-md);
+    text-align: left;
+    cursor: pointer;
+  }
+  :root .hx-tree-toggle:focus-visible {
+    outline: 2px solid var(--signal-blue);
+    outline-offset: -2px;
+  }
+  :root .hx-tree-toggle-label {
+    flex: none;
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  :root .hx-tree-toggle-node {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--dx-ink);
+    font-weight: 500;
+  }
+  :root .hx-tree-toggle > svg {
+    flex: none;
+    color: var(--text-muted);
+    transition: transform 0.15s ease;
+  }
+  :root .hx-tree-toggle[aria-expanded="true"] > svg {
+    transform: rotate(180deg);
+  }
+
+  /* Closed: no tree. Open: a drawer over the contents, under the toggle bar. */
+  :root .hx-module > .assets-industrial-sidebar {
+    display: none;
+  }
+  :root .hx-module[data-tree-open] > .assets-industrial-sidebar {
+    display: flex;
+    position: absolute;
+    top: 44px;
+    left: 0;
+    bottom: 0;
+    z-index: 30;
+    width: min(340px, 86%);
+    height: auto;
+    max-height: none;
+  }
+  :root .hx-module[data-tree-open] > .hx-tree-scrim {
+    display: block;
+    position: absolute;
+    inset: 44px 0 0 0;
+    z-index: 29;
+    background: color-mix(in srgb, var(--workspace-bg) 62%, transparent);
+  }
+
+  :root .hx-contents {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+    padding: 18px 20px 32px;
+    gap: 16px;
+  }
+
+  /* Register: drop location (the tree and map carry it), criticality and the
+     hover-only row links (row tap opens). */
+  :root .hx-register-table .ui-table :is(th, td):nth-child(2),
+  :root .hx-register-table .ui-table :is(th, td):nth-child(5),
+  :root .hx-register-table .ui-table :is(th, td):nth-child(7) {
+    display: none;
+  }
+}
+
+/* Phone: one column, tree drawer full width, compact header and KPIs. */
+@media (max-width: 599px) {
+  :root .hx-module[data-tree-open] > .assets-industrial-sidebar {
+    width: 100%;
+    border-right: none;
+  }
+
+  :root .hx-contents {
+    padding: 14px 14px 24px;
+    gap: 14px;
+  }
+
+  /* Header: stacked, crumbs keep only the parent level as a way up. */
+  :root .hx-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  :root .hx-head .ast-crumbs li:not(:nth-last-child(-n + 2)) {
+    display: none;
+  }
+  :root .hx-head .ast-crumbs li:nth-last-child(2)::before {
+    content: none;
+  }
+  :root .hx-head .ast-title-row {
+    gap: 8px;
+  }
+  :root .hx-head .ast-title {
+    font-size: var(--fs-2xl);
+  }
+  :root .hx-head .pg-actions {
+    display: flex;
+  }
+  :root .hx-head .pg-actions .btn-pill {
+    flex: 1;
+    justify-content: center;
+  }
+
+  /* KPI strip 2×2, tighter tiles. */
+  :root .hx-contents .ast-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  :root .hx-contents .ast-kpi {
+    min-height: 0;
+    gap: 8px;
+    padding: 12px 14px;
+  }
+  :root .hx-contents .ast-kpi-value {
+    font-size: var(--fs-3xl);
+  }
+  :root .hx-contents .ast-kpi-value .ast-unit {
+    font-size: var(--fs-sm);
+  }
+  :root .hx-contents .ast-kpi-foot .ast-caption {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+
+  /* Register: machine · status · health. */
+  :root .hx-register.ast-card {
+    padding: 12px 4px 6px;
+  }
+  :root .hx-register .ast-card-head {
+    padding: 0 10px;
+  }
+  :root .hx-register .ast-card-title {
+    flex-wrap: wrap;
+    gap: 2px 10px;
+  }
+  :root .hx-register-tools {
+    padding: 0 10px 10px;
+    gap: 8px;
+  }
+  :root .hx-register-tools > .nav-pill-group {
+    flex-wrap: nowrap;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  :root .hx-register-tools .nav-pill {
+    flex: none;
+  }
+  :root .hx-register-table .ui-table {
+    table-layout: fixed;
+  }
+  :root .hx-register-table .ui-table :is(th, td):nth-child(3) {
+    width: 104px;
+  }
+  :root .hx-register-table .ui-table :is(th, td):nth-child(4) {
+    width: 64px;
+  }
+  :root .hx-register-table .ast-row-btn,
+  :root .hx-register-table .ast-cell-stack {
+    min-width: 0;
+  }
+  :root .hx-register-table .ast-cell-title {
+    white-space: normal;
+    line-height: 1.3;
+  }
+  :root .hx-register-table .ast-cell-sub {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  :root .hx-register-table.ui-table-container .ui-table tbody td:first-child {
+    white-space: normal;
+  }
+  :root .hx-register-tools .ast-search {
+    width: 100%;
+  }
+  :root .hx-register-table .ui-table :is(th, td):nth-child(2),
+  :root .hx-register-table .ui-table :is(th, td):nth-child(5) {
+    display: none;
+  }
+  :root .hx-register-table.ui-table-container .ui-table :is(th, td) {
+    padding-inline: 10px;
+  }
+}
+
+/* ==========================================================================
+   2. MACHINE WORKSPACE CHROME · padding, header, tab row
+   ========================================================================== */
+
+@media (min-width: 1920px) {
+  :root .assets-machine-workspace {
+    padding: 28px 40px 48px;
+  }
+}
+
+@media (max-width: 1023px) {
+  :root .assets-machine-workspace {
+    padding: 18px 20px 32px;
+    gap: 16px;
+  }
+
+  /* Tab row: one line that scrolls sideways, faded at the trailing edge. */
+  :root .assets-machine-workspace > .machine-tabs-bar {
+    max-width: none;
+    margin-inline: -20px;
+    padding-inline: 20px 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 32px), transparent);
+    mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 32px), transparent);
+  }
+  :root .machine-tabs-bar > .nav-pill-group {
+    flex-wrap: nowrap;
+    padding-inline-end: 32px;
+  }
+  :root .machine-tabs-bar .nav-pill {
+    flex: none;
+    white-space: nowrap;
+  }
+  /* Views of a grouped tab drop to their own line under the tabs. */
+  :root .machine-tabs-bar {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  :root .machine-tabs-bar > .nav-pill-group {
+    flex: 1 0 100%;
+    min-inline-size: 0;
+  }
+  :root .machine-tabs-bar > .machine-views-nav {
+    margin-inline-start: 0;
+  }
+}
+
+@media (max-width: 599px) {
+  :root .assets-machine-workspace {
+    padding: 12px 14px 24px;
+    gap: 12px;
+  }
+  :root .assets-machine-workspace > .machine-tabs-bar {
+    margin-inline: -14px;
+    padding-inline: 14px 0;
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 28px), transparent);
+  }
+
+  /* Header: back icon · last location level over the title. */
+  :root .assets-machine-workspace > .ast-head {
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+  }
+  :root .assets-machine-workspace > .ast-head > .btn-pill {
+    order: -1;
+    flex: none;
+    inline-size: 36px;
+    block-size: 36px;
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+  }
+  /* Visually hidden, still the button's accessible name. */
+  :root .assets-machine-workspace > .ast-head > .btn-pill > span:not(.btn-pill-icon) {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  :root .assets-machine-workspace > .ast-head .ast-head-main {
+    flex: 1;
+    gap: 2px;
+  }
+  :root .assets-machine-workspace > .ast-head .ast-crumbs {
+    flex-wrap: nowrap;
+    font-size: var(--fs-xs);
+  }
+  :root .assets-machine-workspace > .ast-head .ast-crumbs li:not(:last-child) {
+    display: none;
+  }
+  :root .assets-machine-workspace > .ast-head .ast-crumbs li:last-child {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  :root .assets-machine-workspace > .ast-head .ast-crumbs li:last-child::before {
+    content: none;
+  }
+  :root .assets-machine-workspace > .ast-head .ast-title-row {
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+  :root .assets-machine-workspace > .ast-head .ast-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--fs-2xl);
+  }
+  :root .assets-machine-workspace > .ast-head .ast-id {
+    flex: none;
+  }
+}
+
+/* ==========================================================================
+   3. MACHINE DRAWINGS · .mx-canvas frame scales with its column
+   ========================================================================== */
+
+:root .mx-canvas {
+  min-width: 0;
+  max-width: 100%;
+}
+:root .mx-canvas:not(.inf-scroll) > svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ==========================================================================
+   4. SIMULATION TAB
+   ========================================================================== */
+
+/* Wide: chart beside findings, scenario register beside the event log. */
+@media (min-width: 1920px) {
+  :root .sim-page {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 4fr);
+    grid-template-areas:
+      "head head"
+      "mode mode"
+      "kpis kpis"
+      "chart find"
+      "reg log"
+      "next next";
+    align-items: start;
+    gap: 16px 20px;
+  }
+  :root .sim-page > .sim-head { grid-area: head; }
+  :root .sim-page > .sim-mode { grid-area: mode; }
+  :root .sim-page > .sim-kpis { grid-area: kpis; }
+  :root .sim-page > section[aria-label="Plant response"] { grid-area: chart; }
+  :root .sim-page > section[aria-label="Findings raised"] { grid-area: find; }
+  :root .sim-page > section[aria-label="Validation scenarios"] { grid-area: reg; }
+  :root .sim-page > section[aria-label="Event log"] { grid-area: log; }
+  :root .sim-page > .ast-empty { grid-column: 1 / -1; }
+
+  /* Findings in the narrower column: confidence, scenario and the trailing links go. */
+  :root .sim-page > section[aria-label="Findings raised"] .ui-table :is(th, td):nth-child(4),
+  :root .sim-page > section[aria-label="Findings raised"] .ui-table :is(th, td):nth-child(5),
+  :root .sim-page > section[aria-label="Findings raised"] .ui-table :is(th, td):nth-child(7) {
+    display: none;
+  }
+}
+
+/* Tablet + phone: low-priority columns go first. */
+@media (max-width: 1023px) {
+  /* Scenarios: drop # and the D5 detection time. */
+  :root .sim-register .ui-table :is(th, td):nth-child(1),
+  :root .sim-register .ui-table :is(th, td):nth-child(4) {
+    display: none;
+  }
+  /* Findings: drop confidence, scenario fit and the cross-links. */
+  :root .sim-page section[aria-label="Findings raised"] .ui-table :is(th, td):nth-child(4),
+  :root .sim-page section[aria-label="Findings raised"] .ui-table :is(th, td):nth-child(5),
+  :root .sim-page section[aria-label="Findings raised"] .ui-table :is(th, td):nth-child(7) {
+    display: none;
+  }
+  :root .sim-wrap .ast-cell-sub {
+    max-width: 320px;
+  }
+}
+
+@media (max-width: 599px) {
+  :root .sim-page {
+    gap: 12px;
+  }
+
+  /* Header: title row, then playback controls on their own full-width row. */
+  :root .sim-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  :root .sim-head .ast-title {
+    font-size: var(--fs-2xl);
+  }
+  :root .sim-head .sim-actions {
+    gap: 6px;
+  }
+  :root .sim-head .sim-actions > .btn-pill {
+    padding: 6px 14px;
+  }
+  :root .sim-head .sim-actions > .nav-pill-group {
+    order: 5;
+    flex-basis: 100%;
+  }
+
+  /* Mode row: Autopilot/Manual, then the hold profiles scroll on their own line. */
+  :root .sim-mode {
+    gap: 6px 8px;
+  }
+  :root .sim-mode > .sim-sep {
+    display: none;
+  }
+  :root .sim-mode > .nav-pill-group:not(:first-child) {
+    flex-basis: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+  :root .sim-mode .nav-pill,
+  :root .sim-head .nav-pill,
+  :root .sim-card-head-row .nav-pill {
+    flex: none;
+  }
+
+  /* KPI strip 2×2. */
+  :root .sim-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  :root .sim-kpis .ast-kpi {
+    min-height: 0;
+    padding: 12px 14px;
+    gap: 6px;
+  }
+  :root .sim-kpis .ast-kpi-value {
+    font-size: var(--fs-3xl);
+  }
+  :root .sim-kpis .ast-kpi-foot {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+
+  /* Cards: tighter padding; chart keeps its 230px drawing height. */
+  :root .sim-page > section.ast-card:not(.sim-table-card) {
+    padding: 14px;
+  }
+  :root .sim-card-head-row {
+    align-items: flex-start;
+  }
+  :root .sim-card-head-row > .sim-actions {
+    width: 100%;
+  }
+  :root .sim-card-head-row > .sim-actions > .nav-pill-group {
+    flex-basis: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+  :root .sim-table-card .sim-card-head {
+    padding: 10px 12px 0;
+  }
+  :root .sim-chart-foot {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  :root .sim-chart-foot .sim-link {
+    margin-left: 0;
+  }
+
+  /* Tables: leading item + result + action only. */
+  :root .sim-page .ast-table.ui-table-container .ui-table :is(th, td) {
+    padding-inline: 10px;
+  }
+  :root .sim-register .ui-table :is(th, td):nth-child(3),
+  :root .sim-register .ui-table :is(th, td):nth-child(5) {
+    display: none;
+  }
+  :root .sim-page section[aria-label="Findings raised"] .ui-table :is(th, td):nth-child(3),
+  :root .sim-page section[aria-label="Findings raised"] .ui-table :is(th, td):nth-child(5) {
+    display: none;
+  }
+  :root .sim-page section[aria-label="Event log"] .ui-table :is(th, td):nth-child(2),
+  :root .sim-page section[aria-label="Event log"] .ui-table :is(th, td):nth-child(4) {
+    display: none;
+  }
+  :root .sim-page section[aria-label="Event log"] .ui-table th:nth-child(1) {
+    width: 72px !important;
+  }
+  :root .sim-wrap .ast-cell-sub {
+    max-width: none;
+  }
+  /* Fixed layout so the leading item takes what the narrow value columns leave. */
+  :root .sim-page .ast-table.ui-table-container .ui-table {
+    table-layout: fixed;
+  }
+  :root .sim-register .ui-table :is(th, td):nth-child(6) {
+    width: 92px !important;
+  }
+  :root .sim-register .ui-table :is(th, td):nth-child(7) {
+    width: 84px !important;
+    text-align: right;
+  }
+  :root .sim-page section[aria-label="Findings raised"] .ui-table :is(th, td):nth-child(2) {
+    width: 84px !important;
+  }
+  :root .sim-page section[aria-label="Findings raised"] .ui-table :is(th, td):nth-child(6) {
+    width: 116px !important;
+    white-space: normal;
+  }
+  :root .sim-page section[aria-label="Findings raised"] .sim-row-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  :root .sim-page .ast-table.ui-table-container .ui-table tbody td:first-child {
+    white-space: normal;
+  }
+  :root .sim-page .ast-table.ui-table-container .ui-table tbody td:has(> .sim-wrap) {
+    white-space: normal;
+  }
+
+}

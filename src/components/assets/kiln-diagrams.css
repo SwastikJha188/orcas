@@ -2,39 +2,25 @@
    the active theme without touching globals.css. */
 
 .kd-canvas {
-  --kd-canvas: #121214;
-  --kd-body: #242528;
-  --kd-raised: #2e2f33;
-  --kd-inset: #18191b;
-  --kd-stroke: #6c6e73;
-  --kd-stroke-hi: #b9bbc0;
-  --kd-detail: #4a4c51;
-  --kd-hair: #333438;
-  --kd-pier: #1b1c1e;
-  --kd-label: #85878c;
-  --kd-ink: #ececee;
-  --kd-ink-2: #b4b5ba;
+  /* Aliases of the shared drawing / ink tokens, so light and dark come from globals.css. */
+  --kd-canvas: var(--mx-canvas);
+  --kd-body: var(--mx-body);
+  --kd-raised: var(--mx-raised);
+  --kd-inset: var(--dx-inset);
+  --kd-stroke: var(--mx-edge);
+  --kd-stroke-hi: var(--diagram-stroke);
+  --kd-detail: var(--mx-fine);
+  --kd-hair: var(--separator);
+  --kd-pier: var(--mx-body-deep);
+  --kd-label: var(--mx-label);
+  --kd-ink: var(--dx-ink);
+  --kd-ink-2: var(--dx-ink-2);
 
   position: relative;
   width: 100%;
   background: var(--kd-canvas);
-  border-radius: var(--corner-card, 14px);
+  border-radius: var(--corner-card);
   overflow: hidden;
-}
-
-html[data-theme="light"] .kd-canvas {
-  --kd-canvas: #f6f6f7;
-  --kd-body: #ececee;
-  --kd-raised: #e1e1e4;
-  --kd-inset: #fafafb;
-  --kd-stroke: #8b8d93;
-  --kd-stroke-hi: #2f3034;
-  --kd-detail: #b2b4b9;
-  --kd-hair: #d5d6da;
-  --kd-pier: #e6e6e9;
-  --kd-label: #6e6e73;
-  --kd-ink: #111111;
-  --kd-ink-2: #3a3a3c;
 }
 
 .kd-svg {
@@ -73,17 +59,17 @@ html[data-theme="light"] .kd-canvas {
 /* Text */
 .kd-label {
   fill: var(--kd-label);
-  font-size: 9px;
+  font-size: var(--fs-3xs);
   font-weight: 500;
   letter-spacing: 0.16em;
 }
 .kd-heading {
   fill: var(--kd-label);
-  font-size: 10.5px;
+  font-size: var(--fs-xs);
   font-weight: 500;
   letter-spacing: 0.24em;
 }
-.kd-tick { fill: var(--kd-label); font-size: 8.5px; }
+.kd-tick { fill: var(--kd-label); font-size: var(--fs-3xs); }
 
 /* Measurement points */
 .kd-point { cursor: default; outline: none; }
@@ -92,10 +78,10 @@ html[data-theme="light"] .kd-canvas {
 .kd-point-ring { fill: none; stroke: var(--kd-ink); stroke-width: 1; opacity: 0; transition: opacity 140ms ease; }
 .kd-point-dot { stroke: var(--kd-canvas); stroke-width: 1.5; }
 .kd-leader { fill: none; stroke: var(--kd-hair); stroke-width: 1; transition: stroke 140ms ease; }
-.kd-read-name { fill: var(--kd-ink-2); font-size: 10.5px; font-weight: 500; }
-.kd-read-line { font-size: 9px; }
-.kd-read-value { fill: var(--kd-ink); font-size: 14px; font-weight: 600; }
-.kd-read-unit { fill: var(--kd-label); font-size: 9.5px; }
+.kd-read-name { fill: var(--kd-ink-2); font-size: var(--fs-xs); font-weight: 500; }
+.kd-read-line { font-size: var(--fs-3xs); }
+.kd-read-value { fill: var(--kd-ink); font-size: var(--fs-base); font-weight: 600; }
+.kd-read-unit { fill: var(--kd-label); font-size: var(--fs-2xs); }
 .kd-read-tag { fill: var(--kd-label); letter-spacing: 0.08em; }
 
 .kd-point:hover .kd-leader,
@@ -110,12 +96,12 @@ html[data-theme="light"] .kd-canvas {
 .kd-region.is-interactive { cursor: pointer; }
 .kd-region-label {
   fill: var(--kd-label);
-  font-size: 9.5px;
+  font-size: var(--fs-2xs);
   font-weight: 500;
   letter-spacing: 0.16em;
   transition: fill 140ms ease;
 }
-.kd-region-dot { font-size: 8px; }
+.kd-region-dot { font-size: var(--fs-3xs); }
 .kd-region.is-interactive:hover :is(.kd-body, .kd-raised, .kd-stroke, .kd-flow),
 .kd-region.is-selected :is(.kd-body, .kd-raised, .kd-stroke, .kd-flow),
 .kd-region:focus-visible :is(.kd-body, .kd-raised, .kd-stroke, .kd-flow) {

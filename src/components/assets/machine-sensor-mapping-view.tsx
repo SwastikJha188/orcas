@@ -1,32 +1,75 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
-import { AssetMachine } from "./assets-data";
-import { PillButton, PillNav, Table, type Column } from "@/components/ui";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import type { AssetMachine } from "./assets-data";
+import { PillButton } from "@/components/ui";
 import type { KilnSimulation } from "./kiln-seals-simulation";
-import type { KilnSealsSensorData, SealTimeSeriesPoint } from "./kiln-seals-types";
+import type { KilnSealsSensorData } from "./kiln-seals-types";
 import { useMachineCatalog, type CatalogSensorView } from "./use-machine-catalog";
-import { MachineSchematic, type SchematicDot } from "./machine-schematic";
-import { SensorMappingDiagram, sensorAlarmLoad } from "./sensor-mapping-diagram";
-import { GaugeLimits, gaugeScale } from "./sensor-gauge";
-import { SensorChart } from "./sensor-charts";
+import { useMachineAcquisition } from "./acquisition/use-machine-acquisition";
+import { isKilnMachine, isLiveMachine, useKilnSimulationFor } from "@/providers/kiln-simulation-context";
+import { useIndustrialData } from "@/providers/industrial-data-context";
+import { useSiteTimeZone } from "@/providers/use-site-time-zone";
+import { formatLocalTime } from "@/lib/time";
+import { simTimeMs } from "@/lib/kiln-sim/engine";
+import { defsFor } from "@/lib/live-defs";
+import type { MachineLivePoint } from "@/types/edge";
+import type { LiveSignal } from "@/lib/kiln-sim/engine";
+import type { SensorScope } from "./sensor-mapping-diagram";
+import type { Tone } from "./assets-shell-ui";
+import { Empty, PageHeader, Section, SectionIndex, scrollToSection, type SectionIndexItem } from "./analysis/an-ui";
+import { SensorsRegister } from "./sensors-register";
 import {
-  IconClose,
-  IconMore,
-  IconSensor,
-  SearchPill,
-  Spark,
-  StatusTag,
-  Ticks,
-  severityTone,
-} from "./assets-shell-ui";
+  SENSORS_SECTIONS,
+  SensorsChain,
+  SensorsSummary,
+  SensorsValidity,
+  type SensorCounts,
+  type SensorsCtx,
+} from "./sensors-sections";
+import {
+  d4Of,
+  isCalculated,
+  isManual,
+  isOnOff,
+  isWired,
+  parseRange,
+  parseSampleRate,
+  qualityOf,
+  roleOf,
+  tagOf,
+  type SensorRow,
+} from "./sensors-model";
 import "./assets-shell.css";
+import "./analysis/analysis-page.css";
+import "./sensors-page.css";
+import { TRENDS_FOCUS_KEY } from "./trends-focus";
+import { ManualRecords } from "./pyro/manual-records";
+import { PyroMachineSpec } from "./pyro/pyro-machine-spec";
+import { PYRO_MACHINE_BY_ID } from "@/lib/pyro-sim/signals";
+
+/* ==========================================================================
+   Machine › Sensors — one scrolling page.
+   The instrumentation inventory and whether each sensor delivers valid data:
+   what is measured, where, how it is wired, and whether the data can be
+   trusted (D4 instrument list, D5 Table 9.1 signals, Table 9.2 calculated
+   values, Table 9.6 sensor validation).
+     01 Summary      4 KPIs: valid data, flagged, outside limits, gateway links
+     02 Map          machine-kit drawing, pads coloured by validity / limits
+     03 Validity     flagged sensors + D5 Table 9.6 checks (hidden without live data)
+     04 Register     transducer allocation; D4 coverage gaps as group lines and
+                     ghost rows; calculated values (Table 9.2) in the detail panel
+     05 Acquisition  sensor → card / channel → rack slot → gateway → broker
+   History lives on Trends, alarms on Diagnosis, chassis hardware on Rack and
+   the edge network on Devices; this page links to them.
+   ========================================================================== */
 
 export interface MachineSensorMappingViewProps {
   machine: AssetMachine;
   simulation?: KilnSimulation;
+  /** Kept for the parent's wiring; navigation goes through the data context. */
   onNavigateToDiagnosis?: () => void;
+  /** Kept for the parent's wiring; navigation goes through the data context. */
   onNavigateToTrends?: () => void;
 }
 
@@ -55,11 +98,17 @@ export interface DetailedSensorInfo {
   y: number;
   point?: string;
   subAssembly?: string;
+  systemId?: string;
+  subassemblyId?: string;
   modbusAddress?: string;
-  source?: "New" | "Existing" | "Calculated";
+  source?: "New" | "Existing" | "Calculated" | "Manual";
   priority?: "Required" | "Optional-High";
   accuracy?: string;
   range?: string;
+  /** Live engine reading (KLN machines): model, residual, σ, validation. */
+  live?: LiveSignal;
+  /** Data-quality verdict shown on the diagram cards (set by the Sensors page). */
+  dataQuality?: { label: string; tone: Tone };
 }
 
 type SensorStatus = CatalogSensorView["status"];
@@ -110,20 +159,24 @@ function statusFromDbLimits(s: CatalogSensorView, display: string): SensorStatus
 
 /**
  * Builds DetailedSensorInfo from the DB-backed canonical catalog
- * (`mapped_signals`) — the single source of truth. KLN-01 rows already carry
- * the live engine value and state (`s.live`); without it, the optional seals
+ * (`mapped_signals`) — the single source of truth. Live-machine rows already
+ * carry the engine value and state (`s.live`); without it, the optional seals
  * simulation overlays the value and the state is judged on the DB limits.
+ * The seals overlay is kiln-fleet only: pyro machines reuse some KLN tag
+ * names (PYR-KLN-01), so it is skipped when `machineId` is not a kiln.
  */
 export function buildDetailedSensors(
   catalogSensors: CatalogSensorView[],
-  sensorData?: KilnSealsSensorData
+  sensorData?: KilnSealsSensorData,
+  machineId?: string
 ): DetailedSensorInfo[] {
+  const seals = sensorData && (!machineId || isKilnMachine(machineId)) ? sensorData : undefined;
   return catalogSensors.map((s) => {
     const tag = s.tag;
     let displayValue = s.value;
     let liveStatus = s.status;
 
-    const overlay = !s.live && sensorData ? sealsReading(tag, sensorData) : null;
+    const overlay = !s.live && seals ? sealsReading(tag, seals) : null;
     if (overlay !== null) {
       displayValue = overlay;
       liveStatus = statusFromDbLimits(s, overlay) ?? s.status;
@@ -156,15 +209,17 @@ export function buildDetailedSensors(
       y: s.y ?? 0,
       point: s.point,
       subAssembly: s.subAssembly,
+      systemId: s.systemId,
+      subassemblyId: s.subassemblyId,
       modbusAddress: s.modbusAddress,
       source: s.source as DetailedSensorInfo["source"],
       priority: s.priority as DetailedSensorInfo["priority"],
       accuracy: s.accuracy,
       range: s.rangeVal,
+      live: s.live,
     };
   });
 }
-
 
 /** Fallback rows from the machine's DB-seeded hotspots (pre-catalog / non-kiln). */
 export function hotspotSensors(machine: AssetMachine): DetailedSensorInfo[] {
@@ -177,7 +232,7 @@ export function hotspotSensors(machine: AssetMachine): DetailedSensorInfo[] {
     value: h.value,
     unit: h.unit,
     status: h.status,
-    normalThreshold: "Nominal",
+    normalThreshold: "Normal",
     warningThreshold: "Warning",
     alarmThreshold: "Alarm",
     numericValue: parseFloat(h.value) || 0,
@@ -196,644 +251,264 @@ export function hotspotSensors(machine: AssetMachine): DetailedSensorInfo[] {
   }));
 }
 
-/* ------------------------------------------------------------ helpers */
 
-/** Normalises free-text DB sample rates to samples per second. */
-function parseSampleRate(raw: string): { sps: number | null; label: string } {
-  const s = (raw || "").trim();
-  if (!s) return { sps: null, label: "—" };
-  let m = s.match(/([\d.]+)\s*(k)?\s*(S\/s|Hz)\b/i);
-  if (m) return finalize(parseFloat(m[1]) * (m[2] ? 1000 : 1));
-  m = s.match(/([\d.]+)\s*ms\b/i);
-  if (m) return finalize(1000 / parseFloat(m[1]));
-  if (/rev\/s/i.test(s)) return finalize(1);
-  m = s.match(/([\d.]+)\s*s\b/);
-  if (m) return finalize(1 / parseFloat(m[1]));
-  if (/change/i.test(s)) return { sps: null, label: "On change" };
-  if (/model|internal|derived/i.test(s)) return { sps: null, label: "Derived" };
-  return { sps: null, label: "—" };
-}
+/* ------------------------------------------------------------ links */
 
-function finalize(sps: number) {
-  return { sps, label: formatSps(sps) };
-}
+const DEVICES_SECTION_KEY = "ultron.devices.section";
+const DEVICES_SELECTED_KEY = "ultron.devices.selected";
+/** Cross-page link contract: a sensor tag to select when this page opens. */
+export const SENSORS_FOCUS_KEY = "ultron.sensors.focus";
+/** sessionStorage key another page can set to open Sensors at a section id. */
+export const SENSORS_SECTION_KEY = "ultron.sensors.section";
 
-function formatSps(sps: number): string {
-  if (sps >= 1000) return `${+(sps / 1000).toFixed(1)} kS/s`;
-  if (sps >= 1) return `${+sps.toFixed(1)} S/s`;
-  return `${+sps.toFixed(2)} S/s`;
-}
-
-function slotOf(cardId: string): { slot: string; module: string } {
-  const m = cardId.match(/^(.*?)\s*\((Slot\s*\d+)\)/i);
-  if (m) return { slot: m[2], module: m[1] };
-  return { slot: cardId || "—", module: "" };
-}
-
-const alarmLoad = sensorAlarmLoad;
-
-const tagOf = (s: DetailedSensorInfo) => s.parameter || s.id;
-
-/** Kiln tags with a live simulation series. */
-const LIVE_SERIES: Record<string, keyof SealTimeSeriesPoint> = {
-  "GAS-KLN-01": "gasO2",
-  "TMP-KLN-13": "inletGasTemp",
-  "PRS-KLN-01": "inletDraft",
-  "PRS-KLN-03": "hoodPressure",
-  "POS-KLN-01": "lvdtPosition",
-  "CAL-KLN-07": "sealOverlap",
-  "CAL-KLN-06": "falseAirIndex",
-  "CAL-KLN-03": "shellMaxTemp",
-  "FLO-KLN-01": "kilnFeed",
-  "FLO-KLN-02": "kilnFuel",
-  "SPD-KLN-01": "kilnSpeed",
-};
-
-type StatusKey = "Normal" | "Advisory" | "Critical";
-const STATUS_KEYS: StatusKey[] = ["Normal", "Advisory", "Critical"];
-
-type ListView = "table" | "cards";
-const LIST_VIEWS = [
-  { id: "table", label: "Table" },
-  { id: "cards", label: "Cards" },
-];
+const issue = (t: Tone): Tone | undefined => (t === "warn" || t === "bad" ? t : undefined);
 
 /* ------------------------------------------------------------ view */
 
-export function MachineSensorMappingView({
-  machine,
-  simulation,
-  onNavigateToDiagnosis,
-  onNavigateToTrends,
-}: MachineSensorMappingViewProps) {
-  // Canonical DB catalog — same rows as Diagnosis / Health / Trends.
+export function MachineSensorMappingView({ machine, simulation: simProp }: MachineSensorMappingViewProps) {
+  // Canonical DB catalog with the live overlay — same rows as Diagnosis / Health / Trends.
   const catalog = useMachineCatalog(machine);
+  const simFor = useKilnSimulationFor(machine.id);
+  const simulation = simProp ?? simFor;
+  const frame = simulation?.frame ?? null;
+  const acquisition = useMachineAcquisition(machine.id);
+  const { setActiveSubPage, setActiveTab } = useIndustrialData();
+  const tz = useSiteTimeZone({ machineId: machine.id });
+  const hasSpec = isLiveMachine(machine.id);
+  // The machine's own catalog (kiln fleet or pyro line); null for machines without a live engine.
+  const defs = frame?.defs ?? defsFor(machine.id);
 
-  const [systemFilter, setSystemFilter] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<StatusKey | null>(null);
-  const [query, setQuery] = useState("");
-  const [listView, setListView] = useState<ListView>("table");
+  const [scope, setScope] = useState<SensorScope | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
-  const [menuTag, setMenuTag] = useState<string | null>(null);
-  const [menuPos, setMenuPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 });
+  // Pyro line: the D4 machine specification and its manual records. The diagram sheets live on the Overview.
+  const pyroSpec = Boolean(PYRO_MACHINE_BY_ID[machine.id]);
+  const [focusNonce, setFocusNonce] = useState(0);
 
   useEffect(() => {
-    setSystemFilter("all");
+    setScope(null);
     setSelectedTag(null);
   }, [machine.id]);
 
-  const sensors = useMemo(() => {
-    const db = buildDetailedSensors(catalog.sensors, simulation?.sensorData);
-    return db.length > 0 ? db : hotspotSensors(machine);
-  }, [catalog.sensors, simulation?.sensorData, machine]);
+  const pointByTag = useMemo(() => {
+    const m = new Map<string, MachineLivePoint>();
+    for (const p of acquisition.data?.points ?? []) m.set(p.signalTag ?? p.tag, p);
+    return m;
+  }, [acquisition.data]);
 
-  const systemByTag = useMemo(() => new Map(catalog.sensors.map((s) => [s.tag, s.systemId])), [catalog.sensors]);
+  const rows = useMemo<SensorRow[]>(() => {
+    const db = buildDetailedSensors(catalog.sensors, undefined, machine.id);
+    const base = db.length > 0 ? db : catalog.isLoading ? [] : hotspotSensors(machine);
+    return base.map((s) => {
+      const tag = tagOf(s);
+      const livePoint = pointByTag.get(tag);
+      const q = qualityOf(s, livePoint);
+      const spec = hasSpec && defs ? defs.signalByTag[tag] : undefined;
+      const d4 = d4Of(defs, tag);
+      const range = parseRange(s.range);
+      const num = parseFloat(s.value);
+      const outOfRange = Boolean(range && !isOnOff(s) && Number.isFinite(num) && (num < range.lo || num > range.hi) && q.quality !== "No live feed");
+      return { ...s, q, livePoint, spec, d4, role: roleOf(s, spec, defs, d4), outOfRange, dataQuality: { label: q.quality, tone: q.tone } };
+    });
+  }, [catalog.sensors, catalog.isLoading, machine, pointByTag, hasSpec, defs]);
 
-  const systemTabs = useMemo(() => {
-    const tabs = [{ id: "all", label: `All ${sensors.length}` }];
-    for (const sys of catalog.systems) {
-      const n = sensors.filter((s) => systemByTag.get(tagOf(s)) === sys.systemId).length;
-      tabs.push({ id: sys.systemId, label: `${sys.shortName || sys.name} ${n}` });
+  /* ---- counts (reconcile to the DB total, name every subset) ---- */
+  const counts = useMemo<SensorCounts>(() => {
+    const total = rows.length;
+    const calculated = rows.filter(isCalculated).length;
+    const manual = rows.filter((r) => !isCalculated(r) && isManual(r)).length;
+    const onOff = rows.filter(isOnOff).length;
+    const q = { valid: 0, attention: 0, nolive: 0, suspect: 0, invalid: 0, stale: 0, nodata: 0 };
+    for (const r of rows) {
+      if (r.q.quality === "Valid") q.valid += 1;
+      else if (r.q.quality === "No live feed") q.nolive += 1;
+      else q.attention += 1;
+      if (r.q.quality === "Suspect") q.suspect += 1;
+      if (r.q.quality === "Invalid") q.invalid += 1;
+      if (r.q.quality === "Stale") q.stale += 1;
+      if (r.q.quality === "No data") q.nodata += 1;
     }
-    return tabs;
-  }, [catalog.systems, sensors, systemByTag]);
+    const status = { Normal: 0, Advisory: 0, Critical: 0 };
+    for (const r of rows) status[r.status] += 1;
+    const wiredRows = rows.filter(isWired);
+    const cards = new Set(wiredRows.map((r) => r.cardId).filter(Boolean)).size;
+    const racks = new Set(wiredRows.map((r) => r.rackId).filter(Boolean)).size;
+    const linked = wiredRows.filter((r) => r.livePoint).length;
+    const rates = rows.map((r) => parseSampleRate(r.sampleRate).sps).filter((v): v is number => v !== null);
+    return {
+      total,
+      wired: total - calculated - manual,
+      calculated,
+      manual,
+      numeric: total - onOff,
+      onOff,
+      q,
+      status,
+      cards,
+      racks,
+      linked,
+      minRate: rates.length ? Math.min(...rates) : null,
+      maxRate: rates.length ? Math.max(...rates) : null,
+      outOfRange: rows.filter((r) => r.outOfRange).length,
+    };
+  }, [rows]);
 
-  const statusCounts = useMemo(() => {
-    const c: Record<StatusKey, number> = { Normal: 0, Advisory: 0, Critical: 0 };
-    for (const s of sensors) c[s.status] += 1;
-    return c;
-  }, [sensors]);
+  /* ---- navigation (context API only) ---- */
+  const goTrends = useCallback(
+    (tag?: string | null) => {
+      if (tag) {
+        try {
+          sessionStorage.setItem(TRENDS_FOCUS_KEY, tag);
+        } catch {
+          /* storage unavailable */
+        }
+      }
+      setActiveSubPage("trends");
+    },
+    [setActiveSubPage]
+  );
+  const goRack = useCallback(() => setActiveSubPage("rack"), [setActiveSubPage]);
+  const goDevices = useCallback(
+    (point?: MachineLivePoint) => {
+      try {
+        sessionStorage.setItem(DEVICES_SECTION_KEY, "hierarchy");
+        if (point) sessionStorage.setItem(DEVICES_SELECTED_KEY, `card:${point.source.id}/${point.card}`);
+      } catch {
+        /* storage unavailable */
+      }
+      setActiveTab("devices");
+    },
+    [setActiveTab]
+  );
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return sensors.filter((s) => {
-      if (systemFilter !== "all" && systemByTag.get(tagOf(s)) !== systemFilter) return false;
-      if (statusFilter && s.status !== statusFilter) return false;
-      if (!q) return true;
-      return [tagOf(s), s.name, s.sensorType, s.cardId, s.modbusAddress ?? "", s.component].some((v) =>
-        v.toLowerCase().includes(q)
-      );
-    });
-  }, [sensors, systemFilter, statusFilter, query, systemByTag]);
-
-  const selected = selectedTag ? sensors.find((s) => tagOf(s) === selectedTag) ?? null : null;
-
-  // Close the row menu on outside click / Escape.
+  // Cross-page focus: another page writes a tag to `ultron.sensors.focus` and opens Sensors.
   useEffect(() => {
-    if (!menuTag) return;
-    const onDown = (e: MouseEvent) => {
-      if (!(e.target as HTMLElement).closest?.("[data-row-menu]")) setMenuTag(null);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuTag(null);
-    const onScroll = () => setMenuTag(null);
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    window.addEventListener("scroll", onScroll, true);
-    window.addEventListener("resize", onScroll);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", onScroll, true);
-      window.removeEventListener("resize", onScroll);
-    };
-  }, [menuTag]);
+    if (catalog.isLoading || rows.length === 0) return;
+    let tag: string | null = null;
+    try {
+      tag = sessionStorage.getItem(SENSORS_FOCUS_KEY);
+      if (tag) sessionStorage.removeItem(SENSORS_FOCUS_KEY);
+    } catch {
+      return;
+    }
+    if (!tag || !rows.some((r) => tagOf(r) === tag)) return;
+    setScope(null);
+    setFocusNonce((n) => n + 1);
+    setSelectedTag(tag);
+    const focusTag = tag;
+    // Not cancelled on re-render: live ticks re-run this effect, but the key is already consumed.
+    window.setTimeout(() => {
+      const el = document.querySelector(`[data-sensor-tag="${CSS.escape(focusTag)}"]`);
+      el?.closest("tr")?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 120);
+  }, [catalog.isLoading, rows]);
 
-  const hasActions = Boolean(onNavigateToTrends || onNavigateToDiagnosis);
+  const select = useCallback((tag: string | null) => setSelectedTag(tag), []);
 
-  const columns: Column<DetailedSensorInfo>[] = [
-    {
-      key: "sensor",
-      header: "Sensor ID",
-      render: (s) => (
-        <button
-          type="button"
-          className="ast-row-btn"
-          aria-pressed={selectedTag === tagOf(s)}
-          onClick={(e) => {
-            e.stopPropagation();
-            setSelectedTag(selectedTag === tagOf(s) ? null : tagOf(s));
-          }}
-        >
-          <span className="ast-badge" data-tone={severityTone(s.status)}>
-            <IconSensor size={15} />
-          </span>
-          <span className="ast-cell-stack">
-            <span className="ast-cell-title ast-num">{tagOf(s)}</span>
-            <span className="ast-cell-sub" title={s.name}>
-              {s.name}
-            </span>
-          </span>
-        </button>
-      ),
-    },
-    {
-      key: "instrument",
-      header: "Instrument",
-      render: (s) => (
-        <span className="ast-cell-stack">
-          <span className="ast-cell-text" title={s.sensorType}>
-            {s.sensorType || "—"}
-          </span>
-          {s.accuracy && <span className="ast-cell-sub">{s.accuracy}</span>}
-        </span>
-      ),
-    },
-    {
-      key: "slot",
-      header: "Rack slot",
-      render: (s) => {
-        const { slot, module } = slotOf(s.cardId);
-        return (
-          <span className="ast-cell-stack">
-            <span className="ast-num">{slot}</span>
-            {module && <span className="ast-cell-sub">{module}</span>}
-          </span>
-        );
-      },
-    },
-    {
-      key: "register",
-      header: "Modbus reg.",
-      render: (s) => <span className="ast-num">{s.modbusAddress || "—"}</span>,
-    },
-    {
-      key: "rate",
-      header: "Sampling",
-      render: (s) => {
-        const r = parseSampleRate(s.sampleRate);
-        return (
-          <span className={r.sps === null ? "ast-muted" : "ast-num"} title={s.sampleRate}>
-            {r.label}
-          </span>
-        );
-      },
-    },
-    {
-      key: "reading",
-      header: "Reading · alarm load",
-      render: (s) => {
-        const load = alarmLoad(s);
-        return (
-          <span className="ast-sm-reading">
-            <span className="ast-reading-val">
-              {s.value}
-              <span className="ast-unit">{s.unit}</span>
-            </span>
-            {load !== null && (
-              <span className="ast-health-cell" title={`${load} % of alarm limit ${s.alarmVal} ${s.unit}`}>
-                <Ticks value={Math.min(load, 100)} tone={severityTone(s.status)} ticks={14} />
-                <span className="ast-caption ast-num">{load} %</span>
-              </span>
-            )}
-          </span>
-        );
-      },
-    },
-    {
-      key: "status",
-      header: "Status",
-      render: (s) => <StatusTag tone={severityTone(s.status)} label={s.status} />,
-    },
+  /* ---- last sample, in the site's time zone ---- */
+  const lastSample = useMemo(() => {
+    if (frame) return { text: formatLocalTime(simTimeMs(frame.t), { seconds: true, zone: true, timeZone: tz.timeZone }), sim: true };
+    let latest = 0;
+    for (const p of acquisition.data?.points ?? []) {
+      const t = p.live.updatedAt ? Date.parse(p.live.updatedAt) : NaN;
+      if (Number.isFinite(t) && t > latest) latest = t;
+    }
+    return latest ? { text: formatLocalTime(latest, { date: true, seconds: true, zone: true, timeZone: tz.timeZone }), sim: false } : null;
+  }, [frame, acquisition.data, tz.timeZone]);
+
+  const ctx: SensorsCtx = {
+    machine,
+    rows,
+    counts,
+    frame,
+    acquisition: acquisition.data,
+    history: acquisition.history,
+    hasSpec,
+    defs,
+    timeZone: tz.timeZone,
+    selectedTag,
+    select,
+    focusNonce,
+    goTrends,
+    goRack,
+    goDevices,
+    goSection: scrollToSection,
+  };
+
+  const loading = catalog.isLoading && rows.length === 0;
+  const validTone: Tone =
+    counts.q.invalid + counts.q.nodata > 0 ? "bad" : counts.q.attention > 0 ? "warn" : counts.q.valid > 0 ? "good" : "idle";
+  const feed = frame ? "engine validation" : acquisition.data?.points.some((p) => p.live.updatedAt) ? "gateway MQTT" : "stored DB values";
+
+  const countLine = !catalog.isLive && rows.length > 0
+    ? `Sensor catalog unavailable · ${counts.total} hotspot points stored for ${machine.name}`
+    : `${counts.total} · ${counts.wired} wired + ${counts.calculated} calc.${counts.manual ? ` + ${counts.manual} manual` : ""}`;
+
+  const hasValidity = counts.q.nolive < counts.total;
+  const index: SectionIndexItem[] = [
+    ...(pyroSpec ? [{ id: "sensors-spec", label: "Specification" }] : []),
+    ...(hasValidity ? [{ id: SENSORS_SECTIONS.validity, label: "Validity", tone: issue(validTone) }] : []),
+    { id: SENSORS_SECTIONS.register, label: "Register" },
+    { id: SENSORS_SECTIONS.chain, label: "Acquisition", tone: counts.wired && counts.linked < counts.wired ? ("warn" as Tone) : undefined },
   ];
 
-  if (hasActions) {
-    columns.push({
-      key: "actions",
-      header: "",
-      width: "48px",
-      render: (s) => {
-        const tag = tagOf(s);
-        const open = menuTag === tag;
-        return (
-          <span className="ast-trail" data-row-menu>
-            <button
-              type="button"
-              className="ast-icon-btn"
-              aria-label={`Actions for ${tag}`}
-              aria-haspopup="menu"
-              aria-expanded={open}
-              onClick={(e) => {
-                e.stopPropagation();
-                const r = e.currentTarget.getBoundingClientRect();
-                setMenuPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
-                setMenuTag(open ? null : tag);
-              }}
-            >
-              <IconMore />
-            </button>
-            {/* Portaled: the frosted card's backdrop-filter would otherwise trap position: fixed. */}
-            {open && createPortal(
-              <span
-                className="ast-menu ast-menu--fixed"
-                data-row-menu
-                role="menu"
-                style={{ top: menuPos.top, right: menuPos.right }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setSelectedTag(tag);
-                    setMenuTag(null);
-                  }}
-                >
-                  Show details
-                </button>
-                {onNavigateToTrends && (
-                  <button type="button" role="menuitem" onClick={onNavigateToTrends}>
-                    Open in Trends
-                  </button>
-                )}
-                {onNavigateToDiagnosis && (
-                  <button type="button" role="menuitem" onClick={onNavigateToDiagnosis}>
-                    Open in Diagnosis
-                  </button>
-                )}
-              </span>,
-              document.body,
-            )}
-          </span>
-        );
-      },
-    });
-  }
 
   return (
-    <div className="ast-root">
-      <SensorMappingDiagram machine={machine} catalog={catalog} sensors={sensors} />
+    <div className="ast-root pg-frame pg-sensors" aria-label="Sensors">
+      <PageHeader
+        title="Sensors"
+        status={rows.length ? { label: counts.q.attention ? `${counts.q.attention} flagged` : "Normal", tone: issue(validTone) } : null}
+        meta={[
+          { label: "Sensors", value: loading ? "Loading…" : rows.length ? countLine : "none recorded" },
+          rows.length > 0 && { label: "Source", value: feed },
+          {
+            label: "Last sample",
+            value: lastSample ? `${lastSample.text}${lastSample.sim ? " · sim." : ""}` : "no live sample",
+          },
+        ]}
+        actions={
+          <PillButton variant="secondary" onClick={() => goDevices(rows.find((r) => tagOf(r) === selectedTag)?.livePoint)}>
+            Open in Devices
+          </PillButton>
+        }
+      />
 
-      <div className="ast-toolbar">
-        {systemTabs.length > 1 ? (
-          <PillNav items={systemTabs} activeId={systemFilter} onChange={setSystemFilter} wrap />
-        ) : (
-          <span />
-        )}
-        <div className="ast-toolbar-group">
-          <PillNav items={LIST_VIEWS} activeId={listView} onChange={(id) => setListView(id as ListView)} />
-          <div className="ast-toolbar-group" role="group" aria-label="Filter by status">
-            {STATUS_KEYS.map((k) => (
-              <button
-                key={k}
-                type="button"
-                className="ast-filter"
-                data-tone={severityTone(k)}
-                aria-pressed={statusFilter === k}
-                onClick={() => setStatusFilter(statusFilter === k ? null : k)}
-              >
-                <span className="ast-chip-dot" aria-hidden="true" />
-                {k} <b>{statusCounts[k]}</b>
-              </button>
-            ))}
-          </div>
-          <SearchPill value={query} onChange={setQuery} placeholder="Search tag, instrument, slot" label="Search sensors" />
-        </div>
-      </div>
-
-      <div className={`ast-sm ${selected ? "has-panel" : ""}`}>
-        {listView === "cards" ? (
-          filtered.length === 0 ? (
-            <div className="ast-card ast-empty">
-              {catalog.isLoading && sensors.length === 0 ? "Loading sensor catalog…" : "No sensors match the current filters."}
-            </div>
-          ) : (
-            <section className="ast-smc-grid" aria-label="Sensor cards">
-              {filtered.map((s) => (
-                <SensorCard
-                  key={tagOf(s)}
-                  sensor={s}
-                  history={simulation?.frame.history[tagOf(s)]}
-                  selected={selectedTag === tagOf(s)}
-                  onSelect={() => setSelectedTag(selectedTag === tagOf(s) ? null : tagOf(s))}
-                />
-              ))}
-            </section>
-          )
-        ) : (
-        <section className="ast-card ast-sm-table" aria-label="Sensor allocation matrix">
-          {filtered.length === 0 ? (
-            <div className="ast-empty">
-              {catalog.isLoading && sensors.length === 0 ? "Loading sensor catalog…" : "No sensors match the current filters."}
-            </div>
-          ) : (
-            <Table
-              className="ast-table"
-              columns={columns}
-              data={filtered}
-              keyExtractor={tagOf}
-              selectedId={selectedTag ?? undefined}
-              onRowClick={(s) => setSelectedTag(selectedTag === tagOf(s) ? null : tagOf(s))}
-            />
-          )}
+      {loading ? (
+        <section className="ast-card" role="status" aria-live="polite">
+          <Empty title="Loading sensor catalog…" />
         </section>
-        )}
-
-        {selected && (
-          <SensorPanel
-            sensor={selected}
-            machine={machine}
-            sensors={sensors}
-            timeSeries={simulation?.timeSeries}
-            onClose={() => setSelectedTag(null)}
-            onNavigateToTrends={onNavigateToTrends}
-            onNavigateToDiagnosis={onNavigateToDiagnosis}
-          />
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------ card view */
-
-/** One sensor as a card: reading on a limit gauge, then only the specs we have. */
-function SensorCard({
-  sensor,
-  history,
-  selected,
-  onSelect,
-}: {
-  sensor: DetailedSensorInfo;
-  /** Live per-minute history, oldest first, when the machine is simulated. */
-  history?: number[];
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const tag = tagOf(sensor);
-  const tone = severityTone(sensor.status);
-  const load = alarmLoad(sensor);
-  const scale = gaugeScale(sensor);
-  const { slot, module } = slotOf(sensor.cardId);
-  const rate = parseSampleRate(sensor.sampleRate);
-  const rows = (
-    [
-      ["Instrument", sensor.sensorType],
-      ["Rack slot", sensor.cardId ? (module ? `${module} · ${slot}` : slot) : "", true],
-      ["Modbus reg.", sensor.modbusAddress, true],
-      ["Sampling", rate.sps === null && rate.label === "—" ? "" : rate.label, true],
-    ] as Array<[string, string | undefined, boolean?]>
-  ).filter(([, v]) => v && v !== "—");
-  const unit = sensor.unit && sensor.unit !== "state" ? sensor.unit : "";
-
-  return (
-    <button
-      type="button"
-      className="ast-card ast-smc"
-      aria-pressed={selected}
-      aria-label={`${tag} ${sensor.name}: ${sensor.value} ${sensor.unit}, ${sensor.status}`}
-      onClick={onSelect}
-    >
-      <span className="ast-smc-top">
-        <span className="ast-badge" data-tone={tone}>
-          <IconSensor size={15} />
-        </span>
-        <span className="ast-cell-stack">
-          <span className="ast-cell-title ast-num">{tag}</span>
-          <span className="ast-cell-sub" title={sensor.name}>
-            {sensor.name}
-          </span>
-        </span>
-        <StatusTag tone={tone} label={sensor.status} />
-      </span>
-
-      {scale ? (
-        <span className="ast-smc-body">
-          <span className="ast-smc-read">
-            <span className="ast-smc-value ast-num">
-              {sensor.value}
-              {unit && <span className="ast-unit">{unit}</span>}
-            </span>
-            <span className="ast-smc-aside">
-              {load !== null && <span className="ast-smc-sub ast-num">{load} % of alarm limit</span>}
-              <span className="ast-smc-sub">{sensor.subAssembly || sensor.component}</span>
-            </span>
-          </span>
-          <SensorChart sensor={sensor} scale={scale} history={history} />
-          <GaugeLimits scale={scale} unit={unit} />
-        </span>
+      ) : rows.length === 0 ? (
+        <section className="ast-card">
+          <Empty title={`No sensors recorded for ${machine.name}.`}>Map gateway channels to this machine in Devices.</Empty>
+        </section>
       ) : (
-        <span className="ast-smc-body">
-          <span className="ast-smc-read">
-            <span className="ast-smc-value ast-num ast-smc-state-value">{sensor.value}</span>
-            <span className="ast-smc-aside">
-              <span className="ast-smc-sub">Discrete signal</span>
-              <span className="ast-smc-sub">{sensor.subAssembly || sensor.component}</span>
-            </span>
-          </span>
-          <SensorChart sensor={sensor} scale={null} history={history} />
-        </span>
-      )}
+        <>
+          <SensorsSummary ctx={ctx} />
+          <SectionIndex items={index} label="Sensors sections" pendingKey={SENSORS_SECTION_KEY} />
+          <div className="pg-frame-body pg-sensors-body">
 
-      {rows.length > 0 && (
-        <span className="ast-smc-dl">
-          {rows.map(([k, v, num]) => (
-            <span key={k} className="ast-smc-row">
-              <span className="ast-smc-k">{k}</span>
-              <span className={`ast-smc-v ${num ? "ast-num" : ""}`} title={v}>
-                {v}
-              </span>
-            </span>
-          ))}
-        </span>
-      )}
-    </button>
-  );
-}
+            {pyroSpec && (
+              <Section id="sensors-spec" index={1} title="Specification">
+                <PyroMachineSpec machineId={machine.id} t={frame?.t} />
+                {frame?.records && frame.records.length > 0 && <ManualRecords records={frame.records} timeZone={tz.timeZone} />}
+              </Section>
+            )}
 
-/* ------------------------------------------------------------ side panel */
+            {hasValidity && (
+              <Section id={SENSORS_SECTIONS.validity} index={pyroSpec ? 2 : 1} title="Validity">
+                <SensorsValidity ctx={ctx} />
+              </Section>
+            )}
 
-function SensorPanel({
-  sensor,
-  machine,
-  sensors,
-  timeSeries,
-  onClose,
-  onNavigateToTrends,
-  onNavigateToDiagnosis,
-}: {
-  sensor: DetailedSensorInfo;
-  machine: AssetMachine;
-  sensors: DetailedSensorInfo[];
-  timeSeries?: SealTimeSeriesPoint[];
-  onClose: () => void;
-  onNavigateToTrends?: () => void;
-  onNavigateToDiagnosis?: () => void;
-}) {
-  const tag = tagOf(sensor);
-  const tone = severityTone(sensor.status);
+            <Section id={SENSORS_SECTIONS.register} index={(hasValidity ? 2 : 1) + (pyroSpec ? 1 : 0)} title="Register">
+              <SensorsRegister ctx={ctx} scope={scope} onClearScope={() => setScope(null)} />
+            </Section>
 
-  const series = useMemo(() => {
-    const key = LIVE_SERIES[tag];
-    if (!key || !timeSeries) return null;
-    const pts = timeSeries.filter((p) => typeof p[key] === "number");
-    if (pts.length < 2) return null;
-    return { values: pts.map((p) => p[key] as number), labels: pts.map((p) => p.time) };
-  }, [tag, timeSeries]);
-
-  const scale = useMemo(() => {
-    const { warningVal: w, alarmVal: a, numericValue: v } = sensor;
-    if (!(w > 0) || !(a > w) || !(v >= 0)) return null;
-    const max = Math.max(sensor.maxScale || 0, a * 1.15, v);
-    return { w, a, max, pos: Math.min(100, (v / max) * 100) };
-  }, [sensor]);
-
-  const dots = useMemo<SchematicDot[]>(
-    () =>
-      sensors.map((s) => ({
-        tag: tagOf(s),
-        name: s.name,
-        value: s.value,
-        unit: s.unit,
-        status: s.status,
-        x: s.x,
-        y: s.y,
-      })),
-    [sensors]
-  );
-
-  const { slot, module } = slotOf(sensor.cardId);
-  const rate = parseSampleRate(sensor.sampleRate);
-  const rows: Array<[string, string]> = [
-    ["Instrument", sensor.sensorType || "—"],
-    ["Accuracy", sensor.accuracy || "—"],
-    ["Range", sensor.range || "—"],
-    ["Rack", sensor.rackId ? sensor.rackId.split(" (")[0] : "—"],
-    ["Slot", module ? `${slot} · ${module}` : slot],
-    ["Modbus register", sensor.modbusAddress || "—"],
-    ["Sampling", rate.label],
-    ["Location", sensor.subAssembly || sensor.component || "—"],
-  ];
-
-  return (
-    <aside className="ast-card ast-panel" aria-label={`${tag} details`}>
-      <div className="ast-panel-head">
-        <div>
-          <h3 className="ast-panel-tag ast-num">{tag}</h3>
-          <div className="ast-panel-name">{sensor.name}</div>
-        </div>
-        <button type="button" className="ast-icon-btn" aria-label="Close sensor details" onClick={onClose}>
-          <IconClose />
-        </button>
-      </div>
-
-      <div className="ast-panel-value">
-        <strong className="ast-num">
-          {sensor.value}
-          <span className="ast-unit">{sensor.unit}</span>
-        </strong>
-        <StatusTag tone={tone} label={sensor.status} />
-      </div>
-
-      {series && (
-        <Spark
-          values={series.values}
-          labels={series.labels}
-          unit={sensor.unit}
-          digits={2}
-          tone={sensor.status === "Normal" ? "info" : tone}
-          height={56}
-          ariaLabel={`${tag} live trend`}
-        />
-      )}
-
-      {scale && (
-        <div>
-          <div
-            className="ast-scale"
-            role="img"
-            aria-label={`${sensor.value} ${sensor.unit}; warning ${scale.w} ${sensor.unit}; alarm ${scale.a} ${sensor.unit}`}
-          >
-            <div className="ast-scale-track">
-              <span data-tone="good" style={{ flexGrow: scale.w }} />
-              <span data-tone="warn" style={{ flexGrow: scale.a - scale.w }} />
-              <span data-tone="bad" style={{ flexGrow: scale.max - scale.a }} />
-            </div>
-            <span className="ast-scale-mark" style={{ left: `${scale.pos}%` }} />
+            <Section id={SENSORS_SECTIONS.chain} index={(hasValidity ? 3 : 2) + (pyroSpec ? 1 : 0)} title="Acquisition">
+              <SensorsChain ctx={ctx} />
+            </Section>
           </div>
-          <div className="ast-scale-legend">
-            <span>0 {sensor.unit}</span>
-            <span>Warn {scale.w} {sensor.unit}</span>
-            <span>Alarm {scale.a} {sensor.unit}</span>
-          </div>
-        </div>
+        </>
       )}
-
-      <dl className="ast-dl">
-        {rows.map(([k, v]) => (
-          <React.Fragment key={k}>
-            <dt>{k}</dt>
-            <dd title={v}>{v}</dd>
-          </React.Fragment>
-        ))}
-      </dl>
-
-      {(sensor.x > 0 || sensor.y > 0) && (
-        <div className="ast-panel-sch">
-          <div className="ast-panel-sub">Location on machine</div>
-          <MachineSchematic
-            diagramType={machine.diagramType}
-            dots={dots}
-            selectedTag={tag}
-            compact
-            label={`${tag} position on ${machine.name}`}
-          />
-        </div>
-      )}
-
-      {(onNavigateToTrends || onNavigateToDiagnosis) && (
-        <div className="ast-panel-actions">
-          {onNavigateToTrends && (
-            <PillButton variant="secondary" onClick={onNavigateToTrends}>
-              Open in Trends
-            </PillButton>
-          )}
-          {onNavigateToDiagnosis && (
-            <PillButton variant="primary" onClick={onNavigateToDiagnosis}>
-              Open in Diagnosis
-            </PillButton>
-          )}
-        </div>
-      )}
-    </aside>
+    </div>
   );
 }

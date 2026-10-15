@@ -45,6 +45,8 @@ export type ScenarioGroup =
   | "Drive train"
   | "Shell & seals"
   | "Sensor validation"
+  /** Pyro-line machine faults (src/lib/pyro-sim/scenarios.ts). */
+  | "Equipment fault"
   /** Built in the Test Lab; never part of `KILN_SCENARIOS`. */
   | "Custom";
 

@@ -25,7 +25,8 @@ import {
 } from "./plant-twin-model";
 import { TwinHtml } from "./twin-html";
 import { TWIN_GL, TwinLighting } from "./twin-lighting";
-import { TwinControls, useTwinNavigation, type TwinNavMode } from "./twin-nav";
+import { TwinControls, clearTwinPose, loadTwinPose, usePersistTwinPose, useTwinNavigation, type TwinNavMode } from "./twin-nav";
+import { TWIN_RESIZE, twinEvents, useTwinDpr } from "./use-ui-zoom";
 
 export type TwinCameraCommand = { kind: "fit" | "zoom-in" | "zoom-out" | "focus"; n: number };
 
@@ -68,6 +69,8 @@ export interface PlantTwinCanvasProps {
   showLabels: boolean;
   /** Left-drag moves across the yard ("move", default) or orbits ("orbit"). */
   navMode?: TwinNavMode;
+  /** Storage key for remembering the camera between visits; omit to not persist. */
+  persistKey?: string;
   /** Canvas hidden under floating panels; the camera frames the plant in what is left. */
   inset?: TwinInset;
 }
@@ -221,24 +224,51 @@ export function fitPoints(
 
 /* ---------------------------------------------------------------- building */
 
-/** One clone per placed building, plus its bounds measured before it is attached
- *  (once in the scene graph, world matrices would include the placement). */
-function useModelInstance(url: string) {
+/** Rim lines per source geometry (clones share geometry, so each is built once). */
+const RIMS = new WeakMap<THREE.BufferGeometry, THREE.EdgesGeometry>();
+function rimOf(g: THREE.BufferGeometry): THREE.EdgesGeometry {
+  let e = RIMS.get(g);
+  if (!e) {
+    e = new THREE.EdgesGeometry(g, 32);
+    RIMS.set(g, e);
+  }
+  return e;
+}
+
+/**
+ * One clone per placed building, plus its bounds measured before it is attached
+ * (once in the scene graph, world matrices would include the placement). The CAD
+ * paints are replaced by the ULTRON machine-kit (TSE) set: graphite body, lighter
+ * raised graphite for pale parts, near-black recesses for glazing, and a
+ * mid-grey rim on every hard edge.
+ */
+function useModelInstance(url: string, colors: TwinColors) {
   const { scene } = useGLTF(url);
   return useMemo(() => {
     const root = scene.clone(true);
     root.position.set(0, 0, 0);
     root.updateMatrixWorld(true);
+    const kit = (color: string, roughness: number, metalness: number) =>
+      new THREE.MeshStandardMaterial({ color, roughness, metalness, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+    const body = kit(colors.plinth, 0.72, 0.12);
+    const raised = kit(colors.plinthTop, 0.65, 0.18);
+    const deep = kit(colors.ground, 0.4, 0.2);
+    const rim = new THREE.LineBasicMaterial({ color: colors.rimIdle, transparent: true, opacity: 0.85 });
     const box = new THREE.Box3();
     root.traverse((n) => {
       if (isMesh(n)) {
+        const src = (Array.isArray(n.material) ? n.material[0] : n.material) as THREE.MeshStandardMaterial | undefined;
+        const c = src?.color;
+        const lum = c ? 0.3 * c.r + 0.59 * c.g + 0.11 * c.b : 0.5;
+        n.material = src?.transparent || lum < 0.08 ? deep : lum > 0.5 ? raised : body;
+        n.add(new THREE.LineSegments(rimOf(n.geometry), rim));
         n.castShadow = true;
         n.receiveShadow = true;
         box.expandByObject(n);
       }
     });
     return { root, box };
-  }, [scene]);
+  }, [scene, colors.plinth, colors.plinthTop, colors.ground, colors.rimIdle]);
 }
 
 function Building({
@@ -259,7 +289,7 @@ function Building({
   onSelect: (id: string) => void;
 }) {
   const def = PLANT_MODELS[building.model];
-  const model = useModelInstance(def.url);
+  const model = useModelInstance(def.url, colors);
   const s = buildingScale(building.model, building.scale);
   const [hovered, setHovered] = useState(false);
   const modelRef = useRef<THREE.Group>(null);
@@ -343,7 +373,8 @@ function Building({
       </mesh>
       <mesh position={[centre.x, PLINTH_H + 0.004, centre.z]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow raycast={() => undefined}>
         <planeGeometry args={[w - 0.3, d - 0.3]} />
-        <meshStandardMaterial color={colors.plinthTop} roughness={0.5} metalness={0.25} />
+        {/* 4 mm above the slab is below depth precision from afar: offset it so it never z-fights. */}
+        <meshStandardMaterial color={colors.plinthTop} roughness={0.5} metalness={0.25} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} />
       </mesh>
       {[
         [0, (d + 0.03) / 2, w + 0.06, 0.035],
@@ -558,12 +589,14 @@ function CameraRig({
   command,
   inset,
   navMode,
+  persistKey,
 }: {
   scene: TwinScene;
   selectedId: string | null;
   command: TwinCameraCommand;
   inset: TwinInset;
   navMode: TwinNavMode;
+  persistKey?: string;
 }) {
   const { camera, invalidate, size } = useThree();
   const controls = useThree((st) => st.controls) as OrbitControlsImpl | null;
@@ -577,6 +610,7 @@ function CameraRig({
   /** Canvas size and panel inset the camera was last framed for. */
   const layoutKey = `${size.width}|${size.height}|${inset.top}|${inset.right}|${inset.bottom}|${inset.left}`;
   const lastLayout = useRef("");
+  usePersistTwinPose(persistKey, operated);
 
   // Shared twin navigation: leash over the yard, WASD / arrows, Q / E.
   useTwinNavigation({
@@ -608,7 +642,9 @@ function CameraRig({
   useEffect(() => {
     if (!controls) return;
     if (!fitted.current) {
-      const g = fitPoints(frame, size.width, size.height, inset);
+      const saved = loadTwinPose(persistKey);
+      const g = saved ? { pos: new THREE.Vector3(...saved.pos), tgt: new THREE.Vector3(...saved.tgt) } : fitPoints(frame, size.width, size.height, inset);
+      operated.current = !!saved;
       camera.position.copy(g.pos);
       controls.target.copy(g.tgt);
       controls.update();
@@ -621,6 +657,7 @@ function CameraRig({
     lastCommand.current = command.n;
     const offset = camera.position.clone().sub(controls.target);
     if (command.kind === "fit") {
+      clearTwinPose(persistKey);
       operated.current = false;
       lastLayout.current = layoutKey;
       goal.current = fitPoints(frame, size.width, size.height, inset);
@@ -698,12 +735,12 @@ function LoadingOverlay() {
   if (!active) return null;
   return (
     <div className="ph-twin-loading" role="status">
-      Loading plant models · {Math.round(progress)} %
+      Loading plant models… {Math.round(progress)} %
     </div>
   );
 }
 
-function SceneContents({ scene, callouts, selectedId, onSelect, command, colors, showLabels, inset = NO_INSET, navMode = "move" }: PlantTwinCanvasProps) {
+function SceneContents({ scene, callouts, selectedId, onSelect, command, colors, showLabels, inset = NO_INSET, navMode = "move", persistKey }: PlantTwinCanvasProps) {
   const bounds = useMemo(() => sceneBounds(scene.buildings), [scene.buildings]);
   const labels = useMemo(() => new Map<string, LabelSlot>(), []);
   const invalidate = useThree((st) => st.invalidate);
@@ -737,17 +774,20 @@ function SceneContents({ scene, callouts, selectedId, onSelect, command, colors,
       </Suspense>
       {showLabels && <LabelLayout labels={labels} />}
       <Connections scene={scene} colors={colors} />
-      <CameraRig scene={scene} selectedId={selectedId} command={command} inset={inset} navMode={navMode} />
+      <CameraRig scene={scene} selectedId={selectedId} command={command} inset={inset} navMode={navMode} persistKey={persistKey} />
     </>
   );
 }
 
 export default function PlantTwinCanvas(props: PlantTwinCanvasProps) {
+  const dpr = useTwinDpr();
   return (
     <div className="ph-twin-canvas">
       <Canvas
         shadows
-        dpr={[1, 1.75]}
+        dpr={dpr}
+        resize={TWIN_RESIZE}
+        events={twinEvents}
         frameloop="demand"
         gl={TWIN_GL}
         camera={{ fov: FOV, near: 0.5, far: CAMERA_FAR, position: [40, 40, 60] }}

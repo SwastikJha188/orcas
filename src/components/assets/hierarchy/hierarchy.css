@@ -9,7 +9,7 @@
   align-items: baseline;
   justify-content: space-between;
   padding: 0 8px;
-  font-size: 0.72rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -117,15 +117,9 @@
   border-radius: var(--corner-sm);
   background: var(--dx-track);
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: var(--fs-sm);
   font-weight: 500;
   white-space: nowrap;
-}
-
-.hx-summary {
-  display: grid;
-  grid-template-columns: minmax(160px, 1fr) minmax(240px, 3fr);
-  gap: 12px;
 }
 
 .hx-stat {
@@ -141,12 +135,12 @@
 }
 
 .hx-stat-label {
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
   color: var(--text-muted);
 }
 
 .hx-stat-value {
-  font-size: 1.5rem;
+  font-size: var(--fs-5xl);
   font-weight: 500;
   color: var(--dx-ink);
   line-height: 1;
@@ -157,7 +151,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 6px;
-  font-size: 0.72rem;
+  font-size: var(--fs-sm);
   color: var(--text-muted);
 }
 
@@ -210,7 +204,7 @@
 }
 
 .hx-card-meta {
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -227,7 +221,7 @@
 }
 
 .hx-facts dt {
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   color: var(--text-muted);
 }
 
@@ -236,7 +230,7 @@
   align-items: center;
   gap: 5px;
   margin: 3px 0 0;
-  font-size: 0.85rem;
+  font-size: var(--fs-base);
   font-weight: 500;
   color: var(--dx-ink);
 }
@@ -245,7 +239,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
   color: var(--text-muted);
 }
 
@@ -256,37 +250,95 @@
 .hx-empty-title {
   color: var(--dx-ink);
   font-weight: 500;
-  font-size: 0.95rem;
+  font-size: var(--fs-lg);
 }
 
-@media (max-width: 640px) {
-  .hx-summary {
-    grid-template-columns: 1fr;
-  }
+/* ---------------------------------------------------------------- directory: register */
+.hx-register .ast-card-title .ast-caption {
+  font-weight: 400;
 }
 
-/* ---------------------------------------------------------------- plant time zone */
-.hx-tz {
-  display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(260px, 2fr);
-  gap: 12px 24px;
-  align-items: start;
-}
-
-.hx-tz-clock,
-.hx-tz-field {
+.hx-register-tools {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 16px 10px;
+}
+
+.hx-register-tools .ast-search {
+  width: 260px;
+  max-width: 100%;
+}
+
+/* The table always fits its card: the machine column takes the leftover width and
+   truncates, location truncates, and the actions column keeps its natural size. */
+.hx-register-table.ui-table-container .ui-table {
+  width: 100%;
+  table-layout: auto;
+}
+
+.hx-register-table.ui-table-container .ui-table :is(th, td):first-child {
+  width: 100%;
+  max-width: 0;
+}
+
+.hx-register-table .ast-row-btn,
+.hx-register-table .ast-cell-stack {
   min-width: 0;
 }
 
-.hx-tz-field .ui-select {
-  max-width: 420px;
+.hx-register-table .ast-cell-sub,
+.hx-register-table .ast-cell-title,
+.hx-register-table .ast-cell-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-@media (max-width: 700px) {
-  .hx-tz {
-    grid-template-columns: 1fr;
+.hx-register-table .ast-cell-text {
+  max-width: 280px;
+}
+
+.hx-register-table :is(th, td):last-child {
+  white-space: nowrap;
+}
+
+.hx-row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  width: 100%;
+}
+
+.hx-row-link {
+  padding: 3px 10px;
+  border: none;
+  border-radius: var(--corner-pill);
+  background: transparent;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.ui-table tbody tr:hover .hx-row-link,
+.ui-table tbody tr:focus-within .hx-row-link,
+.hx-row-link:focus-visible {
+  opacity: 1;
+}
+
+.hx-row-link:hover {
+  background: var(--row-hover-bg);
+  color: var(--dx-ink);
+}
+
+@media (hover: none) {
+  .hx-row-link {
+    opacity: 1;
   }
 }

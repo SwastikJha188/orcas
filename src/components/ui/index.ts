@@ -4,3 +4,8 @@ export * from "./table";
 export * from "./pill-button";
 export * from "./dialog";
 export * from "./field";
+export * from "./row-activate";
+export * from "./status";
+export * from "./status-tag";
+export * from "./kpi";
+export * from "./sparkline";

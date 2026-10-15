@@ -1,0 +1,112 @@
+/**
+ * Kiln burner and coal firing PYR-BRN-01 rule definitions.
+ * Evaluated in `../eval/brn.ts`.
+ *
+ * D5 §5.5.4 failure modes FP-31 … FP-34 (Table 9.4.3) and the §5.5.6 sensor
+ * verification checks (SV-BRN-01).
+ */
+import { bearingRule, m, type PyroRuleDef } from "./common";
+
+export const BRN_RULES: PyroRuleDef[] = [
+  // ------------------------------------------------------------- BRN-01
+  ...m("PYR-BRN-01", [
+    {
+      id: "SW-BRN-01",
+      name: "Flame and air-delivery anomaly",
+      category: "Combustion",
+      system: "FLM-BRN-01",
+      subs: ["brn-burner"],
+      logic:
+        "Swirl or axial air pressure > 6σ off its fixed-setting reference in either direction (rise = tip / channel blockage downstream of the tap, fall = leak or upstream blockage) while the coal rate holds its set-point; or the primary-air header > 15 mbar off with the channels following it (supply / restriction). Burning-zone temperature and the burning-zone shell residual (45–60 m) grade it; the flame camera is cited for operator review only",
+      cause: "Burner tip or channel blockage, a leak in a channel or the primary-air header, damaged swirl vanes",
+      consequence: "Changed flame shape: shell hot spots, coating and refractory damage, molten material on the cooler bed",
+      action: "Inspect the burner tip, channels and header joints at the next opportunity; compare with the camera and the shell scanner",
+      inputs: ["PRS-BRN-01", "PRS-BRN-02", "PRS-BRN-03", "CAM-BRN-01", "TMP-KLN-14", "FLO-BRN-01", "ELE-BRN-01", "STS-KLN-08"],
+      spec: "SW-BRN-01",
+      fp: ["FP-31"],
+      owner: "Process engineer (burner)",
+      alternatives: "Burner setting changed without a set-point record; pressure tap or transmitter fault (SV-BRN-01 checks the header against the channels and fan current); primary-air fan wear",
+      unproven: "The burner channel at fault and blockage versus leak, until the tip is inspected; the flame camera is not classified automatically",
+    },
+    {
+      id: "SW-BRN-02",
+      name: "Coal-bin fire / inerting evidence",
+      category: "Combustion",
+      system: "COL-BRN-01",
+      subs: ["brn-coalbin"],
+      logic: "Bin temperature > 5 K above model, or rising > 5 K/h over the last hour, together with the gas indication rising (independent EHS / SIS governs the inerting action); bin level cited as residence-time context",
+      cause: "Self-heating (smouldering) coal from a long residence time or hot mill product",
+      consequence: "Bin fire or explosion",
+      action: "Follow the plant coal-bin fire procedure; do not rely on this advisory for inerting",
+      inputs: ["TMP-BRN-04", "GAS-BRN-01", "LEV-BRN-01"],
+      spec: "SW-BRN-02",
+      fp: ["FP-34"],
+      owner: "Shift supervisor / plant EHS",
+      alternatives: "Hot coal from the mill (inlet temperature), sun or hot-air heating of the bin wall, analyser drift or sample-line fault (no analyser-status point)",
+      hold: "HOLD until the gas species (CO vs CO₂) and the certified monitoring architecture are confirmed (Table 10.1); no plant safety-interlock input is connected to ULTRON; advisory evidence only",
+      unproven: "Fire or smouldering is not confirmed: species and certified monitoring architecture are open, and GAS-BRN-01 has no analyser-status or sample-health point, so analyser validity cannot be checked online; the SIS decides inerting",
+    },
+    {
+      ...bearingRule("R-BRN-03", "Primary-air fan bearing", "FLM-BRN-01", "brn-pafan", ["VIB-BRN-01", "TMP-BRN-01", "ELE-BRN-01"], "Primary-air fan"),
+      logic: "Vibration ×1.4 its load-corrected model together with the same bearing heating > 1.5 K (two independent signals); the fan current is the third witness",
+      consequence: "Primary-air fan trip: flame loss and a kiln stop",
+      spec: "SW-DQ-02",
+      fp: ["FP-33"],
+      owner: "Mechanical maintenance",
+      alternatives: "Impeller imbalance from dust build-up (vibration without heating), coupling misalignment, loose foundation",
+      unproven: "The defective element (bearing race, cage, lubrication) until a spectrum is taken",
+    },
+    {
+      id: "R-BRN-04",
+      name: "Coal line choke / blower weakening",
+      category: "Material handling",
+      system: "COL-BRN-01",
+      subs: ["brn-coalfeed"],
+      logic:
+        "Line pressure > 50 mbar above what the coal rate explains with the blower current up (choke), or > 50 mbar below with the blower current down (blower weakening); Critical above 540 mbar or below 300 mbar",
+      cause: "Choke: coal build-up in the line or burner coal channel. Weakening: worn Roots blower (internal slip), drive belt slip",
+      consequence: "Fuel surges, CO peaks, unstable flame; a full plug stops kiln coal",
+      action: "Choke: check the line and rotary feeder, purge before it plugs. Weakening: check the blower clearances, belts and relief valve; confirm the standby path",
+      inputs: ["PRS-BRN-04", "FLO-BRN-01", "ELE-BRN-02"],
+      spec: "SW-BRN-01",
+      fp: ["FP-32"],
+      owner: "Mechanical maintenance (coal system)",
+      alternatives: "Coal fineness or moisture change, coal rate set-point change, line-pressure transmitter fault (SV-BRN-01 checks the pressure against the blower current)",
+      unproven: "Where in the line the choke sits, or whether the blower or a line leak causes a falling pressure",
+    },
+    {
+      id: "R-BRN-05",
+      name: "Coal conveying blower wear",
+      category: "Rotating equipment",
+      system: "COL-BRN-01",
+      subs: ["brn-coalfeed"],
+      logic: "Roots blower vibration ×1.5 model with current rising",
+      cause: "Rotor / timing-gear wear or bearing damage",
+      consequence: "Blower trip interrupts kiln coal: flame loss and a kiln stop",
+      action: "Plan blower overhaul; confirm the standby path",
+      inputs: ["VIB-BRN-02", "ELE-BRN-02"],
+      spec: "SW-DQ-02",
+      fp: ["FP-33"],
+      owner: "Mechanical maintenance (coal system)",
+      alternatives: "Coupling or belt misalignment, loose base, line back-pressure raising the load",
+      unproven: "Rotor versus timing gear versus bearing, until the blower is opened or a spectrum is taken",
+    },
+    {
+      id: "SV-BRN-01",
+      name: "Burner sensor verification",
+      category: "Data quality",
+      system: "DQ",
+      subs: [],
+      logic:
+        "D5 Table 5.5.6 working checks: the header pressure agrees with the channels and the PA fan current; the line pressure agrees with the blower current (a real choke or weakening moves both). Not while a condition rule already explains the deviation. ≈ 0 when stopped and current-moved-pressure-did-not are screened by R-DQ-02; the coal meter witness vote by R-DQ-02",
+      cause: "Pressure tap blocked or leaking, transmitter drift, current transducer or wiring fault",
+      consequence: "A false burner or coal-line finding, or a missed one, from a reading that no longer follows its physical neighbours",
+      action: "Check the tap and transmitter (zero, impulse line, purge); compare with a local gauge; keep the reading out of diagnosis until it agrees",
+      inputs: ["PRS-BRN-03", "PRS-BRN-04", "ELE-BRN-01", "ELE-BRN-02"],
+      spec: "SW-DQ-01",
+      owner: "Instrument technician",
+      alternatives: "A real process change the neighbour signal does not see yet (lag), a stop / start in progress",
+      unproven: "Which of the two disagreeing instruments is wrong: disagreement alone is a suspect flag, not proof of instrument failure",
+    },
+  ]),
+];

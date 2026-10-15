@@ -1,7 +1,10 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { invalidateApi } from "@/lib/api-cache";
 import { useMqttLive, type StreamState } from "@/providers/use-mqtt-live";
+import { useIndustrialData } from "@/providers/industrial-data-context";
+import { edgeScope, scopeRegistry, scopeSnapshot, scopeTraffic } from "@/lib/edge-scope";
 import type { ApiResponse } from "@/types/api";
 import type { BrokerTestResult, EdgeCommissionInput, EdgeCommissionResult, EdgeEntityByKind, EdgeKind, EdgeMapInput, EdgeMapResult, EdgeRegistry, RawSample } from "@/types/edge";
 import type { MqttSnapshot, MqttTrafficEntry } from "@/types/mqtt";
@@ -10,7 +13,9 @@ import type { MqttSnapshot, MqttTrafficEntry } from "@/types/mqtt";
    Devices data: the edge registry (what is configured, from /api/edge) and
    the live MQTT fleet (what the brokers report, from /api/mqtt/stream).
    Mounted once by the Devices view so the hierarchy and MQTT pages share one
-   fetch and one event stream.
+   fetch and one event stream. Both are scoped to the active plant (each plant
+   is a separate workspace): its gateways, sources, sites and machines, and
+   none of another plant's live gateways (`src/lib/edge-scope.ts`).
    ========================================================================== */
 
 export interface EdgeContextValue {
@@ -56,6 +61,7 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
   const body = (await res.json().catch(() => null)) as ApiResponse<T> | null;
   if (!body) throw new Error(`Request failed (${res.status}).`);
   if ("error" in body) throw new Error(body.error.message);
+  if (init?.method && init.method !== "GET") invalidateApi("/api/");
   return body.data;
 }
 
@@ -65,6 +71,7 @@ export function EdgeProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [trafficPaused, setTrafficPaused] = useState(false);
   const live = useMqttLive({ paused: trafficPaused });
+  const { selectedPlantId, machines } = useIndustrialData();
 
   const refresh = useCallback(async () => {
     try {
@@ -151,9 +158,19 @@ export function EdgeProvider({ children }: { children: React.ReactNode }) {
     await call<unknown>("/api/mqtt/listen", { method: "POST", body: JSON.stringify({ brokerId, filter, seconds }) });
   }, []);
 
+  // The active plant's slice of the registry and of the live MQTT state.
+  const scope = useMemo(() => (registry && selectedPlantId ? edgeScope(registry, selectedPlantId) : null), [registry, selectedPlantId]);
+  const machinePlant = useMemo(() => new Map(machines.flatMap((m) => (m.plantId ? [[m.id, m.plantId] as [string, string]] : []))), [machines]);
+  const plantRegistry = useMemo(
+    () => (registry && scope && selectedPlantId ? scopeRegistry(registry, selectedPlantId, machinePlant, scope) : registry),
+    [registry, scope, selectedPlantId, machinePlant],
+  );
+  const plantSnapshot = useMemo(() => (live.snapshot && scope ? scopeSnapshot(live.snapshot, scope) : live.snapshot), [live.snapshot, scope]);
+  const plantTraffic = useMemo(() => (scope ? scopeTraffic(live.traffic, scope) : live.traffic), [live.traffic, scope]);
+
   const value = useMemo<EdgeContextValue>(
     () => ({
-      registry,
+      registry: plantRegistry,
       loading,
       error,
       refresh,
@@ -166,15 +183,15 @@ export function EdgeProvider({ children }: { children: React.ReactNode }) {
       deleteTag,
       fetchSamples,
       listen,
-      snapshot: live.snapshot,
-      traffic: live.traffic,
+      snapshot: plantSnapshot,
+      traffic: plantTraffic,
       history: live.history,
       stream: live.stream,
       trafficPaused,
       setTrafficPaused,
       clearTraffic: live.clearTraffic,
     }),
-    [registry, loading, error, refresh, create, update, remove, testBroker, mapChannel, commission, deleteTag, fetchSamples, listen, live.snapshot, live.traffic, live.history, live.stream, live.clearTraffic, trafficPaused],
+    [plantRegistry, loading, error, refresh, create, update, remove, testBroker, mapChannel, commission, deleteTag, fetchSamples, listen, plantSnapshot, plantTraffic, live.history, live.stream, live.clearTraffic, trafficPaused],
   );
 
   return <EdgeContext.Provider value={value}>{children}</EdgeContext.Provider>;

@@ -18,6 +18,61 @@ import type { TwinNavMode } from "./twin-nav-ui";
 
 export type { TwinNavMode };
 
+type SavedPose = { pos: [number, number, number]; tgt: [number, number, number] };
+const POSE_PREFIX = "ultron.twin.pose.";
+
+/** Camera pose the operator last left this twin in, or null (never moved / reset). */
+export function loadTwinPose(key: string | undefined): SavedPose | null {
+  if (!key) return null;
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(POSE_PREFIX + key) ?? "null");
+    const ok = (v: unknown) => Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === "number" && Number.isFinite(n));
+    return raw && ok(raw.pos) && ok(raw.tgt) ? (raw as SavedPose) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Forget the saved pose so the twin opens at its default framing again. */
+export function clearTwinPose(key: string | undefined) {
+  if (!key) return;
+  try {
+    window.localStorage.removeItem(POSE_PREFIX + key);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/** Save the camera pose after the operator moves it (debounced). Skipped while the view is still the automatic fit. */
+export function usePersistTwinPose(key: string | undefined, operated: React.MutableRefObject<boolean>) {
+  const camera = useThree((st) => st.camera);
+  const controls = useThree((st) => st.controls) as OrbitControlsImpl | null;
+  useEffect(() => {
+    if (!controls || !key) return;
+    let timer: number | undefined;
+    const save = () => {
+      if (!operated.current) return;
+      const pose: SavedPose = { pos: camera.position.toArray() as SavedPose["pos"], tgt: controls.target.toArray() as SavedPose["tgt"] };
+      try {
+        window.localStorage.setItem(POSE_PREFIX + key, JSON.stringify(pose));
+      } catch {
+        /* storage unavailable */
+      }
+    };
+    const onChange = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(save, 250);
+    };
+    controls.addEventListener("change", onChange);
+    window.addEventListener("pagehide", save);
+    return () => {
+      window.clearTimeout(timer);
+      controls.removeEventListener("change", onChange);
+      window.removeEventListener("pagehide", save);
+    };
+  }, [controls, camera, key, operated]);
+}
+
 const MOVE_KEYS = new Set(["w", "a", "s", "d", "q", "e", "arrowup", "arrowdown", "arrowleft", "arrowright"]);
 
 /** OrbitControls set up for the twin: floor-plane panning, zoom to cursor, mode-dependent buttons. */

@@ -1,0 +1,498 @@
+/* Responsive layer — machine Diagnosis, Health, Trends. See foundation.css for tiers and the :root prefix rule.
+
+   The shared frame (header, KPI strip, section index, section padding, frame
+   gap) belongs to machine-diagnostics.css. This file only re-arranges the
+   content inside the Diagnosis (pg-diag / dxo tables), Health (pg-health)
+   and Trends (pg-trends) sections.
+
+   Tables
+     phone   Diagnosis + Health indicator/driver tables turn every row into a
+             stacked two- or three-line row (CSS grid on the <tr>); the other
+             tables keep their table layout but drop to the 3–4 columns that
+             matter. No table scrolls sideways on a phone.
+     tablet  low-priority columns drop out; the 980px Diagnosis minimum goes.
+   Layout
+     wide    short sections pair up side by side (Diagnosis actions | log,
+             Health breakdown | trend + drivers, Trends signal | compare,
+             excursions | states).
+
+   Column indices below are the <th> order of each table (see the TSX). */
+
+/* ---- Tablet: drop low-priority columns so tables fit without scrolling. */
+@media (min-width: 600px) and (max-width: 1023px) {
+  :root .pg-diag .dxo-table { min-width: 0; }
+
+  /* Alarms: Persist., Clear, In alarm */
+  :root .pg-diag #dx-alarms .pg-diag-table :is(th, tr.dxo-row > td):is(:nth-child(5), :nth-child(6), :nth-child(7)),
+  /* Fault candidates: Symptoms, Onset */
+  :root .pg-diag #dx-diagnosis .pg-diag-table:not(.pg-diag-rules) > :is(thead, tbody) > tr:not(.dxo-drawer) > :is(th, td):is(:nth-child(4), :nth-child(5)),
+  /* Rule matrix: Persist. / clear, Inputs valid, Logic */
+  :root .pg-diag .pg-diag-rules :is(thead th, tr.dxo-row > td):is(:nth-child(3), :nth-child(4), :nth-child(7)),
+  /* Sensor evidence: Model, Residual 1 h, Cited by */
+  :root .pg-diag #dx-evidence .dxo-table-card:not(.pg-diag-sub) .pg-diag-table :is(th, tr.dxo-row > td):is(:nth-child(3), :nth-child(6), :nth-child(8)),
+  /* Vibration: Model, Zone limits */
+  :root .pg-diag #dx-evidence .pg-diag-sub .pg-diag-table :is(th, tr.dxo-row > td):is(:nth-child(3), :nth-child(6)),
+  /* Actions: Triggered by, Owner */
+  :root .pg-diag #dx-actions .pg-diag-table :is(th, tr.dxo-row > td):is(:nth-child(3), :nth-child(5)) {
+    display: none;
+  }
+
+  :root .pg-diag .pg-diag-act-text { min-width: 200px; }
+  :root .pg-diag .pg-diag-logic { max-width: 260px; }
+
+  /* Tighter cells; secondary lines wrap instead of setting the column width. */
+  :root .pg-diag .dxo-table :is(th, td) { padding-left: 10px; padding-right: 10px; }
+  :root .pg-diag .dxo-table .dxo-secondary-text { white-space: normal; }
+  /* Alarms: keep the signal tag line whole; let the state label wrap instead. */
+  :root .pg-diag #dx-alarms .pg-diag-table td:nth-child(4) .dxo-secondary-text { white-space: nowrap; }
+  :root .pg-diag #dx-alarms .pg-diag-table .pg-diag-state { white-space: normal; align-items: baseline; }
+}
+
+/* ---- Phone: every Diagnosis table becomes a list of stacked rows. */
+@media (max-width: 599px) {
+  /* Flush rows: text lines up with the section title (section padding 14). */
+  :root .pg-diag .pg-analysis-section .dxo-table-wrap {
+    margin: 0 -8px;
+    width: calc(100% + 16px);
+    overflow-x: visible;
+  }
+
+  :root .pg-diag .dxo-table,
+  :root .pg-diag .dxo-table > tbody {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+
+  /* Column headers are meaningless once rows stack; keep them for screen readers. */
+  :root .pg-diag .dxo-table > thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  :root .pg-diag .dxo-table > tbody > tr {
+    display: block;
+  }
+
+  :root .pg-diag .dxo-table > tbody > tr:not(.dxo-row) > :is(td, th) {
+    display: block;
+    padding: 10px 8px;
+  }
+
+  :root .pg-diag .dxo-table > tbody > tr.pg-diag-group > th {
+    padding: 16px 8px 8px;
+  }
+
+  /* Stacked row: grid on the <tr>, capsule highlight on the whole row. */
+  :root .pg-diag .dxo-table > tbody > tr.dxo-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px 12px;
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--separator);
+  }
+
+  :root .pg-diag .dxo-table > tbody > tr.dxo-row > td {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    text-align: left;
+  }
+
+  :root .pg-diag .dxo-table > tbody > tr.dxo-row:is(:hover, :focus-within, .is-open, .is-focus) {
+    border-radius: var(--corner-row);
+    background: var(--row-hover-bg);
+    border-bottom-color: transparent;
+  }
+
+  :root .pg-diag .dxo-table > tbody > tr.dxo-row.is-focus {
+    box-shadow: inset 0 0 0 1px var(--signal-blue);
+  }
+
+  :root .pg-diag .dxo-table > tbody > tr.dxo-row > td.is-right {
+    justify-self: end;
+    text-align: right;
+  }
+
+  /* Small muted lead-in labels for values that lose their column header. */
+  :root .pg-diag #dx-alarms .pg-diag-table > tbody > tr.dxo-row > td:nth-child(8)::before,
+  :root .pg-diag #dx-diagnosis .pg-diag-table:not(.pg-diag-rules) > tbody > tr.dxo-row > td:nth-child(6)::before,
+  :root .pg-diag #dx-actions .pg-diag-table > tbody > tr.dxo-row > td:nth-child(4)::before {
+    margin-right: 6px;
+    font-size: var(--fs-xs);
+    color: var(--text-muted);
+  }
+  :root .pg-diag #dx-alarms .pg-diag-table > tbody > tr.dxo-row > td:nth-child(8)::before { content: "Respond in"; }
+  :root .pg-diag #dx-diagnosis .pg-diag-table:not(.pg-diag-rules) > tbody > tr.dxo-row > td:nth-child(6)::before { content: "To limit"; }
+  :root .pg-diag #dx-actions .pg-diag-table > tbody > tr.dxo-row > td:nth-child(4)::before { content: "Due"; }
+
+  /* -- Alarms: Pri | Alarm | State / Signal | Respond in / Actions */
+  :root .pg-diag #dx-alarms .pg-diag-table > tbody > tr.dxo-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  :root .pg-diag #dx-alarms .pg-diag-table > tbody > tr.dxo-row > td:nth-child(1) { grid-area: 1 / 1; align-self: start; color: var(--dx-ink); }
+  :root .pg-diag #dx-alarms .pg-diag-table > tbody > tr.dxo-row > td:nth-child(2) { grid-area: 1 / 2; }
+  :root .pg-diag #dx-alarms .pg-diag-table > tbody > tr.dxo-row > td:nth-child(3) { grid-area: 1 / 3; align-self: start; justify-self: end; }
+  :root .pg-diag #dx-alarms .pg-diag-table > tbody > tr.dxo-row > td:nth-child(4) { grid-area: 2 / 2; justify-self: start; text-align: left; }
+  :root .pg-diag #dx-alarms .pg-diag-table > tbody > tr.dxo-row > td:nth-child(8) { grid-area: 2 / 3; }
+  :root .pg-diag #dx-alarms .pg-diag-table > tbody > tr.dxo-row > td:nth-child(9) { grid-area: 3 / 2 / 4 / 4; justify-self: start; }
+  :root .pg-diag #dx-alarms .pg-diag-table > tbody > tr.dxo-row > td:nth-child(9) .pg-diag-row-actions { justify-content: flex-start; flex-wrap: wrap; }
+  :root .pg-diag #dx-alarms .pg-diag-table > tbody > tr.dxo-row > td:is(:nth-child(5), :nth-child(6), :nth-child(7)) { display: none; }
+
+  /* -- Fault candidates: name / status · strength / to limit · feedback */
+  :root .pg-diag #dx-diagnosis .pg-diag-table:not(.pg-diag-rules) > tbody > tr.dxo-row > td:nth-child(1) { grid-column: 1 / -1; }
+  :root .pg-diag #dx-diagnosis .pg-diag-table:not(.pg-diag-rules) > tbody > tr.dxo-row > td:nth-child(6) { justify-self: start; text-align: left; }
+  :root .pg-diag #dx-diagnosis .pg-diag-table:not(.pg-diag-rules) > tbody > tr.dxo-row > td:is(:nth-child(4), :nth-child(5)) { display: none; }
+
+  /* Expanded finding: one column; the input matrix scrolls inside itself. */
+  :root .pg-diag .pg-diag-detail { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  :root .pg-diag .pg-diag-dl { grid-template-columns: 80px minmax(0, 1fr); }
+  :root .pg-diag .pg-diag-matrix { display: block; max-width: 100%; overflow-x: auto; }
+
+  /* -- Rule matrix: rule | lane / logic */
+  :root .pg-diag .pg-diag-rules > tbody > tr.dxo-row > td:nth-child(7) {
+    grid-column: 1 / -1;
+    max-width: none;
+  }
+  :root .pg-diag .pg-diag-rules > tbody > tr.dxo-row > td:is(:nth-child(3), :nth-child(4), :nth-child(5), :nth-child(6)) { display: none; }
+
+  /* -- Sensor evidence: sensor | value / zone bar | residual / validity | links */
+  :root .pg-diag #dx-evidence .dxo-table-card:not(.pg-diag-sub) .pg-diag-table > tbody > tr.dxo-row > td:nth-child(4) { justify-self: start; }
+  :root .pg-diag #dx-evidence .dxo-table-card:not(.pg-diag-sub) .pg-diag-table > tbody > tr.dxo-row > td:nth-child(7) { white-space: normal; line-height: 1.4; }
+  :root .pg-diag #dx-evidence .dxo-table-card:not(.pg-diag-sub) .pg-diag-table > tbody > tr.dxo-row > td:is(:nth-child(3), :nth-child(6), :nth-child(8)) { display: none; }
+  :root .pg-diag #dx-evidence .pg-diag-zonebar { width: 100%; max-width: 200px; }
+
+  /* -- Vibration: point | velocity / zone | trend */
+  :root .pg-diag #dx-evidence .pg-diag-sub .pg-diag-table > tbody > tr.dxo-row > td:is(:nth-child(3), :nth-child(4), :nth-child(6)) { display: none; }
+  :root .pg-diag #dx-evidence .pg-diag-sub .pg-diag-table > tbody > tr.dxo-row > td:nth-child(5) { white-space: normal; }
+
+  /* -- Actions: Pri | action / status | work order / due */
+  :root .pg-diag #dx-actions .pg-diag-table > tbody > tr.dxo-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  :root .pg-diag #dx-actions .pg-diag-table > tbody > tr.dxo-row > td:nth-child(1) { grid-area: 1 / 1; align-self: start; color: var(--dx-ink); }
+  :root .pg-diag #dx-actions .pg-diag-table > tbody > tr.dxo-row > td:nth-child(2) { grid-area: 1 / 2 / 2 / 4; }
+  :root .pg-diag #dx-actions .pg-diag-table > tbody > tr.dxo-row > td:nth-child(6) { grid-area: 2 / 2; }
+  :root .pg-diag #dx-actions .pg-diag-table > tbody > tr.dxo-row > td:nth-child(7) { grid-area: 2 / 3 / 4 / 4; align-self: center; }
+  :root .pg-diag #dx-actions .pg-diag-table > tbody > tr.dxo-row > td:nth-child(4) { grid-area: 3 / 2; }
+  :root .pg-diag #dx-actions .pg-diag-table > tbody > tr.dxo-row > td:is(:nth-child(3), :nth-child(5)) { display: none; }
+  :root .pg-diag .pg-diag-act-text { min-width: 0; max-width: none; }
+
+  /* -- Log: time | type / event (the event title already names the rule) */
+  :root .pg-diag #dx-log .pg-diag-table > tbody > tr.dxo-row > td:nth-child(1) { grid-area: 1 / 1; width: auto; }
+  :root .pg-diag #dx-log .pg-diag-table > tbody > tr.dxo-row > td:nth-child(2) { grid-area: 1 / 2; justify-self: end; }
+  :root .pg-diag #dx-log .pg-diag-table > tbody > tr.dxo-row > td:nth-child(3) { grid-area: 2 / 1 / 3 / 3; }
+  :root .pg-diag #dx-log .pg-diag-table > tbody > tr.dxo-row > td:nth-child(4) { display: none; }
+
+  /* Shelving form + shelved list stack. */
+  :root .pg-diag .pg-diag-shelf li {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 12px;
+  }
+  :root .pg-diag .pg-diag-card-head .pg-diag-pipe { row-gap: 4px; }
+}
+
+/* ---- Wide: short sections pair up — actions beside the event log. */
+@media (min-width: 1920px) {
+  :root .ast-root.pg-frame.pg-diag {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+  }
+  :root .ast-root.pg-frame.pg-diag > * { grid-column: 1 / -1; }
+  :root .ast-root.pg-frame.pg-diag > #dx-actions { grid-column: 1; }
+  :root .ast-root.pg-frame.pg-diag > #dx-log { grid-column: 2; }
+  :root .pg-diag :is(#dx-actions, #dx-log) .dxo-table { min-width: 0; }
+  :root .pg-diag #dx-actions .pg-diag-act-text { min-width: 0; max-width: 360px; }
+  :root .pg-diag :is(#dx-actions, #dx-log) .dxo-table :is(th, td) { padding-left: 12px; padding-right: 12px; }
+  /* Logic text gets the room a 1900px row has. */
+  :root .pg-diag .pg-diag-logic { max-width: 560px; }
+}
+
+/* =====================================================================
+   HEALTH
+   ===================================================================== */
+
+/* Section-head pill groups (system filters) never widen the page: the group
+   takes its own line and scrolls sideways inside it. */
+:root .pg-health .pg-health-card-right { min-width: 0; max-width: 100%; }
+
+/* ---- Tablet: breakdown drops Δ; indicators drop Model and Warn / alarm. */
+@media (min-width: 600px) and (max-width: 1023px) {
+  :root .pg-health #hl-breakdown .pg-health-table:has(> thead th:nth-child(8)) :is(th, td):nth-child(3),
+  :root .pg-health #hl-indicators .pg-health-table:has(> thead th:nth-child(8)) :is(th, td):is(:nth-child(4), :nth-child(7)),
+  :root .pg-health #hl-drivers .pg-health-table :is(th, td):nth-child(2) {
+    display: none;
+  }
+
+  :root .pg-health .pg-health-table :is(th, td) { padding-left: 8px; padding-right: 8px; }
+  :root .pg-health .pg-health-signal { max-width: 160px; }
+  :root .pg-health #hl-breakdown .pg-health-table td:first-child { white-space: normal; }
+  :root .pg-health #hl-breakdown .pg-health-id { display: block; margin-left: 0; font-size: var(--fs-xs); }
+  :root .pg-health #hl-breakdown .pg-health-score-cell .pg-health-bar { width: 44px; }
+}
+
+/* ---- Phone */
+@media (max-width: 599px) {
+  :root .pg-health .pg-health-flush { margin: 0 -8px -8px; }
+  :root .pg-health .pg-health-card-head { flex-wrap: wrap; row-gap: 8px; }
+
+  /* Breakdown: Asset | Health | Status — the three columns that read at a glance.
+     (Machine / system rows use colspans, so only first, second and last are safe.) */
+  :root .pg-health #hl-breakdown .pg-health-table :is(th, td):not(:first-child):not(:nth-child(2)):not(:last-child) {
+    display: none;
+  }
+  :root .pg-health #hl-breakdown .pg-health-table :is(th, td) { padding: 10px 8px; }
+  :root .pg-health #hl-breakdown .pg-health-table td:first-child { white-space: normal; }
+  :root .pg-health #hl-breakdown .pg-health-table :is(th, td):last-child { text-align: right; }
+  :root .pg-health #hl-breakdown .pg-health-id {
+    display: block;
+    margin-left: 0;
+    margin-top: 2px;
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+  }
+  :root .pg-health #hl-breakdown .pg-health-score-cell .pg-health-bar { width: 44px; }
+
+  /* Indicators + drivers: stacked rows (grid on the <tr>). */
+  :root .pg-health :is(#hl-indicators, #hl-drivers) .pg-health-table,
+  :root .pg-health :is(#hl-indicators, #hl-drivers) .pg-health-table > tbody {
+    display: block;
+    width: 100%;
+  }
+  :root .pg-health :is(#hl-indicators, #hl-drivers) .pg-health-table > thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  :root .pg-health :is(#hl-indicators, #hl-drivers) .pg-health-table > tbody > tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: 4px 12px;
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--separator);
+  }
+  :root .pg-health :is(#hl-indicators, #hl-drivers) .pg-health-table > tbody > tr:last-child { border-bottom-color: transparent; }
+  :root .pg-health :is(#hl-indicators, #hl-drivers) .pg-health-table > tbody > tr:is(:hover, :focus-within) { border-radius: var(--corner-row); background: var(--row-hover-bg); border-bottom-color: transparent; }
+  :root .pg-health :is(#hl-indicators, #hl-drivers) .ast-table .pg-health-table > tbody > tr > td {
+    display: block;
+    min-width: 0;
+    max-width: none;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+  }
+  :root .pg-health :is(#hl-indicators, #hl-drivers) .pg-health-table > tbody > tr > td:only-child { grid-column: 1 / -1; }
+
+  /* Indicators: tag | value / signal name | lost (or status). */
+  :root .pg-health #hl-indicators .pg-health-table > tbody > tr > td:nth-child(1) { grid-area: 1 / 1; color: var(--dx-ink); font-weight: 500; }
+  :root .pg-health #hl-indicators .pg-health-table > tbody > tr > td:nth-child(3) { grid-area: 1 / 2; }
+  :root .pg-health #hl-indicators .pg-health-table > tbody > tr > td:nth-child(2) {
+    grid-area: 2 / 1;
+    font-size: var(--fs-sm);
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  :root .pg-health #hl-indicators .pg-health-table > tbody > tr > td:last-child:not(:nth-child(-n+3)) { grid-area: 2 / 2; font-size: var(--fs-sm); }
+  :root .pg-health #hl-indicators .pg-health-table > tbody > tr > td:not(:nth-child(-n+3)):not(:last-child) { display: none; }
+
+  :root .pg-health #hl-indicators .pg-health-table:has(> thead th:nth-child(8)) > tbody > tr > td:last-child:not(:only-child)::before,
+  :root .pg-health #hl-drivers .pg-health-table > tbody > tr > td:nth-child(5)::before {
+    content: "Lost";
+    margin-right: 6px;
+    font-size: var(--fs-xs);
+    font-weight: 400;
+    color: var(--text-muted);
+  }
+
+  /* Drivers: source | lost / evidence. */
+  :root .pg-health #hl-drivers .pg-health-table > tbody > tr > td:nth-child(1) { grid-area: 1 / 1; }
+  :root .pg-health #hl-drivers .pg-health-table > tbody > tr > td:nth-child(5) { grid-area: 1 / 2; }
+  :root .pg-health #hl-drivers .pg-health-table > tbody > tr > td:nth-child(4) {
+    grid-area: 2 / 1 / 3 / 3;
+    font-size: var(--fs-sm);
+    white-space: normal;
+    line-height: 1.4;
+  }
+  :root .pg-health #hl-drivers .pg-health-table > tbody > tr > td:is(:nth-child(2), :nth-child(3)) { display: none; }
+
+  :root .pg-health .pg-health-dq { flex-wrap: wrap; row-gap: 6px; }
+}
+
+/* ---- Wide: breakdown beside the trend and the deduction drivers; the
+   indicator register keeps the full width below. */
+@media (min-width: 1920px) {
+  :root .ast-root.pg-frame.pg-health {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    /* header, KPIs, index, breakdown + trend, drivers (flexible: absorbs the
+       breakdown's extra height so no gap opens under the trend), indicators */
+    grid-template-rows: auto auto auto auto 1fr auto;
+    grid-auto-flow: row dense;
+    align-items: start;
+  }
+  :root .ast-root.pg-frame.pg-health > * { grid-column: 1 / -1; }
+  :root .ast-root.pg-frame.pg-health > #hl-breakdown { grid-column: 1; grid-row: span 2; }
+  :root .ast-root.pg-frame.pg-health > #hl-trend { grid-column: 2; }
+  :root .ast-root.pg-frame.pg-health > #hl-drivers { grid-column: 2; }
+  :root .pg-health #hl-breakdown .pg-health-table :is(th, td) { padding-left: 12px; padding-right: 12px; }
+}
+
+/* =====================================================================
+   TRENDS
+   ===================================================================== */
+
+/* Section-head filter pills (Events) scroll inside the head instead of
+   widening the workspace. */
+:root .pg-trends .pg-analysis-section-right { min-width: 0; max-width: 100%; }
+:root .pg-trends .pg-trends-pills { min-width: 0; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+
+/* ---- Laptop + desktop: the event log's Type and Source cells wrap rather
+   than push the table past the card. */
+@media (min-width: 1024px) {
+  :root .pg-trends #trends-events .pg-trends-table .ui-table td:is(:nth-child(3), :nth-child(6)) { white-space: normal; }
+}
+
+/* ---- Tablet */
+@media (min-width: 600px) and (max-width: 1023px) {
+  /* Signals: Min, Max */
+  :root .pg-trends #trends-signals .ui-table :is(thead th, tbody tr:not(.pg-trends-grouprow) > td):is(:nth-child(5), :nth-child(6)),
+  /* Excursions: Start, Rule */
+  :root .pg-trends #trends-excursions .ui-table :is(th, td):is(:nth-child(3), :nth-child(7)),
+  /* Events: Type, Source */
+  :root .pg-trends #trends-events .ui-table :is(th, td):is(:nth-child(3), :nth-child(6)) {
+    display: none;
+  }
+  :root .pg-trends .pg-trends-table .ui-table td.pg-trends-msg { min-width: 220px; }
+  :root .pg-trends .pg-trends-table .ui-table :is(th, td) { padding-left: 10px; padding-right: 10px; }
+  :root .pg-trends .pg-trends-table .ui-table :is(td, th).pg-trends-strip-col { min-width: 160px; }
+  :root .pg-trends .pg-trends-strip { min-width: 140px; }
+}
+
+/* ---- Tablet + phone: signal cell stacks tag over name (drops the type icon). */
+@media (max-width: 1023px) {
+  :root .pg-trends .pg-trends-sig {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  :root .pg-trends .pg-trends-sig svg { display: none; }
+  :root .pg-trends .pg-trends-tagcol { min-width: 0; }
+  :root .pg-trends .pg-trends-name { max-width: 200px; font-size: var(--fs-sm); }
+}
+
+/* ---- Phone */
+@media (max-width: 599px) {
+  /* Flush tables line up with the section title (section padding 14). */
+  :root .pg-trends .pg-trends-card--table { margin: -4px -8px -8px; }
+  :root .pg-trends .pg-trends-table .ui-table tr.pg-trends-grouprow th { padding: 16px 8px 6px; }
+
+  :root .pg-trends .pg-trends-name { max-width: 170px; }
+
+  /* Compare: Signal | Latest | r */
+  :root .pg-trends #trends-compare .ui-table :is(th, td):is(:nth-child(3), :nth-child(4)),
+  /* Signals: Signal | Value | Status */
+  :root .pg-trends #trends-signals .ui-table :is(thead th, tbody tr:not(.pg-trends-grouprow) > td):is(:nth-child(3), :nth-child(4), :nth-child(5), :nth-child(6), :nth-child(7)),
+  /* Excursions: Signal | Duration | Peak */
+  :root .pg-trends #trends-excursions .ui-table :is(th, td):is(:nth-child(2), :nth-child(3), :nth-child(6), :nth-child(7)),
+  /* Events: Time | Event | Value */
+  :root .pg-trends #trends-events .ui-table :is(th, td):is(:nth-child(3), :nth-child(4), :nth-child(6)),
+  /* States: Signal | State | strip */
+  :root .pg-trends #trends-states .ui-table :is(th, td):is(:nth-child(4), :nth-child(5)) {
+    display: none;
+  }
+
+  /* Stacked rows. The Trends root also carries .pg-analysis, so the generic
+     stacked-row base from machine-insights.css applies (grid on the <tr>,
+     lead cell full width). These rules place the remaining cells as a tidy
+     two-column row: identity left, values right-aligned. */
+  :root .pg-trends :is(#trends-compare, #trends-signals, #trends-excursions, #trends-events, #trends-states) .ui-table tbody tr:not(.pg-trends-grouprow) {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 4px 16px;
+  }
+  :root .pg-trends :is(#trends-compare, #trends-signals, #trends-excursions, #trends-events, #trends-states) .ui-table tbody tr > td { grid-column: auto; }
+  :root .pg-trends :is(#trends-compare, #trends-signals, #trends-excursions, #trends-states) .ui-table tbody tr > td:first-child { grid-area: 1 / 1 / 3 / 2; }
+  :root .pg-trends :is(#trends-compare, #trends-signals, #trends-excursions, #trends-events, #trends-states) .ui-table tbody tr > td:not(:first-child) {
+    grid-column: 2;
+    align-items: flex-end;
+    text-align: right;
+  }
+  :root .pg-trends #trends-signals .ui-table tbody tr.pg-trends-grouprow { display: block; padding: 0; border-bottom: 0; }
+  :root .pg-trends #trends-signals .ui-table tbody tr.pg-trends-grouprow > th { display: block; white-space: normal; }
+  :root .pg-trends #trends-compare .ui-table tbody tr > td:nth-child(5)::before { content: "r"; }
+  :root .pg-trends #trends-excursions .ui-table tbody tr > td:nth-child(5)::before { content: "Peak"; }
+  :root .pg-trends :is(#trends-compare .ui-table tbody tr > td:nth-child(5), #trends-excursions .ui-table tbody tr > td:nth-child(5)) {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 6px;
+  }
+  /* Events: time | value / event text full width. */
+  :root .pg-trends #trends-events .ui-table tbody tr > td:first-child { grid-area: 1 / 1; color: var(--text-muted); }
+  :root .pg-trends #trends-events .ui-table tbody tr > td:nth-child(5) { grid-area: 1 / 2; }
+  :root .pg-trends #trends-events .ui-table tbody tr > td:nth-child(2) { grid-area: 2 / 1 / 3 / 3; align-items: flex-start; text-align: left; }
+  /* States: signal | state / strip full width. */
+  :root .pg-trends #trends-states .ui-table tbody tr > td:first-child { grid-area: 1 / 1; }
+  :root .pg-trends #trends-states .ui-table tbody tr > td:nth-child(3) { grid-area: 2 / 1 / 3 / 3; align-items: stretch; }
+
+  :root .pg-trends .pg-trends-table .ui-table td.pg-trends-msg { min-width: 0; max-width: none; }
+  :root .pg-trends .pg-trends-table .ui-table :is(td, th).pg-trends-strip-col { width: auto; min-width: 96px; }
+  :root .pg-trends .pg-trends-strip { min-width: 96px; }
+
+  /* Signal explorer: hero value and stats in a tidy 3-up grid. */
+  :root .pg-trends .pg-trends-readouts { gap: 12px; }
+  :root .pg-trends .pg-trends-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    row-gap: 12px;
+    width: 100%;
+  }
+  :root .pg-trends .pg-trends-stats > div { min-width: 0; padding: 0 8px; }
+  :root .pg-trends .pg-trends-stats :is(dt, dd) { overflow: hidden; text-overflow: ellipsis; }
+  :root .pg-trends .pg-trends-stats > div:nth-child(3n + 1) { border-left: 0; padding-left: 0; }
+  :root .pg-trends .pg-trends-ex-actions { width: 100%; }
+  :root .pg-trends .pg-trends-picker { width: 100%; }
+  :root .pg-trends .pg-trends-add { flex: 1 1 100%; }
+}
+
+/* ---- Wide: focus chart beside the comparison, excursions beside states. */
+@media (min-width: 1920px) {
+  :root .pg-trends .pg-frame-body.pg-trends-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-auto-flow: row dense;
+    align-items: start;
+  }
+  :root .pg-trends .pg-trends-body > * { grid-column: 1 / -1; }
+  :root .pg-trends .pg-trends-body > #trends-signal { grid-column: 1; }
+  :root .pg-trends .pg-trends-body > #trends-compare { grid-column: 2; }
+  :root .pg-trends .pg-trends-body > #trends-excursions { grid-column: 1; }
+  :root .pg-trends .pg-trends-body > #trends-states { grid-column: 2; }
+  :root .pg-trends .pg-trends-name { max-width: 420px; }
+  /* Half-width tables: names truncate sooner, cells tighten. */
+  :root .pg-trends :is(#trends-compare, #trends-excursions, #trends-states) .pg-trends-sig {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  :root .pg-trends :is(#trends-compare, #trends-excursions, #trends-states) .pg-trends-sig svg { display: none; }
+  :root .pg-trends :is(#trends-compare, #trends-excursions, #trends-states) .pg-trends-name { max-width: 200px; font-size: var(--fs-sm); }
+  :root .pg-trends :is(#trends-compare, #trends-excursions, #trends-states) .pg-trends-table .ui-table :is(th, td) { padding-left: 12px; padding-right: 12px; }
+}

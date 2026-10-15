@@ -7,12 +7,28 @@ import "@/components/assets/hierarchy/hierarchy.css";
 import "@/components/devices/mqtt.css";
 import "@/components/devices/formats/formats.css";
 import "@/components/devices/hierarchy/devices-hierarchy.css";
+// Responsive layer: viewport tiers from phone to TV (see foundation.css).
+import "@/styles/responsive/foundation.css";
+import "@/styles/responsive/home.css";
+import "@/styles/responsive/assets-workspace.css";
+import "@/styles/responsive/machine-diagnostics.css";
+import "@/styles/responsive/machine-insights.css";
+import "@/styles/responsive/machine-condition.css";
+import "@/styles/responsive/devices-assetiq-configure.css";
 import Script from "next/script";
+import type { Viewport } from "next";
 import { ThemeProvider } from "@/providers/theme-provider";
 
 export const metadata = {
   title: "ULTRON",
   description: "Industrial operations software",
+};
+
+// viewport-fit=cover lets the phone tab bar sit above the home indicator via safe-area insets.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

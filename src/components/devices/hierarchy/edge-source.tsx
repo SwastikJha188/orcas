@@ -2,9 +2,10 @@
 
 import React, { useMemo, useState } from "react";
 import { FormNote, PillButton, PillNav, Table, type Column } from "@/components/ui";
-import { IconSensor, Spark, StatusTag, type Tone } from "@/components/assets/assets-shell-ui";
+import { IconSensor, StatusTag, type Tone } from "@/components/assets/assets-shell-ui";
+import { Sparkline } from "@/components/ui/sparkline";
 import { useIndustrialData } from "@/providers/industrial-data-context";
-import { isKilnMachine, useKilnSimulationFor } from "@/providers/kiln-simulation-context";
+import { isLiveMachine, useKilnSimulationFor } from "@/providers/kiln-simulation-context";
 import { sendMqttCommand } from "@/providers/use-mqtt-live";
 import type { LiveSignal } from "@/lib/kiln-sim/engine";
 import { SOURCE_KIND_LABEL, type EdgePoint, type EdgeSource } from "@/types/edge";
@@ -76,7 +77,7 @@ export function EdgeSourceView({ ix, src, now, history, sectionNav, onSelect, on
   const { navigateToMachine } = useIndustrialData();
   const gw = ix.gateways.get(src.gatewayId);
   const points = useMemo(() => sortPoints(pointsOf(ix, src.id)), [ix, src.id]);
-  const kilnMachine = isKilnMachine(src.machineId) ? src.machineId : (points.find((p) => isKilnMachine(p.machineId))?.machineId ?? null);
+  const kilnMachine = isLiveMachine(src.machineId) ? src.machineId : (points.find((p) => isLiveMachine(p.machineId))?.machineId ?? null);
   // Subscribes only for kiln sources (re-renders every second while it does).
   const sim = useKilnSimulationFor(kilnMachine);
   const [cardFilter, setCardFilter] = useState(ALL_CARDS);
@@ -99,7 +100,7 @@ export function EdgeSourceView({ ix, src, now, history, sectionNav, onSelect, on
     .map((point) => {
       const reading = pointReading(ix, point);
       const signal =
-        reading.status === "nodata" && sim && point.signalTag && isKilnMachine(point.machineId) ? (sim.frame.signals[point.signalTag] ?? null) : null;
+        reading.status === "nodata" && sim && point.signalTag && isLiveMachine(point.machineId) ? (sim.frame.signals[point.signalTag] ?? null) : null;
       return {
         point,
         reading,
@@ -211,7 +212,7 @@ export function EdgeSourceView({ ix, src, now, history, sectionNav, onSelect, on
         if (values.length < 2) return <span className="ast-muted">—</span>;
         return (
           <span className="dv-trend">
-            <Spark
+            <Sparkline
               values={values}
               unit={reading.unit ?? point.unit ?? ""}
               height={28}
@@ -224,7 +225,7 @@ export function EdgeSourceView({ ix, src, now, history, sectionNav, onSelect, on
     },
     {
       key: "limits",
-      header: "Alert / danger",
+      header: "Warning / alarm",
       render: ({ point }) => {
         const t = limitText(point);
         return t ? (

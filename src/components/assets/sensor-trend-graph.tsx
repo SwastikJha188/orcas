@@ -53,55 +53,6 @@ export interface TrendChartProps {
   timeZone?: string;
 }
 
-/* Legacy wrapper types (kept for API stability). */
-export interface TrendDataPoint {
-  time: string;
-  measured: number;
-  model?: number;
-  secondary?: number;
-}
-
-export interface StatCardItem {
-  label: string;
-  value: string;
-  subtext: string;
-  status: "Normal" | "Warning" | "Alarm";
-}
-
-export interface SensorTabItem {
-  id: string;
-  label: string;
-  tag?: string;
-  unit?: string;
-  status?: "Normal" | "Warning" | "Alarm" | "Advisory" | "Critical";
-}
-
-export interface SensorTrendGraphProps {
-  title?: string;
-  subtitle?: string;
-  tabs?: SensorTabItem[];
-  activeTabId?: string;
-  onTabChange?: (id: string) => void;
-  points: TrendDataPoint[];
-  currentMeasured: number;
-  currentModel?: number;
-  currentSecondary?: number;
-  primaryLabel: string;
-  modelLabel?: string;
-  secondaryLabel?: string;
-  unit: string;
-  warningLimit?: { value: number; label: string };
-  alarmLimit?: { value: number; label: string };
-  minVal?: number;
-  maxVal?: number;
-  statCards?: StatCardItem[];
-  isLive?: boolean;
-  timeRangePills?: string[];
-  activeTimeRange?: string;
-  onTimeRangeChange?: (range: string) => void;
-  extraControls?: React.ReactNode;
-}
-
 /* ==========================================================================
    Formatting & scale helpers
    ========================================================================== */
@@ -135,14 +86,14 @@ export function fmtStamp(t: number, timeZone?: string): string {
   return `${d.day} ${MONTHS[d.month]} ${fmtClock(t, true, timeZone)}`;
 }
 
-function fmtTick(t: number, step: number, timeZone?: string): string {
+export function fmtTick(t: number, step: number, timeZone?: string): string {
   if (step < MIN) return fmtClock(t, true, timeZone);
   if (step < DAY) return fmtClock(t, false, timeZone);
   const d = zonedParts(t, timeZone);
   return `${d.day} ${MONTHS[d.month]}`;
 }
 
-function niceStep(range: number, count: number): number {
+export function niceStep(range: number, count: number): number {
   const raw = Math.max(range, 1e-9) / Math.max(1, count);
   const mag = Math.pow(10, Math.floor(Math.log10(raw)));
   const norm = raw / mag;
@@ -150,12 +101,12 @@ function niceStep(range: number, count: number): number {
   return nice * mag;
 }
 
-function decimalsFor(step: number): number {
+export function stepDecimals(step: number): number {
   if (step >= 1) return 0;
   return Math.min(3, Math.ceil(-Math.log10(step) - 1e-9));
 }
 
-function timeTicks(t0: number, t1: number, target: number, timeZone?: string): { ticks: number[]; step: number } {
+export function timeTicks(t0: number, t1: number, target: number, timeZone?: string): { ticks: number[]; step: number } {
   const span = Math.max(1, t1 - t0);
   const step = TIME_STEPS.find((s) => span / s <= target) ?? TIME_STEPS[TIME_STEPS.length - 1];
   // Ticks land on round wall-clock times in the chart's zone (07:00, not 07:30 for IST).
@@ -190,7 +141,7 @@ function valueDomain(samples: TrendSample[], limits?: TrendLimits): { lo: number
 }
 
 /** Index of the sample nearest to time t (samples sorted by t). */
-function nearestIndex(samples: TrendSample[], t: number): number {
+export function nearestIndex(samples: TrendSample[], t: number): number {
   let lo = 0;
   let hi = samples.length - 1;
   while (hi - lo > 1) {
@@ -270,7 +221,7 @@ export function TrendChart({
 
     const yTicks: number[] = [];
     for (let v = dom.lo; v <= dom.hi + dom.step * 0.5; v += dom.step) yTicks.push(+v.toFixed(6));
-    const yDec = decimalsFor(dom.step);
+    const yDec = stepDecimals(dom.step);
     const xt = timeTicks(t0, t1, L.xTicks, timeZone);
 
     // ISO bands: [from, to, tone]
@@ -432,11 +383,23 @@ export function TrendChart({
             <clipPath id={clipId}>
               <rect x={L.l} y={L.t - 4} width={geo.plotW} height={geo.plotH + 8} />
             </clipPath>
+            {/* one clip per limit zone: the line takes the status colour only where it is beyond a limit */}
+            {geo.bands.map(([a, b], i) => {
+              const y1 = geo.y(Math.max(a, b));
+              const y2 = geo.y(Math.min(a, b));
+              return (
+                <clipPath key={i} id={`${clipId}-z${i}`}>
+                  <rect x={L.l} y={y1} width={geo.plotW} height={Math.max(0, y2 - y1)} />
+                </clipPath>
+              );
+            })}
           </defs>
           <g clipPath={`url(#${clipId})`}>
-            <path className="dxt-area" d={geo.area} />
             {geo.base && <path className="dxt-base" d={geo.base} />}
             <path className={`dxt-line ${focus ? "" : "dxt-line--mini"}`} d={geo.line} />
+            {geo.bands.map(([, , tone], i) => (
+              <path key={i} className={`dxt-line dxt-line--${tone} ${focus ? "" : "dxt-line--mini"}`} d={geo.line} clipPath={`url(#${clipId}-z${i})`} />
+            ))}
           </g>
           {last && <circle className="dxt-end" cx={geo.x(last.t)} cy={readoutY} r={focus ? 4 : 3} />}
 
@@ -466,8 +429,8 @@ export function TrendChart({
             ))}
           {focus && last && (
             <g>
-              <rect className="dxt-readout-bg" x={L.l + geo.plotW + 4} y={readoutY - 10} width={L.r - 6} height={20} rx={4} />
-              <text className="dxt-readout" x={L.l + geo.plotW + 4 + (L.r - 6) / 2} y={readoutY} textAnchor="middle" dominantBaseline="central">
+              <line className="dxt-readout-key" x1={L.l + geo.plotW + 6} x2={L.l + geo.plotW + 12} y1={readoutY} y2={readoutY} />
+              <text className="dxt-readout" x={L.l + geo.plotW + 15} y={readoutY} dominantBaseline="central">
                 {fmtValue(last.v, unit, decimals)}
               </text>
             </g>
@@ -499,111 +462,5 @@ export function TrendChart({
         </span>
       )}
     </div>
-  );
-}
-
-/* ==========================================================================
-   SensorTrendGraph — self-contained card wrapper (legacy API)
-   ========================================================================== */
-
-/** Resolves an "HH:MM:SS" clock string to the most recent matching epoch ms at or before ref. */
-export function parseClock(time: string, ref: number): number {
-  const [h, m, s] = time.split(":").map((p) => Number(p) || 0);
-  const d = new Date(ref);
-  d.setHours(h, m, s, 0);
-  const t = d.getTime();
-  return t > ref + MIN ? t - DAY : t;
-}
-
-export function SensorTrendGraph({
-  title = "Telemetry",
-  subtitle,
-  tabs,
-  activeTabId,
-  onTabChange,
-  points,
-  currentMeasured,
-  primaryLabel,
-  modelLabel = "Baseline",
-  unit,
-  warningLimit,
-  alarmLimit,
-  statCards,
-  timeRangePills,
-  activeTimeRange,
-  onTimeRangeChange,
-  extraControls,
-}: SensorTrendGraphProps) {
-  const samples = useMemo<TrendSample[]>(() => {
-    const ref = Date.now();
-    return points.map((p) => ({ t: parseClock(p.time, ref), v: p.measured, b: p.model }));
-  }, [points]);
-
-  const limits = useMemo<TrendLimits | undefined>(() => {
-    if (!warningLimit || !alarmLimit) return undefined;
-    return { warn: warningLimit.value, alarm: alarmLimit.value, mode: alarmLimit.value < warningLimit.value ? "low" : "high" };
-  }, [warningLimit, alarmLimit]);
-
-  const domain: [number, number] = samples.length ? [samples[0].t, samples[samples.length - 1].t] : [0, 1];
-  const hasBase = samples.some((s) => s.b !== undefined);
-
-  return (
-    <section className="dxt-card">
-      <header className="dxt-card-head">
-        <div className="dxt-head-text">
-          <h3 className="dxt-title">{title}</h3>
-          {subtitle && <span className="dxt-meta">{subtitle}</span>}
-        </div>
-        <div className="dxt-head-right">
-          {extraControls}
-          {timeRangePills && onTimeRangeChange && (
-            <div className="nav-pill-group dxt-pills" role="tablist" aria-label="Time window">
-              {timeRangePills.map((r) => (
-                <button key={r} type="button" role="tab" aria-selected={r === activeTimeRange} className={`nav-pill ${r === activeTimeRange ? "active" : ""}`} onClick={() => onTimeRangeChange(r)}>
-                  {r}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </header>
-      {tabs && onTabChange && (
-        <div className="nav-pill-group dxt-pills dxt-scroll" role="tablist" aria-label="Sensor">
-          {tabs.map((t) => (
-            <button key={t.id} type="button" role="tab" aria-selected={t.id === activeTabId} className={`nav-pill ${t.id === activeTabId ? "active" : ""}`} onClick={() => onTabChange(t.id)}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-      )}
-      <div className="dxt-legend">
-        <span>
-          <i className="dxt-key dxt-key--line" />
-          {primaryLabel}
-        </span>
-        {hasBase && (
-          <span>
-            <i className="dxt-key dxt-key--base" />
-            {modelLabel}
-          </span>
-        )}
-        <span className="dxt-legend-value">{fmtValue(currentMeasured, unit)}</span>
-      </div>
-      {samples.length > 1 ? (
-        <TrendChart samples={samples} timeDomain={domain} unit={unit} limits={limits} ariaLabel={`${primaryLabel} trend in ${unit}`} />
-      ) : (
-        <div className="dxt-empty" style={{ height: 320 }} />
-      )}
-      {statCards && statCards.length > 0 && (
-        <dl className="dxt-stats">
-          {statCards.map((s) => (
-            <div key={s.label} className="dxt-stat">
-              <dt>{s.label}</dt>
-              <dd>{s.value}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
-    </section>
   );
 }

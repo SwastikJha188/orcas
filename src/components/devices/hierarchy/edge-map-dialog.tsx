@@ -265,10 +265,10 @@ export function MapDialog({ open, ix, target, onClose }: MapDialogProps) {
           <Field label="Unit">
             {(id, d) => <TextInput id={id} describedBy={d} value={unit} onChange={setUnit} placeholder="mm/s" disabled={busy || Boolean(result)} />}
           </Field>
-          <Field label={`Alert limit${unitSuffix}`} error={errors.alertLimit}>
+          <Field label={`Warning limit${unitSuffix}`} error={errors.alertLimit}>
             {(id, d) => <NumberInput id={id} describedBy={d} value={alertLimit} onChange={setAlertLimit} step="any" disabled={busy || Boolean(result)} />}
           </Field>
-          <Field label={`Danger limit${unitSuffix}`} error={errors.dangerLimit}>
+          <Field label={`Alarm limit${unitSuffix}`} error={errors.dangerLimit}>
             {(id, d) => <NumberInput id={id} describedBy={d} value={dangerLimit} onChange={setDangerLimit} step="any" disabled={busy || Boolean(result)} />}
           </Field>
           {!source && (

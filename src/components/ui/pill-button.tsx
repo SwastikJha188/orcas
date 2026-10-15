@@ -1,9 +1,14 @@
 import React from "react";
 
 export interface PillButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary";
+  /** "danger" is for destructive confirmations: danger ink on a faint danger fill. */
+  variant?: "primary" | "secondary" | "danger";
   icon?: React.ReactNode;
   hasDropdown?: boolean;
+  /** Toggle state for segmented/toggle use; sets aria-pressed. */
+  pressed?: boolean;
+  /** Trailing node after the label (e.g. a chevron). */
+  trailing?: React.ReactNode;
 }
 
 export function PillButton({
@@ -12,18 +17,22 @@ export function PillButton({
   hasDropdown,
   children,
   className = "",
+  pressed,
+  trailing,
   ...props
 }: PillButtonProps) {
-  const variantClass = variant === "primary" ? "btn-pill-primary" : "btn-pill-secondary";
+  const variantClass = variant === "primary" ? "btn-pill-primary" : variant === "danger" ? "btn-pill-secondary btn-pill-danger" : "btn-pill-secondary";
 
   return (
     <button
       type="button"
-      className={`btn-pill ${variantClass} ${className}`}
+      className={`btn-pill ${variantClass} ${className}`.trim()}
+      aria-pressed={pressed}
       {...props}
     >
       {icon && <span className="btn-pill-icon">{icon}</span>}
       <span>{children}</span>
+      {trailing}
       {hasDropdown && (
         <svg
           width="12"

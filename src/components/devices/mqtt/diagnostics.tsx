@@ -2,7 +2,8 @@
 
 import React, { useMemo, useState } from "react";
 import { PillButton, PillNav, Table, type Column } from "@/components/ui";
-import { Spark, StatusTag, type Tone } from "@/components/assets/assets-shell-ui";
+import { StatusTag, type Tone } from "@/components/assets/assets-shell-ui";
+import { Sparkline } from "@/components/ui/sparkline";
 import { sendMqttCommand } from "@/providers/use-mqtt-live";
 import type { EdgeRegistry } from "@/types/edge";
 import type {
@@ -86,6 +87,7 @@ export function Diagnostics({
   clearTraffic: () => void;
 }) {
   const [section, setSection] = useState<Section>("gateways");
+  const [confirmClear, setConfirmClear] = useState(false);
   const inScope = <T extends { brokerId: string }>(items: T[]) => (filter === "all" ? items : items.filter((i) => i.brokerId === filter));
 
   const ctx: Ctx = useMemo(
@@ -130,9 +132,27 @@ export function Diagnostics({
               <PillButton variant="secondary" onClick={() => setTrafficPaused(!trafficPaused)} aria-pressed={trafficPaused}>
                 {trafficPaused ? "Resume" : "Pause"}
               </PillButton>
-              <PillButton variant="secondary" onClick={clearTraffic} disabled={traffic.length === 0}>
-                Clear
-              </PillButton>
+              {confirmClear ? (
+                <span className="mq-confirm" role="group" aria-label="Confirm clear">
+                  <span className="ast-caption">Clear {traffic.length} captured messages?</span>
+                  <PillButton
+                    variant="danger"
+                    onClick={() => {
+                      clearTraffic();
+                      setConfirmClear(false);
+                    }}
+                  >
+                    Clear
+                  </PillButton>
+                  <PillButton variant="secondary" onClick={() => setConfirmClear(false)}>
+                    Cancel
+                  </PillButton>
+                </span>
+              ) : (
+                <PillButton variant="secondary" onClick={() => setConfirmClear(true)} disabled={traffic.length === 0} title="Empties the captured traffic list in this view; brokers are not affected">
+                  Clear…
+                </PillButton>
+              )}
             </>
           )}
         </div>
@@ -412,9 +432,9 @@ function GatewaysTable({ ctx, gateways, racks }: { ctx: Ctx; gateways: MqttGatew
 
 // ---------------------------------------------------------------- readings
 function readingTone(m: MqttMeasurement): [Tone, string] {
-  if (!m.valid || !m.fresh) return ["idle", "Stale"];
-  if (m.dangerActive) return ["bad", "Danger"];
-  if (m.alertActive) return ["warn", "Alert"];
+  if (!m.valid || !m.fresh) return ["warn", "Stale"];
+  if (m.dangerActive) return ["bad", "Alarm"];
+  if (m.alertActive) return ["warn", "Warning"];
   return ["good", "Normal"];
 }
 
@@ -463,7 +483,7 @@ function ReadingsTable({ ctx, measurements, history }: { ctx: Ctx; measurements:
         const tone = readingTone(m)[0];
         return (
           <span className="mq-trend">
-            <Spark
+            <Sparkline
               values={history[m.key] ?? []}
               unit={m.unit}
               height={28}
@@ -477,7 +497,7 @@ function ReadingsTable({ ctx, measurements, history }: { ctx: Ctx; measurements:
     },
     {
       key: "limits",
-      header: "Alert / danger",
+      header: "Warning / alarm",
       render: (m) => (
         <span className="ast-num ast-muted">
           {limit(m.alertThreshold, m.unit)} / {limit(m.dangerThreshold, m.unit)}

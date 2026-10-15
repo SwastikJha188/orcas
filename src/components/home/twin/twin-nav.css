@@ -17,7 +17,12 @@
 }
 .twin-nav .nav-pill-group { gap: 2px; }
 .twin-nav-reset {
-  inline-size: 30px;
+  gap: 6px;
+  padding-inline: 12px;
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  min-inline-size: 30px;
   block-size: 30px;
   display: inline-flex;
   align-items: center;

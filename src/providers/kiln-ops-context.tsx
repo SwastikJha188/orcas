@@ -1,16 +1,16 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { useKilnSimulation } from "@/providers/kiln-simulation-context";
+import { invalidateApi } from "@/lib/api-cache";
+import { PRIMARY_KILN_ID, useKilnSimulation, usePrimaryMachineId } from "@/providers/kiln-simulation-context";
 import { OpsToastHost, type OpsToast } from "@/components/ops/ops-toasts";
 
 /* ==========================================================================
-   Suggestion -> action loop for KLN-01. Alerts are the live rule findings;
-   acknowledgements and work orders persist in Postgres through /api. Starting
-   a mitigation or completing a repair drives the simulation's recovery.
+   Suggestion -> action loop for the active plant's primary machine (KLN-01 on
+   the kiln-seal plant, PYR-KLN-01 on the pyro line). Alerts are the live rule
+   findings; acknowledgements and work orders persist in Postgres through /api.
+   Starting a mitigation or completing a repair drives the simulation's recovery.
    ========================================================================== */
-
-export const OPS_MACHINE_ID = "KLN-01";
 
 export type WorkOrderStatus = "open" | "in_progress" | "done" | "cancelled";
 export type WorkOrderKind = "mitigate" | "repair";
@@ -54,6 +54,8 @@ export interface OpsAlert {
 }
 
 export interface KilnOps {
+  /** Machine the ops loop runs on: the active plant's primary machine. */
+  machineId: string;
   alerts: OpsAlert[];
   workOrders: OpsWorkOrder[];
   acknowledge: (ruleId: string) => Promise<void>;
@@ -64,6 +66,7 @@ export interface KilnOps {
 }
 
 const EMPTY: KilnOps = {
+  machineId: PRIMARY_KILN_ID,
   alerts: [],
   workOrders: [],
   acknowledge: async () => {},
@@ -84,6 +87,7 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init ? { ...init, headers: { "content-type": "application/json" } } : undefined);
   const body = (await res.json()) as Envelope<T>;
   if (!res.ok || body.data === undefined) throw new Error(body.error?.message ?? "Request failed");
+  if (init?.method && init.method !== "GET") invalidateApi("/api/");
   return body.data;
 }
 
@@ -94,9 +98,41 @@ const DUE: Record<string, string> = { P1: "Within 4 h", P2: "Within 24 h", P3: "
 
 let toastSeq = 0;
 
+/**
+ * The simulated plant restarts healthy on every page load, so work orders still
+ * open from an earlier run refer to faults that are no longer on the plant.
+ * They are closed (kept in history under Done / All) once per machine and page
+ * load: switching plants keeps both simulations running, so work orders opened
+ * since are still valid. Shared promise, so a remount waits for the same pass.
+ */
+const staleClosed = new Map<string, Promise<void>>();
+function closeStaleOnce(machineId: string): Promise<void> {
+  let pass = staleClosed.get(machineId);
+  if (!pass) {
+    pass = api<OpsWorkOrder[]>(`/api/work-orders?machineId=${encodeURIComponent(machineId)}`)
+      .then((rows) =>
+        Promise.all(
+          rows
+            .filter((w) => w.status === "open" || w.status === "in_progress")
+            .map((w) =>
+              api<OpsWorkOrder>(`/api/work-orders/${w.id}`, {
+                method: "PATCH",
+                body: JSON.stringify({ status: "cancelled", notes: `${w.notes ? `${w.notes} ` : ""}Closed: the simulation restarted and this fault is no longer on the plant.` }),
+              }).catch(() => w),
+            ),
+        ),
+      )
+      .then(() => undefined)
+      .catch(() => undefined);
+    staleClosed.set(machineId, pass);
+  }
+  return pass;
+}
+
 export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
+  const machineId = usePrimaryMachineId();
   const sim = useKilnSimulation();
-  const frame = sim?.frame ?? null;
+  const frame = sim?.machineId === machineId ? sim.frame : null;
   const [workOrders, setWorkOrders] = useState<OpsWorkOrder[]>([]);
   const [acks, setAcks] = useState<Set<string>>(new Set());
   const [toasts, setToasts] = useState<OpsToast[]>([]);
@@ -106,34 +142,27 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
   }, []);
   const dismissToast = useCallback((id: number) => setToasts((list) => list.filter((t) => t.id !== id)), []);
 
-  // Initial load from the database.
+  // Load from the database for the active plant's primary machine.
+  const machineRef = useRef(machineId);
+  machineRef.current = machineId;
   useEffect(() => {
     let live = true;
-    api<OpsWorkOrder[]>(`/api/work-orders?machineId=${OPS_MACHINE_ID}`)
-      .then(async (rows) => {
-        // The simulated plant restarts healthy on every page load, so work
-        // orders still open from an earlier run refer to faults that are no
-        // longer on the plant. Close them (kept in history under Done / All).
-        const stale = rows.filter((w) => w.status === "open" || w.status === "in_progress");
-        const closed = await Promise.all(
-          stale.map((w) =>
-            api<OpsWorkOrder>(`/api/work-orders/${w.id}`, {
-              method: "PATCH",
-              body: JSON.stringify({ status: "cancelled", notes: `${w.notes ? `${w.notes} ` : ""}Closed: the simulation restarted and this fault is no longer on the plant.` }),
-            }).catch(() => w),
-          ),
-        );
-        const byId = new Map(closed.map((w) => [w.id, w]));
-        if (live) setWorkOrders(rows.map((w) => byId.get(w.id) ?? w));
+    setWorkOrders([]);
+    setAcks(new Set());
+    const target = machineId;
+    closeStaleOnce(target)
+      .then(() => api<OpsWorkOrder[]>(`/api/work-orders?machineId=${encodeURIComponent(target)}`))
+      .then((rows) => {
+        if (live) setWorkOrders(rows);
       })
       .catch(() => {});
-    api<Array<{ ruleId: string }>>(`/api/alerts/ack?machineId=${OPS_MACHINE_ID}`)
+    api<Array<{ ruleId: string }>>(`/api/alerts/ack?machineId=${encodeURIComponent(target)}`)
       .then((rows) => live && setAcks(new Set(rows.map((r) => r.ruleId))))
       .catch(() => {});
     return () => {
       live = false;
     };
-  }, []);
+  }, [machineId]);
 
   const rules = useMemo(() => frame?.rules ?? [], [frame]);
   const rulesRef = useRef(rules);
@@ -153,11 +182,11 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Rule transitions: clear stale acks when a rule returns to QUIET.
-  const prevRef = useRef<Map<string, string> | null>(null);
+  const prevRef = useRef<{ machineId: string; status: Map<string, string> } | null>(null);
   useEffect(() => {
-    const prev = prevRef.current;
+    const prev = prevRef.current?.machineId === machineId ? prevRef.current.status : null;
     const next = new Map(rules.map((r) => [r.id, r.status]));
-    prevRef.current = next;
+    prevRef.current = { machineId, status: next };
     if (!prev || rules.length === 0) return;
     for (const r of rules) {
       const before = prev.get(r.id);
@@ -169,10 +198,10 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
           n.delete(r.id);
           return n;
         });
-        fetch(`/api/alerts/ack?machineId=${OPS_MACHINE_ID}&ruleId=${encodeURIComponent(r.id)}`, { method: "DELETE" }).catch(() => {});
+        fetch(`/api/alerts/ack?machineId=${encodeURIComponent(machineId)}&ruleId=${encodeURIComponent(r.id)}`, { method: "DELETE" }).catch(() => {});
       }
     }
-  }, [rules]);
+  }, [rules, machineId]);
 
   const alerts = useMemo<OpsAlert[]>(() => {
     const out: OpsAlert[] = [];
@@ -180,8 +209,8 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
       if (r.status === "QUIET" || r.category === "Data quality") continue;
       const wo = workOrders.find((w) => w.ruleId === r.id && (w.status === "open" || w.status === "in_progress"));
       out.push({
-        id: `${OPS_MACHINE_ID}:${r.id}`,
-        machineId: OPS_MACHINE_ID,
+        id: `${machineId}:${r.id}`,
+        machineId,
         ruleId: r.id,
         name: r.name,
         status: r.status as "ACTIVE" | "PENDING",
@@ -201,14 +230,14 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
     }
     const pr = { P1: 0, P2: 1, P3: 2, P4: 3 } as const;
     return out.sort((a, b) => (a.status === b.status ? 0 : a.status === "ACTIVE" ? -1 : 1) || pr[a.priority] - pr[b.priority]);
-  }, [rules, acks, workOrders]);
+  }, [rules, acks, workOrders, machineId]);
 
   const acknowledge = useCallback(
     async (ruleId: string) => {
       setAcks((s) => new Set(s).add(ruleId));
       perform(ruleId, "acknowledge");
       try {
-        await api("/api/alerts/ack", { method: "POST", body: JSON.stringify({ ruleId, machineId: OPS_MACHINE_ID, simTime: tRef.current }) });
+        await api("/api/alerts/ack", { method: "POST", body: JSON.stringify({ ruleId, machineId: machineRef.current, simTime: tRef.current }) });
       } catch {
         setAcks((s) => {
           const n = new Set(s);
@@ -235,7 +264,7 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
         const wo = await api<OpsWorkOrder>("/api/work-orders", {
           method: "POST",
           body: JSON.stringify({
-            machineId: OPS_MACHINE_ID,
+            machineId: machineRef.current,
             ruleId,
             title: rule.action.length > 120 ? `${rule.action.slice(0, 117)}...` : rule.action,
             component: rule.subs.join(", ") || rule.name,
@@ -287,12 +316,15 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
   // every action on the plant has an acknowledgement and a work order. These
   // calls never go back into the simulation: the engine already acted.
   const seenEvents = useRef<Set<string> | null>(null);
+  const seenFor = useRef(machineId);
   const events = frame?.events;
   useEffect(() => {
     if (!events) return;
+    const target = machineId;
     const keyOf = (e: (typeof events)[number]) => `${e.t}|${e.title}`;
-    if (seenEvents.current === null) {
-      // First frame: history from before this session is not replayed.
+    if (seenEvents.current === null || seenFor.current !== target) {
+      // First frame (of this session or after a plant switch): earlier history is not replayed.
+      seenFor.current = target;
       seenEvents.current = new Set(events.map(keyOf));
       return;
     }
@@ -317,7 +349,7 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
         const wo = await api<OpsWorkOrder>("/api/work-orders", {
           method: "POST",
           body: JSON.stringify({
-            machineId: OPS_MACHINE_ID,
+            machineId: target,
             ruleId: a.ruleId,
             title: rule ? (rule.action.length > 120 ? `${rule.action.slice(0, 117)}...` : rule.action) : e.title,
             component: rule ? rule.subs.join(", ") || rule.name : null,
@@ -336,7 +368,7 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
         try {
           if (a.kind === "acknowledge") {
             setAcks((set) => new Set(set).add(a.ruleId));
-            await api("/api/alerts/ack", { method: "POST", body: JSON.stringify({ ruleId: a.ruleId, machineId: OPS_MACHINE_ID, simTime: e.t }) });
+            await api("/api/alerts/ack", { method: "POST", body: JSON.stringify({ ruleId: a.ruleId, machineId: target, simTime: e.t }) });
           } else if (a.kind === "mitigate") {
             const wo = openFor("mitigate");
             const saved = wo ? await save(wo.id, { status: "in_progress" }) : await raise("mitigate");
@@ -357,7 +389,7 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
         }
       })();
     }
-  }, [events, pushToast]);
+  }, [events, pushToast, machineId]);
 
   // Copilot: window.dispatchEvent(new CustomEvent("ultron:create-work-order", { detail: { ruleId } })).
   const createRef = useRef(createWorkOrder);
@@ -374,8 +406,8 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
   const unread = useMemo(() => alerts.filter((a) => a.status === "ACTIVE" && !a.acknowledged).length, [alerts]);
 
   const value = useMemo<KilnOps>(
-    () => ({ alerts, workOrders, acknowledge, createWorkOrder, updateWorkOrder, unread }),
-    [alerts, workOrders, acknowledge, createWorkOrder, updateWorkOrder, unread],
+    () => ({ machineId, alerts, workOrders, acknowledge, createWorkOrder, updateWorkOrder, unread }),
+    [machineId, alerts, workOrders, acknowledge, createWorkOrder, updateWorkOrder, unread],
   );
 
   return (

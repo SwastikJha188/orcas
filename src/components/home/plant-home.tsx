@@ -1,14 +1,18 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PillButton, PillNav } from "@/components/ui";
+import { useApi } from "@/lib/api-cache";
 import { useIndustrialData } from "@/providers/industrial-data-context";
-import { isKilnMachine, useKilnFleet } from "@/providers/kiln-simulation-context";
+import { PRIMARY_PYRO_ID, isLiveMachine, useKilnFleet, usePrimaryMachineId } from "@/providers/kiln-simulation-context";
 import type { KilnSimulation } from "@/components/assets/kiln-seals-simulation";
 import { formatClock, formatDuration } from "@/lib/kiln-sim/engine";
 import type { DiagnosisRecord, HierarchyNode, OperatingEvent } from "@/components/assets/assets-data";
-import { IconChevron, IconClose, Spark, StatusTag, Ticks, healthTone, machineTone } from "@/components/assets/assets-shell-ui";
+import { IconChevron, IconClose, StatusTag, Ticks, healthTone, machineTone } from "@/components/assets/assets-shell-ui";
+import { Sparkline } from "@/components/ui/sparkline";
 import { TypeIcon } from "@/components/assets/hierarchy/hierarchy-icons";
+import { toCondition } from "@/components/ui/status";
 import {
   type MachineLookup,
   averageHealth,
@@ -24,9 +28,15 @@ import { OpsCenter } from "@/components/ops/ops-center";
 import { PlantTwin } from "./twin/plant-twin";
 import { MachineTwinHome } from "./twin/machine-twin-view";
 import { useCoveredInset, type Side } from "./twin/use-covered-inset";
-import { AlertsFeed, HealthTrendCard, PlantHealthGauge, type HomeActivity, type HomeAlert } from "./home-widgets";
+import { AlertsFeed, HealthTrendCard, PlantHealthGauge, conditionSummary, type HomeActivity, type HomeAlert } from "./home-widgets";
 import "@/components/assets/assets-shell.css";
 import "./plant-home.css";
+
+/* The pyro line's site overview replaces the generic plant twin for that plant only (three.js stays out of the first chunk). */
+const PyroSiteOverview = dynamic(() => import("./twin/pyro-site-overview").then((m) => m.PyroSiteOverview), {
+  ssr: false,
+  loading: () => <div className="ph-twin-loading" role="status">Loading 3D twin…</div>,
+});
 
 /* ==========================================================================
    Home — plant overview (ULTRON DashboardOverview, Home / Digital Twin view).
@@ -65,31 +75,12 @@ function store(key: string, value: string) {
 
 /** Stored alert sources for machines without live telemetry: diagnosis_records and operating_events. */
 function useStoredAlertSources() {
-  const [diagnosis, setDiagnosis] = useState<DiagnosisRecord[]>([]);
-  const [events, setEvents] = useState<OperatingEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    const get = async <T,>(url: string): Promise<T[]> => {
-      const r = await fetch(url);
-      const j = await r.json().catch(() => null);
-      if (!r.ok || !Array.isArray(j?.data)) throw new Error(`${url} · ${j?.error?.message ?? `HTTP ${r.status}`}`);
-      return j.data as T[];
-    };
-    Promise.allSettled([get<DiagnosisRecord>("/api/diagnosis"), get<OperatingEvent>("/api/history")]).then(([d, e]) => {
-      if (cancelled) return;
-      if (d.status === "fulfilled") setDiagnosis(d.value);
-      if (e.status === "fulfilled") setEvents(e.value);
-      const failed = [d, e].filter((x): x is PromiseRejectedResult => x.status === "rejected");
-      setError(failed.length > 0 ? failed.map((f) => (f.reason instanceof Error ? f.reason.message : String(f.reason))).join(" · ") : null);
-      setLoading(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  return { diagnosis, events, loading, error };
+  const d = useApi<DiagnosisRecord[]>("/api/diagnosis");
+  const e = useApi<OperatingEvent[]>("/api/history");
+  const diagnosis = useMemo(() => (Array.isArray(d.data) ? d.data : []), [d.data]);
+  const events = useMemo(() => (Array.isArray(e.data) ? e.data : []), [e.data]);
+  const failed = [d.error && `/api/diagnosis · ${d.error}`, e.error && `/api/history · ${e.error}`].filter(Boolean);
+  return { diagnosis, events, loading: d.isLoading || e.isLoading, error: failed.length > 0 ? failed.join(" · ") : null };
 }
 
 export function PlantHome() {
@@ -97,6 +88,7 @@ export function PlantHome() {
   const { roots, lookup, isLoading: hierarchyLoading, loadError } = useHierarchyData();
   const stored = useStoredAlertSources();
   const fleet = useKilnFleet();
+  const isPyroLine = usePrimaryMachineId() === PRIMARY_PYRO_ID;
 
   // The plant comes from the top bar's plant switcher.
   const plantId = selectedPlantId;
@@ -128,13 +120,25 @@ export function PlantHome() {
   const covered = useCoveredInset(stageRef, hudPanels, view === "twin" && Boolean(plant) && !selectedMachine);
   const machines = useMemo(() => (plant ? subtreeMachines(plant) : []), [plant]);
   const dist = distribution(machines, lookup);
-  const score = averageHealth(machines, lookup);
+  /* Pyro plant: the gauge shows the line-card number (pyro-site-overview `line`):
+     round(0.6 × worst + 0.4 × mean) of the machines' live scores, so one bad
+     machine shows. Kiln Home keeps the plain mean. */
+  const pyroScore = useMemo(() => {
+    if (!isPyroLine) return null;
+    const scores = machines.flatMap((m) => {
+      const f = m.machineId ? fleet[m.machineId]?.frame : null;
+      return f ? [Math.round(f.overall)] : [];
+    });
+    if (!scores.length) return null;
+    return Math.round(0.6 * Math.min(...scores) + (0.4 * scores.reduce((n, v) => n + v, 0)) / scores.length);
+  }, [isPyroLine, machines, fleet]);
+  const score = pyroScore ?? averageHealth(machines, lookup);
   /* The plant's live kilns, each with its own running engine. All engines
      share one clock, so the first one's frame dates the plant. */
   const live = useMemo(
     () =>
       machines
-        .filter((m) => isKilnMachine(m.machineId) && fleet[m.machineId!])
+        .filter((m) => isLiveMachine(m.machineId) && fleet[m.machineId!])
         .map((m) => ({ node: m, sim: fleet[m.machineId!] as KilnSimulation })),
     [machines, fleet],
   );
@@ -250,7 +254,7 @@ export function PlantHome() {
           : "idle";
         const tag =
           e.kind === "action" ? (e.action ? (e.action.auto ? "CREW" : "OPERATOR") : "PLANT")
-          : e.kind === "rule" || e.kind === "limit" ? (restored ? "CLEARED" : e.severity === "Critical" ? "DANGER" : "ALERT")
+          : e.kind === "rule" || e.kind === "limit" ? (restored ? "CLEARED" : e.severity === "Critical" ? "CRITICAL" : "ADVISORY")
           : e.kind === "quality" ? "SENSOR"
           : "STATE";
         return {
@@ -299,7 +303,7 @@ export function PlantHome() {
     return map;
   }, [activeAlerts]);
 
-  const plantTone = dist.critical > 0 ? "bad" : dist.atRisk > 0 ? "warn" : "good";
+  const plantSummary = conditionSummary(dist);
 
   const liveIds = useMemo(
     () =>
@@ -315,7 +319,7 @@ export function PlantHome() {
     return (
       <div className="ph-root ast-root">
         <div className="ast-card ast-empty ph-empty-workspace" role="status" aria-live="polite">
-          <strong>Loading plant</strong>
+          <strong>Loading plant…</strong>
         </div>
       </div>
     );
@@ -325,8 +329,7 @@ export function PlantHome() {
     return (
       <div className="ph-root ast-root">
         <div className="ast-card ast-empty ph-empty-workspace" role="alert">
-          <strong>Plant data unavailable</strong>
-          {loadError}
+          <strong>Plant data unavailable. Retry.</strong>
         </div>
       </div>
     );
@@ -336,7 +339,7 @@ export function PlantHome() {
     return (
       <div className="ph-root ast-root">
         <div className="ast-card ast-empty ph-empty-workspace">
-          <strong>No plant configured</strong>
+          <strong>No plant configured.</strong>
           <PillButton onClick={() => setActiveTab("configure")}>Open Configure</PillButton>
         </div>
       </div>
@@ -369,7 +372,7 @@ export function PlantHome() {
         </ol>
         <div className="ast-title-row">
           <h1 className="ast-title">{shortName(plant.name)}</h1>
-          <StatusTag tone={plantTone} label={plantTone === "bad" ? "Critical" : plantTone === "warn" ? "At risk" : "Normal"} />
+          <StatusTag tone={plantSummary.tone} label={plantSummary.label} />
           {hasLive && (
             <span className="ph-live">
               <i aria-hidden="true" />
@@ -385,15 +388,19 @@ export function PlantHome() {
     return (
       <div className="ph-root ph-immersive ast-root" aria-label="Plant overview">
         <div ref={stageRef} className="ph-stage">
-          <PlantTwin
-            plant={plant}
-            lookup={lookup}
-            alertsByMachine={alertsByMachine}
-            liveIds={liveIds}
-            onOpenMachine={(id) => navigateToMachine(id, "overview")}
-            onUnsupported={toLayout}
-            inset={covered}
-          />
+          {isPyroLine ? (
+            <PyroSiteOverview inset={covered} onUnsupported={toLayout} />
+          ) : (
+            <PlantTwin
+              plant={plant}
+              lookup={lookup}
+              alertsByMachine={alertsByMachine}
+              liveIds={liveIds}
+              onOpenMachine={(id) => navigateToMachine(id, "overview")}
+              onUnsupported={toLayout}
+              inset={covered}
+            />
+          )}
         </div>
         <div className="ph-hud">
           <aside ref={sideRef} className="ph-hud-side" aria-label="Plant condition">
@@ -480,7 +487,7 @@ function PlantMap({
         className="ph-unit"
         data-tone={tone}
         aria-pressed={selected === m.machineId}
-        aria-label={`${m.name}, ${c.status}, health ${c.health} of 100`}
+        aria-label={`${m.name}, ${toCondition(c.status)}, health ${c.health} of 100`}
         onClick={() => onSelect(selected === m.machineId ? null : m.machineId!)}
       >
         <span className="ph-unit-top">
@@ -491,14 +498,14 @@ function PlantMap({
           <span className="ph-unit-dot" aria-hidden="true" />
         </span>
         <span className="ph-unit-meta ast-num">
-          <span>{c.status}</span>
+          <span>{toCondition(c.status)}</span>
           <span>
             {c.health}
             <span className="ast-unit">/100</span>
           </span>
         </span>
         {live ? (
-          <Spark values={live} unit="/100" height={26} tone={healthTone(c.health)} digits={0} ariaLabel={`${m.name} health trend`} />
+          <Sparkline values={live} unit="/100" height={26} tone={healthTone(c.health)} digits={0} ariaLabel={`${m.name} health trend`} />
         ) : (
           <Ticks value={c.health} tone={healthTone(c.health)} ticks={24} />
         )}
@@ -530,7 +537,7 @@ function PlantMap({
                   <span className="ph-zone-meta ast-num">
                     {count} {count === 1 ? "machine" : "machines"}
                   </span>
-                  {tone !== "good" && <span className="ph-zone-mark" aria-label="Needs attention" />}
+                  {tone !== "good" && <span className="ph-zone-mark" aria-label="Advisory" />}
                 </div>
                 {direct.length > 0 && <div className="ph-zone-units">{direct.map(unit)}</div>}
                 {groups.map((g) => (
@@ -585,7 +592,7 @@ function Inspector({
           <IconClose />
         </button>
       </div>
-      <StatusTag tone={machineTone(c.status)} label={c.status} />
+      <StatusTag tone={machineTone(c.status)} label={toCondition(c.status)} />
       <dl className="ph-insp-rows">
         {rows.map(([k, v]) => (
           <div key={k}>

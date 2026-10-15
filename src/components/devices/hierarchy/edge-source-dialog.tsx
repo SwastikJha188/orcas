@@ -181,7 +181,7 @@ export function SourceDialog({ open, ix, source, prefill, lockGateway, onClose, 
               />
             )}
           </Field>
-          <Field label="Source code" required error={errors.code} hint="rack_id on the wire">
+          <Field label="Source code" required error={errors.code} hint="Code the gateway publishes this source under">
             {(id, d) => <TextInput id={id} describedBy={d} value={code} onChange={setCode} mono placeholder="PLC-01" autoFocus={!editing && !prefill?.code} disabled={busy} />}
           </Field>
           <Field label="Name" required error={errors.name}>

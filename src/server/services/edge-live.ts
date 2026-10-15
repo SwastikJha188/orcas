@@ -33,7 +33,7 @@ export async function getMachineAcquisition(machineId: string): Promise<MachineA
               : g.state === "STALE"
                 ? "stale"
                 : "offline";
-      gateways.set(gateway.id, { id: gateway.id, code: gateway.code, name: gateway.name, brokerName, state, lastSeenAt: g?.lastSeenAt ?? null, ip: g?.ip || gateway.ipAddress });
+      gateways.set(gateway.id, { id: gateway.id, code: gateway.code, name: gateway.name, brokerName, state, lastSeenAt: g?.lastSeenAt ?? null, ip: g?.ip || gateway.ipAddress, securityZone: gateway.securityZone ?? null });
     }
     const m = g ? measurements.get(`${g.brokerId}${sep}${g.gatewayId}${sep}${source.code}${sep}${point.slot}${sep}${point.channel}`) : undefined;
     // Limits: the payload's flags when it sends them, else the point's own limits.
@@ -52,11 +52,12 @@ export async function getMachineAcquisition(machineId: string): Promise<MachineA
       tag: point.tag,
       name: point.name,
       signalTag: point.signalTag,
+      sourceTag: point.sourceTag ?? null,
       unit: point.unit,
       alertLimit: point.alertLimit,
       dangerLimit: point.dangerLimit,
-      gateway: { id: gateway.id, code: gateway.code, name: gateway.name, brokerId: gateway.brokerId },
-      source: { id: source.id, code: source.code, name: source.name, kind: source.kind, protocol: source.protocol },
+      gateway: { id: gateway.id, code: gateway.code, name: gateway.name, brokerId: gateway.brokerId, securityZone: gateway.securityZone ?? null },
+      source: { id: source.id, code: source.code, name: source.name, kind: source.kind, protocol: source.protocol, securityZone: source.securityZone ?? null },
       card: point.slot,
       cardInfo: card
         ? { type: card.cardType, model: card.model, note: card.notes, channelCount: card.channelCount }

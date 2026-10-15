@@ -1,0 +1,529 @@
+/* Responsive layer — devices-assetiq-configure. See foundation.css for tiers and the :root prefix rule.
+   Covers the shared page frame (ui/page.css: pg-*), dialogs and forms (ui/form.css: ui-*),
+   Devices (pg-devices-*, dv-*, fmt-*, mq-*), AssetIQ (aiq-*) and Configure (pg-cfg-*).
+
+   Tier map
+     phone   ≤599     one column · KPIs 2-up · tables become stacked two-line rows ·
+                      device tree folds into its header · dialogs become bottom sheets
+     tablet  600–1023 KPIs 2/3-up · wide tables (6+ columns) become stacked rows ·
+                      device tree folds into its header
+     laptop  1024–1439 baseline (5-tile KPI strips 3+2 → 3 + 2 wide)
+     desktop 1440–1919 Configure: records chart beside the checks
+     wide    ≥1920    content capped at 2200px · paired cards side by side */
+
+/* Drawer toggle for the device tree exists for phone/tablet only. */
+:root .dv-tree-toggle { display: none; }
+
+/* ==========================================================================
+   SHARED PAGE FRAME (pg-root) — every Devices / AssetIQ / Configure page
+   ========================================================================== */
+
+/* Long pill rows (section nav, diagnostics filters) scroll inside their own
+   track instead of pushing the page sideways. */
+:root .pg-root .nav-pill-group:not(.nav-pill-wrap),
+:root .dv-contents .nav-pill-group:not(.nav-pill-wrap) {
+  max-inline-size: 100%;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+}
+:root .pg-root .nav-pill-group,
+:root .dv-contents .nav-pill-group { flex-shrink: 0; }
+:root .pg-root .nav-pill,
+:root .dv-contents .nav-pill { flex: none; }
+
+/* ---- 5-tile KPI strips: one row from laptop up; 3 + 2 wide tiles on tablet
+   instead of a ragged 3 + 2 with an empty slot ---- */
+@media (min-width: 1024px) {
+  :root .pg-root .ast-kpis:has(> :last-child:nth-child(5)) {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+@media (min-width: 600px) and (max-width: 1023px) {
+  :root .pg-root .ast-kpis:has(> :last-child:nth-child(5)) {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  :root .pg-root .ast-kpis:has(> :last-child:nth-child(5)) > * { grid-column: span 2; }
+  :root .pg-root .ast-kpis:has(> :last-child:nth-child(5)) > :nth-child(n + 4) { grid-column: span 3; }
+}
+
+/* ---- Tablet + phone ---- */
+@media (max-width: 1023px) {
+  :root .pg-root { padding: 16px 20px 28px; }
+
+  :root .pg-root .pg-head { align-items: flex-start; }
+  :root .pg-root .pg-head > .nav-pill-group { max-inline-size: 100%; }
+
+  /* Every tile row keeps its own count: 3 → 3-up, 4 → 2×2. */
+  :root .pg-root .ast-kpis:has(> :last-child:nth-child(3)),
+  :root .dv-contents .ast-kpis:has(> :last-child:nth-child(3)) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* ---- Phone ---- */
+@media (max-width: 599px) {
+  :root .pg-root { padding: 12px 12px 24px; gap: 12px; }
+
+  /* Header: title block, then actions as a full-width row. */
+  :root .pg-root .pg-head,
+  :root .dv-contents .pg-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  :root .pg-root .ast-title,
+  :root .dv-contents .ast-title { font-size: var(--fs-2xl); }
+  :root .pg-root .pg-actions,
+  :root .dv-contents .pg-actions { inline-size: 100%; }
+  :root .pg-root .pg-actions > .btn-pill,
+  :root .dv-contents .pg-actions > .btn-pill { flex: 1 1 0; min-inline-size: max-content; }
+  :root .pg-cfg-context { font-size: var(--fs-sm); line-height: 1.4; }
+
+  /* KPI strips: always 2-up; an odd last tile spans the row. */
+  :root .pg-root .ast-kpis,
+  :root .pg-root .ast-kpis:has(> :last-child:nth-child(3)),
+  :root .pg-root .ast-kpis:has(> :last-child:nth-child(5)),
+  :root .dv-contents .ast-kpis,
+  :root .dv-contents .ast-kpis:has(> :last-child:nth-child(3)) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  :root .pg-root .ast-kpis > :last-child:nth-child(odd),
+  :root .dv-contents .ast-kpis > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+  :root .pg-root .ast-kpi,
+  :root .dv-contents .ast-kpi {
+    min-block-size: 0;
+    gap: 6px;
+    padding: 12px 14px;
+  }
+  :root .pg-root .ast-kpi-value,
+  :root .dv-contents .ast-kpi-value { font-size: var(--fs-3xl); }
+  :root .pg-root .ast-kpi-label,
+  :root .dv-contents .ast-kpi-label { font-size: var(--fs-sm); }
+  :root .pg-root .ast-kpi-foot,
+  :root .dv-contents .ast-kpi-foot { font-size: var(--fs-sm); line-height: 1.35; }
+  :root .pg-root .pg-kpi-text { font-size: var(--fs-base); }
+
+  :root .pg-table-card .ast-card-head { padding: 10px 12px 0; flex-wrap: wrap; gap: 6px 12px; }
+}
+
+/* ==========================================================================
+   TABLES → STACKED TWO-LINE ROWS
+   Lead cell on its own line, every other value as label/value pairs below.
+   Labels come from ui/Table's td[data-label]. Phone only.
+   ========================================================================== */
+@media (max-width: 599px) {
+  :root :is(.pg-root, .dv-contents) .ast-table.ui-table-container {
+    --stack-cols: repeat(2, minmax(0, 1fr));
+    overflow-x: visible;
+  }
+}
+
+@media (max-width: 599px) {
+  :root :is(.pg-root, .dv-contents) .ast-table .ui-table,
+  :root :is(.pg-root, .dv-contents) .ast-table .ui-table tbody { display: block; inline-size: 100%; }
+  :root :is(.pg-root, .dv-contents) .ast-table .ui-table thead { display: none; }
+
+  :root :is(.pg-root, .dv-contents) .ast-table .ui-table tbody tr {
+    position: relative;
+    display: grid;
+    grid-template-columns: var(--stack-cols);
+    grid-auto-flow: row dense;
+    gap: 8px 14px;
+    padding: 11px 12px;
+    border-bottom: 1px solid var(--separator);
+    border-radius: var(--corner-row);
+  }
+  :root :is(.pg-root, .dv-contents) .ast-table .ui-table tbody tr:last-child { border-bottom-color: transparent; }
+  :root :is(.pg-root, .dv-contents) .ast-table .ui-table tbody tr:is(:hover, :focus-within, .active) {
+    background: var(--row-hover-bg);
+    border-bottom-color: transparent;
+  }
+
+  :root :is(.pg-root, .dv-contents) .ast-table.ui-table-container .ui-table tbody td {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 3px;
+    min-inline-size: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    white-space: normal;
+    font-size: var(--fs-md);
+  }
+  :root :is(.pg-root, .dv-contents) .ast-table .ui-table tbody td::before {
+    content: attr(data-label);
+    font-size: var(--fs-xs);
+    line-height: 1.2;
+    color: var(--text-muted);
+  }
+  :root :is(.pg-root, .dv-contents) .ast-table .ui-table tbody td:first-child {
+    grid-column: 1 / -1;
+    padding-inline-end: 22px;
+  }
+  :root :is(.pg-root, .dv-contents) .ast-table .ui-table tbody td:first-child::before,
+  :root :is(.pg-root, .dv-contents) .ast-table .ui-table tbody td:not([data-label])::before { content: none; }
+
+  /* Unlabelled trailing cell: actions as a right-aligned footer line… */
+  :root :is(.pg-root, .dv-contents) .ast-table .ui-table tbody td:not([data-label]):not(:first-child) {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+  }
+  /* …or, when it only holds the row chevron, pinned beside the lead. */
+  :root :is(.pg-root, .dv-contents) .ast-table .ui-table tbody td:not([data-label]):not(:first-child):has(> .pg-chev:only-child) {
+    position: absolute;
+    inset-block-start: 14px;
+    inset-inline-end: 10px;
+  }
+  :root :is(.pg-root, .dv-contents) .ast-table .ui-table tbody td .pg-chev { opacity: 1; }
+  :root :is(.pg-root, .dv-contents) .ast-table .ui-table tbody td :is(.pg-devices-open, .mq-action, .dv-action) {
+    inline-size: auto;
+  }
+  :root :is(.pg-root, .dv-contents) .ast-table .ui-table tbody td :is(.mq-reveal, .dv-reveal) { opacity: 1; }
+
+  /* Cells sized for a wide table relax inside the stack. */
+  :root :is(.pg-root, .dv-contents) .ast-table .pg-wrap { min-inline-size: 0; max-inline-size: none; }
+  :root :is(.pg-root, .dv-contents) .ast-table :is(.mq-trend, .dv-trend) { inline-size: 100%; max-inline-size: 160px; }
+  :root :is(.pg-root, .dv-contents) .ast-table :is(.mq-error, .fmt-desc, .hx-topic-payload) { max-inline-size: none; }
+  :root :is(.pg-root, .dv-contents) .ast-table :is(.ast-cell-text, .ast-cell-sub, .ast-cell-title) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Tablet + phone: low-priority columns drop out (th and td via data-col from
+   ui/Table). What remains fits a tablet as a real table; on phone it feeds
+   the stacked rows. Anything still too wide scrolls inside its own card. */
+@media (max-width: 1023px) {
+  :root .pg-devices-root > section[aria-label="Where data stops"] :is(th, td)[data-col="path"],
+  :root .pg-devices-root > section[aria-label="Points and the machines they feed"] :is(th, td):is([data-col="path"], [data-col="updated"]),
+  :root .mq-brokers :is(th, td):is([data-col="security"], [data-col="latency"]),
+  :root .fmt-list :is(th, td):is([data-col="records"], [data-col="updated"]),
+  :root .dv-contents .dv-points :is(th, td):is([data-col="pos"], [data-col="limits"], [data-col="updated"]),
+  :root .mq-root section[aria-label="Gateways and sources"] :is(th, td):is([data-col="ip"], [data-col="slots"], [data-col="seq"]),
+  :root .mq-root section[aria-label="Live readings"] :is(th, td):is([data-col="limits"], [data-col="rack"]),
+  :root .mq-root section[aria-label="Alarms"] :is(th, td)[data-col="rack"],
+  :root .pg-root section[aria-label="Engine inputs by machine"] :is(th, td)[data-col="rules"],
+  :root .pg-root section[aria-label="Findings"] :is(th, td)[data-col="age"],
+  :root .pg-root section[aria-label="Prediction ledger"] :is(th, td)[data-col="made"] {
+    display: none !important;
+  }
+}
+
+@media (min-width: 600px) and (max-width: 1023px) {
+  :root :is(.pg-root, .dv-contents) .ast-table .pg-wrap { min-inline-size: 160px; }
+  :root :is(.pg-root, .dv-contents) .ast-table.ui-table-container .ui-table :is(th, tbody td) { padding-inline: 10px; }
+  :root .mq-brokers :is(th, td)[data-col="last"] { display: none !important; }
+  :root :is(.pg-root, .dv-contents) .ast-table.ui-table-container .ui-table tbody td { white-space: normal; }
+  :root :is(.pg-root, .dv-contents) .ast-table :is(.ast-chip, .btn-pill, .mq-switch, .dv-chip) { white-space: nowrap; }
+  :root .dv-contents .dv-points .dv-chip { max-inline-size: 140px; }
+  /* Lead and text cells wrap so the table fits the card instead of scrolling. */
+  :root :is(.pg-root, .dv-contents) .ast-table.ui-table-container .ui-table tbody td:first-child {
+    white-space: normal;
+    min-inline-size: 160px;
+  }
+  :root :is(.pg-root, .dv-contents) .ast-table :is(.ast-cell-text, .ast-cell-sub, .ast-cell-title, .fmt-desc) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  :root :is(.pg-root, .dv-contents) .ast-table .mq-switch-label { min-inline-size: 0; }
+}
+
+/* ==========================================================================
+   DIALOGS & FORMS (ui/form.css)
+   ========================================================================== */
+@media (max-width: 599px) {
+  /* Bottom sheet: full width, anchored to the bottom edge. Form dialogs take
+     the full height; short confirmations size to their content. */
+  :root .ui-dialog {
+    inline-size: 100% !important;
+    max-inline-size: 100%;
+    max-block-size: calc(100dvh - 12px - env(safe-area-inset-top, 0px));
+    margin: auto 0 0;
+    border-width: 1px 0 0;
+    border-radius: var(--corner-shell) var(--corner-shell) 0 0;
+  }
+  :root .ui-dialog:has(:is(.ui-field-grid, .ui-fieldset, .dv-setup, .ui-table)) {
+    block-size: calc(100dvh - 12px - env(safe-area-inset-top, 0px));
+  }
+  :root .ui-dialog-inner { block-size: 100%; }
+  :root .ui-dialog-head { padding: 14px 16px 12px; }
+  :root .ui-dialog-body { padding: 14px 16px; gap: 14px; }
+  :root .ui-dialog-foot {
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+    gap: 8px;
+  }
+  :root .ui-dialog-foot-start:empty { display: none; }
+  :root .ui-dialog-foot-start { inline-size: 100%; }
+  :root .ui-dialog-foot-end { inline-size: 100%; flex-wrap: nowrap; }
+  :root .ui-dialog-foot-end > .btn-pill { flex: 1 1 0; }
+
+  /* Forms: one column, 16px inputs so iOS does not zoom on focus. */
+  :root .ui-field-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  :root :is(.ui-input, .ui-select select) { font-size: var(--fs-xl); min-block-size: 40px; }
+  :root .ui-textarea { font-size: var(--fs-base); }
+
+  /* Dialog contents with fixed multi-column layouts. */
+  :root .dv-setup-flow { grid-template-columns: minmax(0, 1fr); }
+  :root .dv-found { max-block-size: none; }
+  :root .ui-dialog .ast-table.ui-table-container { overflow-x: auto; }
+}
+
+/* ==========================================================================
+   DEVICES · HIERARCHY — the tree folds into its header on phone and tablet
+   ========================================================================== */
+@media (max-width: 1023px) {
+  :root .assets-module-container:has(> .dv-sidebar) {
+    flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
+    background: var(--workspace-bg);
+  }
+
+  :root .dv-sidebar {
+    inline-size: 100%;
+    block-size: auto;
+    max-block-size: none;
+    flex: none;
+    border-right: 0;
+    border-bottom: 1px solid var(--separator);
+    overflow: visible;
+  }
+  :root .dv-sidebar .ast-side-head {
+    gap: 8px;
+    padding: 12px 20px;
+    border-bottom: 0;
+  }
+  :root .dv-sidebar .ast-side-head .ast-menu { top: 88px; left: 20px; right: 20px; }
+
+  :root .dv-tree-toggle {
+    display: inline-flex;
+    padding: 4px 12px;
+    font-size: var(--fs-sm);
+    gap: 4px;
+  }
+  :root .dv-tree-toggle svg { transition: transform 0.15s ease; }
+  :root .dv-sidebar[data-tree-open] .dv-tree-toggle svg { transform: rotate(180deg); }
+
+  :root .dv-sidebar:not([data-tree-open]) :is(.ast-tree, .ast-tree-empty, .ast-search) { display: none; }
+  :root .dv-sidebar[data-tree-open] .ast-tree {
+    max-block-size: min(55dvh, 460px);
+    overflow-y: auto;
+    border-top: 1px solid var(--separator);
+    padding-block: 6px;
+  }
+
+  :root .dv-contents {
+    flex: none;
+    block-size: auto;
+    max-block-size: none;
+    overflow: visible;
+    padding: 20px 20px 32px;
+  }
+}
+
+@media (max-width: 599px) {
+  :root .dv-sidebar .ast-side-head { padding: 10px 12px; }
+  :root .dv-sidebar .ast-side-head .ast-menu { left: 12px; right: 12px; }
+  :root .dv-contents { padding: 12px 12px 24px; gap: 12px; }
+
+  :root .dv-contents .dv-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  :root .dv-contents .dv-summary > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+  :root .dv-contents .dv-tiles { grid-template-columns: minmax(0, 1fr); }
+  :root .dv-contents .dv-rack-head { flex-wrap: wrap; }
+  :root .dv-contents .dv-rack-tail { margin-left: 0; }
+  :root .dv-contents .hx-toolbar { flex-wrap: wrap; }
+  :root .dv-contents .hx-toolbar .ast-search { flex: 1 1 100%; min-inline-size: 0; }
+  :root .dv-contents .hx-grid { grid-template-columns: minmax(0, 1fr); }
+  :root .dv-contents .hx-topic-add { flex-wrap: wrap; }
+  :root .dv-contents .hx-topic-detail { margin-inline: 0; }
+}
+
+/* ==========================================================================
+   DEVICES · OVERVIEW
+   ========================================================================== */
+@media (max-width: 599px) {
+  /* Points → machines: point, then reading · state · machine on one line;
+     the wiring path and age live in the hierarchy. */
+  :root .pg-devices-root > section[aria-label="Points and the machines they feed"] .ast-table {
+    --stack-cols: minmax(0, 0.75fr) minmax(0, 0.9fr) minmax(0, 1.5fr);
+  }
+  :root .pg-devices-root .ast-table .pg-devices-machine { max-inline-size: 100%; overflow: hidden; text-overflow: ellipsis; }
+  :root .pg-devices-root .ast-table .pg-devices-machine-sig { display: none; }
+
+  :root .pg-devices-lane { padding: 10px 0; row-gap: 4px; }
+  :root .pg-devices-node { padding: 3px 6px 3px 4px; }
+  :root .pg-devices-node-sub { white-space: normal; }
+  :root .pg-devices-feeds { padding-left: 4px; }
+  :root .pg-devices-related { gap: 6px; }
+}
+
+/* Wide: the data-path diagram and "where data stops" read as one row (cause
+   beside effect); the long points list keeps the full width below. */
+@media (min-width: 1920px) {
+  :root .pg-devices-root {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    grid-auto-rows: max-content;
+    align-items: stretch;
+    align-content: start;
+  }
+  :root .pg-devices-root > * { grid-column: 1 / -1; }
+  :root .pg-devices-root > section[aria-label="Data path by gateway"] { grid-column: 1; }
+  :root .pg-devices-root > section[aria-label="Where data stops"] { grid-column: 2; }
+  :root .pg-devices-root > section[aria-label="Where data stops"] .ast-table.ui-table-container .ui-table tbody td { white-space: normal; }
+  /* Named stops (broker, gateway) get the width; count stops stay compact. */
+  :root .pg-devices-root .pg-devices-lane {
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.35fr) repeat(3, minmax(0, 0.8fr)) minmax(140px, 1.1fr);
+  }
+}
+
+/* ==========================================================================
+   DEVICES · DATA FORMATS
+   ========================================================================== */
+@media (max-width: 599px) {
+  :root .fmt-select { inline-size: 100%; }
+  :root .fmt-source-bar > .btn-pill { flex: 1 1 auto; }
+  :root .fmt-preset-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  :root .fmt-map-row { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  :root .fmt-editor-bar > :last-child { inline-size: 100%; }
+  :root .fmt-json { max-block-size: 260px; font-size: var(--fs-sm); }
+  :root .fmt-tree { max-block-size: 220px; }
+}
+
+/* Wide: the editor gets a roomier preview column. */
+@media (min-width: 1920px) {
+  :root .fmt-workspace { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+  :root .fmt-json { max-block-size: 520px; }
+  :root .fmt-samples { max-block-size: 320px; }
+}
+
+/* ==========================================================================
+   DEVICES · MQTT
+   ========================================================================== */
+@media (max-width: 599px) {
+  :root .mq-toolbar { gap: 8px; }
+  :root .mq-toolbar > * { max-inline-size: 100%; }
+  :root .mq-filter { gap: 8px; inline-size: 100%; }
+  :root .mq-filter > .ast-search { flex: 1 1 100%; }
+  :root .mq-empty-body { font-size: var(--fs-md); }
+}
+
+/* ==========================================================================
+   ASSETIQ
+   ========================================================================== */
+@media (max-width: 1023px) {
+  /* Hub header: tabs drop under the title block and keep one scrolling row. */
+  :root .pg-root[aria-label="AssetIQ"] > .pg-head { flex-direction: column; align-items: stretch; gap: 12px; }
+}
+
+/* Laptop: six stage cards as 3 + 3 rather than three rows of two. */
+@media (min-width: 1024px) and (max-width: 1919px) {
+  :root .aiq-strip:has(> :last-child:nth-child(6)),
+  :root .aiq-strip:has(> :last-child:nth-child(3)) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (min-width: 600px) and (max-width: 1023px) {
+  :root .aiq-strip,
+  :root .aiq-acc { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 599px) {
+  :root .aiq-stack { gap: 12px; }
+  :root .aiq-strip,
+  :root .aiq-acc { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  :root .aiq-model-num { font-size: var(--fs-4xl); }
+  :root .aiq-spark { inline-size: 104px; }
+  :root .aiq-model-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  :root .aiq-ticker-row { grid-template-columns: 8px 40px minmax(0, 1fr); gap: 8px; font-size: var(--fs-sm); }
+  :root .aiq-cal { min-block-size: 200px; }
+  :root .aiq-section-head { padding: 0; }
+
+  /* Findings: prose cells take the full row, the short ones pair up. */
+  :root .pg-root section[aria-label="Findings"] .ast-table .ui-table tbody td:is([data-col="evidence"], [data-col="action"]) { grid-column: 1 / -1; }
+  :root .pg-root section[aria-label="Prediction ledger"] :is(th, td)[data-col="predicted"] { display: none !important; }
+}
+
+/* Desktop+: six model cards read as one row of stages, not two rows of three. */
+@media (min-width: 1920px) {
+  :root .aiq-strip:has(> :last-child:nth-child(6)),
+  :root .aiq-acc:has(> :last-child:nth-child(6)) { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  :root .aiq-strip:has(> :last-child:nth-child(4)),
+  :root .aiq-acc:has(> :last-child:nth-child(4)) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* Wide: each tab's table sits beside its companion card. */
+@media (min-width: 1920px) {
+  :root .pg-root[aria-label="AssetIQ"] > .aiq-stack {
+    display: grid;
+    grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+    grid-auto-flow: row dense;
+    align-items: start;
+  }
+  :root .pg-root[aria-label="AssetIQ"] > .aiq-stack > * { grid-column: 1 / -1; }
+  :root .pg-root[aria-label="AssetIQ"] > .aiq-stack > :is(
+      [aria-label="Engine inputs by machine"],
+      [aria-label="Prediction ledger"],
+      [aria-label="Findings"]
+    ) { grid-column: 1; }
+  :root .pg-root[aria-label="AssetIQ"] > .aiq-stack > :is(
+      [aria-label="Inference events"],
+      [aria-label="Calibration"],
+      [aria-label="Open findings by machine"]
+    ) { grid-column: 2; }
+  /* A long ledger scrolls inside its card so the model-fit cards stay in view. */
+  :root .pg-root[aria-label="AssetIQ"] section[aria-label="Prediction ledger"] .ast-table.ui-table-container {
+    max-block-size: 640px;
+    overflow-y: auto;
+  }
+}
+
+/* ==========================================================================
+   CONFIGURE
+   ========================================================================== */
+@media (max-width: 599px) {
+  :root .pg-cfg-root { gap: 12px; }
+  :root .pg-cfg-bar { grid-template-columns: minmax(0, 1fr) 72px; gap: 4px 10px; }
+  :root .pg-cfg-bar-track { grid-column: 1 / -1; grid-row: 2; height: 8px; }
+  :root .pg-cfg-check { grid-template-columns: 28px minmax(0, 1fr); padding: 10px 12px; }
+  :root .pg-cfg-check > :last-child:not(:nth-child(2)) { grid-column: 2; justify-self: start; }
+}
+
+/* Desktop: the checks list and plant settings side by side; everything else full width. */
+@media (min-width: 1440px) {
+  :root .pg-cfg-root {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: max-content;
+    align-items: start;
+    align-content: start;
+  }
+  :root .pg-cfg-root > * { grid-column: 1 / -1; }
+  :root .pg-cfg-root > [aria-label="Configuration checks"] { grid-column: 1; }
+  :root .pg-cfg-root > [aria-label="Plant settings"] { grid-column: 2; }
+}
+
+/* Wide: checks · plant settings, then gateways · racks in one row. */
+@media (min-width: 1920px) {
+  :root .pg-cfg-root > .pg-cfg-grid { display: contents; }
+  :root .pg-cfg-root > .pg-cfg-grid > * { grid-column: auto; }
+}
+
+/* ==========================================================================
+   WIDE + TV — cap the content measure on big monitors
+   ========================================================================== */
+@media (min-width: 1920px) {
+  :root .pg-root { padding-inline: max(32px, calc((100% - 2200px) / 2)); }
+  :root .dv-contents { padding-inline: max(32px, calc((100% - 2000px) / 2)); }
+  :root .pg-cfg-context,
+  :root .fmt-note { max-inline-size: 80ch; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root .dv-tree-toggle svg { transition: none; }
+}

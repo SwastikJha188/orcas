@@ -3,15 +3,19 @@
 /**
  * ULTRON Copilot: launcher + right-side glass drawer.
  *
- * A mock assistant over the live KLN-01 plant. The "AI" is the deterministic
+ * A mock assistant over the active plant's live machines: it speaks for the
+ * plant's primary machine (KLN-01 / PYR-KLN-01) and answers questions that
+ * name another machine of the plant from that machine. The "AI" is the deterministic
  * intent engine in `copilot-engine.ts`; this file owns the chat UI, the
  * thinking / streaming animation, evidence chips, sparklines and action
  * buttons. Mounted once in the top bar.
  */
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { useKilnSimulation } from "@/providers/kiln-simulation-context";
-import { activeRules, ask, pendingRules, proactiveInsight, suggestions, type ActionKind, type ActionSpec, type CopilotAnswer, type EvidenceChip, type Focus, type Spark } from "./copilot-engine";
+import { useKilnFleet, useKilnSimulation, usePrimaryMachineId } from "@/providers/kiln-simulation-context";
+import { useIndustrialData } from "@/providers/industrial-data-context";
+import { ACTION } from "@/components/ui/status";
+import { activeRules, ask, pendingRules, proactiveInsight, suggestions, type ActionKind, type ActionSpec, type CopilotAnswer, type EvidenceChip, type Focus, type PlantMachine, type Spark } from "./copilot-engine";
 import "./copilot.css";
 
 /* ------------------------------------------------------------------ */
@@ -33,14 +37,16 @@ type SimWithActions = {
 };
 
 const STORE_KEY = "ultron-copilot-v1";
+/** One conversation per plant: each plant is a separate workspace (KLN-01 keeps the original key). */
+const storeKey = (machineId: string) => (machineId === "KLN-01" ? STORE_KEY : `${STORE_KEY}:${machineId}`);
 let uid = 0;
 const nextId = () => `m${Date.now().toString(36)}${(uid++).toString(36)}`;
 
 const reducedMotion = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
-function loadStore(): { messages: Msg[]; focus: Focus } | null {
+function loadStore(key: string): { messages: Msg[]; focus: Focus } | null {
   try {
-    const raw = window.sessionStorage.getItem(STORE_KEY);
+    const raw = window.sessionStorage.getItem(key);
     if (!raw) return null;
     const p = JSON.parse(raw) as { messages: Msg[]; focus: Focus };
     return { messages: p.messages.map((m) => ({ ...m, fresh: false })), focus: p.focus ?? null };
@@ -48,9 +54,9 @@ function loadStore(): { messages: Msg[]; focus: Focus } | null {
     return null;
   }
 }
-function saveStore(messages: Msg[], focus: Focus) {
+function saveStore(key: string, messages: Msg[], focus: Focus) {
   try {
-    window.sessionStorage.setItem(STORE_KEY, JSON.stringify({ messages: messages.slice(-60).map((m) => ({ ...m, fresh: false })), focus }));
+    window.sessionStorage.setItem(key, JSON.stringify({ messages: messages.slice(-60).map((m) => ({ ...m, fresh: false })), focus }));
   } catch {
     /* storage unavailable: conversation stays in memory */
   }
@@ -158,7 +164,7 @@ function Chip({ c }: { c: EvidenceChip }) {
   );
 }
 
-function Sparkline({ s }: { s: Spark }) {
+function EvidenceSpark({ s }: { s: Spark }) {
   const W = 300;
   const H = 52;
   const all = [...s.values, ...s.model];
@@ -286,7 +292,7 @@ const AssistantMessage = memo(function AssistantMessage({
             </div>
             {phase === "done" && (
               <div className="cp-extras">
-                {a.spark && <Sparkline s={a.spark} />}
+                {a.spark && <EvidenceSpark s={a.spark} />}
                 {a.evidence.length > 0 && (
                   <div className="cp-evidence" aria-label="Evidence">
                     {a.evidence.map((c) => (
@@ -305,14 +311,15 @@ const AssistantMessage = memo(function AssistantMessage({
                 )}
                 {a.actions.length > 0 && (
                   <div className="cp-actions">
-                    {a.actions.map((x) => {
+                    {a.actions.map((x, i) => {
                       const key = `${msg.id}:${x.kind}`;
                       const done = doneActions[key];
+                      // One primary action per message; the rest stay quiet text actions.
                       return (
                         <button
                           key={x.kind}
                           type="button"
-                          className={`cp-btn ${x.kind === "mitigate" || (x.kind === "workorder" && !a.actions.some((y) => y.kind === "mitigate")) ? "cp-btn-primary" : ""}`}
+                          className={`cp-btn ${i === 0 ? "cp-btn-primary" : "cp-btn-text"}`}
                           disabled={done && x.kind !== "diagnosis"}
                           onClick={() => onAction(msg.id, x)}
                         >
@@ -321,7 +328,7 @@ const AssistantMessage = memo(function AssistantMessage({
                               <CheckIcon /> {ACTION_DONE[x.kind]}
                             </>
                           ) : (
-                            x.label
+                            x.kind === "workorder" ? ACTION.workOrder : x.label
                           )}
                         </button>
                       );
@@ -353,6 +360,7 @@ interface DrawerProps {
   messages: Msg[];
   chips: string[];
   doneActions: Record<string, boolean>;
+  machineId: string;
   overall: number;
   condition: string;
   signalCount: number;
@@ -432,7 +440,7 @@ function Drawer(p: DrawerProps) {
           <div className="cp-head-text">
             <h2 id="cp-title">ULTRON Copilot</h2>
             <p>
-              KLN-01 · health {p.overall}% · {p.condition.toLowerCase()}
+              {p.machineId} · health {p.overall}% · {p.condition.toLowerCase()}
             </p>
           </div>
           {p.messages.length > 0 && (
@@ -462,7 +470,7 @@ function Drawer(p: DrawerProps) {
                 <span className="cp-avatar cp-avatar-xl" aria-hidden="true">
                   <SparkIcon size={20} />
                 </span>
-                <h3>Ask about KLN-01</h3>
+                <h3>Ask about {p.machineId}</h3>
                 <p>
                   I read the live plant: {p.signalCount} signals, the reference model and the {p.ruleCount}-rule library. Answers are computed from the current state, not canned.
                 </p>
@@ -522,12 +530,20 @@ function Drawer(p: DrawerProps) {
 /* ------------------------------------------------------------------ */
 
 export function CopilotLauncher({ onOpenDiagnosis }: { onOpenDiagnosis?: () => void }) {
+  const primaryId = usePrimaryMachineId();
   const sim = useKilnSimulation();
-  const frame = sim?.frame ?? null;
+  const frame = sim?.machineId === primaryId ? sim.frame : null;
   const frameRef = useRef(frame);
   frameRef.current = frame;
-  const simRef = useRef(sim);
-  simRef.current = sim;
+  const primaryRef = useRef(primaryId);
+  primaryRef.current = primaryId;
+  // Every live machine of the active plant, named from the machine records.
+  const fleet = useKilnFleet();
+  const fleetRef = useRef(fleet);
+  fleetRef.current = fleet;
+  const { machines } = useIndustrialData();
+  const plantRef = useRef<PlantMachine[]>([]);
+  plantRef.current = Object.entries(fleet).map(([id, s]) => ({ id, name: machines.find((m) => m.id === id)?.name ?? id, frame: s.frame }));
 
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -542,17 +558,18 @@ export function CopilotLauncher({ onOpenDiagnosis }: { onOpenDiagnosis?: () => v
   const btn = useRef<HTMLButtonElement>(null);
   const hydrated = useRef(false);
 
-  // Restore the conversation after mount (sessionStorage is client-only).
+  // Restore the plant's conversation after mount and on a plant switch (sessionStorage is client-only).
   useEffect(() => {
-    const s = loadStore();
-    if (s) {
-      setMessages(s.messages);
-      setFocus(s.focus);
-    }
+    const s = loadStore(storeKey(primaryId));
+    setMessages(s?.messages ?? []);
+    setFocus(s?.focus ?? null);
+    setDoneActions({});
+    setNudges([]);
+    seen.current = new Set();
     hydrated.current = true;
-  }, []);
+  }, [primaryId]);
   useEffect(() => {
-    if (hydrated.current) saveStore(messages, focus);
+    if (hydrated.current) saveStore(storeKey(primaryRef.current), messages, focus);
   }, [messages, focus]);
 
   const pushInsight = useCallback((ruleId: string) => {
@@ -560,7 +577,7 @@ export function CopilotLauncher({ onOpenDiagnosis }: { onOpenDiagnosis?: () => v
     const rule = f?.rules.find((r) => r.id === ruleId);
     // A finding that has cleared since it was queued is no longer news.
     if (!f || !rule || rule.status !== "ACTIVE") return;
-    const answer = proactiveInsight(rule, { frame: f, focus: null });
+    const answer = proactiveInsight(rule, { frame: f, focus: null, machineId: primaryRef.current });
     setMessages((m) => [...m, { id: nextId(), role: "assistant", text: answer.text, answer, fresh: true, proactive: true }]);
     setFocus(answer.focus);
   }, []);
@@ -596,7 +613,7 @@ export function CopilotLauncher({ onOpenDiagnosis }: { onOpenDiagnosis?: () => v
   const send = useCallback((q: string) => {
     const f = frameRef.current;
     if (!f) return;
-    const answer = ask(q, { frame: f, focus: focusRef.current });
+    const answer = ask(q, { frame: f, focus: focusRef.current, machineId: primaryRef.current, plant: plantRef.current });
     setMessages((m) => [...m, { id: nextId(), role: "user", text: q }, { id: nextId(), role: "assistant", text: answer.text, answer, fresh: true }]);
     setFocus(answer.focus);
   }, []);
@@ -609,7 +626,9 @@ export function CopilotLauncher({ onOpenDiagnosis }: { onOpenDiagnosis?: () => v
     (msgId: string, a: ActionSpec) => {
       const note = (text: string) => setMessages((m) => [...m, { id: nextId(), role: "note", text, clock: frameRef.current?.clock }]);
       const mark = () => setDoneActions((d) => ({ ...d, [`${msgId}:${a.kind}`]: true }));
-      const s = simRef.current as unknown as SimWithActions | null;
+      // Actions go to the machine the answer came from (the primary unless the question named another).
+      const target = a.machineId ?? primaryRef.current;
+      const s = (fleetRef.current[target] ?? null) as unknown as SimWithActions | null;
       switch (a.kind) {
         case "mitigate":
           if (a.ruleId) s?.performAction?.(a.ruleId, "mitigate");
@@ -627,7 +646,7 @@ export function CopilotLauncher({ onOpenDiagnosis }: { onOpenDiagnosis?: () => v
           note(`Work order requested for ${a.ruleId}.`);
           break;
         case "diagnosis":
-          window.dispatchEvent(new CustomEvent("ultron:open-diagnosis", { detail: { machineId: "KLN-01", ruleId: a.ruleId } }));
+          window.dispatchEvent(new CustomEvent("ultron:open-diagnosis", { detail: { machineId: target, ruleId: a.ruleId } }));
           onOpenDiagnosis?.();
           closeDrawer();
           break;
@@ -669,6 +688,7 @@ export function CopilotLauncher({ onOpenDiagnosis }: { onOpenDiagnosis?: () => v
             messages={messages}
             chips={chips}
             doneActions={doneActions}
+            machineId={primaryId}
             overall={frame.overall}
             condition={frame.condition}
             signalCount={Object.keys(frame.signals).length}

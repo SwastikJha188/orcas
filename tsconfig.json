@@ -34,11 +34,13 @@
     ".next-memtest-prod/types/**/*.ts",
     ".next-memtest-tp/types/**/*.ts",
     ".next-memtest-wp/types/**/*.ts",
+    ".next-preview/types/**/*.ts",
+    ".next-responsive/types/**/*.ts",
     ".next-verify-97703c/types/**/*.ts",
     ".next-verify-build/types/**/*.ts",
     ".next/types/**/*.ts",
     "next-env.d.ts",
-    ".next-preview/types/**/*.ts"
+    ".next-health/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

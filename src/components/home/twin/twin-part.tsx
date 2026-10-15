@@ -5,15 +5,16 @@ import type { ThreeEvent } from "@react-three/fiber";
 import React, { createContext, useContext, useMemo } from "react";
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
-import { concreteTexture, grainTexture, gratingTexture, paintTexture, shellTexture } from "./twin-textures";
+import { grainTexture } from "./twin-textures";
 
 /* ==========================================================================
    One mesh of a machine twin, and the shared building blocks (bevelled
    blocks, pipes, I-beams, platforms with handrails, stairs). A part belongs
    to a subsystem (or to nothing, for structure); hovering it highlights the
-   subsystem, clicking selects it. Materials are shared per paint and carry
-   procedural textures (twin-textures), so the twin reads as built steel and
-   concrete rather than flat colour.
+   subsystem, clicking selects it. Materials are shared per paint in the ULTRON
+   machine-kit (TSE) style: matte graphite bodies, brushed metal only where it
+   is metal, muted brass for process material, and a mid-grey rim on every
+   hard edge (the drawings' outline).
    ========================================================================== */
 
 export type TwinPaint =
@@ -35,6 +36,8 @@ export interface PartCtxValue {
   hoverId: string | null;
   selectColor: string;
   hoverColor: string;
+  /** Machine-kit rim colour on every hard edge (--mx-edge). */
+  edgeColor: string;
   onOver: (id: string) => void;
   onOut: () => void;
   onPick: (id: string) => void;
@@ -51,29 +54,28 @@ export interface ShellSkin {
   burning: [number, number];
 }
 
-/** The shared, textured material per paint. Built once per palette. */
+/** The shared machine-kit material per paint. Built once per palette. */
 export function useTwinMaterials(paints: TwinPaints, skin: ShellSkin) {
   return useMemo<Record<TwinPaint, THREE.Material>>(() => {
-    const grain = grainTexture(3, [3, 3]);
+    void skin;
     const brushed = grainTexture(5, [2, 8], 140);
-    const shellGrain = grainTexture(9, [6, 30], 60);
-    const std = (p: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial(p);
-    const shellMap = shellTexture(paints.shell, paints.heat, skin.length, skin.burning);
-    shellMap.flipY = false;
+    // Faces sit a hair behind their rim lines so the outline never z-fights.
+    const std = (p: THREE.MeshStandardMaterialParameters) =>
+      new THREE.MeshStandardMaterial({ polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, ...p });
     return {
-      concrete: std({ map: concreteTexture(paints.concrete), roughness: 0.95, metalness: 0, bumpMap: grain, bumpScale: 1.2 }),
-      steel: std({ map: paintTexture(paints.steel, 21), roughness: 0.62, metalness: 0.3, roughnessMap: grain }),
-      steelDark: std({ map: paintTexture(paints.steelDark, 22), roughness: 0.5, metalness: 0.55, roughnessMap: grain }),
-      shell: std({ map: shellMap, roughness: 0.62, metalness: 0.55, roughnessMap: shellGrain, bumpMap: shellGrain, bumpScale: 0.4 }),
-      machined: std({ color: paints.machined, roughness: 0.32, metalness: 0.9, roughnessMap: brushed }),
-      paint: std({ map: paintTexture(paints.paint, 23), roughness: 0.48, metalness: 0.18, roughnessMap: grain }),
-      housing: std({ map: paintTexture(paints.housing, 24), roughness: 0.58, metalness: 0.4, roughnessMap: grain }),
-      grating: std({ map: gratingTexture(paints.steel), roughness: 0.7, metalness: 0.4 }),
-      material: std({ color: paints.material, roughness: 0.85, metalness: 0.05, bumpMap: grain, bumpScale: 2 }),
-      heat: std({ color: paints.heat, roughness: 0.5, metalness: 0.5 }),
-      deep: std({ color: paints.deep, roughness: 0.9, metalness: 0.1 }),
+      concrete: std({ color: paints.concrete, roughness: 0.85, metalness: 0.05 }),
+      steel: std({ color: paints.steel, roughness: 0.62, metalness: 0.28 }),
+      steelDark: std({ color: paints.steelDark, roughness: 0.55, metalness: 0.4 }),
+      shell: std({ color: paints.shell, roughness: 0.62, metalness: 0.2 }),
+      machined: std({ color: paints.machined, roughness: 0.34, metalness: 0.75, roughnessMap: brushed }),
+      paint: std({ color: paints.paint, roughness: 0.7, metalness: 0.12 }),
+      housing: std({ color: paints.housing, roughness: 0.7, metalness: 0.15 }),
+      grating: std({ color: paints.steelDark, roughness: 0.7, metalness: 0.35 }),
+      material: std({ color: paints.material, roughness: 0.85, metalness: 0.05 }),
+      heat: std({ color: paints.heat, roughness: 0.6, metalness: 0.2 }),
+      deep: std({ color: paints.deep, roughness: 0.5, metalness: 0.2 }),
     };
-  }, [paints, skin.length, skin.burning]);
+  }, [paints, skin]);
 }
 
 /* ---------------------------------------------------------------- geometry cache */
@@ -181,7 +183,7 @@ export function TwinPart({
       {...handlers}
     >
       {children}
-      {edges && (selected || hovered) && <Edges threshold={25} color={selected ? ctx.selectColor : ctx.hoverColor} />}
+      {edges && <Edges threshold={30} color={selected ? ctx.selectColor : hovered ? ctx.hoverColor : ctx.edgeColor} />}
     </mesh>
   );
 }

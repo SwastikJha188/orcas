@@ -35,14 +35,14 @@ function alertTone(a: OpsAlert) {
 
 /** Alerts inbox: live rule findings with Acknowledge / Create work order. */
 export function OpsAlertRows({ alerts, limit }: { alerts: OpsAlert[]; limit?: number }) {
-  const { acknowledge, createWorkOrder, workOrders } = useKilnOps();
+  const { acknowledge, createWorkOrder, workOrders, machineId } = useKilnOps();
   const [open, setOpen] = useState<string | null>(null);
   const rows = limit ? alerts.slice(0, limit) : alerts;
   if (rows.length === 0) {
     return (
       <div className="ast-empty">
         <strong>No active findings</strong>
-        KLN-01 is running inside its reference envelope.
+        {machineId} is running inside its reference envelope.
       </div>
     );
   }
@@ -124,7 +124,7 @@ function Timeline({ wo }: { wo: OpsWorkOrder }) {
 }
 
 export function OpsWorkOrderRows({ orders }: { orders: OpsWorkOrder[] }) {
-  const { updateWorkOrder } = useKilnOps();
+  const { updateWorkOrder, machineId } = useKilnOps();
   const [open, setOpen] = useState<number | null>(null);
   if (orders.length === 0) {
     return (
@@ -150,7 +150,7 @@ export function OpsWorkOrderRows({ orders }: { orders: OpsWorkOrder[] }) {
               </span>
               <span className="ops-row-title">{w.title}</span>
               <span className="ops-row-sub">
-                {w.component ?? "KLN-01"}
+                {w.component ?? w.machineId ?? machineId}
                 {w.dueLabel ? ` · due ${w.dueLabel.toLowerCase()}` : ""}
                 {w.assignee ? ` · ${w.assignee}` : ""}
               </span>

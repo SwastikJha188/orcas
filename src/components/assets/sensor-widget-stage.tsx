@@ -4,10 +4,12 @@ import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { DetailedSensorInfo } from "./machine-sensor-mapping-view";
 import { severityTone, type Tone } from "./assets-shell-ui";
 import { LimitBar, gaugeScale } from "./sensor-gauge";
+import type { LimitRule } from "@/lib/kiln-sim/signals";
 
 /* ==========================================================================
-   Sensor mapping: the drawing at full stage width, with one floating glass
-   card per channel docked above and below it. No leaders.
+   Sensor cards around a drawing: the drawing at full stage width, with one
+   floating glass card per channel docked above and below it, each joined to
+   its pad by a leader line (machine Overview › component sheet).
 
    On the whole machine, channel cards are organised in clusters, one per
    component: a small technical label over a tight grid of its cards. On a
@@ -22,13 +24,11 @@ import { LimitBar, gaugeScale } from "./sensor-gauge";
 const CARD_W = 158;
 const CARD_W_DETAILED = 204;
 const CARD_GAP = 8;
-const CLUSTER_GAP = 22;
+const CLUSTER_GAP = 14;
 /** Most cards side by side in one cluster. */
 const MAX_COLS = 2;
-/** The drawing never grows past this height on wide screens. */
-const MAX_DRAWING_H = 620;
-/** Below this stage width the clusters fall into a plain flow under the drawing. */
-const STAGE_MIN_W = 900;
+/** Below this stage width the clusters fall into a responsive multi-column grid under the drawing. */
+const STAGE_MIN_W = 640;
 
 /** Pad position in drawing space, 0–1 on each axis. */
 export type RingPosition = { u: number; v: number };
@@ -58,12 +58,24 @@ interface Cluster {
   items: Item[];
   cols: number;
   width: number;
+  cardW: number;
   u: number;
   v: number;
 }
 
 interface PlacedRow {
   clusters: Array<{ cluster: Cluster; x: number }>;
+}
+
+interface LeaderLine {
+  tag: string;
+  groupId: string | null;
+  tone: Tone;
+  cx: number;
+  ay: number;
+  stubY: number;
+  px: number;
+  py: number;
 }
 
 const tagOf = (s: DetailedSensorInfo) => s.parameter || s.id;
@@ -101,29 +113,39 @@ function pack(ideals: number[], widths: number[], gap: number, total: number): n
   return x;
 }
 
-function layoutStage(width: number, clusters: Cluster[], aspect: number) {
-  const dh = Math.min(width / aspect, MAX_DRAWING_H);
-  const dw = dh * aspect;
-  const dx = (width - dw) / 2;
+function layoutStage(width: number, clusters: Cluster[], aspect: number, detailed: boolean, fit: boolean) {
+  const maxH = detailed ? 390 : 430;
+  // `fit`: the drawing takes its own proportions edge to edge (no letterbox, no cap).
+  const dh = fit ? Math.round(width / aspect) : Math.round(Math.min(width / Math.max(aspect, 1.85), maxH));
+  const dw = width;
+  const dx = 0;
   const span = (list: Cluster[]) => list.reduce((a, c) => a + c.width, 0) + CLUSTER_GAP * Math.max(0, list.length - 1);
 
-  // Upper half of the drawing docks above, lower half below. When one row
-  // will not hold everything, split by v at half the total width so the
-  // two bands carry a similar load.
   const byV = [...clusters].sort((a, b) => a.v - b.v || a.u - b.u);
   let nTop = byV.filter((c) => c.v < 0.5).length;
-  if (span(clusters) > width) {
+
+  if (detailed) {
+    // Never leave a lonely 1-card orphan row or split <= 4 cards across two sparse bands.
+    if (clusters.length <= 4) {
+      const avgV = clusters.reduce((a, c) => a + c.v, 0) / Math.max(1, clusters.length);
+      nTop = avgV <= 0.55 ? clusters.length : 0;
+    } else {
+      nTop = Math.ceil(clusters.length / 2);
+    }
+  } else if (span(clusters) > width || nTop === 0 || nTop === clusters.length) {
     const half = span(clusters) / 2;
     let acc = 0;
     nTop = 0;
     while (nTop < byV.length && acc + byV[nTop].width / 2 < half) acc += byV[nTop++].width + CLUSTER_GAP;
+    if (clusters.length >= 2) {
+      nTop = Math.min(Math.max(1, nTop), clusters.length - 1);
+    }
   }
 
   const rowsOf = (list: Cluster[]): PlacedRow[] => {
     if (list.length === 0) return [];
     const sorted = [...list].sort((a, b) => a.u - b.u);
     const nRows = Math.max(1, Math.ceil(span(sorted) / width));
-    // Even rows by width, in drawing order.
     const target = span(sorted) / nRows;
     const rows: Cluster[][] = [[]];
     let acc = 0;
@@ -139,13 +161,35 @@ function layoutStage(width: number, clusters: Cluster[], aspect: number) {
       }
     }
     return rows.map((row) => {
+      // Expand cards proportionally when a row has spare horizontal room so there is no dead side space.
+      const totalCols = row.reduce((sum, c) => sum + c.cols, 0);
+      const totalInternalGaps = row.reduce((sum, c) => sum + Math.max(0, c.cols - 1) * CARD_GAP, 0);
+      const totalClusterGaps = Math.max(0, row.length - 1) * CLUSTER_GAP;
+      const availForCards = width - totalInternalGaps - totalClusterGaps;
+      const minW = detailed ? 184 : CARD_W;
+      const maxW = detailed ? 360 : 230;
+      const adaptiveCardW = Math.min(maxW, Math.max(minW, Math.floor(availForCards / Math.max(1, totalCols))));
+
+      const sizedRow = row.map((c) => ({
+        ...c,
+        cardW: adaptiveCardW,
+        width: c.cols * adaptiveCardW + (c.cols - 1) * CARD_GAP,
+      }));
+
+      const rowSpan = sizedRow.reduce((a, c) => a + c.width, 0) + totalClusterGaps;
+      // When cards nearly fill the row (or in detailed component view with >=3 cards), distribute across full width.
+      const distributeEvenly = detailed && sizedRow.length >= 3 && rowSpan >= width * 0.72;
+      const ideals = distributeEvenly
+        ? sizedRow.map((c, i) => ((i + 0.5) / sizedRow.length) * width)
+        : sizedRow.map((c) => dx + c.u * dw);
+
       const xs = pack(
-        row.map((c) => dx + c.u * dw),
-        row.map((c) => c.width),
+        ideals,
+        sizedRow.map((c) => c.width),
         CLUSTER_GAP,
         width
       );
-      return { clusters: row.map((cluster, i) => ({ cluster, x: xs[i] })) };
+      return { clusters: sizedRow.map((cluster, i) => ({ cluster, x: xs[i] })) };
     });
   };
 
@@ -162,8 +206,14 @@ export function SensorWidgetStage({
   renderDrawing,
   selectedTag,
   onToggle,
+  limitOf,
+  fitDrawing = false,
 }: {
   sensors: DetailedSensorInfo[];
+  /** Size the drawing box to `aspect` at the full stage width (no height cap), so the drawing has no empty margin. */
+  fitDrawing?: boolean;
+  /** Engine limit per tag for live machines, so band limits draw both sides. */
+  limitOf?: (tag: string) => LimitRule | null | undefined;
   /** Drawing width / height. */
   aspect: number;
   /** Where the sensor's pad sits on the drawing, or null when it is not drawn. */
@@ -184,6 +234,7 @@ export function SensorWidgetStage({
   const [width, setWidth] = useState(0);
   const [hover, setHover] = useState<string | null>(null);
   const [hoverGroup, setHoverGroup] = useState<string | null>(null);
+  const [leaders, setLeaders] = useState<LeaderLine[]>([]);
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -207,7 +258,6 @@ export function SensorWidgetStage({
       const placed = list.filter((it) => it.placed);
       const mean = (f: (it: Item) => number, d: number) =>
         placed.length ? placed.reduce((a, it) => a + f(it), 0) / placed.length : d;
-      // Cards in a cluster read top-to-bottom, left-to-right like the drawing.
       const sorted = [...list].sort((a, b) => a.u - b.u || a.v - b.v);
       const cols = Math.min(MAX_COLS, sorted.length);
       return {
@@ -217,6 +267,7 @@ export function SensorWidgetStage({
         caption,
         items: sorted,
         cols,
+        cardW,
         width: cols * cardW + (cols - 1) * CARD_GAP,
         u: mean((it) => it.u, 0.5),
         v: mean((it) => it.v, 1),
@@ -238,28 +289,102 @@ export function SensorWidgetStage({
   }, [sensors, positionOf, groups, cardW]);
 
   const stage = useMemo(
-    () => (width >= STAGE_MIN_W ? layoutStage(width, clusters, aspect) : null),
-    [width, clusters, aspect]
+    () => (width >= STAGE_MIN_W ? layoutStage(width, clusters, aspect, detailed, fitDrawing) : null),
+    [width, clusters, aspect, detailed, fitDrawing]
   );
 
   const hot = hover ?? selectedTag;
   const drawing = renderDrawing(hot, hover, hoverGroup);
 
-  const card = (it: Item, index: number) => {
+  const layoutKey = useMemo(
+    () => clusters.map((c) => `${c.key}:${c.items.map((it) => `${it.tag}:${it.sensor.status}`).join(",")}`).join("|"),
+    [clusters],
+  );
+
+  // Measure rendered card and pad positions in local stage coordinates to draw CAD leader lines.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !stage) {
+      setLeaders([]);
+      return;
+    }
+
+    const measure = () => {
+      const stageRect = el.getBoundingClientRect();
+      if (stageRect.width === 0 || stageRect.height === 0) return;
+      const scaleX = stageRect.width / (el.offsetWidth || 1);
+      const scaleY = stageRect.height / (el.offsetHeight || 1);
+
+      const groupByTag = new Map<string, string | null>();
+      for (const c of clusters) {
+        for (const it of c.items) groupByTag.set(it.tag, c.groupId);
+      }
+
+      const next: LeaderLine[] = [];
+      for (const c of clusters) {
+        for (const it of c.items) {
+          const t = it.tag;
+          const cardEl = el.querySelector<HTMLElement>(`[data-card-tag="${CSS.escape(t)}"]`);
+          const padEl =
+            el.querySelector<SVGElement>(`[data-pad-center="${CSS.escape(t)}"]`) ??
+            el.querySelector<SVGElement>(`[data-pad="${CSS.escape(t)}"]`);
+          if (!cardEl || !padEl) continue;
+
+          const cRect = cardEl.getBoundingClientRect();
+          const pRect = padEl.getBoundingClientRect();
+          if (cRect.width === 0 || pRect.width === 0) continue;
+
+          const cx = (cRect.left + cRect.width / 2 - stageRect.left) / scaleX;
+          const cTop = (cRect.top - stageRect.top) / scaleY;
+          const cBottom = (cRect.bottom - stageRect.top) / scaleY;
+          const px = (pRect.left + pRect.width / 2 - stageRect.left) / scaleX;
+          const py = (pRect.top + pRect.height / 2 - stageRect.top) / scaleY;
+
+          const fromTop = cBottom <= py;
+          const ay = fromTop ? cBottom : cTop;
+          const stubY = ay + (fromTop ? 10 : -10);
+
+          next.push({
+            tag: t,
+            groupId: groupByTag.get(t) ?? null,
+            tone: severityTone(it.sensor.status),
+            cx,
+            ay,
+            stubY,
+            px,
+            py,
+          });
+        }
+      }
+      setLeaders(next);
+    };
+
+    measure();
+    const raf = requestAnimationFrame(measure);
+    const mo = new MutationObserver(measure);
+    mo.observe(el, { attributes: true, attributeFilter: ["viewBox"], subtree: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      mo.disconnect();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, layoutKey, width]);
+
+  const card = (it: Item) => {
     const s = it.sensor;
     const point = pointOf?.(s) || s.point || it.tag;
-    const scale = detailed ? gaugeScale(s) : null;
+    const scale = detailed ? gaugeScale(s, limitOf?.(it.tag)) : null;
     return (
       <button
         key={it.tag}
         type="button"
         className="ast-smw-card"
+        data-card-tag={it.tag}
         data-tone={severityTone(s.status)}
         data-hot={hot === it.tag || undefined}
         data-detailed={detailed || undefined}
         aria-pressed={selectedTag === it.tag}
-        aria-label={`${point} ${it.tag} ${s.name}: ${s.value} ${s.unit}, ${s.status}`}
-        style={{ animationDelay: `${Math.min(index, 24) * 18}ms` }}
+        aria-label={`${point} ${it.tag} ${s.name}: ${s.value} ${s.unit}, ${s.status}${s.dataQuality ? `, data ${s.dataQuality.label.toLowerCase()}` : ""}`}
         onClick={() => onToggle(it.tag)}
         onMouseEnter={() => setHover(it.tag)}
         onMouseLeave={() => setHover(null)}
@@ -277,7 +402,13 @@ export function SensorWidgetStage({
             {s.value}
             {s.unit && s.unit !== "state" && <span className="ast-unit">{s.unit}</span>}
           </span>
-          <span className="ast-smw-point ast-num">{point}</span>
+          {s.dataQuality && (s.dataQuality.tone === "warn" || s.dataQuality.tone === "bad") ? (
+            <span className="pg-sensors-qmark" data-tone={s.dataQuality.tone} title={`Data ${s.dataQuality.label.toLowerCase()}`}>
+              {s.dataQuality.label}
+            </span>
+          ) : (
+            <span className="ast-smw-point ast-num">{point}</span>
+          )}
         </span>
         {detailed &&
           (scale ? (
@@ -289,7 +420,6 @@ export function SensorWidgetStage({
     );
   };
 
-  let n = 0;
   const cluster = (c: Cluster, style?: React.CSSProperties) => {
     const lit = c.items.some((it) => it.tag === hot) || (c.groupId !== null && c.groupId === hoverGroup);
     return (
@@ -300,7 +430,7 @@ export function SensorWidgetStage({
         aria-label={c.label ?? c.items[0].sensor.name}
         data-tone={worstTone(c.items)}
         data-lit={lit || undefined}
-        style={{ ...style, width: c.width }}
+        style={{ ...style, width: stage ? c.width : undefined }}
         onMouseEnter={() => setHoverGroup(c.groupId)}
         onMouseLeave={() => setHoverGroup(null)}
       >
@@ -312,8 +442,11 @@ export function SensorWidgetStage({
             {c.caption && <span className="ast-smw-label-meta ast-num">{c.caption}</span>}
           </span>
         )}
-        <span className="ast-smw-cards" style={{ gridTemplateColumns: `repeat(${c.cols}, ${cardW}px)` }}>
-          {c.items.map((it) => card(it, n++))}
+        <span
+          className="ast-smw-cards"
+          style={stage ? { gridTemplateColumns: `repeat(${c.cols}, ${c.cardW}px)` } : undefined}
+        >
+          {c.items.map((it) => card(it))}
         </span>
       </div>
     );
@@ -334,6 +467,29 @@ export function SensorWidgetStage({
     <div ref={ref} className="ast-smw-stage" data-hot={hot ? "" : undefined}>
       {stage ? (
         <>
+          {leaders.length > 0 && (
+            <svg className="ast-smw-leaders" aria-hidden="true">
+              {leaders.map((l) => {
+                const isHot = l.tag === hot || (l.groupId !== null && l.groupId === hoverGroup);
+                // On whole-machine view, keep ambient leaders subtle; on component view, show clear CAD callout lines.
+                if (!detailed && !isHot && hot) return null;
+                return (
+                  <g
+                    key={l.tag}
+                    className="ast-smw-leader"
+                    data-hot={isHot || undefined}
+                    data-tone={l.tone}
+                    data-detailed={detailed || undefined}
+                  >
+                    <path
+                      d={`M ${l.cx.toFixed(1)} ${l.ay.toFixed(1)} L ${l.cx.toFixed(1)} ${l.stubY.toFixed(1)} L ${l.px.toFixed(1)} ${l.py.toFixed(1)}`}
+                    />
+                    <circle cx={l.cx} cy={l.ay} r={2.2} />
+                  </g>
+                );
+              })}
+            </svg>
+          )}
           {band(stage.top, "top")}
           <div className="ast-smw-drawing" style={{ width: stage.drawing.w, height: stage.drawing.h }}>
             {drawing}

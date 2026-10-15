@@ -14,7 +14,7 @@ import {
 } from "@/components/assets/hierarchy/hierarchy-model";
 import { PLANT_MODELS, buildPlantScene, type TwinCallout } from "./plant-twin-model";
 import type { TwinCameraCommand, TwinColors, TwinInset } from "./plant-twin-canvas";
-import { TwinNavBar, twinHint, type TwinNavMode } from "./twin-nav-ui";
+import { TwinHint, TwinNavBar, usePersistedNavMode } from "./twin-nav-ui";
 
 const PlantTwinCanvas = dynamic(() => import("./plant-twin-canvas"), {
   ssr: false,
@@ -82,14 +82,14 @@ export interface PlantTwinProps {
   inset?: TwinInset;
 }
 
-const toneLabel = (t: Tone) => (t === "bad" ? "Critical" : t === "warn" ? "At risk" : t === "idle" ? "Standby" : "Normal");
+const toneLabel = (t: Tone) => (t === "bad" ? "Critical" : t === "warn" ? "Advisory" : t === "idle" ? "Standby" : "Normal");
 
 export function PlantTwin({ plant, lookup, alertsByMachine, liveIds, onOpenMachine, onUnsupported, inset }: PlantTwinProps) {
   const colors = useTwinColors();
   const scene = useMemo(() => buildPlantScene(plant), [plant]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [command, setCommand] = useState<TwinCameraCommand>({ kind: "fit", n: 0 });
-  const [navMode, setNavMode] = useState<TwinNavMode>("move");
+  const [navMode, setNavMode] = usePersistedNavMode();
   const [supported, setSupported] = useState(true);
 
   useEffect(() => {
@@ -166,6 +166,7 @@ export function PlantTwin({ plant, lookup, alertsByMachine, liveIds, onOpenMachi
           showLabels
           inset={inset}
           navMode={navMode}
+          persistKey={`plant.${plant.id}`}
         />
       ) : (
         <div className="ph-twin-loading" role="status">Loading 3D twin…</div>
@@ -173,13 +174,11 @@ export function PlantTwin({ plant, lookup, alertsByMachine, liveIds, onOpenMachi
 
       <TwinNavBar navMode={navMode} onNavMode={setNavMode} onReset={() => setCommand((c) => ({ kind: "fit", n: c.n + 1 }))} />
 
-      <div className="ph-twin-hint" aria-hidden="true">
-        {twinHint(navMode)}
-      </div>
+      <TwinHint navMode={navMode} />
 
       <div className="ph-twin-legend" aria-label="Legend">
         <span><i data-tone="good" />Normal</span>
-        <span><i data-tone="warn" />At risk</span>
+        <span><i data-tone="warn" />Advisory</span>
         <span><i data-tone="bad" />Critical</span>
         <span><b data-kind="electrical" />Power</span>
         <span><b data-kind="network" />Network</span>

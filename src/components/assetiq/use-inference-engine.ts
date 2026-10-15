@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SIGNAL_BY_TAG, SUBASSEMBLIES } from "@/lib/kiln-sim/signals";
-import { RULES } from "@/lib/kiln-sim/rules";
 import type { SimFrame } from "@/lib/kiln-sim/engine";
 import { formatDuration } from "@/lib/kiln-sim/engine";
 import type { Tone } from "@/components/assets/assets-shell-ui";
+import { rul } from "@/lib/kiln-sim/live-insights";
+import type { RulItem } from "@/server/services/insights-service";
+import { formatRulHours } from "@/components/assets/prognosis/prognosis-derive";
+import { conditionTone } from "@/components/ui/status";
 import {
   parseDurationMinutes,
   type PushTicker,
@@ -13,7 +15,8 @@ import {
 } from "./ai-shared";
 
 /* The AI stack as the operator sees it: six stages, each re-run every
-   simulated minute. Counts come from the live frame; latency is a fixed
+   simulated minute, on the active plant's primary machine. Counts come from
+   the live frame and its definitions (`frame.defs`); latency is a fixed
    function of frame size so it is stable, not noise. */
 
 export interface ModelCard {
@@ -38,8 +41,6 @@ const push = (arr: number[], v: number) => {
   if (arr.length > SERIES_LEN) arr.shift();
 };
 
-const ANALOG = Object.values(SIGNAL_BY_TAG).filter((d) => d.type === "analog");
-
 interface Metrics {
   n: number;
   meanAbsZ: number;
@@ -58,7 +59,8 @@ function measure(frame: SimFrame): Metrics {
   let maxZTag = "—";
   let forecastable = 0;
   let soonest: Metrics["soonest"] = null;
-  for (const def of ANALOG) {
+  for (const def of frame.defs.signals) {
+    if (def.type !== "analog") continue;
     const s = frame.signals[def.tag];
     if (!s || s.value === null) continue;
     n++;
@@ -79,7 +81,7 @@ function measure(frame: SimFrame): Metrics {
     }
   }
   let weakest: Metrics["weakest"] = null;
-  for (const sa of SUBASSEMBLIES) {
+  for (const sa of frame.defs.subassemblies) {
     const c = frame.subs[sa.id];
     if (c && (!weakest || c.health < weakest.health))
       weakest = { name: sa.name, health: c.health };
@@ -95,25 +97,32 @@ function measure(frame: SimFrame): Metrics {
   };
 }
 
+/** Shortest remaining useful life on the machine, from the same live model Prognosis reads. */
+function shortestLife(frame: SimFrame): RulItem | null {
+  return rul(frame)[0] ?? null;
+}
+
 function cards(
   frame: SimFrame,
   m: Metrics,
   series: Record<string, number[]>,
+  life: RulItem | null,
 ): ModelCard[] {
   const p = frame.pipeline;
   const n = m.n;
+  const rules = frame.defs.rules.length;
+  const subs = frame.defs.subassemblies.length;
   const dq = p.suspect + p.invalid + p.held;
   const common = { lastRun: frame.clock, throughput: n };
   const refTone: Tone =
     m.meanAbsZ < 1.2 ? "good" : m.meanAbsZ < 2 ? "warn" : "bad";
   const anomTone: Tone =
     p.beyond3s === 0 ? "good" : p.beyond3s <= 3 ? "warn" : "bad";
-  const health = m.weakest?.health ?? 100;
   return [
     {
       id: "reference",
       name: "Reference model",
-      spec: "D5 Table 9.5 · expected value per signal",
+      spec: "Expected value per signal",
       ...common,
       tone: refTone,
       status:
@@ -144,7 +153,7 @@ function cards(
     {
       id: "rules",
       name: "Rule library",
-      spec: `${RULES.length} rules · persistence 2–4, hysteresis 4`,
+      spec: `${rules} rules · persistence 2–4, hysteresis 4`,
       ...common,
       tone: p.confirmed > 0 ? "bad" : p.pending > 0 ? "warn" : "good",
       status:
@@ -153,7 +162,7 @@ function cards(
           : p.pending > 0
             ? `${p.pending} pending`
             : "Quiet",
-      latencyMs: 1.2 + 0.06 * RULES.length + 0.04 * n,
+      latencyMs: 1.2 + 0.06 * rules + 0.04 * n,
       headline: String(p.matching),
       headlineLabel: `of ${p.evaluated} matching`,
       series: series.rules,
@@ -191,16 +200,15 @@ function cards(
     {
       id: "rul",
       name: "RUL estimator",
-      spec: `${SUBASSEMBLIES.length} sub-assemblies · remaining useful life`,
+      spec: `${subs} sub-assemblies · remaining useful life`,
       ...common,
-      tone: health >= 90 ? "good" : health >= 75 ? "warn" : "bad",
-      status:
-        health >= 90 ? "Healthy" : health >= 75 ? "Degrading" : "Short life",
-      latencyMs: 5 + 1.1 * SUBASSEMBLIES.length,
-      headline: m.weakest ? `${Math.round(m.weakest.health)}%` : "—",
-      headlineLabel: m.weakest ? `lowest · ${m.weakest.name}` : "health",
+      tone: life ? conditionTone(life.status) : "idle",
+      status: life ? life.status : "No data",
+      latencyMs: 5 + 1.1 * subs,
+      headline: life ? formatRulHours(life.hours) : "—",
+      headlineLabel: life ? `shortest life · ${life.name}` : "remaining life",
       series: series.rul,
-      seriesLabel: "Lowest sub-assembly health %",
+      seriesLabel: "Shortest remaining life, plant hours",
     },
   ];
 }
@@ -211,7 +219,7 @@ export interface InferenceEngine {
   push: PushTicker;
 }
 
-export function useInferenceEngine(frame: SimFrame | null): InferenceEngine {
+export function useInferenceEngine(frame: SimFrame | null, machineId: string): InferenceEngine {
   const series = useRef<Record<string, number[]>>({
     reference: [],
     validation: [],
@@ -221,6 +229,7 @@ export function useInferenceEngine(frame: SimFrame | null): InferenceEngine {
     rul: [],
   });
   const lastT = useRef<number | null>(null);
+  const lastMachine = useRef(machineId);
   const seq = useRef(0);
   const [models, setModels] = useState<ModelCard[]>([]);
   const [ticker, setTicker] = useState<TickerEntry[]>([]);
@@ -232,9 +241,13 @@ export function useInferenceEngine(frame: SimFrame | null): InferenceEngine {
   }, []);
 
   useEffect(() => {
-    if (!frame || lastT.current === frame.t) return;
-    if (lastT.current !== null && frame.t < lastT.current)
+    // A plant switch changes the machine: its series start afresh.
+    const switched = lastMachine.current !== machineId;
+    if (!frame || (!switched && lastT.current === frame.t)) return;
+    if (switched || (lastT.current !== null && frame.t < lastT.current))
       for (const k of Object.keys(series.current)) series.current[k] = [];
+    if (switched) setTicker([]);
+    lastMachine.current = machineId;
     lastT.current = frame.t;
     const m = measure(frame);
     const p = frame.pipeline;
@@ -246,9 +259,10 @@ export function useInferenceEngine(frame: SimFrame | null): InferenceEngine {
     push(s.rules, p.confirmed);
     push(s.anomaly, p.beyond3s);
     push(s.forecaster, m.forecastable);
-    push(s.rul, m.weakest?.health ?? 100);
+    const life = shortestLife(frame);
+    push(s.rul, life?.hours ?? 0);
     // Re-render source: one state update per simulated minute.
-    setModels(cards(frame, m, { ...s }));
+    setModels(cards(frame, m, { ...s }, life));
 
     // One stage reports per simulated minute, in turn, so the ticker reads as a pipeline running.
     const stage = ((frame.t % 6) + 6) % 6;
@@ -257,7 +271,7 @@ export function useInferenceEngine(frame: SimFrame | null): InferenceEngine {
     let tone: TickerEntry["tone"] = "info";
     if (stage === 0) {
       model = "Reference model";
-      text = `Scored ${m.n} signals against D5 Table 9.5 · peak ${m.maxZ.toFixed(1)}σ on ${m.maxZTag}`;
+      text = `Scored ${m.n} signals against the reference model · peak ${m.maxZ.toFixed(1)}σ on ${m.maxZTag}`;
       tone = m.maxZ > 3 ? "warn" : "info";
     } else if (stage === 1) {
       model = "Sensor validation";
@@ -282,13 +296,13 @@ export function useInferenceEngine(frame: SimFrame | null): InferenceEngine {
       tone = m.soonest ? "warn" : "info";
     } else {
       model = "RUL estimator";
-      text = m.weakest
-        ? `Refreshed ${SUBASSEMBLIES.length} sub-assemblies · lowest ${m.weakest.name} at ${Math.round(m.weakest.health)}%`
+      text = life
+        ? `Refreshed ${frame.defs.subassemblies.length} sub-assemblies · shortest life ${life.name} ${formatRulHours(life.hours)}`
         : "Refreshed sub-assembly life";
-      tone = m.weakest && m.weakest.health < 90 ? "warn" : "info";
+      tone = life && life.status !== "Normal" ? (life.status === "Critical" ? "bad" : "warn") : "info";
     }
     pushTicker({ t: frame.t, clock: frame.clock, model, text, tone });
-  }, [frame, pushTicker]);
+  }, [frame, pushTicker, machineId]);
 
   return { models, ticker, push: pushTicker };
 }

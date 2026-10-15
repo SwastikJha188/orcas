@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useApi } from "@/lib/api-cache";
 import type { AssetMachine } from "./assets-data";
-import { isKilnMachine, useKilnSimulationFor } from "@/providers/kiln-simulation-context";
+import { isLiveMachine, useKilnSimulationFor } from "@/providers/kiln-simulation-context";
 import { useMachineAcquisition } from "./acquisition/use-machine-acquisition";
 import type { MachineAcquisition } from "@/types/edge";
 import type { LiveSignal } from "@/lib/kiln-sim/engine";
@@ -199,7 +200,7 @@ function mqttKey(data: MachineAcquisition | null): string {
 }
 
 function useMqttOverlay(base: MachineCatalog, machineId: string): MachineCatalog {
-  const { data } = useMachineAcquisition(isKilnMachine(machineId) ? null : machineId);
+  const { data } = useMachineAcquisition(isLiveMachine(machineId) ? null : machineId);
   const key = useMemo(() => mqttKey(data), [data]);
   return useMemo(() => {
     const readings = JSON.parse(key) as MqttReading[];
@@ -219,32 +220,8 @@ function useMqttOverlay(base: MachineCatalog, machineId: string): MachineCatalog
 /** The stored PostgreSQL catalog, without live values. */
 /** The DB catalog alone (no live overlay): which sensors exist, names, units, limits, locations. */
 export function useStoredCatalog(machine: AssetMachine): MachineCatalog {
-  const [live, setLive] = useState<ApiCatalogResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    setIsLoading(true);
-    fetch(`/api/catalog?machineId=${encodeURIComponent(machine.id)}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        if (cancelled) return;
-        if (j?.data && Array.isArray(j.data.sensors) && j.data.sensors.length > 0) {
-          setLive(j.data as ApiCatalogResponse);
-        } else {
-          setLive(null);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setLive(null);
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [machine.id]);
+  const { data, isLoading } = useApi<ApiCatalogResponse | null>(`/api/catalog?machineId=${encodeURIComponent(machine.id)}`);
+  const live = data && Array.isArray(data.sensors) && data.sensors.length > 0 ? data : null;
 
   return useMemo(() => {
     if (!live) {

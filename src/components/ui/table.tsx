@@ -1,4 +1,5 @@
 import React from "react";
+import { rowActivate } from "./row-activate";
 
 export interface Column<T> {
   key: string;
@@ -33,7 +34,7 @@ export function Table<T>({
         <thead>
           <tr>
             {columns.map((col) => (
-              <th key={col.key} style={{ width: col.width }}>
+              <th key={col.key} data-col={col.key} style={{ width: col.width }}>
                 {col.header}
               </th>
             ))}
@@ -47,21 +48,10 @@ export function Table<T>({
               <tr
                 key={id}
                 className={[isSelected ? "active" : "", onRowClick ? "is-clickable" : ""].filter(Boolean).join(" ") || undefined}
-                onClick={onRowClick ? () => onRowClick(row) : undefined}
-                tabIndex={onRowClick ? 0 : undefined}
-                onKeyDown={
-                  onRowClick
-                    ? (e) => {
-                        if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
-                          e.preventDefault();
-                          onRowClick(row);
-                        }
-                      }
-                    : undefined
-                }
+                {...(onRowClick ? rowActivate(() => onRowClick(row)) : {})}
               >
                 {columns.map((col) => (
-                  <td key={col.key}>
+                  <td key={col.key} data-col={col.key} data-label={col.header || undefined}>
                     {col.render ? col.render(row) : (row as Record<string, unknown>)[col.key] as React.ReactNode}
                   </td>
                 ))}

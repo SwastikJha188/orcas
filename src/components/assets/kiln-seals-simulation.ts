@@ -36,6 +36,19 @@ import {
 } from "@/lib/kiln-sim/engine";
 import { KILN_SCENARIOS, scenarioById, type KilnScenario } from "@/lib/kiln-sim/scenarios";
 import { KILN_FLEET } from "@/lib/kiln-sim/fleet";
+import {
+  createLine,
+  performAction as linePerformAction,
+  setAutopilot as lineSetAutopilot,
+  setProfile as lineSetProfile,
+  setScenario as lineSetScenario,
+  stepLine,
+  type LineState,
+} from "@/lib/pyro-sim/engine";
+import { PYRO_FLEET, PYRO_LINE_SEED } from "@/lib/pyro-sim/fleet";
+import { recordFrames } from "@/lib/condition-report";
+import { PYRO_SCENARIOS, pyroScenario } from "@/lib/pyro-sim/scenarios";
+import { PYRO_MACHINE_IDS } from "@/lib/pyro-sim/signals";
 
 export { KILN_FLEET, KILN_FLEET_IDS } from "@/lib/kiln-sim/fleet";
 import type { EvaluatedRule, KilnSealsHealthScores, KilnSealsSensorData, SealTimeSeriesPoint } from "./kiln-seals-types";
@@ -63,16 +76,16 @@ function toSensorData(frame: SimFrame, rotationAngle: number): KilnSealsSensorDa
   const falseAir = num(frame, "CAL-KLN-06");
   return {
     gasO2: +num(frame, "GAS-KLN-01").toFixed(2),
-    gasO2Model: +(frame.signals["GAS-KLN-01"].model ?? 0).toFixed(2),
-    gasO2Residual: +(frame.signals["GAS-KLN-01"].residual ?? 0).toFixed(2),
+    gasO2Model: +(frame.signals["GAS-KLN-01"]?.model ?? 0).toFixed(2),
+    gasO2Residual: +(frame.signals["GAS-KLN-01"]?.residual ?? 0).toFixed(2),
     gasCO: Math.round(num(frame, "GAS-KLN-02")),
     inletGasTemp: Math.round(num(frame, "TMP-KLN-13")),
-    inletGasTempModel: Math.round(frame.signals["TMP-KLN-13"].model ?? 0),
-    inletGasTempResidual: Math.round(frame.signals["TMP-KLN-13"].residual ?? 0),
+    inletGasTempModel: Math.round(frame.signals["TMP-KLN-13"]?.model ?? 0),
+    inletGasTempResidual: Math.round(frame.signals["TMP-KLN-13"]?.residual ?? 0),
     inletDraft: +num(frame, "PRS-KLN-01").toFixed(2),
     gasAnalyserStatus: (st(frame, "STS-KLN-06") || "OK") as KilnSealsSensorData["gasAnalyserStatus"],
     hoodPressure: +num(frame, "PRS-KLN-03").toFixed(2),
-    hoodPressureModel: +(frame.signals["PRS-KLN-03"].model ?? -0.3).toFixed(2),
+    hoodPressureModel: +(frame.signals["PRS-KLN-03"]?.model ?? -0.3).toFixed(2),
     outletFanStatus: (st(frame, "STS-KLN-10") || "RUNNING") as KilnSealsSensorData["outletFanStatus"],
     shellMaxTemp: Math.round(num(frame, "CAL-KLN-03")),
     scannerCoverage: +num(frame, "STS-KLN-08").toFixed(1),
@@ -98,9 +111,9 @@ function toHealthScores(frame: SimFrame): KilnSealsHealthScores {
   const total = Object.keys(frame.signals).length;
   return {
     overallHealth: frame.overall,
-    inletSealHealth: frame.subs["inlet-seal"].health,
-    outletSealHealth: frame.subs["outlet-seal"].health,
-    axialOverlapHealth: frame.subs.thrust.health,
+    inletSealHealth: frame.subs["inlet-seal"]?.health ?? frame.overall,
+    outletSealHealth: frame.subs["outlet-seal"]?.health ?? frame.overall,
+    axialOverlapHealth: frame.subs.thrust?.health ?? frame.overall,
     dataQualityScore: Math.round((frame.pipeline.valid / Math.max(1, total)) * 100),
     condition: frame.condition,
     primaryCause: lead ? `${lead.id} ${lead.name}: ${lead.cause}` : undefined,
@@ -128,6 +141,8 @@ function toEvaluatedRules(frame: SimFrame): EvaluatedRule[] {
 }
 
 function toTimeSeries(frame: SimFrame): SealTimeSeriesPoint[] {
+  // The seal-centred series only exists for the kiln-seal fleet.
+  if (frame.defs.plant !== "kiln") return [];
   const n = Math.min(SERIES_LEN, frame.times.length);
   const start = frame.times.length - n;
   const h = frame.history;
@@ -174,6 +189,25 @@ function anchorClock(tEnd: number, speed: number) {
   setWallClock(tEnd, Date.now(), msPerMin(speed));
 }
 
+/** The pyro line: one engine for all six machines, on the same clock and pre-roll as the kilns. */
+function createPyroLine(): LineState {
+  const line = createLine(PYRO_LINE_SEED);
+  for (const m of PYRO_FLEET) {
+    lineSetAutopilot(line, m.machineId, true);
+    lineSetProfile(line, m.machineId, m.profile);
+  }
+  anchorClock(line.t + PRE_ROLL_MIN, 1);
+  for (let i = 1; i < PRE_ROLL_MIN; i++) recordFrames(stepLine(line, false));
+  recordFrames(stepLine(line, true));
+  for (const ms of Object.values(line.machines)) {
+    ms.events = ms.events.filter((e) => e.kind !== "scenario" && !(e.kind === "action" && e.title.startsWith("Autopilot")));
+    if (ms.frame) ms.frame = { ...ms.frame, events: ms.events.slice() };
+  }
+  return line;
+}
+
+const isPyro = (id: string) => PYRO_MACHINE_IDS.has(id);
+
 function createFleet(): Record<string, SimState> {
   const out: Record<string, SimState> = {};
   for (const k of KILN_FLEET) {
@@ -198,18 +232,21 @@ function createFleet(): Record<string, SimState> {
 export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimulation> {
   const simsRef = useRef<Record<string, SimState> | null>(null);
   if (simsRef.current === null) simsRef.current = createFleet();
+  const lineRef = useRef<LineState | null>(null);
+  if (lineRef.current === null) lineRef.current = createPyroLine();
 
-  const [frames, setFrames] = useState<Record<string, SimFrame>>(() =>
-    Object.fromEntries(Object.entries(simsRef.current!).map(([id, sim]) => [id, sim.frame!])),
-  );
+  const [frames, setFrames] = useState<Record<string, SimFrame>>(() => ({
+    ...Object.fromEntries(Object.entries(simsRef.current!).map(([id, sim]) => [id, sim.frame!])),
+    ...Object.fromEntries(Object.entries(lineRef.current!.machines).map(([id, ms]) => [id, ms.frame!])),
+  }));
   const [isPaused, setIsPaused] = useState(false);
   const [speedMultiplier, setSpeedMultiplier] = useState<number>(1);
   const [rotationAngle, setRotationAngle] = useState(0);
 
   /** Re-read the frames after an out-of-step change to one engine. */
   const refresh = useCallback((id: string) => {
-    const sim = simsRef.current![id];
-    if (sim?.frame) setFrames((f) => ({ ...f, [id]: sim.frame! }));
+    const frame = isPyro(id) ? lineRef.current!.machines[id]?.frame : simsRef.current![id]?.frame;
+    if (frame) setFrames((f) => ({ ...f, [id]: frame }));
   }, []);
 
   useEffect(() => {
@@ -222,6 +259,9 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
         for (let i = 1; i < minutes; i++) stepSim(sim, false);
         next[id] = stepSim(sim, true);
       }
+      const line = lineRef.current!;
+      for (let i = 1; i < minutes; i++) recordFrames(stepLine(line, false));
+      Object.assign(next, recordFrames(stepLine(line, true)));
       setFrames(next);
     };
     // A hidden tab neither steps the plant nor re-renders; on return the
@@ -251,6 +291,12 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
 
   /** Manual scenario pick: switches that kiln's autopilot off. */
   const applyScenario = useCallback((id: string, scenarioId: string) => {
+    if (isPyro(id)) {
+      lineSetAutopilot(lineRef.current!, id, false);
+      lineSetScenario(lineRef.current!, id, scenarioId);
+      refresh(id);
+      return;
+    }
     const sim = simsRef.current![id];
     if (!sim) return;
     engineSetAutopilot(sim, false);
@@ -260,6 +306,11 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
   }, [refresh]);
 
   const setAutopilot = useCallback((id: string, on: boolean) => {
+    if (isPyro(id)) {
+      lineSetAutopilot(lineRef.current!, id, on);
+      refresh(id);
+      return;
+    }
     const sim = simsRef.current![id];
     if (!sim) return;
     engineSetAutopilot(sim, on);
@@ -267,6 +318,11 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
   }, [refresh]);
 
   const setProfile = useCallback((id: string, profile: StoryProfile) => {
+    if (isPyro(id)) {
+      lineSetProfile(lineRef.current!, id, profile);
+      refresh(id);
+      return;
+    }
     const sim = simsRef.current![id];
     if (!sim) return;
     engineSetProfile(sim, profile);
@@ -275,6 +331,11 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
 
   /** Operator action on a finding: acknowledge (log only), mitigate (temporary relief) or repair (recover). */
   const performAction = useCallback((id: string, ruleId: string, kind: OperatorAction) => {
+    if (isPyro(id)) {
+      linePerformAction(lineRef.current!, id, ruleId, kind);
+      refresh(id);
+      return;
+    }
     const sim = simsRef.current![id];
     if (!sim) return;
     enginePerformAction(sim, ruleId, kind);
@@ -292,6 +353,9 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
       for (let i = 1; i < minutes; i++) stepSim(sim, false);
       next[id] = stepSim(sim, true);
     }
+    const line = lineRef.current!;
+    for (let i = 1; i < minutes; i++) recordFrames(stepLine(line, false));
+    Object.assign(next, recordFrames(stepLine(line, true)));
     setFrames(next);
   }, []);
 
@@ -303,7 +367,7 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
   return useMemo(
     () =>
       Object.fromEntries(
-        KILN_FLEET.map((k) => [k.machineId, buildSimulation(k.machineId, frames[k.machineId], rotationAngle, isPaused, speedMultiplier, controls)]),
+        [...KILN_FLEET, ...PYRO_FLEET].map((k) => [k.machineId, buildSimulation(k.machineId, frames[k.machineId], rotationAngle, isPaused, speedMultiplier, controls)]),
       ),
     [frames, rotationAngle, isPaused, speedMultiplier, controls],
   );
@@ -328,12 +392,18 @@ function buildSimulation(
   speedMultiplier: number,
   c: FleetControls,
 ) {
-  const scenario: KilnScenario = scenarioById(frame.scenarioId);
+  // Pyro scenarios share the kiln scenario shape (driver names differ, which no page reads).
+  const pyro = isPyro(machineId);
+  const scenario: KilnScenario = pyro ? (pyroScenario(machineId, frame.scenarioId) as unknown as KilnScenario) : scenarioById(frame.scenarioId);
+  let _sensorData: KilnSealsSensorData | undefined;
+  let _healthScores: KilnSealsHealthScores | undefined;
+  let _evaluatedRules: EvaluatedRule[] | undefined;
+  let _timeSeries: SealTimeSeriesPoint[] | undefined;
   return {
     machineId,
     frame,
     scenario,
-    scenarios: KILN_SCENARIOS,
+    scenarios: pyro ? ((PYRO_SCENARIOS[machineId] ?? []) as unknown as KilnScenario[]) : KILN_SCENARIOS,
     activeScenarioId: frame.scenarioId,
     autopilot: frame.autopilot,
     profile: frame.profile,
@@ -350,10 +420,18 @@ function buildSimulation(
     speedMultiplier,
     setSpeedMultiplier: c.setSpeedMultiplier,
     rotationAngle,
-    sensorData: toSensorData(frame, rotationAngle),
-    healthScores: toHealthScores(frame),
-    evaluatedRules: toEvaluatedRules(frame),
-    timeSeries: toTimeSeries(frame),
+    get sensorData() {
+      return (_sensorData ??= toSensorData(frame, rotationAngle));
+    },
+    get healthScores() {
+      return (_healthScores ??= toHealthScores(frame));
+    },
+    get evaluatedRules() {
+      return (_evaluatedRules ??= toEvaluatedRules(frame));
+    },
+    get timeSeries() {
+      return (_timeSeries ??= toTimeSeries(frame));
+    },
   };
 }
 

@@ -1,0 +1,173 @@
+/* ==========================================================================
+   ULTRON RESPONSIVE FOUNDATION
+   Viewport tiers (CSS px, width). Laptop is the design baseline; every other
+   tier re-arranges content, it does not just shrink it.
+
+     phone    ≤ 599        bottom tab bar, single column, sheets instead of popovers
+     tablet   600 – 1023   rail kept, side panels become drawers, 2-up grids
+     laptop   1024 – 1439  baseline
+     desktop  1440 – 1919  extra columns where a page has more to show
+     wide     1920 – 2559  large monitors: side-by-side primary + secondary content
+     tv       ≥ 2560       4K monitors / TVs at DPR 1: wide layout, UI zoomed up
+
+   Files in src/styles/responsive/ load from the root layout, before the
+   on-demand component stylesheets. Every selector starts with :root so it
+   outranks single-class component rules regardless of load order (and still
+   reaches menus portalled to <body>).
+   ========================================================================== */
+
+/* ---- TV: scale the whole UI so type stays readable from a distance ---- */
+:root { --ui-zoom: 1; }
+@media (min-width: 2560px) { :root { --ui-zoom: 1.25; } }
+@media (min-width: 3200px) { :root { --ui-zoom: 1.6; } }
+@media (min-width: 3840px) { :root { --ui-zoom: 1.9; } }
+
+:root body { zoom: var(--ui-zoom); }
+
+/* Dynamic viewport height so mobile browser chrome never hides the tab bar. */
+:root .app-shell {
+  height: calc(100vh / var(--ui-zoom));
+  max-height: calc(100vh / var(--ui-zoom));
+}
+@supports (height: 100dvh) {
+  :root .app-shell {
+    height: calc(100dvh / var(--ui-zoom));
+    max-height: calc(100dvh / var(--ui-zoom));
+  }
+}
+
+/* Rail labels exist for the phone tab bar only. */
+:root .rail-label { display: none; }
+
+/* Touch screens: no hover, bigger hit areas on the controls people tap most. */
+@media (hover: none) and (pointer: coarse) {
+  :root .nav-pill { min-block-size: 36px; }
+  :root .btn-pill { min-block-size: 38px; }
+  :root .theme-toggle,
+  :root .cp-launcher { inline-size: 38px; block-size: 38px; }
+  :root .ctx-trigger { block-size: 36px; }
+}
+
+/* Long pill rows scroll sideways instead of wrapping into a ragged block. */
+:root .machine-tabs-bar,
+:root .nav-pill-group:not(.nav-pill-wrap) {
+  max-inline-size: 100%;
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+:root .nav-pill-group:not(.nav-pill-wrap)::-webkit-scrollbar { display: none; }
+:root .machine-tabs-bar::-webkit-scrollbar { display: none; }
+
+/* Long option labels truncate cleanly instead of being cut under the chevron. */
+:root .ui-select select {
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Tablet and phone: shared tightening ---- */
+@media (max-width: 1023px) {
+  :root .info-bar { font-size: var(--fs-2xs); padding: 0 12px; }
+  :root .ctx-trigger { max-inline-size: 168px; }
+}
+
+/* ---- Phone: top bar + content + bottom tab bar ---- */
+@media (max-width: 599px) {
+  :root .app-shell {
+    --navbar-height: 52px;
+    --tabbar-height: 58px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows:
+      calc(var(--navbar-height) + env(safe-area-inset-top, 0px))
+      minmax(0, 1fr)
+      calc(var(--tabbar-height) + env(safe-area-inset-bottom, 0px));
+  }
+
+  :root .navbar {
+    block-size: auto;
+    gap: 8px;
+    padding: env(safe-area-inset-top, 0px) 6px 0 14px;
+  }
+  :root .brand-logo { height: 15px; }
+  :root .brand-btn { flex: none; }
+  :root .cp-topbar-actions { min-width: 0; gap: 0; }
+
+  /* Context switchers: icon-less, truncated, no separator. */
+  :root .ctx-switchers { margin-inline-end: 2px; gap: 4px; min-width: 0; }
+  :root .ctx-sep,
+  :root .ctx-trigger-icon { display: none; }
+  :root .ctx-trigger {
+    max-inline-size: 30vw;
+    padding: 0 10px;
+    gap: 5px;
+    font-size: var(--fs-sm);
+  }
+
+  /* Menus become bottom sheets above the tab bar. */
+  :root .ctx-menu {
+    left: 8px !important;
+    right: 8px;
+    top: auto !important;
+    bottom: calc(var(--tabbar-height, 58px) + env(safe-area-inset-bottom, 0px) + 8px);
+    width: auto !important;
+    max-block-size: min(70dvh, 520px);
+  }
+
+  /* Copilot drawer: full-width sheet. */
+  :root .cp-drawer {
+    inset: env(safe-area-inset-top, 0px) 0 0 0;
+    inline-size: 100%;
+    border-radius: var(--corner-shell) var(--corner-shell) 0 0;
+    transform: translateY(24px);
+  }
+  :root .cp-drawer.in { transform: none; }
+
+  /* Rail → bottom tab bar with labels. */
+  :root .nav-rail {
+    grid-column: 1;
+    grid-row: 3;
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: space-around;
+    gap: 2px;
+    padding: 4px 6px env(safe-area-inset-bottom, 0px);
+    border-top: 1px solid var(--separator);
+    background: var(--topbar-bg);
+  }
+  :root .nav-rail-group { display: contents; }
+  :root .rail-divider { display: none; }
+  :root .rail-btn {
+    flex: 1 1 0;
+    width: auto;
+    height: 50px;
+    flex-direction: column;
+    gap: 3px;
+    border-radius: var(--corner-card);
+  }
+  :root .rail-btn svg { width: 20px; height: 20px; }
+  :root .rail-label {
+    display: block;
+    font-size: var(--fs-2xs);
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    line-height: 1;
+  }
+  :root .rail-btn.active { background: transparent; color: var(--dx-ink); }
+  :root .rail-btn.active svg {
+    padding: 2px 12px;
+    box-sizing: content-box;
+    border-radius: var(--corner-pill);
+    background: var(--active-faint);
+  }
+
+  :root .workspace {
+    grid-column: 1;
+    border-radius: 0;
+    border-left: none;
+  }
+
+  :root .info-bar { display: none; }
+}

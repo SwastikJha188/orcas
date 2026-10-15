@@ -47,15 +47,15 @@ export const READING_TONE: Record<ReadingStatus, Tone> = {
   normal: "good",
   alert: "warn",
   danger: "bad",
-  stale: "idle",
+  stale: "warn",
   nodata: "idle",
   disabled: "idle",
 };
 
 export const READING_LABEL: Record<ReadingStatus, string> = {
   normal: "Normal",
-  alert: "Alert",
-  danger: "Danger",
+  alert: "Warning",
+  danger: "Alarm",
   stale: "Stale",
   nodata: "No data",
   disabled: "Disabled",

@@ -1,0 +1,1106 @@
+/* ==========================================================================
+   ULTRON · Machine Analysis page + shared page primitives (prefix pg-analysis-).
+   Imported by an-ui.tsx, so every page using the primitives gets these rules.
+   Industrial and monochrome: ink, muted ink, separators; status colour only on
+   the dot / chip / bar of something in warning or alarm. 8px grid.
+   One card per section; blocks inside a section are flush, split by hairlines.
+   ========================================================================== */
+
+.pg-analysis {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.pg-analysis-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  padding-bottom: 24px;
+}
+
+.pg-analysis :focus-visible,
+.pg-analysis-section :focus-visible,
+.pg-analysis-index :focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 2px;
+}
+
+/* ================================================================ shared page frame
+   Every machine sub-page: .pg-frame root → .pg-frame-head (PageHeader) →
+   .pg-frame-kpis (KpiStrip page) → .pg-analysis-index (SectionIndex) →
+   .pg-frame-body > .pg-analysis-section (Section). One gap token between
+   all of them. (0,2,0) selectors so page-local gap rules cannot drift. */
+.pg-frame {
+  --pg-frame-gap: 16px;
+}
+
+.ast-root.pg-frame,
+.pg-frame .pg-frame-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pg-frame-gap);
+  min-width: 0;
+}
+
+.pg-frame .pg-frame-body {
+  padding-bottom: 24px;
+}
+
+/* Page header: one row. */
+.pg-frame-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
+  min-height: 36px;
+  min-width: 0;
+}
+
+.pg-frame-head-main {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: nowrap;
+  gap: 4px 16px;
+  min-width: 0;
+}
+
+.pg-frame-head-main > :not(.pg-frame-meta) {
+  flex-shrink: 0;
+}
+
+.pg-frame-title {
+  margin: 0;
+  font-size: var(--fs-2xl);
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.005em;
+  color: var(--dx-ink);
+  white-space: nowrap;
+}
+
+.pg-frame-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.pg-frame-status:not([data-tone]) .ast-chip-dot {
+  opacity: 0.6;
+}
+
+.pg-frame-status[data-tone] {
+  color: var(--tone);
+}
+
+/* Wide: one line, long values ellipsize. Narrow (≤ 900px): wraps under the title. */
+.pg-frame-meta {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px 20px;
+  margin: 0;
+  font-size: var(--fs-sm);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pg-frame-meta > div {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.pg-frame-meta dd {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pg-frame-meta dt {
+  color: var(--text-muted);
+}
+
+.pg-frame-meta dd {
+  margin: 0;
+  color: var(--page-fg);
+}
+
+.pg-frame-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Page KPI strip: four frosted tiles. */
+.pg-frame-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+.pg-frame-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 16px 20px;
+}
+
+.pg-frame-kpi-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pg-frame-kpi-value {
+  font-size: var(--fs-6xl);
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--dx-ink, var(--page-fg));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pg-frame-kpi[data-tone] .pg-frame-kpi-value {
+  color: var(--tone);
+}
+
+.pg-frame-kpi-unit {
+  margin-left: 4px;
+  font-size: var(--fs-md);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--text-muted);
+}
+
+.pg-frame-kpi-bar {
+  display: block;
+  height: 2px;
+  background: var(--separator);
+  overflow: hidden;
+}
+
+.pg-frame-kpi-bar i {
+  display: block;
+  height: 100%;
+  background: var(--text-muted);
+}
+
+.pg-frame-kpi[data-tone] .pg-frame-kpi-bar i {
+  background: var(--tone);
+}
+
+.pg-frame-kpi-foot {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 1100px) {
+  .pg-frame-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .pg-frame-head,
+  .pg-frame-head-main,
+  .pg-frame-meta {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .pg-frame-kpis {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------------------------------------------------------------- page header */
+.pg-analysis-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.pg-analysis-head-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-width: 0;
+}
+
+.pg-analysis-title {
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+/* ---------------------------------------------------------------- section index: compact pill row */
+.pg-analysis-index {
+  position: sticky;
+  top: -24px; /* pull into the workspace's top padding */
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 -4px;
+  padding: 4px;
+  background: var(--workspace-bg);
+  max-width: calc(100% + 8px);
+  overflow-x: auto;
+  scrollbar-width: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.pg-analysis-index::-webkit-scrollbar {
+  display: none;
+}
+
+.pg-analysis-index-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  flex-wrap: nowrap;
+}
+
+.pg-analysis-index-list li {
+  display: flex;
+}
+
+.pg-analysis-index .nav-pill {
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: var(--fs-md);
+  text-decoration: none;
+}
+
+.pg-analysis-index .nav-pill.active {
+  padding: 6px 16px;
+}
+
+.pg-analysis-index-right {
+  flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------- section = one card */
+.pg-analysis-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  padding: 16px 20px;
+  scroll-margin-top: 56px;
+}
+
+.pg-analysis-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-height: 32px;
+}
+
+.pg-analysis-section-title {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+.pg-analysis-section-right {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pg-analysis-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* Never nest cards: a card placed inside a section renders flush. */
+.pg-analysis-section :is(.ast-card, .ui-card) {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* ---------------------------------------------------------------- flush blocks inside a section */
+.pg-analysis-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pg-analysis-section-body > .pg-analysis-block + .pg-analysis-block,
+.pg-analysis-section-body > * + .pg-analysis-block {
+  padding-top: 16px;
+  border-top: 1px solid var(--separator);
+}
+
+.pg-analysis-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-height: 28px;
+}
+
+/* Sentence case: upper-casing would turn σ into Σ in titles such as "|σ|". */
+.pg-analysis-block-title {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.pg-analysis-block.is-table .ui-table-container {
+  margin: 0 -16px;
+}
+
+.pg-analysis-block-head .nav-pill-group {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 0;
+}
+
+.pg-analysis-block-head .nav-pill {
+  padding: 4px 12px;
+  font-size: var(--fs-sm);
+}
+
+/* ---------------------------------------------------------------- layout helpers */
+
+.pg-analysis-prose {
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  color: var(--page-fg);
+  max-width: 720px;
+}
+
+.pg-analysis-r {
+  display: block;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.pg-analysis-r[data-tone] {
+  color: var(--tone);
+}
+
+/* Right-aligned numeric table columns: header follows the cells. */
+.pg-analysis .ui-table th.is-num,
+.pg-analysis-section .ui-table th.is-num {
+  text-align: right;
+}
+
+/* ---------------------------------------------------------------- derived marker: tiny muted suffix */
+.pg-analysis-ai {
+  margin-left: 4px;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- confidence */
+.pg-analysis-conf {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.pg-analysis-conf-bar {
+  position: relative;
+  width: 40px;
+  height: 2px;
+  background: var(--separator);
+}
+
+.pg-analysis-conf-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--text-muted);
+}
+
+.pg-analysis-conf-val {
+  min-width: 36px;
+  text-align: right;
+  color: var(--page-fg);
+}
+
+/* ---------------------------------------------------------------- evidence chip */
+.pg-analysis-evidence-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.pg-analysis-ev {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: var(--corner-pill);
+  background: var(--hover-faint);
+  color: var(--page-fg);
+  font-size: var(--fs-sm);
+  line-height: 18px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pg-analysis-ev:hover {
+  background: var(--row-hover-bg);
+  color: var(--dx-ink);
+}
+
+.pg-analysis-ev-tag {
+  font-variant-numeric: tabular-nums;
+}
+
+.pg-analysis-ev-detail {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------------------------------------------------------------- quiet disclosure */
+.pg-analysis-why > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  list-style: none;
+}
+
+.pg-analysis-why > summary::-webkit-details-marker {
+  display: none;
+}
+
+.pg-analysis-why > summary:hover {
+  color: var(--dx-ink);
+}
+
+.pg-analysis-why[open] .pg-analysis-why-chev {
+  transform: rotate(90deg);
+}
+
+.pg-analysis-why-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0 0 16px;
+}
+
+.pg-analysis-why-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  color: var(--text-muted);
+  max-width: 760px;
+}
+
+/* ---------------------------------------------------------------- facts / KPI tiles */
+.pg-analysis-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px 24px;
+}
+
+.pg-analysis-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pg-analysis-fact-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.pg-analysis-fact-value {
+  font-size: var(--fs-5xl);
+  font-weight: 500;
+  line-height: 1.15;
+  color: var(--dx-ink);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.pg-analysis-fact-value .ast-unit {
+  font-size: var(--fs-md);
+}
+
+.pg-analysis-fact-text {
+  font-size: var(--fs-lg);
+  line-height: 1.3;
+}
+
+.pg-analysis-fact-foot {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- summary block */
+.pg-analysis-verdict {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.pg-analysis-verdict-top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.pg-analysis-verdict-headline {
+  min-width: 0;
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  color: var(--dx-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pg-analysis-verdict-conf {
+  margin-left: auto;
+}
+
+/* ---------------------------------------------------------------- finding chain */
+.pg-analysis-chain {
+  display: grid;
+  grid-template-columns: repeat(var(--chain-n, 4), minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--separator);
+}
+
+.pg-analysis-chain-step {
+  display: flex;
+  min-width: 0;
+}
+
+.pg-analysis-chain-step + .pg-analysis-chain-step {
+  border-left: 1px solid var(--separator);
+}
+
+.pg-analysis-chain-node {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  padding: 12px 12px 4px;
+  border: 0;
+  border-radius: var(--corner-row);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pg-analysis-chain-node:hover:not(:disabled) {
+  background: var(--row-hover-bg);
+}
+
+.pg-analysis-chain-node:disabled {
+  cursor: default;
+}
+
+.pg-analysis-chain-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.pg-analysis-chain-ext {
+  margin-left: auto;
+}
+
+.pg-analysis-chain-name {
+  font-size: var(--fs-md);
+  font-weight: 500;
+  color: var(--dx-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pg-analysis-chain-meta {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- pointer, missing, empty */
+.pg-analysis-pointer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.pg-analysis-pointer-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 32px;
+  min-width: 0;
+}
+
+/* One-line summary of content another page owns (count · state · top item), then its link. */
+.pg-analysis-pointer:has(> .pg-analysis-pointer-line) {
+  align-items: center;
+}
+
+.pg-analysis-pointer-line {
+  min-width: 0;
+  font-size: var(--fs-md);
+  color: var(--page-fg);
+}
+
+.pg-analysis-missing,
+.pg-analysis-empty {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.pg-analysis-empty-more {
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------- table cells */
+
+.pg-analysis-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pg-analysis-meter {
+  position: relative;
+  display: inline-block;
+  width: 64px;
+  height: 2px;
+  background: var(--separator);
+  flex-shrink: 0;
+}
+
+.pg-analysis-meter i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--text-muted);
+}
+
+.pg-analysis-meter[data-tone] i {
+  background: var(--tone);
+}
+
+.pg-analysis-links {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pg-analysis-link {
+  gap: 6px;
+}
+
+/* ---------------------------------------------------------------- lists */
+.pg-analysis-pairs {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pg-analysis-pairs li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding: 8px 0;
+  border-top: 1px solid var(--separator);
+  font-size: var(--fs-md);
+  font-variant-numeric: tabular-nums;
+}
+
+.pg-analysis-pairs li:first-child {
+  border-top: 0;
+}
+
+.pg-analysis-dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 24px;
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: 1.45;
+}
+
+.pg-analysis-dl dt {
+  color: var(--text-muted);
+}
+
+.pg-analysis-dl dd {
+  margin: 0;
+  color: var(--page-fg);
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------- SVG charts (thin, monochrome) */
+.pg-analysis-chart-wrap {
+  width: 100%;
+  min-width: 0;
+}
+
+.pg-analysis-chart-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.pg-analysis-chart {
+  display: block;
+  height: auto;
+  overflow: visible;
+  font-family: var(--font-ui);
+}
+
+.pg-analysis-axis {
+  font-size: var(--fs-xs);
+  fill: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pg-analysis-threshold {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+
+/* ---------------------------------------------------------------- bars (contribution, calibration) */
+.pg-analysis-bar {
+  position: relative;
+  display: block;
+  height: 6px;
+  background: var(--hover-faint);
+}
+
+.pg-analysis-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--text-muted);
+}
+
+.pg-analysis-bar i[data-tone] {
+  background: var(--tone);
+}
+
+.pg-analysis-bar b {
+  position: absolute;
+  top: -3px;
+  width: 1.5px;
+  height: 12px;
+  margin-left: -0.75px;
+  background: var(--dx-ink);
+}
+
+.pg-analysis-bar-cell {
+  display: block;
+  min-width: 96px;
+}
+
+/* ---------------------------------------------------------------- responsive */
+@media (max-width: 1100px) {
+  .pg-analysis-chain {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .pg-analysis-chain-step:nth-child(3n + 1) {
+    border-left: 0;
+  }
+
+}
+
+@media (max-width: 900px) {
+  .pg-analysis-index {
+    top: -16px;
+  }
+
+  .pg-analysis-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .pg-analysis-chain {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pg-analysis-chain-step:nth-child(3n + 1) {
+    border-left: 1px solid var(--separator);
+  }
+
+  .pg-analysis-chain-step:nth-child(2n + 1) {
+    border-left: 0;
+  }
+
+  .pg-analysis-section {
+    padding: 16px;
+  }
+
+  .pg-analysis-block.is-table .ui-table-container {
+    margin: 0 -16px;
+  }
+
+  .pg-analysis-verdict-conf {
+    margin-left: 0;
+  }
+}
+
+/* ---------------------------------------------------------------- numeric table columns (right-aligned, tabular) */
+:is(.pg-analysis-numcols) :is(th, td):not(:first-child),
+:is(.pg-analysis-num-last2) :is(th, td):nth-last-child(-n + 2),
+:is(.pg-analysis-num-last4) :is(th, td):nth-last-child(-n + 4) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- residual heatmap, line charts */
+.pg-analysis-heat {
+  fill: var(--text-muted);
+}
+
+.pg-analysis-heat[data-tone] {
+  fill: var(--tone);
+}
+
+.pg-analysis-heat-label {
+  font-size: var(--fs-2xs);
+  fill: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pg-analysis-line {
+  fill: none;
+  stroke: var(--page-fg);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.pg-analysis-line[data-tone] {
+  stroke: var(--tone);
+}
+
+/* ---------------------------------------------------------------- summary strip */
+
+/* Residual sparkline + rule / evidence chips at the top of Detection. */
+.pg-analysis-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pg-analysis-summary-spark {
+  display: block;
+  width: 100%;
+}
+
+.pg-analysis-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--separator);
+}
+
+.pg-analysis-rule-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: var(--corner-pill);
+  background: var(--hover-faint);
+  font-size: var(--fs-sm);
+  color: var(--page-fg);
+}
+
+.pg-analysis-rule-pill .ast-chip-dot {
+  background: var(--tone);
+}
+
+/* ---------------------------------------------------------------- evidence matrix, flow chain, feedback */
+.pg-analysis-matrix {
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.pg-analysis-matrix th,
+.pg-analysis-matrix td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--separator);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.pg-analysis-matrix th {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.pg-analysis-matrix th:first-child,
+.pg-analysis-matrix td:first-child {
+  text-align: left;
+}
+
+.pg-analysis-matrix td[data-tone] {
+  color: var(--tone);
+}
+
+.pg-analysis-matrix td.is-off {
+  color: var(--separator);
+}
+
+.pg-analysis-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pg-analysis-flow li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 120px;
+  padding: 8px 16px 8px 0;
+  margin-right: 16px;
+  border-right: 1px solid var(--separator);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.pg-analysis-flow li:last-child {
+  border-right: 0;
+}
+
+.pg-analysis-flow strong {
+  font-size: var(--fs-md);
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+.pg-analysis-feedback {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pg-analysis-feedback .btn-pill {
+  padding: 4px 12px;
+  font-size: var(--fs-sm);
+}
+
+.pg-analysis-feedback .btn-pill[aria-pressed="true"] {
+  background: var(--pill-active-bg);
+  color: var(--dx-ink);
+}
+
+.pg-analysis-waterfall i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--text-muted);
+}

@@ -94,6 +94,7 @@ export interface TwinCallout {
 }
 
 const PROCESS_TOWER = /pyro|kiln|clinker|preheat|calcin/i;
+const PREHEATER = /preheat|calcin/i;
 const SPACING = 22;
 
 /**
@@ -107,11 +108,13 @@ export function buildPlantScene(plant: HierarchyNode): TwinScene {
   const cols = Math.min(3, Math.max(1, areas.length));
   const rows = Math.ceil(areas.length / cols);
 
+  // A plant with its own preheater area (the full pyro line) gets the tower on that area only.
+  const hasPreheater = areas.some((a) => PREHEATER.test(a.name));
   const buildings: TwinBuilding[] = areas.map((area, i) => {
     const col = i % cols;
     const row = Math.floor(i / cols);
     const machines = subtreeMachines(area).length;
-    const tower = PROCESS_TOWER.test(area.name);
+    const tower = hasPreheater ? PREHEATER.test(area.name) : PROCESS_TOWER.test(area.name);
     return {
       id: area.id,
       name: area.name,

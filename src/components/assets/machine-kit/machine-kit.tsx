@@ -24,7 +24,7 @@
  * gradient of whichever drawing they sit in.
  */
 
-import React, { useId } from "react";
+import React, { useCallback, useId, useLayoutEffect, useRef, useState } from "react";
 
 /* ------------------------------------------------------------------ */
 /* Tokens                                                              */
@@ -153,13 +153,80 @@ export function MachineDefs({ id }: { id: string }) {
 }
 
 /**
+ * CAD Orthographic Engineering Frame: renders subtle X/Y world origin datum axes,
+ * corner registration brackets, and coordinate scale ticks around the drawing bounds
+ * so every schematic reads as a technical CAD diagram rather than a flat picture.
+ */
+export function CadEngineeringFrame({
+  x,
+  y,
+  w,
+  h,
+}: {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}) {
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const x0 = x + 3;
+  const y0 = y + 3;
+  const x1 = x + w - 3;
+  const y1 = y + h - 3;
+  const arm = Math.min(11, w * 0.025, h * 0.045);
+  const ticksX: number[] = [];
+  const stepX = Math.max(40, Math.round(w / 12 / 10) * 10);
+  for (let tx = x + stepX; tx < x + w - stepX / 2; tx += stepX) ticksX.push(tx);
+
+  return (
+    <g aria-hidden="true" pointerEvents="none">
+      {/* Subtle Blender/CAD X & Y world origin axes */}
+      <line x1={x} y1={cy} x2={x + w} y2={cy} stroke="var(--mx-axis-x)" strokeWidth={0.75} strokeDasharray="10 4 2 4" />
+      <line x1={cx} y1={y} x2={cx} y2={y + h} stroke="var(--mx-axis-y)" strokeWidth={0.75} strokeDasharray="10 4 2 4" />
+      <circle cx={cx} cy={cy} r={3} fill="none" stroke={MX.fine} strokeWidth={0.75} opacity={0.6} />
+
+      {/* Four CAD corner registration marks */}
+      <path
+        d={`
+          M ${x0} ${y0 + arm} V ${y0} H ${x0 + arm}
+          M ${x1 - arm} ${y0} H ${x1} V ${y0 + arm}
+          M ${x0} ${y1 - arm} V ${y1} H ${x0 + arm}
+          M ${x1 - arm} ${y1} H ${x1} V ${y1 - arm}
+        `}
+        fill="none"
+        stroke={MX.edge}
+        strokeWidth={1}
+        opacity={0.55}
+      />
+
+      {/* Scale ruler ticks along top & bottom edges */}
+      {ticksX.map((tx) => (
+        <g key={tx} opacity={0.4}>
+          <line x1={tx} y1={y0} x2={tx} y2={y0 + 3.5} stroke={MX.fine} strokeWidth={0.8} />
+          <line x1={tx} y1={y1 - 3.5} x2={tx} y2={y1} stroke={MX.fine} strokeWidth={0.8} />
+        </g>
+      ))}
+    </g>
+  );
+}
+
+function parseViewBox(vb: string): [number, number, number, number] {
+  const parts = vb.trim().split(/[\s,]+/).map(Number);
+  return parts.length === 4 && parts.every(Number.isFinite) ? [parts[0], parts[1], parts[2], parts[3]] : [0, 0, 720, 310];
+}
+
+/**
  * A machine drawing: an `<svg>` with the kit's gradients wired in.
- * The drawing has no background or grid — the container owns those.
+ * Automatically fits its viewBox tightly around the rendered geometry (`autoFit`)
+ * so there is never wasted empty margin on any screen size.
  */
 export function MachineSvg({
   viewBox,
   label,
   interactive = false,
+  autoFit = true,
+  cadFrame = true,
   className,
   style,
   children,
@@ -168,24 +235,219 @@ export function MachineSvg({
   viewBox: string;
   label: string;
   interactive?: boolean;
+  autoFit?: boolean;
+  cadFrame?: boolean;
   className?: string;
   style?: React.CSSProperties;
   children: React.ReactNode;
   preserveAspectRatio?: string;
 }) {
   const id = useKitId();
+  const svgRef = useRef<SVGSVGElement>(null);
+  const groupRef = useRef<SVGGElement>(null);
+  const [tightBox, setTightBox] = useState<[number, number, number, number] | null>(null);
+
+  useLayoutEffect(() => {
+    if (!autoFit) {
+      setTightBox(null);
+      return;
+    }
+    const svgEl = svgRef.current;
+    const g = groupRef.current;
+    if (!svgEl || !g) return;
+
+    const updateBox = () => {
+      try {
+        const orig = parseViewBox(viewBox);
+        const b = g.getBBox();
+        if (b.width > 20 && b.height > 20) {
+          const padX = Math.max(16, b.width * 0.032);
+          const padY = Math.max(14, b.height * 0.05);
+          const minX = b.x - padX;
+          const maxX = b.x + b.width + padX;
+          // Union with authored vertical bounds so top/bottom elements are never clipped.
+          const minY = Math.min(orig[1], b.y - padY);
+          const maxY = Math.max(orig[1] + orig[3], b.y + b.height + padY);
+          const baseW = maxX - minX;
+          const baseH = maxY - minY;
+          const cx = (minX + maxX) / 2;
+          const cy = (minY + maxY) / 2;
+
+          let finalW = baseW;
+          const finalH = baseH;
+          if (svgEl.clientWidth > 0 && svgEl.clientHeight > 0) {
+            const svgAspect = svgEl.clientWidth / svgEl.clientHeight;
+            if (svgAspect > baseW / baseH + 0.04) {
+              finalW = baseH * svgAspect;
+            }
+          }
+
+          const next: [number, number, number, number] = [
+            +(cx - finalW / 2).toFixed(1),
+            +(cy - finalH / 2).toFixed(1),
+            +finalW.toFixed(1),
+            +finalH.toFixed(1),
+          ];
+          setTightBox((prev) =>
+            prev &&
+            Math.abs(prev[0] - next[0]) < 0.5 &&
+            Math.abs(prev[1] - next[1]) < 0.5 &&
+            Math.abs(prev[2] - next[2]) < 0.5 &&
+            Math.abs(prev[3] - next[3]) < 0.5
+              ? prev
+              : next
+          );
+        }
+      } catch {
+        // SVG not yet in DOM or hidden
+      }
+    };
+
+    updateBox();
+    const ro = new ResizeObserver(updateBox);
+    ro.observe(svgEl);
+    return () => ro.disconnect();
+  }, [autoFit, viewBox, label]);
+
+  const activeBox = tightBox ?? parseViewBox(viewBox);
+  const vbString = `${activeBox[0]} ${activeBox[1]} ${activeBox[2]} ${activeBox[3]}`;
+
   return (
     <svg
-      viewBox={viewBox}
+      ref={svgRef}
+      viewBox={vbString}
       role={interactive ? "group" : "img"}
       aria-label={label}
-      className={className}
+      className={`mx-svg ${className ?? ""}`.trim()}
       preserveAspectRatio={preserveAspectRatio}
-      style={{ display: "block", width: "100%", height: "auto", fontFamily: MX.font, userSelect: "none", ...kitStyle(id), ...style }}
+      style={{ fontFamily: MX.font, userSelect: "none", ...kitStyle(id), ...style }}
     >
       <MachineDefs id={id} />
-      {children}
+      {cadFrame && <CadEngineeringFrame x={activeBox[0]} y={activeBox[1]} w={activeBox[2]} h={activeBox[3]} />}
+      <g ref={groupRef}>{children}</g>
     </svg>
+  );
+}
+
+/**
+ * Blender-style 2D Orthographic Viewport wrapper:
+ * Provides interactive zoom (+ / − / Fit), drag-to-pan, 2D X/Y axis gizmo,
+ * and orthographic projection badge on top of `.mx-canvas`.
+ */
+export function BlenderViewport({
+  scopeLabel,
+  children,
+  className,
+}: {
+  scopeLabel?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [panning, setPanning] = useState(false);
+  const dragStart = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
+
+  const clampZoom = (z: number) => Math.max(0.75, Math.min(2.5, +z.toFixed(2)));
+  const zoomIn = useCallback(() => setZoom((z) => clampZoom(z + 0.2)), []);
+  const zoomOut = useCallback(() => setZoom((z) => clampZoom(z - 0.2)), []);
+  const resetView = useCallback(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, []);
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (zoom <= 1 && e.button !== 1) return;
+    if ((e.target as HTMLElement).closest("button, [role='button']")) return;
+    setPanning(true);
+    dragStart.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!panning || !dragStart.current) return;
+    const dx = e.clientX - dragStart.current.x;
+    const dy = e.clientY - dragStart.current.y;
+    setPan({ x: dragStart.current.px + dx, y: dragStart.current.py + dy });
+  };
+
+  const onPointerUp = () => {
+    setPanning(false);
+    dragStart.current = null;
+  };
+
+  const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.15 : -0.15;
+    setZoom((z) => {
+      const next = clampZoom(z + delta);
+      if (next === 1) setPan({ x: 0, y: 0 });
+      return next;
+    });
+  };
+
+  return (
+    <div
+      className={`mx-vp ${className ?? ""}`.trim()}
+      data-zoomed={zoom > 1 || undefined}
+      data-panning={panning || undefined}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      onWheel={onWheel}
+      onDoubleClick={resetView}
+    >
+      <div className="mx-vp-hud-top">
+        <span className="mx-vp-badge">
+          <i aria-hidden="true" />
+          <span>{scopeLabel ? `2D ORTHO · ${scopeLabel}` : "2D ORTHO · CAD SCHEMATIC"}</span>
+        </span>
+        <div className="mx-vp-controls" role="toolbar" aria-label="Viewport zoom controls">
+          <button type="button" className="mx-vp-btn" onClick={zoomOut} aria-label="Zoom out" title="Zoom out">
+            −
+          </button>
+          <button type="button" className="mx-vp-btn" onClick={resetView} aria-label="Reset zoom" title="Reset zoom (100%)">
+            {Math.round(zoom * 100)}%
+          </button>
+          <button type="button" className="mx-vp-btn" onClick={zoomIn} aria-label="Zoom in" title="Zoom in">
+            +
+          </button>
+          {(zoom !== 1 || pan.x !== 0 || pan.y !== 0) && (
+            <button type="button" className="mx-vp-btn" onClick={resetView} aria-label="Fit view" title="Frame all">
+              Fit
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div
+        style={{
+          transform: zoom !== 1 || pan.x !== 0 || pan.y !== 0 ? `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` : undefined,
+          transformOrigin: "center center",
+          transition: panning ? "none" : "transform 0.14s cubic-bezier(0.23, 1, 0.32, 1)",
+          width: "100%",
+        }}
+      >
+        {children}
+      </div>
+
+      {/* Blender-style 2D X/Y Axis Gizmo */}
+      <svg className="mx-vp-gizmo" width="38" height="38" viewBox="0 0 38 38" aria-hidden="true">
+        <line x1="10" y1="28" x2="32" y2="28" stroke="var(--status-danger)" strokeWidth="1.5" />
+        <line x1="10" y1="28" x2="10" y2="6" stroke="var(--status-success)" strokeWidth="1.5" />
+        <circle cx="10" cy="28" r="2.5" fill="var(--mx-raised)" stroke="var(--mx-edge)" strokeWidth="1" />
+        <circle cx="32" cy="28" r="4.5" fill="var(--status-danger)" />
+        <text x="32" y="30.5" fill="var(--on-status-fg)" fontSize="6.5" fontWeight="700" textAnchor="middle">
+          X
+        </text>
+        <circle cx="10" cy="6" r="4.5" fill="var(--status-success)" />
+        <text x="10" y="8.5" fill="var(--on-status-fg)" fontSize="6.5" fontWeight="700" textAnchor="middle">
+          Y
+        </text>
+      </svg>
+    </div>
   );
 }
 
@@ -396,6 +658,8 @@ export function MachineLabel({
  * TSE measurement pad. Three marks, not three shades:
  * hollow ring = healthy reading, filled = attention, halo = selected / live focus.
  * Stroke widths are in drawing units so the pad scales with the machine.
+ * `priority="optional"` marks a retained-optional point (D4 Table 4.4): a
+ * thinner, lighter ring in the same status colour; attention still fills it.
  */
 export function MachinePad({
   x,
@@ -403,6 +667,7 @@ export function MachinePad({
   status = "Normal",
   selected = false,
   scale = 1,
+  priority = "required",
   className,
 }: {
   x: number;
@@ -410,15 +675,26 @@ export function MachinePad({
   status?: string;
   selected?: boolean;
   scale?: number;
+  /** "optional": thinner, lighter healthy ring (D4 retained-optional point). */
+  priority?: "required" | "optional";
   className?: string;
 }) {
   const color = statusColor(status);
   const attention = status !== "Normal" && status !== "Clear" && status !== "OK";
+  const optional = priority === "optional" && !attention;
   return (
     <g className={className} aria-hidden="true">
       {(selected || attention) && <circle cx={x} cy={y} r={12 * scale} fill={color} opacity={0.16} className={attention ? "mx-pad-halo" : undefined} />}
-      <circle cx={x} cy={y} r={8.5 * scale} fill={color} opacity={attention ? 0.22 : 0.1} />
-      <circle cx={x} cy={y} r={5 * scale} fill={attention ? color : MX.padPanel} stroke={attention ? MX.padPanel : color} strokeWidth={(attention ? 1.4 : 1.7) * scale} />
+      <circle cx={x} cy={y} r={8.5 * scale} fill={color} opacity={attention ? 0.22 : optional ? 0.04 : 0.1} />
+      <circle
+        cx={x}
+        cy={y}
+        r={5 * scale}
+        fill={attention ? color : MX.padPanel}
+        stroke={attention ? MX.padPanel : color}
+        strokeWidth={(attention ? 1.4 : optional ? 0.9 : 1.7) * scale}
+        strokeOpacity={optional ? 0.7 : undefined}
+      />
       {attention && <circle cx={x} cy={y} r={2 * scale} fill="var(--mx-pad-dot)" opacity={0.9} />}
       {selected && <circle cx={x} cy={y} r={11 * scale} fill="none" stroke="var(--dx-ink)" strokeWidth={1.2 * scale} />}
     </g>

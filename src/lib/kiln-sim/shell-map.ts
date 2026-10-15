@@ -9,6 +9,15 @@
  * is local around the circumference; a coating ring stays a full band.
  * Tyres hide the shell from the scanner; when coverage (STS-KLN-08) falls
  * below normal, a fouled-lens patch hides the rest.
+ *
+ * Grid: 149 section nodes at 0, 0.5 … 74 m bound the D5 Table 5.4.7a / 9.5
+ * 148 × 0.5 m cells; one map column per node (the engine's profile points).
+ *
+ * The pyro line engine knows how its shell field is built (a refractory hot
+ * spot is local around the circumference, a ring, coating or outlet change is
+ * a full band) and passes that per-section local excess (`local`), so the
+ * engine and the Thermal page build the identical map. Without it the
+ * excess over the model is treated as local (kiln fleet).
  */
 
 export const SHELL_LEN = 74;
@@ -21,6 +30,8 @@ export const SHELL_NA = 360 / SHELL_DA;
 export const SHELL_CIRC = Math.PI * SHELL_DIA;
 export const SHELL_CELL_AREA = SHELL_DZ * ((SHELL_CIRC * SHELL_DA) / 360);
 
+/** Top of the scanner measuring range (°C): cells read no higher. */
+export const SHELL_SCAN_MAX = 600;
 export const SHELL_ALERT = 380;
 export const SHELL_DANGER = 420;
 /** Scanner coverage with only the tyres in the way. */
@@ -93,13 +104,48 @@ const angDist = (a: number, b: number) => {
 };
 
 /**
+ * Per-cell constants of the synthesis, built once: the lining grain, the
+ * phase of the slow rotational texture (sin / cos of z/9 + a/9) and the
+ * angular weight of a local hot spot. The engine builds a map every
+ * simulated minute, so these are not recomputed per cell and tick.
+ */
+let TABLES: { grain: Float32Array; sinB: Float64Array; cosB: Float64Array; offHot: Float64Array } | null = null;
+function tables() {
+  if (TABLES) return TABLES;
+  const n = SHELL_NZ * SHELL_NA;
+  const g = new Float32Array(n);
+  const sinB = new Float64Array(n);
+  const cosB = new Float64Array(n);
+  for (let i = 0; i < SHELL_NZ; i++) {
+    for (let k = 0; k < SHELL_NA; k++) {
+      const j = i * SHELL_NA + k;
+      const b = (i * SHELL_DZ) / 9 + (k * SHELL_DA) / 9;
+      g[j] = grain(i, k);
+      sinB[j] = Math.sin(b);
+      cosB[j] = Math.cos(b);
+    }
+  }
+  const offHot = new Float64Array(SHELL_NA);
+  for (let k = 0; k < SHELL_NA; k++) offHot[k] = 1 - Math.exp(-(angDist(k * SHELL_DA + SHELL_DA / 2, HOT_ANGLE) ** 2) / 260);
+  TABLES = { grain: g, sinB, cosB, offHot };
+  return TABLES;
+}
+
+/** Section index of a kiln position (m) and cell index of a position and angle (°). */
+export const shellSection = (z: number) => Math.max(0, Math.min(SHELL_NZ - 1, Math.round(z / SHELL_DZ)));
+export const shellCell = (z: number, angle: number) => shellSection(z) * SHELL_NA + (Math.floor((((angle % 360) + 360) % 360) / SHELL_DA) % SHELL_NA);
+
+/**
  * @param profile scanner maximum per section (`frame.shellProfile`)
  * @param model   expected profile (`frame.shellModel`)
  * @param coverage STS-KLN-08, %
  * @param t       simulated minute (slow rotational texture)
  */
-export function buildShellMap(profile: number[], model: number[], coverage: number, t: number): ShellMap {
+export function buildShellMap(profile: number[], model: number[], coverage: number, t: number, local?: ArrayLike<number> | null): ShellMap {
   const NZ = Math.min(SHELL_NZ, profile.length);
+  const tb = tables();
+  const sinT = Math.sin(t / 45);
+  const cosT = Math.cos(t / 45);
   const NA = SHELL_NA;
   const temp = new Float32Array(NZ * NA);
   const mask = new Uint8Array(NZ * NA);
@@ -134,13 +180,13 @@ export function buildShellMap(profile: number[], model: number[], coverage: numb
   for (let i = 0; i < NZ; i++) {
     const z = i * SHELL_DZ;
     const target = profile[i];
-    const excess = Math.max(0, target - model[i] - 6);
+    const excess = Math.max(0, local ? local[i] ?? 0 : target - model[i] - 6);
     let rowMax = -Infinity;
     for (let k = 0; k < NA; k++) {
-      const a = k * SHELL_DA;
-      const texture = 6 * grain(i, k) + 2.5 * (1 + Math.sin(t / 45 + z / 9 + a / 9));
-      const local = excess * (1 - Math.exp(-(angDist(a + SHELL_DA / 2, HOT_ANGLE) ** 2) / 260));
-      const v = target - texture - local;
+      const j = i * NA + k;
+      // 6·grain + 2.5·(1 + sin(t/45 + z/9 + a/9)), with the sine expanded over the per-cell phase table.
+      const texture = 6 * tb.grain[j] + 2.5 * (1 + sinT * tb.cosB[j] + cosT * tb.sinB[j]);
+      const v = target - texture - excess * tb.offHot[k];
       temp[i * NA + k] = v;
       if (v > rowMax) rowMax = v;
     }
@@ -151,7 +197,8 @@ export function buildShellMap(profile: number[], model: number[], coverage: numb
     let c = 0;
     for (let k = 0; k < NA; k++) {
       const j = i * NA + k;
-      temp[j] += lift;
+      // The scanner saturates at the top of its range (0–600 °C); saturation itself is flagged on CAL-KLN-03.
+      temp[j] = Math.min(SHELL_SCAN_MAX, temp[j] + lift);
       if (mask[j]) continue;
       const v = temp[j];
       visible++;
@@ -218,4 +265,150 @@ export function buildShellMap(profile: number[], model: number[], coverage: numb
 
 export function shellZoneAt(z: number): string {
   return (SHELL_ZONES.find((q) => z >= q.from && z < q.to) ?? SHELL_ZONES[SHELL_ZONES.length - 1]).name;
+}
+
+/* ------------------------------------------------------------------ */
+/* Thermal-map processing outputs (D5 Tables 5.4.7a / 9.5)             */
+/* ------------------------------------------------------------------ */
+
+/** D5 Table 9.5 hot-spot detection: local maximum ≥ model + 40 K, or a rise > 15 K/h (provisional). */
+export const SHELL_HOT_DELTA = 40;
+export const SHELL_RATE_WARN = 15;
+/** D5 Table 5.4.7a / 9.2 scanner coverage target and alarm, %. */
+export const SHELL_COVERAGE_TARGET = 95;
+export const SHELL_COVERAGE_ALARM = 80;
+/** Last-good values older than this are no longer shown for hidden cells (min). */
+export const SHELL_LAST_GOOD_MAX_AGE = 60;
+
+/** A run of sections along the kiln and its mean section residual (section maximum − model), K. */
+export interface ShellBand {
+  from: number;
+  to: number;
+  residual: number;
+}
+
+/** One handheld comparison point (MAN-KLN-01) against the scanner cell at the same metre and angle. */
+export interface HandheldPoint {
+  m: number;
+  angle: number;
+  hand: number;
+  /** Scanner cell at the same position and time, or null when the scanner had no view there. */
+  scan: number | null;
+  /** Handheld − scanner after matching the two emissivity set-ups, K. */
+  gap: number | null;
+}
+
+/** A full map kept for a finding (D5 Table 5.4.7a storage: maps around every finding at full resolution). */
+export interface ShellMapSnapshot {
+  t: number;
+  profile: number[];
+  model: number[];
+  local: number[];
+  coverage: number;
+}
+
+export interface ShellFindingMaps {
+  ruleId: string;
+  /** Minute the finding became active. */
+  since: number;
+  /** Maps from one hour before to one hour after `since`, oldest first. */
+  maps: ShellMapSnapshot[];
+}
+
+/**
+ * Derived values of the engine's thermal-map processing, per minute
+ * (pyro line). The Thermal page reads these instead of re-deriving them, so
+ * the rules and the page share one value.
+ */
+export interface ShellThermal {
+  /** Per-section circumferentially local excess (K) the map was built with. */
+  local: number[];
+  /** Hottest visible cell: position (m), angle (°), the model at that section and the residual (K). */
+  hotPos: number;
+  hotAngle: number;
+  hotModel: number;
+  hotResidual: number;
+  /** Section maximum − section mean at the hottest section (K): a local spot stands well above its section mean. */
+  hotSpread: number;
+  /** Shell area at or above the alert / danger limits (m²), and the alert area one hour earlier. */
+  areaAboveAlert: number;
+  areaAboveDanger: number;
+  areaAboveAlert1h: number | null;
+  /** Cold band in the transition zone (whole circumference below model), or null. */
+  coldBand: ShellBand | null;
+  /** Broad warm area in the burning zone (whole circumference above model), or null. */
+  warmBand: ShellBand | null;
+  /** Mean section residual over the outlet zone 66–74 m, K. */
+  outletResidual: number;
+  coverageTarget: number;
+  /** Last good reading of every cell (`i · 72 + k`) and the minute it was taken (−1: never seen). */
+  lastGood: Float32Array;
+  lastGoodAt: Int32Array;
+  /** Latest handheld round (MAN-KLN-01) compared with the scanner at the same positions. */
+  handheld: { at: number; points: HandheldPoint[] } | null;
+  /** Maps kept around shell findings, newest first. */
+  findingMaps: ShellFindingMaps[];
+}
+
+/** Longest run of flagged sections inside [from, to] m; hidden sections (tyres) neither break nor count. */
+function longestRun(map: ShellMap, from: number, to: number, hit: (i: number, d: number) => boolean, minLen: number): ShellBand | null {
+  const i0 = Math.round(from / SHELL_DZ);
+  const i1 = Math.min(map.colMax.length - 1, Math.round(to / SHELL_DZ));
+  type Run = { a: number; b: number; sum: number; n: number };
+  let best: Run | null = null;
+  let cur: Run | null = null;
+  for (let i = i0; i <= i1; i++) {
+    const top = map.colMax[i];
+    if (top === null) continue;
+    const d = top - map.model[i];
+    if (!hit(i, d)) {
+      cur = null;
+      continue;
+    }
+    const next: Run = cur === null ? { a: i, b: i, sum: d, n: 1 } : { a: cur.a, b: i, sum: cur.sum + d, n: cur.n + 1 };
+    cur = next;
+    if (best === null || next.n > best.n) best = next;
+  }
+  const b = best as Run | null;
+  if (b === null || b.n < minLen) return null;
+  return { from: b.a * SHELL_DZ, to: b.b * SHELL_DZ, residual: b.sum / b.n };
+}
+
+/**
+ * D5 Table 9.5 cold-band detection: section maximum (so every visible cell
+ * around the circumference) more than 10 K below the model in the transition
+ * zone over ≥ 2 m, band mean ≤ −15 K. The torque rise is judged by the rule.
+ */
+export function shellColdBand(map: ShellMap): ShellBand | null {
+  const band = longestRun(map, 15, 40, (_i, d) => d < -10, 4);
+  return band && band.residual <= -15 ? band : null;
+}
+
+/**
+ * D5 Table 5.4.7b coating loss / hot band: the whole circumference above the
+ * model (section maximum > +15 K while the section mean follows it, spread
+ * < 15 K) over ≥ 6 m of the burning zone.
+ */
+export function shellWarmBand(map: ShellMap): ShellBand | null {
+  return longestRun(map, 40, 66, (i, d) => d > 15 && (map.colMax[i] ?? 0) - (map.colMean[i] ?? 0) < 15, 12);
+}
+
+/** Mean section residual over a span (visible sections only). */
+export function shellSpanResidual(map: ShellMap, from: number, to: number): number {
+  let acc = 0;
+  let n = 0;
+  for (let i = Math.round(from / SHELL_DZ); i <= Math.min(map.colMax.length - 1, Math.round(to / SHELL_DZ)); i++) {
+    const top = map.colMax[i];
+    if (top === null) continue;
+    acc += top - map.model[i];
+    n++;
+  }
+  return n ? acc / n : 0;
+}
+
+/** Area at or above a temperature over the visible cells, m². */
+export function shellAreaAbove(map: ShellMap, limit: number): number {
+  let n = 0;
+  for (let j = 0; j < map.temp.length; j++) if (!map.mask[j] && map.temp[j] >= limit) n++;
+  return n * SHELL_CELL_AREA;
 }

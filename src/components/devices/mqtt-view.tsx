@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { PillButton, Table, type Column } from "@/components/ui";
+import { KpiCard, KpiCards, PillButton, Table, type Column } from "@/components/ui";
 import { StatusTag, type Tone } from "@/components/assets/assets-shell-ui";
 import { useEdge } from "@/providers/edge-context";
 import type { EdgeBroker } from "@/types/edge";
@@ -51,7 +51,7 @@ export function MqttView({ sectionNav }: { sectionNav?: React.ReactNode }) {
   // A removed broker drops the filter back to all.
   const activeFilter = filter !== "all" && rows.some((r) => r.broker.id === filter) ? filter : "all";
   const toggleFilter = (id: string) => setFilter((f) => (f === id || id === "all" ? "all" : id));
-  const [tone, label] = registry ? connectionSummary(rows) : (["idle", "Loading"] as [Tone, string]);
+  const [tone, label] = registry ? connectionSummary(rows) : (["idle", "Loading…"] as [Tone, string]);
 
   const editingCount = editing?.broker ? (rows.find((r) => r.broker.id === editing.broker!.id)?.registered ?? 0) : 0;
 
@@ -80,9 +80,7 @@ export function MqttView({ sectionNav }: { sectionNav?: React.ReactNode }) {
 
       {!registry ? (
         edge.error ? (
-          <EmptyCard title="Broker registry unavailable" action={<PillButton variant="secondary" onClick={() => void edge.refresh()}>Retry</PillButton>}>
-            {edge.error}
-          </EmptyCard>
+          <EmptyCard title="Broker registry unavailable. Retry." action={<PillButton variant="secondary" onClick={() => void edge.refresh()}>Retry</PillButton>} />
         ) : (
           <div className="ast-card ast-empty">Loading brokers…</div>
         )
@@ -337,52 +335,43 @@ function Kpis({ metrics, gateways, racks, known, now }: { metrics: MqttMetrics; 
   const refused = metrics.schemaFailures + metrics.identityMismatches + metrics.parseFailures + metrics.payloadTooLarge;
 
   return (
-    <section className="ast-kpis" aria-label="Broker metrics">
-      <div className="ast-card ast-kpi">
-        <span className="ast-kpi-label">Throughput</span>
-        <span className="ast-kpi-value ast-num">
-          {rate(metrics.messagesPerSecond)}
-          <span className="ast-unit">msg/s</span>
-        </span>
-        <span className="ast-kpi-foot ast-caption ast-num">
-          {nf.format(metrics.messagesTotal)} messages · {bytes(metrics.bytesTotal)} · last {ago(metrics.lastMessageAt, now)}
-        </span>
-      </div>
-      <div className="ast-card ast-kpi">
-        <span className="ast-kpi-label">Gateways online</span>
-        <span className="ast-kpi-value ast-num pg-tone-value" data-tone={gatewayTone}>
-          {nf.format(online)}
-          <span className="ast-unit">of {nf.format(known)}</span>
-        </span>
-        <span className="ast-kpi-foot ast-caption ast-num">
-          {nf.format(streaming)} of {nf.format(racks.length)} sources streaming current data
-        </span>
-      </div>
-      <div className="ast-card ast-kpi">
-        <span className="ast-kpi-label">Gateway → app latency</span>
-        <span className="ast-kpi-value ast-num">
-          {metrics.latencyP50Ms !== null ? nf.format(Math.round(metrics.latencyP50Ms)) : "—"}
-          {metrics.latencyP50Ms !== null && <span className="ast-unit">ms p50</span>}
-        </span>
-        <span className="ast-kpi-foot ast-caption ast-num">
-          p95 {metrics.latencyP95Ms !== null ? `${nf.format(Math.round(metrics.latencyP95Ms))} ms` : "—"} · {nf.format(metrics.sequenceGaps)} lost ·{" "}
-          {nf.format(metrics.duplicates)} duplicate
-        </span>
-      </div>
-      <div className="ast-card ast-kpi">
-        <span className="ast-kpi-label">Quarantine</span>
-        <span className="ast-kpi-value ast-num pg-tone-value" data-tone={metrics.quarantined > 0 ? "warn" : undefined}>
-          {nf.format(metrics.quarantined)}
-          <span className="ast-unit">messages</span>
-        </span>
-        <span className="ast-kpi-foot ast-caption ast-num">
-          {refused === 0
+    <KpiCards label="Broker metrics">
+      <KpiCard
+        label="Throughput"
+        value={rate(metrics.messagesPerSecond)}
+        unit="msg/s"
+        footClassName="ast-kpi-foot ast-caption ast-num"
+        foot={`${nf.format(metrics.messagesTotal)} messages · ${bytes(metrics.bytesTotal)} · last ${ago(metrics.lastMessageAt, now)}`}
+      />
+      <KpiCard
+        label="Gateways online"
+        value={nf.format(online)}
+        unit={`of ${nf.format(known)}`}
+        tone={gatewayTone}
+        footClassName="ast-kpi-foot ast-caption ast-num"
+        foot={`${nf.format(streaming)} of ${nf.format(racks.length)} sources streaming current data`}
+      />
+      <KpiCard
+        label="Gateway → app latency"
+        value={metrics.latencyP50Ms !== null ? nf.format(Math.round(metrics.latencyP50Ms)) : "—"}
+        unit={metrics.latencyP50Ms !== null ? "ms p50" : undefined}
+        footClassName="ast-kpi-foot ast-caption ast-num"
+        foot={`p95 ${metrics.latencyP95Ms !== null ? `${nf.format(Math.round(metrics.latencyP95Ms))} ms` : "—"} · ${nf.format(metrics.sequenceGaps)} lost · ${nf.format(metrics.duplicates)} duplicate`}
+      />
+      <KpiCard
+        label="Quarantine"
+        value={nf.format(metrics.quarantined)}
+        unit="messages"
+        tone={metrics.quarantined > 0 ? "warn" : undefined}
+        footClassName="ast-kpi-foot ast-caption ast-num"
+        foot={
+          refused === 0
             ? "No schema, identity or parse failures"
             : `${nf.format(metrics.schemaFailures)} schema · ${nf.format(metrics.identityMismatches)} identity · ${nf.format(metrics.parseFailures)} parse${
                 metrics.payloadTooLarge ? ` · ${nf.format(metrics.payloadTooLarge)} oversize` : ""
-              }`}
-        </span>
-      </div>
-    </section>
+              }`
+        }
+      />
+    </KpiCards>
   );
 }

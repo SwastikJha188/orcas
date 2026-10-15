@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import { IconChevron, SegmentBar, StatusTag, type Tone } from "@/components/assets/assets-shell-ui";
+import { IconChevron, SegmentBar, type Tone } from "@/components/assets/assets-shell-ui";
+import { KpiCard } from "@/components/ui/kpi";
 import { SOURCE_KIND_LABEL, type EdgeGateway, type EdgeSource } from "@/types/edge";
 import {
   type EdgeIndex,
@@ -77,18 +78,7 @@ export function ContentsHead({
 
 /** KPI strip card: label, short value, caption lines. */
 export function Kpi({ label, value, tone, children, aside }: { label: string; value: React.ReactNode; tone?: Tone; children?: React.ReactNode; aside?: React.ReactNode }) {
-  return (
-    <div className="ast-card ast-kpi">
-      <div className="ast-kpi-top">
-        <span className="ast-kpi-label">{label}</span>
-        {aside}
-      </div>
-      <span className="pg-kpi-text ast-num pg-tone-value" data-tone={tone}>
-        {value}
-      </span>
-      {children && <div className="ast-kpi-foot dv-kpi-foot">{children}</div>}
-    </div>
-  );
+  return <KpiCard top text label={label} value={value} tone={tone} aside={aside} foot={children} footClassName="ast-kpi-foot dv-kpi-foot" />;
 }
 
 /** Segment bar + its legend; zero states are left out. */
@@ -220,7 +210,7 @@ export function SourceCard({ ix, src, now, showGateway, onOpen }: { ix: EdgeInde
           <dd className="ast-num">{points.length}</dd>
         </div>
         <div>
-          <dt>Alert / danger</dt>
+          <dt>Warning / alarm</dt>
           <dd className="ast-num pg-tone-value" data-tone={readings.danger ? "bad" : readings.alert ? "warn" : undefined}>
             {flagged === 0 ? "0" : `${readings.alert} / ${readings.danger}`}
           </dd>
@@ -236,7 +226,3 @@ export function SourceCard({ ix, src, now, showGateway, onOpen }: { ix: EdgeInde
   );
 }
 
-/** Live link chip for a header. */
-export function LinkTag({ status }: { status: keyof typeof LINK_LABEL }) {
-  return <StatusTag tone={LINK_TONE[status]} label={LINK_LABEL[status]} />;
-}

@@ -13,6 +13,7 @@
  *
  * Loaded with next/dynamic (ssr: false).
  */
+import { Billboard, Edges } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -35,11 +36,23 @@ import {
   type TwinInset,
 } from "./plant-twin-canvas";
 import { TwinHtml } from "./twin-html";
-import { UNIT, buildMachineModel, ownerOf, type MachineFinish, type MachinePrim } from "./machine-twin-model";
+import { UNIT, buildMachineModel, modelExtent, ownerOf, twinKind, usesForeignSpace, type MachineFinish, type MachinePrim } from "./machine-twin-model";
 import { KILN_ANCHORS, KILN_CENTRE_X, KilnModel, kilnOwners } from "./kiln-twin-3d";
-import { TwinControls, useTwinNavigation, type TwinNavMode } from "./twin-nav";
+import { TwinControls, clearTwinPose, loadTwinPose, usePersistTwinPose, useTwinNavigation, type TwinNavMode } from "./twin-nav";
 import { PartCtx, TwinPart, useTwinMaterials, type PartCtxValue, type ShellSkin, type TwinPaint, type TwinPaints } from "./twin-part";
 import { TWIN_GL, TwinLighting } from "./twin-lighting";
+import { TWIN_RESIZE, twinEvents, useTwinDpr } from "./use-ui-zoom";
+import { applyKitPalette, buildPyroMachine, createKitMats, readPalette, type MachineKey } from "./pyro-plant-model";
+
+/** Pyro-line diagram types → their machine(s) in the detailed pyro plant model (the feed system and clinker transport are two site nodes each). */
+const PYRO_KEY: Record<string, MachineKey[]> = {
+  "feed-system": ["FSL", "KFS"],
+  preheater: ["PHC"],
+  "pyro-kiln": ["KLN"],
+  "kiln-burner": ["BRN"],
+  "grate-cooler": ["CLR"],
+  "clinker-transport": ["HMR", "CSL"],
+};
 
 export type { TwinNavMode };
 
@@ -65,7 +78,11 @@ export interface MachineTwinCanvasProps {
   inset?: TwinInset;
   /** Left-drag moves across the yard ("move") or orbits the machine ("orbit"). */
   navMode?: TwinNavMode;
+  /** Storage key for remembering the camera between visits; omit to not persist. */
+  persistKey?: string;
 }
+
+type Box2 = { x: number; y: number; width: number; height: number };
 
 const PLINTH_H = 0.42;
 /** Front-three-quarter view: the machine's long side faces the viewer. */
@@ -161,38 +178,106 @@ function GenericModel({ prims, map, owners }: { prims: MachinePrim[]; map: Frame
 interface PlacedPad {
   dot: SchematicDot;
   p: THREE.Vector3;
+  /** Where the instrument mounts and the surface normal there (pyro models). */
+  mount?: { at: THREE.Vector3; n: THREE.Vector3 };
 }
 
-function Pads({ pads, radius, colors, focusId }: { pads: PlacedPad[]; radius: number; colors: TwinColors; focusId: string | null }) {
+const Y_UP = new THREE.Vector3(0, 1, 0);
+
+/**
+ * Field instruments at the sensor points (pyro models): a neck off the surface, a
+ * transmitter housing with a dark display face, and a conduit run down to the floor
+ * or the surface below — so every pad sits on the instrument it reads.
+ */
+function Instruments({ pads, mats, edge }: { pads: PlacedPad[]; mats: { model: THREE.Material; machined: THREE.Material; recess: THREE.Material; steel: THREE.Material }; edge: string }) {
+  return (
+    <group>
+      {pads.map(({ dot, mount }) => {
+        if (!mount) return null;
+        const q = new THREE.Quaternion().setFromUnitVectors(Y_UP, mount.n);
+        const neck = mount.at.clone().addScaledVector(mount.n, 0.22);
+        const head = mount.at.clone().addScaledVector(mount.n, 0.55);
+        const foot = new THREE.Vector3(head.x, Math.max(0.5, head.y - 2.2), head.z);
+        const cond = foot.clone().sub(head);
+        const cq = new THREE.Quaternion().setFromUnitVectors(Y_UP, cond.clone().normalize());
+        return (
+          <group key={dot.tag}>
+            <mesh position={neck} quaternion={q} material={mats.machined}>
+              <cylinderGeometry args={[0.07, 0.09, 0.44, 12]} />
+            </mesh>
+            <mesh position={head} quaternion={q} material={mats.model} castShadow>
+              <boxGeometry args={[0.42, 0.36, 0.3]} />
+              <Edges threshold={30} color={edge} />
+            </mesh>
+            <mesh position={head.clone().addScaledVector(mount.n, 0.19)} quaternion={q} material={mats.recess}>
+              <cylinderGeometry args={[0.11, 0.11, 0.04, 16]} />
+            </mesh>
+            <mesh position={head.clone().add(cond.clone().multiplyScalar(0.5))} quaternion={cq} material={mats.steel}>
+              <cylinderGeometry args={[0.03, 0.03, cond.length(), 6]} />
+            </mesh>
+          </group>
+        );
+      })}
+    </group>
+  );
+}
+
+function Pads({ pads, px, colors, panel, focusId }: { pads: PlacedPad[]; px: number; colors: TwinColors; panel: string; focusId: string | null }) {
   const [hover, setHover] = useState<string | null>(null);
+  // Pads keep a constant on-screen size (`px`, CSS px radius), like the drawings' pads, at any machine size or zoom.
+  const refs = useRef(new Map<string, THREE.Group>());
+  const v = useMemo(() => new THREE.Vector3(), []);
+  useFrame(({ camera, size }) => {
+    const tan = Math.tan(THREE.MathUtils.degToRad((camera as THREE.PerspectiveCamera).fov / 2));
+    for (const g of refs.current.values()) {
+      g.getWorldPosition(v);
+      g.scale.setScalar((px * 2 * camera.position.distanceTo(v) * tan) / Math.max(1, size.height));
+    }
+  });
+  const radius = 1; // unit pad, scaled per frame
   return (
     <group>
       {pads.map(({ dot, p }) => {
         const tone = padTone(dot.status);
         const c = toneColor(tone, colors);
         const dim = Boolean(focusId && dot.systemId && dot.systemId !== focusId);
+        const on = tone !== "good";
+        const op = dim ? 0.25 : 1;
         return (
           <group key={dot.tag} position={p}>
-            <mesh
-              onPointerOver={(e) => {
-                e.stopPropagation();
-                setHover(dot.tag);
-                document.body.style.cursor = "pointer";
-              }}
-              onPointerOut={() => {
-                setHover(null);
-                document.body.style.cursor = "";
-              }}
-            >
-              <sphereGeometry args={[radius, 20, 14]} />
-              <meshBasicMaterial color={c} toneMapped={false} transparent opacity={dim ? 0.25 : 1} />
-            </mesh>
-            {tone !== "good" && !dim && (
-              <mesh raycast={() => undefined}>
-                <sphereGeometry args={[radius * 2.1, 20, 14]} />
-                <meshBasicMaterial color={c} transparent opacity={0.22} depthWrite={false} toneMapped={false} />
-              </mesh>
-            )}
+            {/* Machine-kit measurement pad: hollow ring when healthy, filled with a halo when it needs attention. */}
+            <Billboard>
+              <group
+                ref={(g) => {
+                  if (g) refs.current.set(dot.tag, g);
+                  else refs.current.delete(dot.tag);
+                }}
+                onPointerOver={(e) => {
+                  e.stopPropagation();
+                  setHover(dot.tag);
+                  document.body.style.cursor = "pointer";
+                }}
+                onPointerOut={() => {
+                  setHover(null);
+                  document.body.style.cursor = "";
+                }}
+              >
+                <mesh renderOrder={12}>
+                  <circleGeometry args={[radius * 0.78, 28]} />
+                  <meshBasicMaterial color={on ? c : panel} toneMapped={false} transparent opacity={op} depthWrite={false} depthTest={false} />
+                </mesh>
+                <mesh renderOrder={13}>
+                  <ringGeometry args={[radius * 0.72, radius, 32]} />
+                  <meshBasicMaterial color={c} toneMapped={false} transparent opacity={op} depthWrite={false} depthTest={false} />
+                </mesh>
+                {on && !dim && (
+                  <mesh renderOrder={11} raycast={() => undefined}>
+                    <ringGeometry args={[radius * 1.15, radius * 2.1, 36]} />
+                    <meshBasicMaterial color={c} transparent opacity={0.22} depthWrite={false} depthTest={false} toneMapped={false} />
+                  </mesh>
+                )}
+              </group>
+            </Billboard>
             {hover === dot.tag && (
               <TwinHtml zIndexRange={[60, 50]} style={{ pointerEvents: "none" }}>
                 <div className="ph-twin-label mt3-pad-tip" data-tone={tone}>
@@ -277,6 +362,7 @@ function CameraRig({
   radius,
   centre,
   navMode,
+  persistKey,
 }: {
   points: THREE.Vector3[];
   focus: THREE.Vector3[] | null;
@@ -286,6 +372,7 @@ function CameraRig({
   /** Middle of the machine on the floor; the camera target is kept within reach of it. */
   centre: THREE.Vector3;
   navMode: TwinNavMode;
+  persistKey?: string;
 }) {
   const { camera, invalidate, size } = useThree();
   const controls = useThree((st) => st.controls) as OrbitControlsImpl | null;
@@ -295,6 +382,7 @@ function CameraRig({
   const lastCommand = useRef(-1);
   const layoutKey = `${size.width}|${size.height}|${inset.top}|${inset.right}|${inset.bottom}|${inset.left}`;
   const lastLayout = useRef("");
+  usePersistTwinPose(persistKey, operated);
 
   useEffect(() => {
     if (!controls) return;
@@ -314,7 +402,9 @@ function CameraRig({
   useEffect(() => {
     if (!controls || points.length === 0) return;
     if (!fitted.current) {
-      const g = fitPoints(points, size.width, size.height, inset, 1, VIEW_DIR);
+      const saved = loadTwinPose(persistKey);
+      const g = saved ? { pos: new THREE.Vector3(...saved.pos), tgt: new THREE.Vector3(...saved.tgt) } : fitPoints(points, size.width, size.height, inset, 1, VIEW_DIR);
+      operated.current = !!saved;
       camera.position.copy(g.pos);
       controls.target.copy(g.tgt);
       controls.update();
@@ -326,6 +416,7 @@ function CameraRig({
     if (command.n === lastCommand.current) return;
     lastCommand.current = command.n;
     if (command.kind === "fit") {
+      clearTwinPose(persistKey);
       operated.current = false;
       goal.current = fitPoints(points, size.width, size.height, inset, 1, VIEW_DIR);
     } else if (command.kind === "focus" && focus) {
@@ -384,6 +475,8 @@ function corners(b: THREE.Box3): THREE.Vector3[] {
 interface Bounds {
   all: THREE.Box3;
   bySystem: Map<string, THREE.Box3>;
+  /** Vertices sampled from the model (world space): framing hugs the silhouette, not the bounding box. */
+  samples: THREE.Vector3[];
 }
 
 function SceneContents({
@@ -398,10 +491,41 @@ function SceneContents({
   paints,
   inset = NO_INSET,
   navMode = "move",
+  persistKey,
 }: MachineTwinCanvasProps) {
-  const isKiln = diagramType === "kiln";
+  // Pyro-line machines use their detailed model from the pyro plant (same build as the Home site).
+  const pyroKey = (diagramType && PYRO_KEY[diagramType]) || null;
+  const isKiln = !pyroKey && twinKind(diagramType) === "kiln";
+  const pyro = useMemo(() => {
+    if (!pyroKey) return null;
+    const mats = createKitMats();
+    const built = buildPyroMachine(pyroKey, mats);
+    applyKitPalette(mats, built.edgeMat, readPalette());
+    built.group.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh) o.userData.system = null;
+    });
+    return { ...built, mats };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rebuilt on theme change (paints)
+  }, [pyroKey, paints]);
+  useEffect(
+    () => () => {
+      if (!pyro) return;
+      pyro.dispose();
+      for (const m of Object.values(pyro.mats)) m.dispose();
+      pyro.edgeMat.dispose();
+    },
+    [pyro],
+  );
   const generic = useMemo(() => buildMachineModel(diagramType), [diagramType]);
   const map = useFrameMap(generic.prims, generic.ground);
+  // Catalog x / y and bboxes in % of the machine's own drawing (pyro line) → spread over this model's extent.
+  const toModel = useMemo(() => {
+    if (!usesForeignSpace(diagramType)) return { x: (p: number) => (p / 100) * SCHEMATIC_W, y: (p: number) => (p / 100) * SCHEMATIC_H, box: (b: Box2) => b };
+    const e = modelExtent(generic);
+    const x = (p: number) => e.x0 + (p / 100) * (e.x1 - e.x0);
+    const y = (p: number) => e.y0 + (p / 100) * (e.y1 - e.y0);
+    return { x, y, box: (b: Box2) => ({ x: x(b.x), y: y(b.y), width: (b.width / 100) * (e.x1 - e.x0), height: (b.height / 100) * (e.y1 - e.y0) }) };
+  }, [diagramType, generic]);
   const model = useRef<THREE.Group>(null);
   const labels = useMemo(() => new Map<string, LabelSlot>(), []);
   const [hover, setHover] = useState<string | null>(null);
@@ -412,8 +536,11 @@ function SceneContents({
   const systemKey = systems.map((s) => `${s.id}:${s.name}:${s.bbox ? Object.values(s.bbox).join(",") : ""}`).join("|");
   // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on systemKey
   const kilnOwn = useMemo(() => kilnOwners(systems), [systemKey]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on systemKey
-  const genericOwn = useMemo(() => generic.prims.map((p) => ownerOf(p, systems)), [generic, systemKey]);
+  const genericOwn = useMemo(
+    () => generic.prims.map((p) => ownerOf(p, systems.map((s) => ({ id: s.id, bbox: s.bbox && toModel.box(s.bbox) })))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on systemKey
+    [generic, systemKey, toModel],
+  );
 
   // Measure the built model: whole machine and each subsystem's parts.
   const [bounds, setBounds] = useState<Bounds | null>(null);
@@ -432,9 +559,24 @@ function SceneContents({
     });
     if (all.isEmpty()) return;
     all.min.y = 0;
-    setBounds({ all, bySystem });
+    // Sample the model's vertices (about 3000 in all) so the camera fits what is drawn, not empty box corners.
+    let total = 0;
+    root.traverse((o) => {
+      const g = (o as THREE.Mesh).isMesh ? (o as THREE.Mesh).geometry : null;
+      if (g && o.userData.system !== undefined) total += g.getAttribute("position")?.count ?? 0;
+    });
+    const stride = Math.max(1, Math.floor(total / 3000));
+    const samples: THREE.Vector3[] = [];
+    root.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || o.userData.system === undefined) return;
+      const pos = m.geometry.getAttribute("position");
+      if (!pos) return;
+      for (let i = 0; i < pos.count; i += stride) samples.push(new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld));
+    });
+    setBounds({ all, bySystem, samples });
     invalidate();
-  }, [isKiln, generic, kilnOwn, genericOwn, invalidate]);
+  }, [isKiln, pyro, generic, kilnOwn, genericOwn, invalidate]);
 
   // Sensor pads: kiln tags on their physical anchors; others raycast onto the surface.
   const pads = useMemo<PlacedPad[]>(() => {
@@ -448,26 +590,79 @@ function SceneContents({
     if (!root || !bounds) return [];
     const ray = new THREE.Raycaster();
     const dir = new THREE.Vector3(0, 0, -1);
+    const down = new THREE.Vector3(0, -1, 0);
+    if (pyro) {
+      // Drawing x / y (% of the machine's own sheet) spread over the model's front elevation, dropped onto its surface.
+      const b = bounds.all;
+      const sz = b.getSize(new THREE.Vector3());
+      return dots.flatMap((dot) => {
+        if (dot.x <= 0 && dot.y <= 0) return [];
+        const wx = b.min.x + (dot.x / 100) * sz.x;
+        const wy = Math.max(PLINTH_H + 0.3, b.max.y - (dot.y / 100) * (sz.y - PLINTH_H));
+        ray.set(new THREE.Vector3(wx, wy, b.max.z + 50), dir);
+        const hit = ray.intersectObject(root, true).find((h) => (h.object as THREE.Mesh).isMesh);
+        // Nothing in front at that height: drop onto the machine from above instead of floating in the air.
+        let h = hit;
+        if (!h) {
+          ray.set(new THREE.Vector3(wx, b.max.y + 50, (b.min.z + b.max.z) / 2), down);
+          h = ray.intersectObject(root, true).find((x) => (x.object as THREE.Mesh).isMesh && x.point.y > PLINTH_H + 0.2);
+        }
+        if (!h) {
+          // Still nothing: snap to the nearest point of the drawn silhouette (front-most at that spot).
+          let best: THREE.Vector3 | null = null;
+          let bd = Infinity;
+          for (const q of bounds.samples) {
+            const d = Math.hypot(q.x - wx, q.y - wy) - q.z * 0.02;
+            if (d < bd) {
+              bd = d;
+              best = q;
+            }
+          }
+          const at = best ? best.clone() : new THREE.Vector3(wx, wy, (b.min.z + b.max.z) / 2);
+          return [{ dot, p: at.clone().add(new THREE.Vector3(0, 0, 0.92)), mount: { at, n: new THREE.Vector3(0, 0, 1) } }];
+        }
+        const n = h.face ? h.face.normal.clone().transformDirection(h.object.matrixWorld) : new THREE.Vector3(0, 0, 1);
+        if (n.dot(ray.ray.direction) > 0) n.negate(); // face toward the viewer side the ray came from
+        return [{ dot, p: h.point.clone().addScaledVector(n, 0.92), mount: { at: h.point.clone(), n } }];
+      });
+    }
     return dots.flatMap((dot) => {
       if (dot.x <= 0 && dot.y <= 0) return [];
-      const wx = map.x((dot.x / 100) * SCHEMATIC_W);
-      const wy = map.y((dot.y / 100) * SCHEMATIC_H);
+      const wx = map.x(toModel.x(dot.x));
+      const wy = map.y(toModel.y(dot.y));
       ray.set(new THREE.Vector3(wx, wy, 200), dir);
       const hit = ray.intersectObject(root, true)[0];
       return [{ dot, p: new THREE.Vector3(wx, wy, hit ? hit.point.z + 0.1 : 0) }];
     });
-  }, [isKiln, dots, map, bounds]);
+  }, [isKiln, pyro, dots, map, bounds, toModel]);
+
+  // Pyro models are merged per material, so a subsystem's extent comes from its sensor pads.
+  const padBounds = useMemo(() => {
+    const m = new Map<string, THREE.Box3>();
+    if (!pyro) return m;
+    for (const { dot, p } of pads) {
+      if (!dot.systemId) continue;
+      const b = m.get(dot.systemId) ?? new THREE.Box3();
+      b.expandByPoint(p);
+      m.set(dot.systemId, b);
+    }
+    for (const b of m.values()) b.expandByScalar(2);
+    return m;
+  }, [pyro, pads]);
+  const systemBox = (id: string) => bounds?.bySystem.get(id) ?? padBounds.get(id);
 
   const points = useMemo(() => {
     if (!bounds) return [];
-    const b = bounds.all.clone();
-    b.max.y += isKiln ? 3 : 1.2; // label headroom
-    return corners(b);
+    // The model's own silhouette plus a little headroom over its top for the labels.
+    const c = bounds.all.getCenter(new THREE.Vector3());
+    const head = new THREE.Vector3(c.x, bounds.all.max.y + (isKiln ? 3 : 2), c.z);
+    return bounds.samples.length ? [...bounds.samples, head] : corners(bounds.all);
   }, [bounds, isKiln]);
   const focus = useMemo(() => {
-    const b = selectedId ? bounds?.bySystem.get(selectedId) : undefined;
+    const b = selectedId ? systemBox(selectedId) : undefined;
     return b ? corners(b) : null;
-  }, [selectedId, bounds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- systemBox reads bounds and padBounds
+  }, [selectedId, bounds, padBounds]);
 
   const sensorsBySystem = useMemo(() => {
     const m = new Map<string, number>();
@@ -482,7 +677,8 @@ function SceneContents({
       selectedId,
       hoverId: hover,
       selectColor: colors.select,
-      hoverColor: colors.rimIdle,
+      hoverColor: colors.select,
+      edgeColor: colors.rimIdle,
       onOver: (id) => {
         setHover(id);
         document.body.style.cursor = "pointer";
@@ -500,10 +696,12 @@ function SceneContents({
   const size = all.getSize(new THREE.Vector3());
   const centre = useMemo(() => all.getCenter(new THREE.Vector3()).setY(0), [all]);
   const radius = Math.max(4, size.length() / 2);
-  const pad = isKiln ? 4 : 1.6;
+  const pad = isKiln || pyro ? 4 : 1.6;
   const slabW = size.x + pad;
   const slabD = size.z + pad;
-  const rim = toneColor(machineTone, colors);
+  // Machine-kit rule: the slab rim stays quiet; status lives on the measurement pads and labels.
+  void machineTone;
+  const rim = colors.rimIdle;
 
   return (
     <>
@@ -519,7 +717,8 @@ function SceneContents({
         </mesh>
         <mesh position={[0, PLINTH_H + 0.004, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow raycast={() => undefined}>
           <planeGeometry args={[slabW - 0.3, slabD - 0.3]} />
-          <meshStandardMaterial color={colors.plinthTop} roughness={0.5} metalness={0.25} />
+          {/* 4 mm above the slab is below depth precision from afar: offset it so it never z-fights. */}
+          <meshStandardMaterial color={colors.plinthTop} roughness={0.5} metalness={0.25} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} />
         </mesh>
         {[
           [0, (slabD + 0.03) / 2, slabW + 0.06, 0.05],
@@ -536,18 +735,19 @@ function SceneContents({
 
       <PartCtx.Provider value={ctx}>
         {/* The built model stands on the plinth. */}
-        <group ref={model} position={[0, isKiln ? PLINTH_H : 0, 0]}>
-          {isKiln ? <KilnModel owners={kilnOwn} /> : <GenericModel prims={generic.prims} map={map} owners={genericOwn} />}
+        <group ref={model} position={[0, isKiln || pyro ? PLINTH_H : 0, 0]}>
+          {pyro ? <primitive object={pyro.group} /> : isKiln ? <KilnModel owners={kilnOwn} /> : <GenericModel prims={generic.prims} map={map} owners={genericOwn} />}
         </group>
       </PartCtx.Provider>
 
+      {pyro && <Instruments pads={pads} mats={pyro.mats} edge={colors.rimIdle} />}
       <group position={[0, isKiln ? PLINTH_H : 0, 0]}>
-        <Pads pads={pads} radius={isKiln ? 0.24 : 0.17} colors={colors} focusId={selectedId ?? hover} />
+        <Pads pads={pads} px={6} colors={colors} panel={paints.deep} focusId={selectedId ?? hover} />
       </group>
 
       {bounds &&
         systems.map((s) => {
-          const b = bounds.bySystem.get(s.id);
+          const b = systemBox(s.id);
           if (!b) return null;
           const c = b.getCenter(new THREE.Vector3());
           return (
@@ -562,17 +762,20 @@ function SceneContents({
           );
         })}
       <LabelLayout labels={labels} />
-      <CameraRig points={points} focus={focus} command={command} inset={inset} radius={radius} centre={centre} navMode={navMode} />
+      <CameraRig points={points} focus={focus} command={command} inset={inset} radius={radius} centre={centre} navMode={navMode} persistKey={persistKey} />
     </>
   );
 }
 
 export default function MachineTwinCanvas(props: MachineTwinCanvasProps) {
+  const dpr = useTwinDpr();
   return (
     <div className="ph-twin-canvas">
       <Canvas
         shadows
-        dpr={[1, 1.75]}
+        dpr={dpr}
+        resize={TWIN_RESIZE}
+        events={twinEvents}
         frameloop="demand"
         gl={TWIN_GL}
         camera={{ fov: FOV, near: 0.2, far: CAMERA_FAR, position: [40, 30, 60] }}

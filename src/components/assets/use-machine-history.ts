@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
+import { useApi } from "@/lib/api-cache";
 import type { OperatingEvent } from "./assets-data";
 
 /** One `trend_records` row as served by `/api/trends`. */
@@ -32,58 +33,35 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-async function getData<T>(url: string): Promise<T | null> {
-  try {
-    const r = await fetch(url);
-    if (!r.ok) return null;
-    const j = (await r.json()) as { data?: T };
-    return j.data ?? null;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Stored history for one machine, straight from PostgreSQL: trend records,
  * the operating-event log and the per-sensor default baselines. No fallback
  * data — a machine without stored rows gets empty arrays.
  */
 export function useMachineHistory(machineId: string): MachineHistory {
-  const [state, setState] = useState<{ id: string; data: MachineHistory }>({ id: "", data: EMPTY });
+  const q = encodeURIComponent(machineId);
+  const trends = useApi<Array<{ machineId: string; metrics: TrendRecordMetric[] }>>(`/api/trends?machineId=${q}`);
+  const events = useApi<OperatingEvent[]>(`/api/history?machineId=${q}`);
+  const catalog = useApi<{ sensors?: Array<{ tag: string; defaultBaseline?: unknown }> }>(`/api/catalog?machineId=${q}`);
+  const loaded = !trends.isLoading && !events.isLoading && !catalog.isLoading;
 
-  useEffect(() => {
-    let cancelled = false;
-    const q = encodeURIComponent(machineId);
-    Promise.all([
-      getData<Array<{ machineId: string; metrics: TrendRecordMetric[] }>>(`/api/trends?machineId=${q}`),
-      getData<OperatingEvent[]>(`/api/history?machineId=${q}`),
-      getData<{ sensors?: Array<{ tag: string; defaultBaseline?: unknown }> }>(`/api/catalog?machineId=${q}`),
-    ]).then(([trends, events, catalog]) => {
-      if (cancelled) return;
-      const records = (trends ?? [])
-        .filter((r) => r.machineId === machineId)
-        .flatMap((r) => r.metrics)
-        .map((m) => ({
-          ...m,
-          baseline: num(m.baseline) ?? NaN,
-          advisoryLimit: num(m.advisoryLimit) ?? NaN,
-          criticalLimit: num(m.criticalLimit) ?? NaN,
-          points: Array.isArray(m.points) ? m.points.filter((p) => num(p.value) !== null).map((p) => ({ time: p.time, value: Number(p.value) })) : [],
-        }));
-      const baselines: Record<string, number> = {};
-      for (const s of catalog?.sensors ?? []) {
-        const b = num(s.defaultBaseline);
-        if (b !== null) baselines[s.tag] = b;
-      }
-      setState({
-        id: machineId,
-        data: { loaded: true, records, events: (events ?? []).filter((e) => e.machineId === machineId), baselines },
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [machineId]);
-
-  return state.id === machineId ? state.data : EMPTY;
+  return useMemo(() => {
+    if (!loaded) return EMPTY;
+    const records = (trends.data ?? [])
+      .filter((r) => r.machineId === machineId)
+      .flatMap((r) => r.metrics)
+      .map((m) => ({
+        ...m,
+        baseline: num(m.baseline) ?? NaN,
+        advisoryLimit: num(m.advisoryLimit) ?? NaN,
+        criticalLimit: num(m.criticalLimit) ?? NaN,
+        points: Array.isArray(m.points) ? m.points.filter((p) => num(p.value) !== null).map((p) => ({ time: p.time, value: Number(p.value) })) : [],
+      }));
+    const baselines: Record<string, number> = {};
+    for (const s of catalog.data?.sensors ?? []) {
+      const b = num(s.defaultBaseline);
+      if (b !== null) baselines[s.tag] = b;
+    }
+    return { loaded: true, records, events: (events.data ?? []).filter((e) => e.machineId === machineId), baselines };
+  }, [loaded, machineId, trends.data, events.data, catalog.data]);
 }

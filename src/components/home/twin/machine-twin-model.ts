@@ -232,8 +232,52 @@ function blower(): MachineModel {
   };
 }
 
+/** The five 3D models; every catalog diagram type is drawn as one of them. */
+export type TwinKind = "mill" | "crusher" | "pump" | "blower" | "kiln";
+
+const NATIVE: readonly string[] = ["mill", "crusher", "pump", "blower", "kiln"];
+
+/** Pyro-line diagram types → the closest existing model (the twin has no pyro geometry of its own). */
+const PYRO_TWIN: Record<string, TwinKind> = {
+  "pyro-kiln": "kiln",
+  "clinker-transport": "crusher",
+  "kiln-burner": "blower", // primary-air fan and coal line
+  "grate-cooler": "blower", // cooling-air fans
+  preheater: "blower", // cyclone string on the ID fan
+  "feed-system": "blower", // aeration blowers, feed-elevator drive
+};
+
+export function twinKind(type: string | null | undefined): TwinKind {
+  if (type && NATIVE.includes(type)) return type as TwinKind;
+  return (type && PYRO_TWIN[type]) || "pump";
+}
+
+/**
+ * True when the catalog's sensor x / y and system bboxes are % of another
+ * drawing (the pyro line's own drawings), not of this model's 1000 × 372 space.
+ */
+export function usesForeignSpace(type: string | null | undefined): boolean {
+  return !(type && NATIVE.includes(type));
+}
+
+/** Extent of a model in drawing units: x range of its parts, top of its parts to the floor. */
+export function modelExtent(model: MachineModel): { x0: number; x1: number; y0: number; y1: number } {
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  let y0 = Infinity;
+  for (const p of model.prims) {
+    const [a, b] = p.kind === "box" ? [p.x, p.x + p.w] : p.axis === "x" ? [p.cx - p.len / 2, p.cx + p.len / 2] : [p.cx - p.r, p.cx + p.r];
+    const top = p.kind === "box" ? p.y : p.axis === "y" ? p.cy - p.len / 2 : p.cy - Math.max(p.r, p.r2 ?? 0);
+    x0 = Math.min(x0, a);
+    x1 = Math.max(x1, b);
+    y0 = Math.min(y0, top);
+  }
+  if (!Number.isFinite(x0)) return { x0: 0, x1: 1000, y0: 0, y1: model.ground };
+  return { x0, x1, y0, y1: model.ground };
+}
+
 export function buildMachineModel(type: AssetMachine["diagramType"]): MachineModel {
-  switch (type) {
+  switch (twinKind(type)) {
     case "kiln":
       return kiln();
     case "mill":

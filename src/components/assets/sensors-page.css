@@ -1,0 +1,296 @@
+/* ==========================================================================
+   ULTRON · Machine › Sensors page.
+   Prefix: pg-sensors-  ·  Builds on assets-shell.css (ast-*) and the sibling
+   page primitives (pg-analysis-* sections, index, facts, chips, Why?).
+   Semantic tokens only.
+   ========================================================================== */
+
+.pg-sensors-body {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------------- data-quality mark */
+.pg-sensors-quality {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-md);
+  font-weight: 500;
+  color: var(--page-fg);
+  white-space: nowrap;
+}
+
+.pg-sensors-quality .ast-chip-dot {
+  background: var(--tone);
+}
+
+.pg-sensors-quality[data-tone="idle"] {
+  color: var(--text-muted);
+}
+
+/* Diagram card: data-quality mark in place of the point label. */
+.pg-sensors-qmark {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--tone);
+  white-space: nowrap;
+}
+
+.pg-sensors-flag {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--tone);
+}
+
+/* ---------------------------------------------------------------- tables */
+.pg-sensors-table .ui-table th.pg-sensors-r,
+.pg-sensors-table .ui-table td.pg-sensors-r {
+  text-align: right;
+}
+
+.pg-sensors-table .ui-table td.pg-sensors-r .ast-sm-reading {
+  align-items: flex-end;
+}
+
+.pg-sensors-table .ui-table tbody tr.is-clickable {
+  cursor: pointer;
+}
+
+.pg-sensors-id {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pg-sensors-clip {
+  display: block;
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pg-sensors-clip--sm {
+  max-width: 116px;
+}
+
+/* The register carries ten columns: tighter cell padding keeps it inside the card at 1280 px. */
+.pg-sensors-register .ast-table.ui-table-container .ui-table thead th,
+.pg-sensors-register .ast-table.ui-table-container .ui-table tbody td {
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.pg-sensors-wrap {
+  display: block;
+  min-width: 160px;
+  max-width: 320px;
+  white-space: normal;
+  line-height: 1.35;
+}
+
+.pg-sensors-formula {
+  font-size: var(--fs-md);
+  color: var(--dx-ink);
+  white-space: normal;
+  max-width: 300px;
+}
+
+/* Group header rows in the register (no hover capsule: th, not td). */
+.ast-table.ui-table-container .ui-table tr.pg-sensors-group th {
+  padding: 14px 16px 6px;
+  text-align: left;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--separator);
+}
+
+.ast-table.ui-table-container .ui-table tbody:first-of-type tr.pg-sensors-group th {
+  padding-top: 6px;
+}
+
+.pg-sensors-group th {
+  white-space: nowrap;
+}
+
+.pg-sensors-group-name {
+  color: var(--page-fg);
+  margin-right: 10px;
+}
+
+.pg-sensors-group .ast-caption {
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.pg-sensors-register {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------------- detail panel */
+.pg-sensors-validity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: var(--corner-sm);
+  border-left: 2px solid var(--tone);
+  background: var(--row-hover-bg, transparent);
+}
+
+.pg-sensors-validity-note {
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: 1.4;
+  color: var(--page-fg);
+}
+
+.pg-sensors-spark {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ---------------------------------------------------------------- section cards */
+.pg-sensors-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 20px;
+}
+
+/* Small upper-case sub-label inside a section card (one table each). */
+.pg-sensors-sub {
+  margin: 8px 0 0;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.pg-sensors-card > .pg-sensors-sub:first-child,
+.pg-sensors-card > .pg-sensors-chain:first-child .pg-sensors-sub {
+  margin-top: 0;
+}
+
+.pg-sensors-card .ui-table-container {
+  margin: 0 -8px;
+}
+
+.pg-sensors-chain {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--separator);
+}
+
+/* D4-specified sensor missing from the DB catalog. */
+.ast-table.ui-table-container .ui-table tbody tr.pg-sensors-ghost td {
+  font-size: var(--fs-md);
+  color: var(--page-fg);
+  border-bottom-style: dashed;
+}
+
+/* Calculated value in the detail panel. */
+.pg-sensors-calc {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pg-sensors-calc .pg-sensors-sub {
+  margin: 0;
+}
+
+.pg-sensors-inputs {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pg-sensors-inputs li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--separator);
+  font-size: var(--fs-md);
+}
+
+.pg-sensors-inputs li:last-child {
+  border-bottom: 0;
+}
+
+.pg-sensors-input {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--dx-ink);
+  cursor: pointer;
+}
+
+.pg-sensors-input:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---------------------------------------------------------------- map controls
+   One row inside the Map section: system and sub-assembly pills on the left,
+   the colour-by toggle on the right. */
+.pg-sensors .ast-smd-row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.pg-sensors .ast-smd-toolbar {
+  margin-left: auto;
+}
+
+/* Channel tiles sit on the section card: plain surface, no second layer of
+   frosted glass, no float shadow, no hover lift. */
+.pg-sensors .ast-smw-card {
+  background: var(--hover-faint);
+  border-color: var(--separator);
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.pg-sensors .ast-smw-card:hover,
+.pg-sensors .ast-smw-card[data-hot] {
+  transform: none;
+  background: var(--row-hover-bg);
+}
+
+.pg-sensors .ast-smw-card:is([data-tone="warn"], [data-tone="bad"]) {
+  border-color: color-mix(in srgb, var(--tone) 45%, transparent);
+}
+
+.pg-sensors .ast-smw-card[aria-pressed="true"] {
+  border-color: var(--dx-ink);
+}

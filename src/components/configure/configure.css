@@ -1,0 +1,204 @@
+/* ==========================================================================
+   ULTRON · Configure (data foundation). Prefix: pg-cfg-
+   Builds on assets-shell.css (ast-*) and ui/page.css (pg-*). Tokens only.
+   ========================================================================== */
+
+.pg-cfg-root {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.pg-cfg-context {
+  margin: 4px 0 0;
+  font-size: var(--fs-md);
+  color: var(--text-muted);
+}
+
+.pg-cfg-kpi-sub {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------- record chart */
+.pg-cfg-bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pg-cfg-bar {
+  display: grid;
+  grid-template-columns: minmax(120px, 200px) minmax(0, 1fr) 96px;
+  align-items: center;
+  gap: 12px;
+  font-size: var(--fs-md);
+}
+
+.pg-cfg-bar-name {
+  color: var(--page-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pg-cfg-bar-track {
+  position: relative;
+  height: 10px;
+  border-radius: var(--corner-pill);
+  background: var(--dx-track);
+  overflow: hidden;
+}
+
+.pg-cfg-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: var(--corner-pill);
+  background: var(--text-muted);
+}
+
+.pg-cfg-bar[data-tone="warn"] .pg-cfg-bar-fill {
+  background: var(--tone);
+}
+
+.pg-cfg-bar-value {
+  text-align: right;
+  color: var(--dx-ink);
+}
+
+.pg-cfg-bar[data-tone="warn"] .pg-cfg-bar-value {
+  color: var(--tone);
+}
+
+.pg-cfg-scale {
+  margin: 12px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------- checks */
+.pg-cfg-checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pg-cfg-check {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--separator);
+  font-size: var(--fs-md);
+}
+
+.pg-cfg-check:last-child {
+  border-bottom: 0;
+}
+
+.pg-cfg-check-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pg-cfg-check-title {
+  color: var(--dx-ink);
+}
+
+.pg-cfg-check-detail {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+/* Time zone picker inside the plant table (row click still opens the plant). */
+.pg-cfg-tz {
+  display: inline-flex;
+  max-width: 240px;
+}
+
+/* ---------------------------------------------------------------- database */
+.pg-cfg-db-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 32px;
+  margin: 0 0 12px;
+  font-size: var(--fs-md);
+}
+
+.pg-cfg-db-facts dt {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.pg-cfg-db-facts dd {
+  margin: 2px 0 0;
+  color: var(--dx-ink);
+}
+
+.pg-cfg-db-facts dd[data-tone="warn"],
+.pg-cfg-db-facts dd[data-tone="bad"] {
+  color: var(--tone);
+}
+
+/* ---------------------------------------------------------------- reset */
+.pg-cfg-reset {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: var(--fs-md);
+}
+
+/* ---------------------------------------------------------------- tables */
+.pg-cfg-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.pg-cfg-lead {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pg-cfg-dialog-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: var(--fs-md);
+  color: var(--page-fg);
+  line-height: 1.5;
+}
+
+.pg-cfg-dialog-text {
+  margin: 0;
+  font-size: var(--fs-base);
+  color: var(--page-fg);
+  line-height: 1.5;
+}
+
+@media (max-width: 1100px) {
+  .pg-cfg-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .pg-cfg-bar {
+    grid-template-columns: minmax(0, 1fr) 80px;
+  }
+
+  .pg-cfg-bar-track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}

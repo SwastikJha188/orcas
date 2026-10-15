@@ -181,7 +181,7 @@ export function FormatPreview({
           </div>
           {listenError && <FormNote tone="bad">{listenError}</FormNote>}
           {loadError ? (
-            <FormNote tone="bad">Samples unavailable: {loadError}</FormNote>
+            <FormNote tone="bad">Samples unavailable. Retry.</FormNote>
           ) : samples === null ? (
             <p className="fmt-muted">Loading captured messages…</p>
           ) : filtered.length === 0 ? (

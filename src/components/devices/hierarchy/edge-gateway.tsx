@@ -153,7 +153,7 @@ export function EdgeGatewayView({ ix, gw, now, sectionNav, onSelect, onEdit, onA
         {sources.length === 0 ? (
           <div className="ast-card ast-empty">
             <strong className="hx-empty-title">No sources</strong>
-            Add the DAQ racks, PLCs, SCADA or DCS this gateway reads. The source code is the rack_id it publishes under.
+            Add the DAQ racks, PLCs, SCADA or DCS this gateway reads. The source code is the code it publishes under.
             <PillButton variant="secondary" icon={<IconPlus size={13} />} onClick={() => onAddSource()}>
               Add source
             </PillButton>

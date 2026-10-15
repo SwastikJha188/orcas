@@ -12,7 +12,7 @@ import { formatClock } from "@/lib/kiln-sim/engine";
 import { AlertsFeed, HealthTrendCard, PlantHealthGauge, type HomeActivity, type HomeAlert } from "../home-widgets";
 import type { TwinPaints } from "./twin-part";
 import type { MachineTwinSystem } from "./machine-twin-canvas";
-import { TwinNavBar, twinHint, type TwinNavMode } from "./twin-nav-ui";
+import { TwinHint, TwinNavBar, usePersistedNavMode } from "./twin-nav-ui";
 import type { TwinCameraCommand, TwinInset } from "./plant-twin-canvas";
 import { hasWebGL, useTwinColors } from "./plant-twin";
 import { useCoveredInset, type Side } from "./use-covered-inset";
@@ -40,27 +40,28 @@ function mixHex(a: string, b: string, t: number): string {
   return `#${x.map((c, i) => Math.round(c + (y[i] - c) * t).toString(16).padStart(2, "0")).join("")}`;
 }
 
-/** Real-world twin paints (--twin-* and --mx-* tokens) resolved for WebGL; follows theme switches. */
+/** Machine-kit (TSE) paints from the --mx-* tokens, resolved for WebGL; follows theme switches. */
 function usePaints(): TwinPaints | null {
   const colors = useTwinColors();
   return useMemo(() => {
     if (!colors) return null;
     const cs = getComputedStyle(document.documentElement);
     const v = (n: string, f: string) => cs.getPropertyValue(n).trim() || f;
-    const shell = v("--twin-shell", "#9198a0");
+    const dark = colors.dark;
     const material = v("--mx-material", "#9a7a3c");
+    const shell = v("--mx-raised", dark ? "#2a2d34" : "#f3f4f6");
     return {
-      concrete: v("--twin-concrete", "#b4b5b8"),
-      steel: v("--twin-steel", "#d3d5d8"),
-      steelDark: v("--twin-steel-dark", "#7c828a"),
+      concrete: v("--mx-raised-hi", dark ? "#363a42" : "#ffffff"),
+      steel: v("--mx-raised", dark ? "#2a2d34" : "#f3f4f6"),
+      steelDark: v("--mx-metal-dark", dark ? "#25282e" : "#5c6572"),
       shell,
-      machined: v("--twin-machined", "#5c6169"),
-      paint: v("--twin-paint", "#3d82c2"),
-      housing: v("--twin-housing", "#858b93"),
+      machined: v("--mx-metal", dark ? "#565b65" : "#8a93a0"),
+      paint: v("--mx-body", dark ? "#1c1e23" : "#e3e5e9"),
+      housing: v("--mx-body", dark ? "#1c1e23" : "#e3e5e9"),
       material,
-      // Burning-zone shell: the steel, warmed toward the process brass.
-      heat: mixHex(shell, material, 0.45),
-      deep: v("--mx-deep", "#0c0d10"),
+      // Burning-zone shell: graphite warmed toward the process brass (heat is process, not decoration).
+      heat: mixHex(shell, material, 0.35),
+      deep: v("--mx-deep", dark ? "#0c0d10" : "#c2c6cd"),
     };
   }, [colors]);
 }
@@ -92,7 +93,7 @@ export function MachineTwinHome({
   const [supported, setSupported] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [command, setCommand] = useState<TwinCameraCommand>({ kind: "fit", n: 0 });
-  const [navMode, setNavMode] = useState<TwinNavMode>("move");
+  const [navMode, setNavMode] = usePersistedNavMode();
 
   useEffect(() => setSupported(hasWebGL()), []);
   useEffect(() => setSelectedId(null), [machine.id]);
@@ -183,6 +184,7 @@ export function MachineTwinHome({
               paints={paints}
               inset={covered}
               navMode={navMode}
+              persistKey={`machine.${machine.id}`}
             />
           ) : (
             <div className="ph-twin-loading" role="status">Loading 3D twin…</div>
@@ -190,9 +192,7 @@ export function MachineTwinHome({
 
           <TwinNavBar navMode={navMode} onNavMode={setNavMode} onReset={() => setCommand((c) => ({ kind: "fit", n: c.n + 1 }))} />
 
-          <div className="ph-twin-hint" aria-hidden="true">
-            {twinHint(navMode, "click a component")}
-          </div>
+          <TwinHint navMode={navMode} extra="click a component" />
 
           <div className="ph-twin-legend" aria-label="Legend">
             <span><i data-tone="good" />Normal</span>

@@ -1,0 +1,534 @@
+/* =========================================================================
+   Diagnosis page (prefix: pg-diag-). One scrolling page: header → KPI strip
+   → sticky section index → up to six sections, one card each. Shares the
+   index / section primitives of analysis/analysis-page.css and the divider
+   tables of diagnosis/overview-tab.css (dxo-*). Monochrome by default;
+   status colour only on things in warning / alarm. 8px spacing grid.
+   ========================================================================= */
+
+.pg-diag {
+  gap: 32px;
+  padding-bottom: 32px;
+}
+
+.pg-diag-pipe > span + span::before {
+  content: "·";
+  margin: 0 8px;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+/* ------------------------------ Header ---------------------------------- */
+
+.pg-diag-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* KPI tiles: label above value, no icons (layout from ast-kpi). */
+.pg-diag .ast-kpi {
+  min-height: 0;
+  gap: 8px;
+  padding: 16px 20px;
+}
+
+.pg-diag .ast-kpi-label {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pg-diag .ast-kpi-value {
+  font-size: var(--fs-5xl);
+}
+
+.pg-diag .ast-kpi .pg-kpi-text {
+  font-size: var(--fs-5xl);
+  font-weight: 500;
+  line-height: 1.1;
+  color: var(--dx-ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pg-diag .ast-kpi .ast-unit {
+  margin-left: 4px;
+  font-size: var(--fs-md);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+/* ------------------------------ Shared ---------------------------------- */
+.pg-diag-card-head {
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.pg-diag-pipe {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.pg-diag-missing {
+  margin: 0 0 8px;
+  padding: 0 16px;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.pg-diag-wrap {
+  white-space: normal;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.pg-diag-nowrap {
+  white-space: nowrap;
+}
+
+.pg-diag-muted {
+  color: var(--text-muted);
+}
+
+.pg-diag-name {
+  color: var(--dx-ink);
+  font-weight: 500;
+  white-space: normal;
+  line-height: 1.35;
+}
+
+.pg-diag-code {
+  margin-left: 4px;
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Status: dot + text. Colour only for warn / bad; everything else is muted. */
+.pg-diag-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-md);
+  color: var(--page-fg);
+  white-space: nowrap;
+}
+
+.pg-diag-state .ast-chip-dot {
+  background: var(--text-muted);
+}
+
+.pg-diag-state:is([data-tone="warn"], [data-tone="bad"]) {
+  color: var(--tone);
+}
+
+.pg-diag-state:is([data-tone="warn"], [data-tone="bad"]) .ast-chip-dot {
+  background: var(--tone);
+}
+
+.pg-diag-val:is([data-tone="warn"], [data-tone="bad"]) {
+  color: var(--tone);
+}
+
+.pg-diag-unit {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.pg-diag-inline-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--dx-ink);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--separator);
+  text-underline-offset: 3px;
+}
+
+.pg-diag-inline-link:hover {
+  text-decoration-color: currentColor;
+}
+
+.btn-pill.pg-diag-sm {
+  padding: 4px 12px;
+  font-size: var(--fs-sm);
+  gap: 4px;
+}
+
+/* ------------------------------ Tables ---------------------------------- */
+.pg-diag-table td {
+  vertical-align: middle;
+}
+
+.pg-diag-table tr.is-focus td {
+  background: var(--row-hover-bg);
+}
+
+.pg-diag-row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pg-diag-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-md);
+  white-space: nowrap;
+}
+
+.pg-diag-samples {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.pg-diag-samples i {
+  width: 8px;
+  height: 4px;
+  background: var(--dx-track);
+}
+
+.pg-diag-samples i.is-on {
+  background: var(--dx-ink-2);
+}
+
+.pg-diag-cited {
+  font-size: var(--fs-sm);
+  color: var(--dx-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.pg-diag-act-text {
+  display: block;
+  min-width: 240px;
+  max-width: 520px;
+  white-space: normal;
+  line-height: 1.4;
+  color: var(--dx-ink);
+}
+
+.pg-diag-log-time {
+  width: 1%;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.pg-diag-evrow {
+  cursor: default;
+}
+
+/* Expanded finding row */
+.pg-diag-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px 32px;
+  padding: 8px 0 8px;
+}
+
+.pg-diag-dl {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 8px 16px;
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: 1.45;
+  align-content: start;
+}
+
+.pg-diag-dl dt {
+  color: var(--text-muted);
+}
+
+.pg-diag-dl dd {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  color: var(--page-fg);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.pg-diag-dl dd:has(> .pg-diag-inline-link) {
+  display: block;
+}
+
+.pg-diag-alts {
+  margin: 0;
+  padding-left: 16px;
+}
+
+/* ------------------------- Vibration zone bar --------------------------- */
+.pg-diag-zonebar {
+  display: block;
+  width: 200px;
+  height: 22px;
+  overflow: visible;
+}
+
+.pg-diag-zseg {
+  fill: var(--dx-track);
+}
+
+.pg-diag-zseg.is-warn {
+  fill: color-mix(in srgb, var(--status-warning) 35%, var(--dx-track));
+}
+
+.pg-diag-zseg.is-bad {
+  fill: color-mix(in srgb, var(--status-danger) 35%, var(--dx-track));
+}
+
+.pg-diag-ztick {
+  font-family: var(--font-ui);
+  font-size: var(--fs-3xs);
+  fill: var(--text-muted);
+}
+
+.pg-diag-zmodel {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.2;
+}
+
+.pg-diag-zmark {
+  fill: var(--dx-ink);
+}
+
+/* ------------------------------ Responsive ------------------------------ */
+@media (max-width: 900px) {
+  .pg-diag-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------------------- One card per section ---------------------------
+   The section shell (pg-analysis-section) is the card; inner blocks sit
+   flush inside it. */
+.pg-diag .pg-analysis-section .dxo-card {
+  padding: 0;
+  gap: 8px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.pg-diag .pg-analysis-section .dxo-table-card > .dxo-card-head {
+  padding: 0;
+}
+
+.pg-diag .pg-analysis-section .dxo-table-wrap {
+  margin: 0 -16px;
+  width: calc(100% + 32px);
+}
+
+.pg-diag .pg-diag-missing {
+  padding: 0;
+}
+
+/* ------------------------- Section internals ---------------------------- */
+.pg-diag-warn {
+  color: var(--status-warning);
+}
+
+.pg-diag-sub {
+  margin-top: 16px;
+}
+
+.pg-diag-subhead {
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Rule matrix */
+.pg-diag-group th {
+  padding: 16px 16px 8px;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--separator);
+}
+
+.pg-diag-rules tr.is-quiet .pg-diag-name {
+  font-weight: 400;
+  color: var(--dx-ink-2);
+}
+
+.pg-diag-logic {
+  max-width: 380px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+/* Fault candidates */
+.pg-diag-prob {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.pg-diag-bar {
+  position: relative;
+  width: 56px;
+  height: 3px;
+  background: var(--dx-track);
+}
+
+.pg-diag-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--dx-ink-2);
+}
+
+.pg-diag-matrix {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  align-self: start;
+}
+
+.pg-diag-matrix th {
+  padding: 4px 8px;
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  text-align: left;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--separator);
+}
+
+.pg-diag-matrix td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--separator);
+  white-space: nowrap;
+}
+
+.pg-diag-matrix tr:last-child td {
+  border-bottom: 0;
+}
+
+.pg-diag-matrix .is-right {
+  text-align: right;
+}
+
+/* Shelving */
+.pg-diag-shelve {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 8px 0;
+}
+
+.pg-diag-select select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 6px 14px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--corner-pill);
+  background: var(--pill-active-bg);
+  color: var(--dx-ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.pg-diag-shelf {
+  display: flex;
+  flex-direction: column;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pg-diag-shelf li {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--separator);
+}
+
+.pg-diag-shelf li:last-child {
+  border-bottom: 0;
+}
+
+/* Residual sparkline */
+.pg-diag-spark {
+  display: block;
+  width: 96px;
+  height: 22px;
+  overflow: visible;
+}
+
+.pg-diag-spark-band {
+  fill: var(--dx-track);
+  opacity: 0.6;
+}
+
+.pg-diag-spark-lim {
+  stroke: var(--separator);
+  stroke-width: 1;
+}
+
+.pg-diag-spark-line {
+  fill: none;
+  stroke: var(--dx-ink-2);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.pg-diag .ast-cell-stack > .pg-diag-inline-link {
+  align-self: flex-start;
+}
+
+/* ------------------------------------------------ keyboard rows, quiet fold, method */
+.pg-diag .dxo-row.is-clickable {
+  cursor: pointer;
+  outline: none;
+}
+
+.pg-diag .dxo-row.is-clickable:focus-visible > td:first-child {
+  box-shadow: inset 2px 0 0 var(--signal-blue);
+}
+
+.pg-diag-quiet-row > td {
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--separator);
+}
+
+.pg-diag .pg-analysis-why {
+  margin-top: 8px;
+}
+
+.pg-diag .pg-analysis-why-body,
+.pg-diag .pg-analysis-why-body p {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--text-muted);
+}

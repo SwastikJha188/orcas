@@ -74,7 +74,17 @@ function useClock(ms: number): number {
   return now;
 }
 
-export function DevicesHierarchy({ sectionNav }: { sectionNav: React.ReactNode }) {
+export function DevicesHierarchy({
+  sectionNav,
+  initialSelection,
+  startConnect,
+}: {
+  sectionNav: React.ReactNode;
+  /** Selection key to open on (from the Devices overview); shows all plants so it is in the tree. */
+  initialSelection?: string;
+  /** Open the connect-gateway wizard on mount. */
+  startConnect?: boolean;
+}) {
   const { registry, loading, error, refresh, snapshot, history } = useEdge();
   const [selKey, setSelKey] = useState<string>(NETWORK_KEY);
   const [plantId, setPlantId] = useState<string>(ALL_PLANTS);
@@ -84,12 +94,22 @@ export function DevicesHierarchy({ sectionNav }: { sectionNav: React.ReactNode }
 
   // Restored after mount: sessionStorage is client-only and SSR renders the default.
   useEffect(() => {
-    try {
-      setSelKey(sessionStorage.getItem(SELECTED_KEY) ?? NETWORK_KEY);
-      setPlantId(sessionStorage.getItem(PLANT_KEY) ?? ALL_PLANTS);
-    } catch {
-      /* storage unavailable */
+    if (initialSelection) {
+      setSelKey(initialSelection);
+      setPlantId(ALL_PLANTS);
+      store(SELECTED_KEY, initialSelection);
+      store(PLANT_KEY, ALL_PLANTS);
+    } else {
+      try {
+        setSelKey(sessionStorage.getItem(SELECTED_KEY) ?? NETWORK_KEY);
+        setPlantId(sessionStorage.getItem(PLANT_KEY) ?? ALL_PLANTS);
+      } catch {
+        /* storage unavailable */
+      }
     }
+    if (startConnect) setDialog({ seq: 1, open: true, spec: { kind: "connect" } });
+    // Mount-only: the parent remounts this view for each new intent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const select = useCallback((sel: Selection) => {
@@ -128,8 +148,7 @@ export function DevicesHierarchy({ sectionNav }: { sectionNav: React.ReactNode }
               <strong className="hx-empty-title">Loading device registry…</strong>
             ) : (
               <>
-                <strong className="hx-empty-title">Device registry unavailable</strong>
-                {error}
+                <strong className="hx-empty-title">Device registry unavailable. Retry.</strong>
                 <PillButton variant="secondary" onClick={() => void refresh()}>
                   Retry
                 </PillButton>

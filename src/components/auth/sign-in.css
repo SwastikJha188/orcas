@@ -1,0 +1,29 @@
+/* Sign-in: one centred card on the workspace, ULTRON tokens in both themes. */
+.auth-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  background: var(--workspace-bg);
+}
+.auth-card {
+  width: min(400px, 100%);
+  padding: 28px 28px 24px;
+  border-radius: var(--corner-card);
+  background: var(--card-glass-bg);
+  border: 1px solid var(--separator);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.auth-brand { display: flex; align-items: center; gap: 10px; }
+.auth-brand img { height: 18px; width: auto; }
+.auth-brand .brand-logo-light { display: none; }
+html[data-theme="light"] .auth-brand .brand-logo-dark { display: none; }
+html[data-theme="light"] .auth-brand .brand-logo-light { display: block; }
+.auth-title { margin: 0; font-size: 20px; font-weight: 600; color: var(--dx-ink); letter-spacing: -0.01em; }
+.auth-sub { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); }
+.auth-form { display: flex; flex-direction: column; gap: 14px; }
+.auth-error { margin: 0; font-size: 13px; color: var(--status-danger); }
+.auth-form .btn-pill { justify-content: center; width: 100%; }
+.auth-foot { margin: 0; font-size: 12px; color: var(--text-muted); }

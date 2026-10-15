@@ -33,7 +33,7 @@
   border-radius: var(--corner-pill);
   background: color-mix(in srgb, var(--signal-blue) 14%, transparent);
   color: var(--signal-blue);
-  font-size: 0.68rem;
+  font-size: var(--fs-xs);
   font-weight: 600;
   line-height: 18px;
   flex-shrink: 0;
@@ -67,7 +67,7 @@
   background: var(--active-faint);
   color: var(--dx-ink);
   font-family: var(--font-ui);
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
   font-weight: 500;
   overflow-wrap: anywhere;
 }
@@ -80,7 +80,7 @@
   background: var(--active-faint);
   color: var(--dx-ink);
   font: inherit;
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
   font-weight: 500;
   cursor: pointer;
 }
@@ -102,7 +102,7 @@
 }
 
 .dv-value {
-  font-size: 0.92rem;
+  font-size: var(--fs-lg);
   font-weight: 500;
   color: var(--dx-ink);
 }
@@ -122,7 +122,7 @@
 
 .dv-action .btn-pill {
   padding: 5px 14px;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 
 .dv-points tbody tr {
@@ -184,7 +184,7 @@
   background: transparent;
   color: var(--dx-ink);
   font: inherit;
-  font-size: 0.72rem;
+  font-size: var(--fs-sm);
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -206,7 +206,7 @@ button.dv-chip:hover {
   background: var(--active-faint);
   color: var(--dx-ink);
   font: inherit;
-  font-size: 0.72rem;
+  font-size: var(--fs-sm);
   font-weight: 500;
   cursor: pointer;
 }
@@ -263,7 +263,7 @@ button.dv-chip:hover {
   background: none;
   color: var(--dx-ink);
   font: inherit;
-  font-size: 0.9rem;
+  font-size: var(--fs-base);
   font-weight: 500;
   text-align: left;
   cursor: pointer;
@@ -288,7 +288,7 @@ button.dv-rack-name:hover {
 
 .dv-rack-tail .btn-pill {
   padding: 5px 14px;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
 }
 
 .dv-tiles {
@@ -344,14 +344,14 @@ button.dv-tile-head:hover {
 .dv-tile-name {
   grid-area: name;
   color: var(--dx-ink);
-  font-size: 0.82rem;
+  font-size: var(--fs-md);
   font-weight: 500;
 }
 
 .dv-tile-type {
   grid-area: type;
   color: var(--text-muted);
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -360,7 +360,7 @@ button.dv-tile-head:hover {
 .dv-tile-count {
   grid-area: count;
   color: var(--text-muted);
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
 }
 
 .dv-chlist {
@@ -375,7 +375,7 @@ button.dv-tile-head:hover {
   align-items: center;
   gap: 8px;
   padding: 4px 10px;
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
 }
 
 .dv-chline + .dv-chline {
@@ -399,7 +399,7 @@ button.dv-tile-head:hover {
 }
 
 .dv-ch-value .dv-value {
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
 }
 
 .dv-ch-map {
@@ -426,7 +426,7 @@ button.dv-tile-head:hover {
   border-radius: var(--corner-sm);
   background: var(--active-faint);
   color: var(--dx-ink);
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   overflow-wrap: anywhere;
 }
 
@@ -437,7 +437,7 @@ button.dv-tile-head:hover {
 
 .dv-cardnav .nav-pill {
   padding: 4px 12px;
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
 }
 
 .dv-cardnav .nav-pill.active {
@@ -458,7 +458,7 @@ button.dv-tile-head:hover {
 
 .dv-setup-lead {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: var(--fs-md);
   color: var(--text-muted);
 }
 
@@ -483,7 +483,7 @@ button.dv-tile-head:hover {
 }
 
 .dv-setup-k {
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -491,14 +491,14 @@ button.dv-tile-head:hover {
 }
 
 .dv-setup-v {
-  font-size: 0.82rem;
+  font-size: var(--fs-md);
   font-weight: 500;
   color: var(--dx-ink);
   overflow-wrap: anywhere;
 }
 
 .dv-setup-s {
-  font-size: 0.72rem;
+  font-size: var(--fs-sm);
   color: var(--text-muted);
 }
 
@@ -514,14 +514,14 @@ button.dv-tile-head:hover {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   font-weight: 500;
   color: var(--text-muted);
 }
 
 .dv-setup-copy.btn-pill {
   padding: 4px 12px;
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
 }
 
 .dv-setup-code {
@@ -532,14 +532,14 @@ button.dv-tile-head:hover {
   background: var(--workspace-bg);
   color: var(--dx-ink);
   font-family: var(--font-ui);
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
 .dv-setup-foot {
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
   line-height: 1.45;
   color: var(--text-muted);
 }
@@ -568,75 +568,11 @@ button.dv-tile-head:hover {
 
 .dv-section-head .btn-pill {
   padding: 6px 16px;
-  font-size: 0.82rem;
+  font-size: var(--fs-md);
 }
 
 .dv-tile-name .dv-new {
   margin-left: 6px;
-}
-
-/* Step indicator. */
-.dv-steps {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 18px;
-  margin: 0 0 4px;
-  padding: 0 0 12px;
-  list-style: none;
-  border-bottom: 1px solid var(--separator);
-  font-size: 0.8rem;
-  color: var(--text-muted);
-}
-
-.dv-steps li {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.dv-step-n {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 1px solid var(--separator);
-  font-size: 0.7rem;
-  font-weight: 600;
-}
-
-.dv-steps li[aria-current="step"] {
-  color: var(--dx-ink);
-  font-weight: 500;
-}
-
-.dv-steps li[aria-current="step"] .dv-step-n {
-  border-color: transparent;
-  background: var(--dx-ink);
-  color: var(--workspace-bg);
-}
-
-.dv-steps li[data-done] .dv-step-n {
-  border-color: transparent;
-  background: var(--active-faint);
-  color: var(--dx-ink);
-}
-
-.dv-wizard-line {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  padding: 10px 14px;
-  border-radius: var(--corner-row);
-  background: var(--active-faint);
-}
-
-.dv-wizard-line .btn-pill {
-  padding: 5px 14px;
-  font-size: 0.8rem;
 }
 
 .dv-topic-row {
@@ -732,7 +668,6 @@ button.dv-tile-head:hover {
 }
 
 .dv-found-row:focus-visible,
-.dv-review-add:focus-visible,
 .dv-map-btn:focus-visible,
 .dv-chip:focus-visible,
 .dv-tile-head:focus-visible,
@@ -757,123 +692,6 @@ button.dv-tile-head:hover {
 .dv-found-tail {
   margin-left: auto;
   flex-shrink: 0;
-}
-
-/* Review rows. */
-.dv-review-total {
-  margin: 0;
-  font-size: 0.9rem;
-  color: var(--page-fg);
-}
-
-.dv-review-total b {
-  color: var(--dx-ink);
-  font-weight: 500;
-}
-
-.dv-review {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.dv-review-row {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: var(--corner-row);
-  background: var(--active-faint);
-}
-
-.dv-review-row[data-off] {
-  opacity: 0.6;
-}
-
-.dv-review-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.dv-check {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--signal-blue);
-  flex-shrink: 0;
-}
-
-.dv-review-remove {
-  margin-left: auto;
-}
-
-.dv-review-cards {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.dv-cardchip {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px 9px;
-  border-radius: var(--corner-sm);
-  border: 1px solid var(--separator);
-  color: var(--text-muted);
-  font-size: 0.72rem;
-  white-space: nowrap;
-}
-
-.dv-cardchip b {
-  color: var(--dx-ink);
-  font-weight: 500;
-}
-
-.dv-cardedit {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.dv-cardedit .ui-input {
-  width: 76px;
-  padding: 4px 8px;
-  font-size: 0.75rem;
-}
-
-.dv-cardedit .ui-input[type="number"] {
-  width: 56px;
-}
-
-.dv-review-error {
-  color: var(--status-danger);
-}
-
-.dv-review-add {
-  display: inline-flex;
-  align-items: center;
-  align-self: flex-start;
-  gap: 6px;
-  padding: 6px 14px;
-  border: 1px dashed var(--separator);
-  border-radius: var(--corner-pill);
-  background: transparent;
-  color: var(--dx-ink);
-  font: inherit;
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-
-.dv-review-add:hover {
-  background: var(--row-hover-bg);
-}
-
-.dv-wizard-done {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 
 /* ---------------------------------------------------------------- gateway topics */
@@ -918,7 +736,7 @@ button.dv-tile-head:hover {
   max-height: 280px;
   overflow: auto;
   font-family: var(--font-ui);
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   line-height: 1.5;
   color: var(--dx-ink);
   white-space: pre-wrap;

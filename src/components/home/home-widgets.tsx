@@ -1,11 +1,13 @@
 "use client";
 
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { StatusTag } from "@/components/ui/status-tag";
 import { PillButton, PillNav } from "@/components/ui";
 import { healthTone, type Tone } from "@/components/assets/assets-shell-ui";
-import { smoothPath } from "@/components/assets/diagnosis/shared";
+import { smoothPath } from "@/components/ui/sparkline";
 import type { Distribution } from "@/components/assets/hierarchy/hierarchy-model";
-import { OPS_MACHINE_ID, useKilnOps } from "@/providers/kiln-ops-context";
+import { useKilnOps } from "@/providers/kiln-ops-context";
+import { conditionTone, worstCondition, type Condition } from "@/components/ui/status";
 import "@/components/assets/assets-shell.css";
 import "./plant-home.css";
 
@@ -24,8 +26,8 @@ function useSize<T extends HTMLElement>(fallbackW = 320, fallbackH = 0) {
     const el = ref.current;
     if (!el) return;
     const update = () => {
-      const r = el.getBoundingClientRect();
-      const next = { width: Math.max(80, Math.round(r.width)), height: Math.round(r.height) };
+      // Layout px (offset*), not getBoundingClientRect: under the TV `body { zoom }` rects are zoomed.
+      const next = { width: Math.max(80, el.offsetWidth), height: el.offsetHeight };
       setSize((cur) => (cur.width === next.width && cur.height === next.height ? cur : next));
     };
     update();
@@ -73,6 +75,20 @@ function gaugeArc(from: number, to: number, r: number) {
   return `M ${a.x} ${a.y} A ${r} ${r} 0 ${large} 1 ${b.x} ${b.y}`;
 }
 
+/** Truthful condition summary for a distribution: the count of the worst condition ("1 critical", "2 advisory") or "Normal". */
+export function conditionSummary(dist: Distribution): { tone: Tone; label: string } {
+  const list: Condition[] = [];
+  if (dist.critical > 0) list.push("Critical");
+  if (dist.atRisk > 0) list.push("Advisory");
+  if (dist.healthy > 0) list.push("Normal");
+  if (dist.offline > 0) list.push("Standby");
+  const worst = worstCondition(list);
+  const tone = conditionTone(worst);
+  if (worst === "Critical") return { tone, label: `${dist.critical} critical` };
+  if (worst === "Advisory") return { tone, label: `${dist.atRisk} advisory` };
+  return { tone, label: worst };
+}
+
 export function PlantHealthGauge({
   score,
   dist,
@@ -85,8 +101,7 @@ export function PlantHealthGauge({
 }) {
   const value = Math.max(0, Math.min(100, score ?? 0));
   const tone: Tone = score === null ? "idle" : healthTone(value);
-  const chip =
-    dist.critical > 0 ? { tone: "bad" as Tone, label: "Critical" } : dist.atRisk > 0 ? { tone: "warn" as Tone, label: "At risk" } : { tone: "good" as Tone, label: "Normal" };
+  const chip = conditionSummary(dist);
   const gap = 0.006;
   const t = HEALTH_TARGET / 100;
   const tip = gaugeAt(t, G_R + 9);
@@ -97,10 +112,7 @@ export function PlantHealthGauge({
     <section className="ast-card ph-card ph-gauge" aria-label={title}>
       <div className="ast-card-head ph-card-head">
         <h2 className="ast-card-title">{title}</h2>
-        <span className="ast-chip" data-tone={chip.tone}>
-          <span className="ast-chip-dot" aria-hidden="true" />
-          {chip.label}
-        </span>
+        <StatusTag tone={chip.tone} label={chip.label} />
       </div>
       <div className="ph-gauge-meter">
         <svg viewBox={`0 0 ${G_W} ${G_H}`} className="ph-gauge-svg" data-tone={tone} role="img" aria-label={`${title} ${score ?? "unknown"} of 100, target ${HEALTH_TARGET}`}>
@@ -200,36 +212,35 @@ export function AlertsFeed({
         <h2 className="ast-card-title">
           Alerts
           {activity.length > 0 && (
-            <span className="ph-live" title="Live from the KLN-01 simulation">
+            <span className="ph-live" title="Live from the plant simulation">
               <i aria-hidden="true" />
               Live
             </span>
           )}
         </h2>
         <span className="ast-caption ast-num">
-          {active.length} active · {danger} danger
+          {active.length} active · {danger} critical
         </span>
       </div>
       {error && (
         <div className="ast-empty" role="alert">
-          <strong>Stored alerts unavailable</strong>
-          {error}
+          <strong>Stored alerts unavailable. Retry.</strong>
         </div>
       )}
       {alerts.length === 0 && activity.length === 0 ? (
         error ? null : loading ? (
           <div className="ast-empty" role="status" aria-live="polite">
-            <strong>Loading alerts</strong>
+            <strong>Loading alerts…</strong>
           </div>
         ) : (
           <div className="ast-empty">
-            <strong>No active alerts</strong>
+            <strong>No active alerts.</strong>
           </div>
         )
       ) : (
         <div className="ph-alert-list">
           {alerts.length === 0 && (
-            <div className="ph-feed-quiet ast-caption">No active alerts</div>
+            <div className="ph-feed-quiet ast-caption">No active alerts.</div>
           )}
           <ul className="ph-feed">
           {alerts.map((a) => {
@@ -241,7 +252,7 @@ export function AlertsFeed({
                   <span className="ph-alert-top">
                     <span className="ph-alert-age ast-num">{a.age ?? "on record"}</span>
                     <span className="ph-alert-machine">{a.machine}</span>
-                    <span className="ph-level">{a.cleared ? "CLEARED" : a.level === "danger" ? "DANGER" : "ALERT"}</span>
+                    <span className="ph-level">{a.cleared ? "CLEARED" : a.level === "danger" ? "CRITICAL" : "ADVISORY"}</span>
                   </span>
                   <span className="ph-alert-finding">{a.finding}</span>
                   <span className="ph-alert-reading ast-num">{a.reading}</span>
@@ -256,8 +267,8 @@ export function AlertsFeed({
                     </span>
                     <div className="ph-alert-actions">
                       {(() => {
-                        // Live KLN-01 findings (id "KLN-01:<ruleId>") can be acted on.
-                        const ruleId = !a.cleared && a.machineId === OPS_MACHINE_ID && a.id.split(":").length === 2 ? a.id.split(":")[1] : null;
+                        // Live findings of the plant's primary machine (id "<machine>:<ruleId>") can be acted on.
+                        const ruleId = !a.cleared && a.machineId === ops.machineId && a.id.split(":").length === 2 ? a.id.split(":")[1] : null;
                         const live = ruleId ? ops.alerts.find((x) => x.ruleId === ruleId) : null;
                         if (!live) return null;
                         return (

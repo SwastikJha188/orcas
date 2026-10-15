@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { PillButton } from "@/components/ui/pill-button";
 import { IconChevron, SearchPill, type Tone } from "@/components/assets/assets-shell-ui";
 import { SOURCE_KIND_LABEL, type EdgeGateway } from "@/types/edge";
 import {
@@ -101,6 +102,8 @@ const quiet = (t: Tone | null) => !t || t === "good" || t === "info" || t === "i
 export function EdgeTree({ ix, gateways, discovered, plants, plantId, onPlantChange, selected, onSelect, onAddGateway }: EdgeTreeProps) {
   const [query, setQuery] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  // Phone/tablet only: the tree folds into the header (responsive CSS reads data-tree-open).
+  const [treeOpen, setTreeOpen] = useState(false);
   // Gateways start open (few per plant, few sources each); sources start closed (cards can be many).
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -379,12 +382,15 @@ export function EdgeTree({ ix, gateways, discovered, plants, plantId, onPlantCha
   const plantLabel = plantId === ALL_PLANTS ? "All plants" : plants.find((p) => p.id === plantId)?.label ?? "All plants";
 
   return (
-    <aside className="assets-industrial-sidebar ast-sidebar hx-sidebar dv-sidebar" aria-label="Device hierarchy">
+    <aside className="assets-industrial-sidebar ast-sidebar hx-sidebar dv-sidebar" aria-label="Device hierarchy" data-tree-open={treeOpen || undefined}>
       <div className="ast-side-head" ref={headRef}>
         <div className="hx-side-title dv-side-title">
           <span>Device hierarchy</span>
           <span className="dv-side-tail">
             <span className="ast-num">{gateways.length === 1 ? "1 gateway" : `${gateways.length} gateways`}</span>
+            <PillButton variant="secondary" className="dv-tree-toggle" aria-expanded={treeOpen} trailing={<IconChevron dir="down" />} onClick={() => setTreeOpen((v) => !v)}>
+              {treeOpen ? "Hide tree" : "Show tree"}
+            </PillButton>
             <button type="button" className="ast-icon-btn dv-add-btn" aria-label="Connect gateway" title="Connect gateway" onClick={onAddGateway}>
               <IconPlus size={14} />
             </button>
@@ -459,6 +465,7 @@ export function EdgeTree({ ix, gateways, discovered, plants, plantId, onPlantCha
                 onClick={() => {
                   setFocusId(row.id);
                   activate(row);
+                  if (row.select) setTreeOpen(false);
                 }}
                 onFocus={() => setFocusId(row.id)}
               >

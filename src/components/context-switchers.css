@@ -10,7 +10,7 @@
 
 .ctx-sep {
   color: var(--separator);
-  font-size: 0.9rem;
+  font-size: var(--fs-base);
   user-select: none;
 }
 
@@ -26,8 +26,7 @@
   border-radius: var(--corner-pill);
   background: var(--active-faint);
   color: var(--dx-ink);
-  font-family: var(--font-ui);
-  font-size: 0.8125rem;
+  font-size: var(--fs-md);
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s ease;
@@ -70,8 +69,7 @@
   background: var(--card-glass-bg);
   -webkit-backdrop-filter: var(--card-glass-filter);
   backdrop-filter: var(--card-glass-filter);
-  box-shadow: 0 16px 48px rgb(0 0 0 / 28%), 0 2px 8px rgb(0 0 0 / 12%);
-  font-family: var(--font-ui);
+  box-shadow: var(--shadow-pop);
   color: var(--page-fg);
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -90,10 +88,10 @@
   padding: 6px 12px;
   border-block-end: 1px solid var(--separator);
 }
-.ctx-menu-title { font-size: 0.75rem; color: var(--text-muted); flex: 1; }
-.ctx-menu-meta { font-size: 0.75rem; color: var(--text-muted); }
+.ctx-menu-title { font-size: var(--fs-sm); color: var(--text-muted); flex: 1; }
+.ctx-menu-meta { font-size: var(--fs-sm); color: var(--text-muted); }
 
-.ctx-crumbs { flex-wrap: wrap; font-size: 0.75rem; }
+.ctx-crumbs { flex-wrap: wrap; font-size: var(--fs-sm); }
 .ctx-crumb,
 .ctx-crumb-back {
   display: inline-flex;
@@ -153,30 +151,30 @@
   justify-content: center;
   inline-size: 28px;
   block-size: 28px;
-  border-radius: 8px;
+  border-radius: var(--corner-sm);
   border: 1px solid var(--separator);
   color: var(--tone, var(--text-muted));
 }
 
 .ctx-row-text { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 1px; }
 .ctx-row-name {
-  font-size: 0.8125rem;
+  font-size: var(--fs-md);
   color: var(--dx-ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .ctx-row-meta {
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ctx-row-value { font-size: 0.8125rem; color: var(--dx-ink); }
+.ctx-row-value { font-size: var(--fs-md); color: var(--dx-ink); }
 .ctx-row-chev { display: inline-flex; color: var(--text-muted); }
 
-.ctx-empty { margin: 0; padding: 14px 12px; font-size: 0.75rem; color: var(--text-muted); }
+.ctx-empty { margin: 0; padding: 14px 12px; font-size: var(--fs-sm); color: var(--text-muted); }
 
 @media (max-width: 720px) {
   .ctx-trigger { max-inline-size: 132px; }

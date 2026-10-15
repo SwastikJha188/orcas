@@ -75,7 +75,7 @@ export interface KilnSealsHealthScores {
 export interface EvaluatedRule {
   id: string; // "R-SHL-03" etc
   name: string;
-  category: "Drive train" | "Support & thrust" | "Shell & seals" | "Data quality" | "Anomaly";
+  category: import("@/lib/kiln-sim/rules").RuleCategory;
   severity: "Normal" | "Advisory" | "Critical";
   status: "ACTIVE" | "PENDING" | "QUIET";
   logicDescription: string;

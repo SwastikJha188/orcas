@@ -6,8 +6,9 @@
  */
 import type { SimFrame, LiveSignal } from "@/lib/kiln-sim/engine";
 import { SIGNAL_BY_TAG } from "@/lib/kiln-sim/signals";
-import type { SubAssemblySpec } from "./component-health-view";
+import type { SubAssemblySpec } from "./kiln-subassembly-specs";
 import type { MachineProcessStage } from "./process-data";
+import { isConditionRule } from "@/lib/plant-defs";
 
 type Sev = "Normal" | "Advisory" | "Critical";
 
@@ -177,7 +178,7 @@ export function liveProcessStages(
       const sig = tag ? frame.signals[tag] : undefined;
       return sig ? { ...p, value: sig.display, status: sig.status } : p;
     });
-    const firing = frame.rules.filter((r) => r.status !== "QUIET" && r.subs.some((s) => subs.includes(s)) && r.category !== "Data quality");
+    const firing = frame.rules.filter((r) => r.status !== "QUIET" && r.subs.some((s) => subs.includes(s)) && isConditionRule(r));
     return {
       ...st,
       health,

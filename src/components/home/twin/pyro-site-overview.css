@@ -1,0 +1,495 @@
+/* ==========================================================================
+   Pyro line site overview (pyro-site-overview.tsx). Prefix: pso-
+   Sits in the Home stage like the plant twin (.ph-twin). --twin-* is the
+   canvas hidden under Home's floating panels; every overlay stays in what is
+   left. Semantic tokens only.
+   ========================================================================== */
+.pso {
+  container-type: inline-size;
+  --pso-gap: 16px;
+}
+
+.pso-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.pso-gl {
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline: none;
+  touch-action: none;
+  cursor: grab;
+}
+
+.pso-gl:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: -2px;
+}
+
+/* ---------------------------------------------------------------- labels */
+.pso-leads {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.pso-leads line {
+  stroke: var(--mx-edge);
+  stroke-opacity: 0.8;
+  stroke-width: 1;
+}
+
+/* Machine-kit measurement pad: hollow ring in the status colour when healthy, filled with a halo when it needs attention. */
+.pso-leads .pad {
+  fill: var(--mx-pad-panel);
+  stroke: var(--tone, var(--mx-label));
+  stroke-width: 1.8;
+}
+
+.pso-leads .pad[data-on] {
+  fill: var(--tone);
+}
+
+.pso-leads .pad-halo {
+  fill: var(--tone);
+  opacity: 0.22;
+}
+
+.pso-labels {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.pso-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  padding: 3px 8px 3px 7px;
+  border-radius: var(--corner-pill);
+  border: 1px solid var(--separator);
+  background: var(--card-glass-bg);
+  -webkit-backdrop-filter: var(--card-glass-filter);
+  backdrop-filter: var(--card-glass-filter);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  will-change: transform;
+  transition: border-color 0.15s ease, opacity 0.2s ease;
+}
+
+.pso-label[data-active] {
+  border-color: var(--signal-blue);
+}
+
+.pso-label[data-dim] {
+  opacity: 0.45;
+}
+
+.pso-label:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 2px;
+}
+
+.pso-label-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dx-ink);
+}
+
+.pso-label-head i,
+.pso-chip i,
+.pso-find-head i,
+.pso-subs i {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--tone, var(--text-muted));
+}
+
+.pso-label-head small {
+  font-size: var(--fs-2xs);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--text-muted);
+}
+
+.pso-label-score {
+  margin-left: 2px;
+  padding-left: 7px;
+  border-left: 1px solid var(--separator);
+  font-weight: 500;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--tone, var(--dx-ink));
+}
+
+.pso-label-infra .pso-label-head {
+  color: var(--text-muted);
+}
+
+.pso-label-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding-left: 12px;
+  font-size: var(--fs-xs);
+  color: var(--tone, var(--text-muted));
+}
+
+.pso-label-infra .pso-label-meta {
+  color: var(--text-muted);
+}
+
+.pso-label-meta b {
+  color: var(--dx-ink);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- tools */
+.pso-tools {
+  position: absolute;
+  z-index: 5;
+  top: calc(var(--twin-top, 0px) + var(--pso-gap));
+  right: calc(var(--twin-right, 0px) + var(--pso-gap));
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--corner-pill);
+  border: 1px solid var(--card-border);
+  background: var(--card-glass-bg);
+  -webkit-backdrop-filter: var(--card-glass-filter);
+  backdrop-filter: var(--card-glass-filter);
+}
+
+.pso-sim {
+  padding-inline: 10px 4px;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.pso-tool-sep {
+  inline-size: 1px;
+  block-size: 18px;
+  margin-inline: 4px;
+  background: var(--separator);
+}
+
+.pso-tool.pso-tool-icon {
+  inline-size: 30px;
+  justify-content: center;
+  padding-inline: 0;
+  font-size: var(--fs-md, 15px);
+}
+
+.pso-tools .nav-pill-group {
+  gap: 2px;
+}
+
+.pso-tool {
+  display: inline-flex;
+  align-items: center;
+  block-size: 30px;
+  padding-inline: 14px;
+  border: none;
+  border-radius: var(--corner-pill);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pso-tool:hover:not(:disabled) {
+  background: var(--hover-faint);
+  color: var(--dx-ink);
+}
+
+.pso-tool[aria-pressed="true"] {
+  background: var(--pill-active-bg);
+  color: var(--dx-ink);
+}
+
+.pso-tool:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pso-tool:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 2px;
+}
+
+.pso-hint {
+  position: absolute;
+  z-index: 4;
+  top: calc(var(--twin-top, 0px) + var(--pso-gap) + 48px);
+  right: calc(var(--twin-right, 0px) + var(--pso-gap));
+  max-width: 280px;
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  text-align: right;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------- sequence */
+.pso-seq-wrap {
+  position: absolute;
+  z-index: 5;
+  left: calc(var(--twin-left, 0px) + var(--pso-gap));
+  right: calc(var(--twin-right, 0px) + var(--pso-gap));
+  bottom: calc(var(--twin-bottom, 0px) + var(--pso-gap));
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.pso-seq {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  padding: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-radius: var(--corner-pill);
+  border: 1px solid var(--card-border);
+  background: var(--card-glass-bg);
+  -webkit-backdrop-filter: var(--card-glass-filter);
+  backdrop-filter: var(--card-glass-filter);
+  pointer-events: auto;
+}
+
+.pso-seq::-webkit-scrollbar {
+  display: none;
+}
+
+.nav-pill.pso-chip {
+  flex-shrink: 0;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+
+.nav-pill.pso-chip.active {
+  padding: 6px 14px;
+}
+
+.pso-chip-n {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.pso-seq-stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.pso-seq-arrow {
+  flex-shrink: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------- panel */
+.ph-inspector.pso-panel {
+  position: absolute;
+  z-index: 6;
+  top: calc(var(--twin-top, 0px) + var(--pso-gap) + 52px);
+  right: calc(var(--twin-right, 0px) + var(--pso-gap));
+  max-height: calc(100% - var(--twin-top, 0px) - var(--twin-bottom, 0px) - 2 * var(--pso-gap) - 108px);
+  width: 336px;
+  max-width: calc(100% - 2 * var(--pso-gap));
+  overflow-y: auto;
+  align-self: auto;
+  gap: 14px;
+}
+
+.pso-panel .btn-pill {
+  align-self: stretch;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.pso-score {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pso-score-v {
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--dx-ink);
+}
+
+.pso-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pso-sec h3 {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.pso-empty {
+  margin: 0;
+  font-size: var(--fs-md);
+  color: var(--text-muted);
+}
+
+.pso-findings,
+.pso-subs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pso-findings li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0;
+  border-top: 1px solid var(--separator);
+}
+
+.pso-findings li:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.pso-find-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-md);
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+.pso-find-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.pso-find-age {
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.pso-find-ev,
+.pso-find-act {
+  margin: 0;
+  padding-left: 14px;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  color: var(--page-fg);
+}
+
+.pso-find-act {
+  color: var(--text-muted);
+}
+
+.pso-find-act b {
+  font-weight: 500;
+  color: var(--page-fg);
+}
+
+.pso-subs li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--separator);
+  font-size: var(--fs-md);
+  color: var(--page-fg);
+}
+
+.pso-subs li:first-child {
+  border-top: none;
+}
+
+.pso-sub-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pso-sub-h {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------- narrow stage */
+@container (max-width: 760px) {
+  .pso {
+    --pso-gap: 10px;
+  }
+  .pso-label {
+    padding: 4px 7px;
+  }
+  .pso-label-head small,
+  .pso-hint,
+  .pso-sim,
+  .pso-sim + .pso-tool-sep {
+    display: none;
+  }
+  .pso-tools {
+    top: auto;
+    bottom: calc(var(--twin-bottom, 0px) + var(--pso-gap) + 84px);
+  }
+  .ph-inspector.pso-panel {
+    top: auto;
+    left: var(--pso-gap);
+    right: var(--pso-gap);
+    bottom: var(--pso-gap);
+    width: auto;
+    max-height: min(62%, calc(100% - 2 * var(--pso-gap)));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pso-label {
+    transition: none;
+  }
+}

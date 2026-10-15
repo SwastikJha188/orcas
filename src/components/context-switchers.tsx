@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from "react-dom";
 import type { HierarchyNode } from "@/components/assets/assets-data";
 import { IconChevron, machineTone } from "@/components/assets/assets-shell-ui";
+import { toCondition } from "@/components/ui/status";
 import { TypeIcon } from "@/components/assets/hierarchy/hierarchy-icons";
 import {
   type MachineLookup,
@@ -15,16 +16,15 @@ import {
   subtreeMachines,
 } from "@/components/assets/hierarchy/hierarchy-model";
 import { useHierarchyData } from "@/components/assets/hierarchy/use-hierarchy-data";
-import { useIndustrialData } from "@/providers/industrial-data-context";
+import { useIndustrialData, type UserRecord } from "@/providers/industrial-data-context";
 import "@/components/assets/assets-shell.css";
 import "./context-switchers.css";
 
 /* ==========================================================================
    Top-bar context switchers (ported from ULTRON TopBar: ShellSelect +
-   MachineTreeSelect). The bar answers one question on every page: which
-   plant, and which machine inside it. The machine picker walks the plant's
-   own hierarchy one level at a time with a breadcrumb, instead of one wall
-   of tags.
+   MachineTreeSelect + UserSwitcher). The bar answers three questions on
+   every page: which plant, which machine inside it, and which operator/user
+   session is active.
    ========================================================================== */
 
 /* ------------------------------------------------------------ anchored menu */
@@ -38,8 +38,10 @@ function useAnchoredMenu(width: number) {
   const place = useCallback(() => {
     const r = trigger.current?.getBoundingClientRect();
     if (!r) return;
-    const left = Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8));
-    setPos({ left, top: r.bottom + 6 });
+    // TV tier: rects are zoomed px; the portalled menu is placed in CSS px under body { zoom }.
+    const uz = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-zoom")) || 1;
+    const left = Math.max(8, Math.min(r.right / uz - width, window.innerWidth / uz - width - 8));
+    setPos({ left, top: r.bottom / uz + 6 });
   }, [width]);
 
   const close = useCallback((refocus = true) => {
@@ -172,9 +174,16 @@ function plural(n: number, noun: string) {
   return `${n} ${noun}${n === 1 ? "" : "s"}`;
 }
 
+const IconUser = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <circle cx="12" cy="8" r="4" />
+    <path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" />
+  </svg>
+);
+
 /* ------------------------------------------------------------ plant switcher */
 
-const PLANT_W = 280;
+const PLANT_W = 290;
 
 function PlantSwitcher({
   roots,
@@ -208,7 +217,7 @@ function PlantSwitcher({
       {m.open && (
         <Menu innerRef={m.menu} pos={m.pos} width={PLANT_W} label="Plants">
           <div className="ctx-menu-head">
-            <span className="ctx-menu-title">Plants</span>
+            <span className="ctx-menu-title">Accessible Plants</span>
             <span className="ctx-menu-meta ast-num">{roots.length}</span>
           </div>
           <div className="ctx-list">
@@ -417,7 +426,7 @@ function MachineSwitcher({
                   <span className="ctx-row-text">
                     <span className="ctx-row-name">{row.name}</span>
                     <span className="ctx-row-meta ast-num">
-                      {row.machineId} · {c.status}
+                      {row.machineId} · {toCondition(c.status)}
                     </span>
                   </span>
                   <span className="ctx-row-value ast-num">
@@ -434,10 +443,119 @@ function MachineSwitcher({
   );
 }
 
+/* ------------------------------------------------------------ user switcher */
+
+const USER_W = 310;
+
+function UserSwitcher({
+  currentUser,
+  onSignOut,
+  onManageUsers,
+}: {
+  currentUser: UserRecord | null;
+  onSignOut: () => void;
+  onManageUsers: () => void;
+}) {
+  const m = useAnchoredMenu(USER_W);
+  if (!currentUser) return null;
+
+  const userTone = currentUser.status === "Active" ? "good" : currentUser.status === "On Call" ? "warn" : "idle";
+  const plantSummary = currentUser.plantAccess.length > 0 ? currentUser.plantAccess.map((p) => p.plantName).join(", ") : "All plants";
+
+  return (
+    <>
+      <Trigger
+        innerRef={m.trigger}
+        open={m.open}
+        icon={<IconUser />}
+        kind="Operator"
+        label={currentUser.fullName}
+        tone={userTone}
+        onClick={() => {
+          m.setOpen((o) => !o);
+          m.focusFirst();
+        }}
+      />
+      {m.open && (
+        <Menu innerRef={m.menu} pos={m.pos} width={USER_W} label="Account">
+          <div className="ctx-menu-head">
+            <span className="ctx-menu-title">Signed in</span>
+            <span className="ctx-menu-meta">{currentUser.email}</span>
+          </div>
+          <div className="ctx-list">
+            <div className="ctx-row" aria-current="true">
+              <Check on />
+              <span className="ctx-badge" data-tone={userTone} style={{ fontSize: 10, fontWeight: 600 }}>
+                {currentUser.avatarInitials}
+              </span>
+              <span className="ctx-row-text">
+                <span className="ctx-row-name">{currentUser.fullName}</span>
+                <span className="ctx-row-meta">
+                  {currentUser.title} · {plantSummary}
+                </span>
+              </span>
+              <span className="ctx-dot" data-tone={userTone} aria-hidden="true" />
+            </div>
+            {currentUser.role.canManageUsers && (
+              <button
+                type="button"
+                role="menuitem"
+                data-menu-item
+                className="ctx-row"
+                onClick={() => {
+                  onManageUsers();
+                  m.close();
+                }}
+              >
+                <Check on={false} />
+                <span className="ctx-badge">
+                  <IconUser />
+                </span>
+                <span className="ctx-row-text">
+                  <span className="ctx-row-name">Manage users & plants…</span>
+                  <span className="ctx-row-meta">Configure RBAC & site access</span>
+                </span>
+              </button>
+            )}
+            <button
+              type="button"
+              role="menuitem"
+              data-menu-item
+              className="ctx-row"
+              onClick={() => {
+                m.close();
+                onSignOut();
+              }}
+            >
+              <Check on={false} />
+              <span className="ctx-badge">
+                <IconUser />
+              </span>
+              <span className="ctx-row-text">
+                <span className="ctx-row-name">Sign out</span>
+                <span className="ctx-row-meta">Return to the sign-in screen</span>
+              </span>
+            </button>
+          </div>
+        </Menu>
+      )}
+    </>
+  );
+}
+
 /* --------------------------------------------------------------- top bar slot */
 
 export function ContextSwitchers() {
-  const { selectedPlantId, setSelectedPlantId, selectedMachineId, setSelectedMachineId, activeTab, setActiveTab } = useIndustrialData();
+  const {
+    selectedPlantId,
+    setSelectedPlantId,
+    selectedMachineId,
+    setSelectedMachineId,
+    activeTab,
+    setActiveTab,
+    currentUser,
+    signOut,
+  } = useIndustrialData();
   const { roots, lookup } = useHierarchyData();
   const plant = roots.find((p) => p.id === selectedPlantId) ?? roots[0];
 
@@ -458,10 +576,16 @@ export function ContextSwitchers() {
   if (roots.length === 0) return null;
 
   return (
-    <div className="ctx-switchers" role="group" aria-label="Plant and machine context">
+    <div className="ctx-switchers" role="group" aria-label="Plant, machine, and operator context">
       <PlantSwitcher roots={roots} plant={plant} lookup={lookup} onChange={choosePlant} />
       <span className="ctx-sep" aria-hidden="true">/</span>
       <MachineSwitcher plant={plant} machineId={selectedMachineId} lookup={lookup} onChange={chooseMachine} />
+      {currentUser && (
+        <>
+          <span className="ctx-sep" aria-hidden="true">·</span>
+          <UserSwitcher currentUser={currentUser} onSignOut={() => void signOut()} onManageUsers={() => setActiveTab("configure")} />
+        </>
+      )}
     </div>
   );
 }

@@ -50,8 +50,9 @@ export function TwinLighting({ colors, radius, fog }: { colors: TwinColors; radi
     <>
       <color attach="background" args={[colors.fog]} />
       <fog attach="fog" args={[colors.fog, ...fog]} />
-      <Environment intensity={colors.dark ? 0.55 : 0.7} />
-      <hemisphereLight intensity={colors.dark ? 0.35 : 0.5} groundColor={colors.ground} />
+      <Environment intensity={colors.dark ? 0.42 : 0.6} />
+      {/* Strong sky over a dark ground bounce: the machine-kit bodies read top-lit, like the drawings' body gradient. */}
+      <hemisphereLight intensity={colors.dark ? 1.35 : 0.8} color="#ffffff" groundColor={colors.ground} />
       <directionalLight
         position={[radius * 0.45, radius * 0.9, radius * 0.75]}
         intensity={colors.dark ? 2.2 : 2.6}
@@ -66,7 +67,7 @@ export function TwinLighting({ colors, radius, fog }: { colors: TwinColors; radi
         shadow-camera-far={radius * 5}
         shadow-bias={-0.0004}
       />
-      <directionalLight position={[-radius * 0.6, radius * 0.5, -radius * 0.5]} intensity={colors.dark ? 0.45 : 0.6} />
+      <directionalLight position={[-radius * 0.6, radius * 0.5, -radius * 0.5]} intensity={colors.dark ? 0.8 : 0.6} />
     </>
   );
 }

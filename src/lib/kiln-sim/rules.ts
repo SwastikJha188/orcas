@@ -4,7 +4,20 @@
  */
 import type { SubassemblyId, SystemId } from "./signals";
 
-export type RuleCategory = "Drive train" | "Support & thrust" | "Shell & seals" | "Data quality" | "Anomaly";
+export type RuleCategory =
+  | "Drive train"
+  | "Support & thrust"
+  | "Shell & seals"
+  /** Pyro-line categories (src/lib/pyro-sim/rules.ts). */
+  | "Process"
+  | "Rotating equipment"
+  | "Lubrication"
+  | "Combustion"
+  | "Material handling"
+  /** Calendar / hour service due (SW-ALL-01): never observed deterioration, never scored. */
+  | "Service life"
+  | "Data quality"
+  | "Anomaly";
 
 export interface RuleDef {
   id: string;

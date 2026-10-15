@@ -11,6 +11,7 @@ import {
 import { KilnSimulationProvider } from "@/providers/kiln-simulation-context";
 import { KilnOpsProvider } from "@/providers/kiln-ops-context";
 import { AiEngineProvider } from "@/providers/ai-engine-context";
+import { SignInScreen } from "@/components/auth/sign-in";
 
 // Home is the landing tab; the other workspaces load on first visit.
 const AssetsView = dynamic(() => import("@/components/assets/assets-view").then((m) => m.AssetsView));
@@ -21,11 +22,19 @@ const ConfigureView = dynamic(() => import("@/components/configure/configure-vie
 function UltronWorkspaceContent() {
   const { activeTab, setActiveTab, setSelectedMachineId, navigateToMachine } = useIndustrialData();
 
-  // Copilot "Open Diagnosis": go straight to the machine's Diagnosis tab.
+  // Copilot "Open Diagnosis": go straight to the machine's Diagnosis tab, on the rule when given.
   useEffect(() => {
     const onOpen = (e: Event) => {
-      const machineId = (e as CustomEvent<{ machineId?: string }>).detail?.machineId;
-      if (machineId) navigateToMachine(machineId, "diagnosis");
+      const { machineId, ruleId } = (e as CustomEvent<{ machineId?: string; ruleId?: string }>).detail ?? {};
+      if (!machineId) return;
+      if (ruleId) {
+        try {
+          sessionStorage.setItem("ultron.diagnosis.rule", ruleId);
+        } catch {
+          /* storage unavailable: Diagnosis opens unfocused */
+        }
+      }
+      navigateToMachine(machineId, "diagnosis");
     };
     window.addEventListener("ultron:open-diagnosis", onOpen);
     return () => window.removeEventListener("ultron:open-diagnosis", onOpen);
@@ -58,16 +67,26 @@ function UltronWorkspaceContent() {
   );
 }
 
+/** Signed-out visitors see the sign-in screen; the workspace mounts only for a signed-in account. */
+function AuthGate() {
+  const { authStatus } = useIndustrialData();
+  if (authStatus === "checking") return <main className="app-shell liquid-glass-backdrop" aria-busy="true" />;
+  if (authStatus === "signedOut") return <SignInScreen />;
+  return (
+    <KilnSimulationProvider>
+      <KilnOpsProvider>
+        <AiEngineProvider>
+          <UltronWorkspaceContent />
+        </AiEngineProvider>
+      </KilnOpsProvider>
+    </KilnSimulationProvider>
+  );
+}
+
 export default function Home() {
   return (
     <IndustrialDataProvider>
-      <KilnSimulationProvider>
-        <KilnOpsProvider>
-          <AiEngineProvider>
-            <UltronWorkspaceContent />
-          </AiEngineProvider>
-        </KilnOpsProvider>
-      </KilnSimulationProvider>
+      <AuthGate />
     </IndustrialDataProvider>
   );
 }

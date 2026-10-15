@@ -20,6 +20,7 @@ import {
   SIGNAL_BY_TAG,
   SUBASSEMBLIES,
   SYSTEMS,
+  describeLimit,
   limitSeverity,
   stateSeverity,
   type Severity,
@@ -29,6 +30,9 @@ import {
 } from "./signals";
 import { KILN_SCENARIOS, effectLevel, scenarioById, type KilnScenario } from "./scenarios";
 import { RULES, RULE_BY_ID, type RuleCategory } from "./rules";
+import { KILN_DEFS } from "./defs";
+import type { ManualRecord, PlantDefs } from "../plant-defs";
+import type { ShellThermal } from "./shell-map";
 
 /* ------------------------------------------------------------------ */
 /* Public types                                                        */
@@ -46,12 +50,22 @@ export interface LiveSignal {
   /** Residual in multiples of σ. */
   z: number | null;
   limitSeverity: Severity;
+  /** The limit branch that fired ("+ 14 % over model", "pair split + 12 K"); pyro line only, null when within limits. */
+  limitNote?: string | null;
   /** Limit severity, raised to the severity of any confirmed finding the signal is evidence for. */
   status: Severity;
   quality: Quality;
   qualityNote: string | null;
   slopePerHour: number | null;
   timeToLimit: string | null;
+  /**
+   * Simulated minute the source stamped the value (SW-DATA-01). Frozen while a
+   * source is stale; the record time for a manual record. Optional: engines
+   * that do not track it leave it out.
+   */
+  sourceTs?: number;
+  /** Simulated minute ULTRON received the value (SW-DATA-01). */
+  receivedTs?: number;
 }
 
 export type RuleStatus = "ACTIVE" | "PENDING" | "QUIET";
@@ -60,8 +74,9 @@ export interface RuleState {
   id: string;
   name: string;
   category: RuleCategory;
-  system: SystemId | "DQ";
-  subs: SubassemblyId[];
+  /** System id, or "DQ" for data-quality rules. */
+  system: string;
+  subs: string[];
   logic: string;
   severity: Severity;
   status: RuleStatus;
@@ -78,6 +93,12 @@ export interface RuleState {
   action: string;
   /** Simulated minute the rule was confirmed. */
   since: number | null;
+  /** Default action owner (role) when no work order names one. */
+  owner?: string;
+  /** What the evidence does not yet prove. */
+  unproven?: string;
+  /** HOLD disclosure: the rule's channels are not yet approved. */
+  hold?: string;
 }
 
 export interface HealthCell {
@@ -116,8 +137,8 @@ export interface SimFrame {
   witnesses: { feedTorque: number; feedO2: number; fuelBurning: number; fuelInlet: number };
   signals: Record<string, LiveSignal>;
   rules: RuleState[];
-  subs: Record<SubassemblyId, HealthCell>;
-  systems: Record<SystemId, HealthCell>;
+  subs: Record<string, HealthCell>;
+  systems: Record<string, HealthCell>;
   overall: number;
   condition: "Healthy" | "Advisory" | "Critical";
   pipeline: {
@@ -142,7 +163,7 @@ export interface SimFrame {
   times: number[];
   history: Record<string, number[]>;
   modelHistory: Record<string, number[]>;
-  healthHistory: { overall: number[] } & Record<SystemId, number[]>;
+  healthHistory: { overall: number[] } & Record<string, number[]>;
   events: SimEvent[];
   /** Plant-story phase and one plain sentence describing what is happening now. */
   phase: StoryPhase;
@@ -152,6 +173,50 @@ export interface SimFrame {
   profile: StoryProfile;
   /** Short instrument fault running in the background, if any (autopilot only). */
   background: string | null;
+  /** Signal / rule / sub-assembly definitions this frame was computed from. */
+  defs: PlantDefs;
+  /** Dated manual records of this machine (laboratory, handheld), newest first. */
+  records?: ManualRecord[];
+  /**
+   * Per-sample data validity, aligned with `history` / `times`:
+   * 0 Good, 1 Suspect, 2 Invalid. Optional (pyro line only).
+   */
+  qualityHistory?: Record<string, number[]>;
+  /**
+   * Shell scanner maps kept per scan (every 10 simulated minutes), oldest
+   * first, so a zone can be compared with the previous scan or shift.
+   * `valid`: scanner coverage was good enough to trust the map. Optional (pyro kiln only).
+   */
+  shellScans?: Array<{ t: number; profile: number[]; coverage: number; valid: boolean; local?: number[]; model?: number[] }>;
+  /**
+   * Thermal-map processing outputs of the engine (D5 Table 9.5): hottest
+   * position and model there, area above alert, cold / warm bands, last-good
+   * cell values, the handheld round and the maps kept around findings.
+   * Optional (pyro kiln only).
+   */
+  shellThermal?: ShellThermal;
+  /**
+   * Operating state the condition rules were judged in (D4 §8.2: compare only
+   * in a comparable state). While `running` is false or `transient` is true,
+   * condition rules hold their last judgement. Optional (pyro line only).
+   */
+  operatingState?: { running: boolean; transient: boolean; note: string };
+  /**
+   * Per-shift data validity (D5 Table 9.3 "valid / suspect / invalid list per
+   * shift", Table 12.1 every-shift review): minutes each flagged tag spent
+   * Suspect / Invalid / flagged-only in the current and the previous shift.
+   * Optional (pyro line only).
+   */
+  shiftValidity?: { current: ShiftValidityLog | null; previous: ShiftValidityLog | null };
+}
+
+export interface ShiftValidityLog {
+  /** Shift start (simulated minute) and label ("Day shift 06:00–18:00"). */
+  start: number;
+  label: string;
+  /** Minutes of the shift evaluated so far. */
+  minutes: number;
+  tags: Record<string, { suspect: number; invalid: number; flagOnly: number; first: number; last: number; note: string }>;
 }
 
 export type StoryPhase = "healthy" | "developing" | "detected" | "mitigated" | "recovering";
@@ -615,6 +680,11 @@ function limitText(def: SignalDef, sev: Severity): string {
     }
     case "setpoint":
       return `${crit ? l.alarmPct : l.warnPct} % off set-point`;
+    default: {
+      // Relative kinds (pyro line, D5 Table 9.2); the kiln-seal catalogue uses none.
+      const d = describeLimit(l, def.unit);
+      return crit ? d.alarm : d.warning;
+    }
   }
 }
 
@@ -718,34 +788,16 @@ function startHold(s: SimState): void {
   st.pace = 1;
   s.fx.scMin = Math.max(0, h.at - HOLD_LEAD);
   s.fx.hold = h.at;
-  st.holdUntil = s.t + HOLD_MIN + Math.floor(s.rand() * HOLD_VAR);
+  st.holdUntil = Infinity;
 }
 
 function isHeld(s: SimState): boolean {
   return s.fx.hold !== null && (s.story.profile === "advisory" || s.story.profile === "critical");
 }
 
-/** Background instrument faults: start one after a gap, end it after its run. */
+/** Background instrument faults: disabled so live telemetry does not randomly switch sensor states on its own. */
 function stepBackground(s: SimState): void {
-  const t = s.t;
-  if (!s.story.autopilot) {
-    s.bg = null;
-    return;
-  }
-  if (s.bg && t > s.bg.end) {
-    s.bg = null;
-    s.bgNextAt = t + BG_GAP_MIN + Math.floor(s.rand() * BG_GAP_VAR);
-  }
-  if (!s.bg && t >= s.bgNextAt) {
-    const main = scenarioById(s.scenarioId);
-    const busy = new Set(main.effects.map((e) => (e.target.kind === "signal" ? e.target.tag : e.target.name)));
-    const free = BACKGROUND_POOL.filter(
-      (id) => id !== main.id && !scenarioById(id).effects.some((e) => busy.has(e.target.kind === "signal" ? e.target.tag : e.target.name)),
-    );
-    if (free.length === 0) return;
-    const id = free[Math.floor(s.rand() * free.length)];
-    s.bg = { scenarioId: id, start: t, end: t + BG_LEN_MIN + Math.floor(s.rand() * BG_LEN_VAR) };
-  }
+  s.bg = null;
 }
 
 function mitigationNote(ruleId: string): string {
@@ -1617,7 +1669,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
       if (def.sub !== sa.id) continue;
       const sg = signals[def.tag];
       if (sg.quality !== "Good") continue;
-      if (sg.z !== null) penalty += Math.min(12, Math.max(0, Math.abs(sg.z) - 2.5) * 1.4);
+      if (sg.z !== null) penalty += Math.min(12, Math.max(0, Math.abs(sg.z) - 3.0) * 1.4);
       penalty += sg.limitSeverity === "Critical" ? 22 : sg.limitSeverity === "Advisory" ? 9 : 0;
     }
     for (const r of rules) {
@@ -1628,9 +1680,12 @@ export function stepSim(s: SimState, emit = true): SimFrame {
     const raw = clamp(99 - penalty, 12, 99);
     const key = `sub:${sa.id}`;
     const prev = s.smooth[key] ?? raw;
-    const sm2 = prev + (raw - prev) * 0.35;
+    const sm2 = prev + (raw - prev) * 0.25;
     s.smooth[key] = sm2;
-    const h = Math.round(sm2);
+    const intKey = `int:${sa.id}`;
+    const prevInt = s.smooth[intKey];
+    const h = prevInt !== undefined && Math.abs(sm2 - prevInt) < 0.7 ? prevInt : Math.round(sm2);
+    s.smooth[intKey] = h;
     const activeHere = rules.filter((r) => r.status === "ACTIVE" && r.subs.includes(sa.id) && r.category !== "Data quality" && r.category !== "Anomaly");
     let status: Severity = h < 60 ? "Critical" : h < 85 ? "Advisory" : "Normal";
     for (const r of activeHere) status = maxSev(status, r.severity);
@@ -1694,24 +1749,17 @@ export function stepSim(s: SimState, emit = true): SimFrame {
     shellProfile,
     shellModel,
     coldBandResidual,
-    times: emit ? s.times.slice() : s.times,
-    history: emit ? Object.fromEntries(SIGNALS.map((d) => [d.tag, s.hist[d.tag].slice()])) : s.hist,
-    modelHistory: emit ? Object.fromEntries(SIGNALS.map((d) => [d.tag, s.modelHist[d.tag].slice()])) : s.modelHist,
-    healthHistory: emit
-      ? {
-          overall: s.healthHist.overall.slice(),
-          "DRV-KLN-01": s.healthHist["DRV-KLN-01"].slice(),
-          "SUP-KLN-01": s.healthHist["SUP-KLN-01"].slice(),
-          "SHL-KLN-01": s.healthHist["SHL-KLN-01"].slice(),
-          "PRC-KLN-01": s.healthHist["PRC-KLN-01"].slice(),
-        }
-      : s.healthHist,
+    times: s.times,
+    history: emit ? { ...s.hist } : s.hist,
+    modelHistory: emit ? { ...s.modelHist } : s.modelHist,
+    healthHistory: emit ? { ...s.healthHist } : s.healthHist,
     events: s.events,
     phase: s.story.phase,
     storyLabel: s.story.label,
     autopilot: s.story.autopilot,
     profile: s.story.profile,
     background: s.bg?.scenarioId ?? null,
+    defs: KILN_DEFS,
   };
   stepStory(s);
   frame.phase = s.story.phase;

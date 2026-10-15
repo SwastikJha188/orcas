@@ -2,9 +2,10 @@
 
 import React, { useState } from "react";
 import { FormNote, PillButton, Table, type Column } from "@/components/ui";
-import { IconSensor, Spark, StatusTag } from "@/components/assets/assets-shell-ui";
+import { IconSensor, StatusTag } from "@/components/assets/assets-shell-ui";
+import { Sparkline } from "@/components/ui/sparkline";
 import { useEdge } from "@/providers/edge-context";
-import { isKilnMachine } from "@/providers/kiln-simulation-context";
+import { isLiveMachine } from "@/providers/kiln-simulation-context";
 import type { LiveSignal } from "@/lib/kiln-sim/engine";
 import { SOURCE_KIND_LABEL, type EdgeGateway } from "@/types/edge";
 import { type EdgeIndex, LINK_LABEL, LINK_TONE, READING_LABEL, READING_TONE, ago, sep } from "../edge-model";
@@ -211,7 +212,7 @@ const SIM_TONE: Record<LiveSignal["status"], "good" | "warn" | "bad"> = { Normal
  * no MQTT reading, shown as "Simulated" and never as an MQTT value.
  */
 export function simulatedSignal(ch: DetectedChannel, signals: Record<string, LiveSignal> | null | undefined): LiveSignal | null {
-  if (!signals || ch.status !== "nodata" || !ch.point?.signalTag || !isKilnMachine(ch.point.machineId)) return null;
+  if (!signals || ch.status !== "nodata" || !ch.point?.signalTag || !isLiveMachine(ch.point.machineId)) return null;
   const s = signals[ch.point.signalTag];
   return s && s.value !== null ? s : null;
 }
@@ -288,14 +289,14 @@ export function ChannelTable({
         const tone = READING_TONE[ch.status];
         return (
           <span className="dv-trend">
-            <Spark values={values} unit={ch.unit ?? ""} height={28} tone={tone === "idle" ? "info" : tone} ariaLabel={`Channel ${ch.id} recent values`} />
+            <Sparkline values={values} unit={ch.unit ?? ""} height={28} tone={tone === "idle" ? "info" : tone} ariaLabel={`Channel ${ch.id} recent values`} />
           </span>
         );
       },
     },
     {
       key: "limits",
-      header: "Alert / danger",
+      header: "Warning / alarm",
       render: (ch) => {
         const a = ch.point ? ch.point.alertLimit : ch.measurement?.alertThreshold ?? null;
         const d = ch.point ? ch.point.dangerLimit : ch.measurement?.dangerThreshold ?? null;

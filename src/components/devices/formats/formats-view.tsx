@@ -85,8 +85,7 @@ export function FormatsView({ sectionNav }: { sectionNav?: React.ReactNode }) {
       {!registry ? (
         error ? (
           <div className="ast-card ast-empty">
-            <strong className="fmt-empty-title">Format registry unavailable</strong>
-            <span>{error}</span>
+            <strong className="fmt-empty-title">Format registry unavailable. Retry.</strong>
             <PillButton variant="secondary" onClick={() => void refresh()}>
               Retry
             </PillButton>

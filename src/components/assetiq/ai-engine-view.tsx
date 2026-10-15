@@ -1,25 +1,34 @@
 "use client";
 
-import React, { useState } from "react";
-import { PillNav, Table, type Column } from "@/components/ui";
+import React, { useMemo } from "react";
+import { Table, type Column } from "@/components/ui";
 import {
+  IconChevron,
   StatusTag,
-  Ticks,
   type Tone,
 } from "@/components/assets/assets-shell-ui";
+import { useIndustrialData } from "@/providers/industrial-data-context";
 import {
-  leadLabel,
-  simStamp,
-  type Prediction,
-  type TickerEntry,
-} from "./ai-shared";
+  useKilnFleet,
+  useKilnSimulation,
+  usePrimaryMachineId,
+} from "@/providers/kiln-simulation-context";
+import { useAiEngine } from "@/providers/ai-engine-context";
+import type { SimFrame } from "@/lib/kiln-sim/engine";
+import type { TickerEntry } from "./ai-shared";
 import type { ModelCard } from "./use-inference-engine";
-import type { PredictionLedger } from "./use-prediction-ledger";
+import { CrossLinks, EmptyCard } from "./assetiq-parts";
+import { KpiCard, KpiCards } from "@/components/ui/kpi";
 import "./assetiq-ai.css";
+
+/* ==========================================================================
+   AssetIQ · Engine — is the AI running, how often, on what inputs, and what
+   each stage of the pipeline concludes right now.
+   ========================================================================== */
 
 /* ---------------------------------------------------------------- sparkline */
 
-export function Sparkline({
+function StageSpark({
   values,
   tone,
   label,
@@ -60,22 +69,36 @@ export function Sparkline({
   );
 }
 
-/* ---------------------------------------------------------------- model strip */
+/* ---------------------------------------------------------------- pipeline */
 
-function ModelTile({ m }: { m: ModelCard }) {
+/** Order the stages run in: gate the data, score it, then reason over it. */
+const PIPELINE = [
+  "validation",
+  "reference",
+  "rules",
+  "anomaly",
+  "forecaster",
+  "rul",
+];
+
+function StageTile({ m, step }: { m: ModelCard; step: number }) {
   return (
     <article className="ast-card aiq-model" aria-label={m.name}>
       <header className="aiq-model-head">
-        <h3 className="aiq-model-name">{m.name}</h3>
+        <h3 className="aiq-model-name">
+          <span className="aiq-step ast-num" aria-hidden="true">
+            {step}
+          </span>
+          {m.name}
+        </h3>
         <StatusTag tone={m.tone} label={m.status} />
       </header>
-      <p className="aiq-model-spec">{m.spec}</p>
       <div className="aiq-model-out">
         <div className="aiq-model-value">
           <span className="aiq-model-num ast-num">{m.headline}</span>
           <span className="aiq-model-unit">{m.headlineLabel}</span>
         </div>
-        <Sparkline values={m.series} tone={m.tone} label={m.seriesLabel} />
+        <StageSpark values={m.series} tone={m.tone} label={m.seriesLabel} />
       </div>
       <dl className="aiq-model-meta">
         <div>
@@ -83,11 +106,11 @@ function ModelTile({ m }: { m: ModelCard }) {
           <dd className="ast-num">{m.lastRun}</dd>
         </div>
         <div>
-          <dt>Throughput</dt>
-          <dd className="ast-num">{m.throughput} sig/min</dd>
+          <dt>Inputs</dt>
+          <dd className="ast-num">{m.throughput} signals</dd>
         </div>
         <div>
-          <dt>Latency</dt>
+          <dt>Latency (est.)</dt>
           <dd className="ast-num">{m.latencyMs.toFixed(1)} ms</dd>
         </div>
       </dl>
@@ -95,24 +118,141 @@ function ModelTile({ m }: { m: ModelCard }) {
   );
 }
 
-export function ModelStrip({ models }: { models: ModelCard[] }) {
+function Pipeline({ models }: { models: ModelCard[] }) {
+  const primaryId = usePrimaryMachineId();
+  const ordered = PIPELINE.map((id) => models.find((m) => m.id === id)).filter(
+    (m): m is ModelCard => Boolean(m),
+  );
   return (
-    <section className="aiq-strip" aria-label="Live inference">
-      {models.map((m) => (
-        <ModelTile key={m.id} m={m} />
-      ))}
+    <section className="aiq-stack" aria-label="Inference pipeline">
+      <div className="aiq-section-head">
+        <h2 className="ast-card-title">Inference pipeline · {primaryId}</h2>
+        <span className="ast-caption">
+          Six stages, run in order every simulated minute · sparkline = last 60 cycles
+        </span>
+      </div>
+      {ordered.length === 0 ? (
+        <EmptyCard title="Waiting for the first inference cycle." />
+      ) : (
+        <div className="aiq-strip">
+          {ordered.map((m, i) => (
+            <StageTile key={m.id} m={m} step={i + 1} />
+          ))}
+        </div>
+      )}
     </section>
   );
 }
 
+/* ---------------------------------------------------------------- inputs */
+
+interface InputRow {
+  id: string;
+  name: string;
+  frame: SimFrame;
+  scored: number;
+  flagged: number;
+}
+
+const inputColumns: Column<InputRow>[] = [
+  {
+    key: "machine",
+    header: "Machine",
+    render: (r) => (
+      <span className="ast-cell-stack">
+        <span className="ast-cell-title">{r.name}</span>
+        <span className="ast-cell-sub">
+          {r.id} · cycle {r.frame.clock}
+        </span>
+      </span>
+    ),
+  },
+  {
+    key: "condition",
+    header: "Condition",
+    render: (r) => (
+      <StatusTag
+        tone={
+          r.frame.condition === "Critical"
+            ? "bad"
+            : r.frame.condition === "Advisory"
+              ? "warn"
+              : "good"
+        }
+        label={`${r.frame.condition} · ${Math.round(r.frame.overall)} %`}
+      />
+    ),
+  },
+  {
+    key: "inputs",
+    header: "Signals scored",
+    render: (r) => (
+      <span className="ast-num">
+        {r.frame.pipeline.valid}
+        <span className="ast-muted"> of {r.scored} valid</span>
+      </span>
+    ),
+  },
+  {
+    key: "flagged",
+    header: "Quality flags",
+    render: (r) => (
+      <span
+        className="ast-num pg-tone-value"
+        data-tone={r.flagged > 0 ? (r.frame.pipeline.invalid > 0 ? "bad" : "warn") : undefined}
+      >
+        {r.flagged === 0
+          ? "None"
+          : `${r.frame.pipeline.suspect} suspect · ${r.frame.pipeline.invalid} invalid · ${r.frame.pipeline.held} held`}
+      </span>
+    ),
+  },
+  {
+    key: "beyond",
+    header: "Beyond 3σ",
+    render: (r) => (
+      <span
+        className="ast-num pg-tone-value"
+        data-tone={r.frame.pipeline.beyond3s > 0 ? "warn" : undefined}
+      >
+        {r.frame.pipeline.beyond3s} signals
+      </span>
+    ),
+  },
+  {
+    key: "rules",
+    header: "Rules",
+    render: (r) => (
+      <span className="ast-num">
+        {r.frame.pipeline.confirmed} confirmed
+        <span className="ast-muted">
+          {" "}
+          · {r.frame.pipeline.pending} pending of {r.frame.pipeline.evaluated}
+        </span>
+      </span>
+    ),
+  },
+  {
+    key: "go",
+    header: "",
+    width: "32px",
+    render: () => (
+      <span className="pg-chev" aria-hidden="true">
+        <IconChevron />
+      </span>
+    ),
+  },
+];
+
 /* ---------------------------------------------------------------- ticker */
 
 export function InferenceTicker({ entries }: { entries: TickerEntry[] }) {
+  const primaryId = usePrimaryMachineId();
   return (
     <section className="ast-card aiq-ticker" aria-label="Inference events">
       <div className="ast-card-head">
-        <h2 className="ast-card-title">Inference events</h2>
-        <span className="ast-caption">Simulated clock</span>
+        <h2 className="ast-card-title">Inference log · {primaryId}</h2>
+        <span className="ast-caption">Latest 12 cycles</span>
       </div>
       <ol className="aiq-ticker-list" aria-live="off">
         {entries.slice(0, 12).map((e) => (
@@ -125,7 +265,7 @@ export function InferenceTicker({ entries }: { entries: TickerEntry[] }) {
         ))}
         {entries.length === 0 && (
           <li className="aiq-ticker-empty">
-            Waiting for the first inference cycle
+            Waiting for the first inference cycle.
           </li>
         )}
       </ol>
@@ -133,151 +273,133 @@ export function InferenceTicker({ entries }: { entries: TickerEntry[] }) {
   );
 }
 
-/* ---------------------------------------------------------------- ledger */
+/* ---------------------------------------------------------------- tab */
 
-type LedgerFilter = "all" | "pending" | "confirmed" | "missed";
+export function EngineTab() {
+  const { machines: allMachines, navigateToMachine, selectedPlantId } = useIndustrialData();
+  const primaryId = usePrimaryMachineId();
+  // The active plant only: each plant is a separate workspace.
+  const machines = useMemo(() => allMachines.filter((m) => !m.plantId || m.plantId === selectedPlantId), [allMachines, selectedPlantId]);
+  const fleet = useKilnFleet();
+  const sim = useKilnSimulation();
+  const ai = useAiEngine();
+  const frame = sim?.machineId === primaryId ? sim.frame : null;
+  const models = ai?.engine.models ?? [];
 
-const outcome = (p: Prediction) => {
-  if (p.status === "confirmed")
-    return (
-      <StatusTag
-        tone="good"
-        label={`Confirmed · lead ${leadLabel(p.leadMinutes)}`}
-      />
-    );
-  if (p.status === "missed")
-    return <StatusTag tone="idle" label="Did not occur" />;
-  return <StatusTag tone="info" label="Pending" />;
-};
-
-const ledgerColumns: Column<Prediction>[] = [
-  {
-    key: "prediction",
-    header: "Prediction",
-    render: (p) => (
-      <span className="ast-cell-stack">
-        <span className="ast-cell-title pg-wrap">{p.label}</span>
-        <span className="ast-cell-sub">{p.predictedEvent}</span>
-      </span>
-    ),
-  },
-  {
-    key: "confidence",
-    header: "Confidence",
-    render: (p) => (
-      <span className="pg-prob">
-        <Ticks value={p.confidence} ticks={10} tone="info" />
-        <span className="ast-num">{p.confidence} %</span>
-      </span>
-    ),
-  },
-  {
-    key: "made",
-    header: "Made",
-    render: (p) => (
-      <span className="ast-muted ast-num">{simStamp(p.createdT)}</span>
-    ),
-  },
-  {
-    key: "predicted",
-    header: "Expected",
-    render: (p) => (
-      <span className="ast-muted ast-num">{simStamp(p.predictedT)}</span>
-    ),
-  },
-  { key: "outcome", header: "Outcome", render: outcome },
-];
-
-function Kpi({
-  label,
-  value,
-  unit,
-  foot,
-}: {
-  label: string;
-  value: string;
-  unit?: string;
-  foot?: string;
-}) {
-  return (
-    <div className="ast-card ast-kpi">
-      <span className="ast-kpi-label">{label}</span>
-      <span className="ast-kpi-value ast-num">
-        {value}
-        {unit && <span className="ast-unit">{unit}</span>}
-      </span>
-      {foot && <span className="ast-caption">{foot}</span>}
-    </div>
+  const inputs = useMemo<InputRow[]>(
+    () =>
+      Object.entries(fleet)
+        .map(([id, s]) => {
+          const p = s.frame.pipeline;
+          const scored = p.valid + p.suspect + p.invalid + p.held;
+          return {
+            id,
+            name: machines.find((m) => m.id === id)?.name ?? id,
+            frame: s.frame,
+            scored,
+            flagged: scored - p.valid,
+          };
+        })
+        .sort((a, b) => a.id.localeCompare(b.id)),
+    [fleet, machines],
   );
-}
 
-export function PredictionLedgerSection({
-  ledger,
-}: {
-  ledger: PredictionLedger;
-}) {
-  const [filter, setFilter] = useState<LedgerFilter>("all");
-  const { items, stats, isLoading, error } = ledger;
-  const rows =
-    filter === "all" ? items : items.filter((p) => p.status === filter);
+  if (!frame || !ai) {
+    return (
+      <EmptyCard title={`No live inference: the ${primaryId} simulation is not running.`} />
+    );
+  }
+
+  const flagging = models.filter((m) => m.tone !== "good");
+  const p = frame.pipeline;
+  const total = p.valid + p.suspect + p.invalid + p.held;
+  const speed = sim?.speedMultiplier ?? 1;
+  const paused = sim?.isPaused ?? false;
+
   return (
-    <>
-      <section className="ast-kpis" aria-label="Prediction accuracy">
-        <Kpi
-          label="Precision"
-          value={stats.precision === null ? "—" : stats.precision.toFixed(0)}
-          unit={stats.precision === null ? undefined : "%"}
-          foot={`${stats.confirmed} confirmed of ${stats.confirmed + stats.missed} resolved`}
+    <div className="aiq-stack">
+      <KpiCards className="aiq-kpis" label="Engine status">
+        <KpiCard
+          alertOnly
+          label="Live coverage"
+          value={String(inputs.length)}
+          unit={`of ${machines.length || inputs.length} machines`}
+          foot="Machines streaming into the engine"
         />
-        <Kpi
-          label="Mean lead time"
-          value={leadLabel(stats.meanLeadMinutes)}
-          foot={`Warning before the event · ${stats.pending} of ${stats.made} awaiting outcome`}
+        <KpiCard
+          alertOnly
+          label="Inference cadence"
+          value={paused ? "Paused" : "1"}
+          unit={paused ? undefined : "cycle / sim min"}
+          tone={paused ? "warn" : undefined}
+          foot={
+            paused
+              ? `Last cycle ${frame.clock}`
+              : `${speed}× · every ${(1 / speed).toFixed(speed > 1 ? 2 : 0)} s real · last ${frame.clock}`
+          }
         />
-      </section>
-      <section
-        className="ast-card pg-table-card"
-        aria-label="Prediction ledger"
-      >
+        <KpiCard
+          alertOnly
+          label={`Inputs · ${primaryId}`}
+          value={String(p.valid)}
+          unit={`of ${total} valid`}
+          tone={p.invalid > 0 ? "bad" : total - p.valid > 0 ? "warn" : undefined}
+          foot={`${total - p.valid} held, suspect or invalid`}
+        />
+        <KpiCard
+          alertOnly
+          label="Stages flagging"
+          value={String(flagging.length)}
+          unit={`of ${models.length || 6}`}
+          tone={flagging.some((m) => m.tone === "bad") ? "bad" : flagging.length ? "warn" : undefined}
+          foot={
+            flagging.length
+              ? flagging.map((m) => m.name).join(" · ")
+              : "Every stage normal"
+          }
+        />
+      </KpiCards>
+
+      <Pipeline models={models} />
+
+      <section className="ast-card pg-table-card" aria-label="Engine inputs by machine">
         <div className="ast-card-head">
-          <h2 className="ast-card-title">Prediction ledger</h2>
-          <PillNav
-            items={[
-              { id: "all", label: "All" },
-              { id: "pending", label: "Pending" },
-              { id: "confirmed", label: "Confirmed" },
-              { id: "missed", label: "Did not occur" },
-            ]}
-            activeId={filter}
-            onChange={(id) => setFilter(id as LedgerFilter)}
-          />
+          <h2 className="ast-card-title">Inputs by machine</h2>
+          <span className="ast-caption">Opens the machine&apos;s Sensors page</span>
         </div>
-        {isLoading && rows.length === 0 ? (
-          <div className="ast-empty" role="status">
-            <strong>Loading ledger</strong>
-          </div>
-        ) : error && rows.length === 0 ? (
-          <div className="ast-empty" role="alert">
-            <strong>Ledger unavailable</strong>
-            /api/predictions · {error}
-          </div>
-        ) : rows.length === 0 ? (
+        {inputs.length === 0 ? (
           <div className="ast-empty">
-            <strong>
-              {filter === "all" ? "No predictions yet" : "Nothing in this view"}
-            </strong>
-            A prediction is recorded when a trend is heading for a limit or a
-            rule starts to build.
+            <strong>No machine is streaming live data.</strong>
           </div>
         ) : (
           <Table
             className="ast-table"
-            columns={ledgerColumns}
-            data={rows}
-            keyExtractor={(p) => p.id}
+            columns={inputColumns}
+            data={inputs}
+            keyExtractor={(r) => r.id}
+            onRowClick={(r) => navigateToMachine(r.id, "sensors")}
           />
         )}
       </section>
-    </>
+
+      <InferenceTicker entries={ai.engine.ticker} />
+
+      <CrossLinks
+        links={[
+          {
+            label: `${primaryId} Diagnosis`,
+            onClick: () => navigateToMachine(primaryId, "diagnosis"),
+          },
+          {
+            label: `${primaryId} Sensors`,
+            onClick: () => navigateToMachine(primaryId, "sensors"),
+          },
+          {
+            label: `${primaryId} Prognosis`,
+            onClick: () => navigateToMachine(primaryId, "prognosis"),
+          },
+        ]}
+      />
+    </div>
   );
 }

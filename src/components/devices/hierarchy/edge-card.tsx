@@ -3,7 +3,7 @@
 import React from "react";
 import { StatusTag } from "@/components/assets/assets-shell-ui";
 import { PillButton } from "@/components/ui";
-import { isKilnMachine, useKilnSimulationFor } from "@/providers/kiln-simulation-context";
+import { isLiveMachine, useKilnSimulationFor } from "@/providers/kiln-simulation-context";
 import type { EdgeCard, EdgeSource } from "@/types/edge";
 import { type EdgeIndex, LINK_LABEL, LINK_TONE, ago, sourceLink } from "../edge-model";
 import { ChannelTable, simulatedSignal } from "./edge-channels";
@@ -43,7 +43,7 @@ export function EdgeCardView({ ix, src, card, cardId, now, history, sectionNav, 
     return at && (!t || at > t) ? at : t;
   }, null);
   const flagged = channels.filter((c) => c.status === "alert" || c.status === "danger").length;
-  const kilnMachine = channels.find((c) => isKilnMachine(c.point?.machineId))?.point?.machineId ?? (isKilnMachine(src.machineId) ? src.machineId : null);
+  const kilnMachine = channels.find((c) => isLiveMachine(c.point?.machineId))?.point?.machineId ?? (isLiveMachine(src.machineId) ? src.machineId : null);
   // Subscribes only for kiln cards (re-renders every second while it does).
   const sim = useKilnSimulationFor(kilnMachine);
   const simSignals = sim?.frame.signals ?? null;

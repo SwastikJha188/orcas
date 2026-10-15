@@ -1,8 +1,33 @@
 "use client";
 
-import React, { useEffect, useId, useMemo, useRef, useState } from "react";
+/**
+ * Machine sub-page · Thermal (any live machine with a kiln shell scanner
+ * profile: `frame.defs.hasShell` — the KLN fleet and the pyro line's PYR-KLN-01).
+ * Is the kiln shell thermally safe — where are the hot spots, and is the
+ * refractory / coating changing?
+ *
+ * Header (status, hottest point, margin, scanner, last scan) → KPI strip →
+ * scroll-spy index → five sections, one card each:
+ *   Shell     SHL-KLN-01 scanner map to scale under the machine-kit kiln, axial profile on the same metre axis
+ *   Zones     per zone max / mean / model / deviation / area ≥ alert / lining estimate (R-SHL-01 / R-SHL-02 logic);
+ *             with an engine scan history (pyro line), change since the last validated scan and the last shift
+ *   Hot spots ranked R-SHL-01 regions → circumferential plot and trend of the selected section
+ *   Rules     `defs.thermalRules` states (kiln fleet: R-SHL-01, R-SHL-02, R-DQ-01) → Diagnosis
+ *   Scanner   STS-KLN-08 coverage, data validity, handheld record (if any), map timing → Sensors
+ *
+ * Self-contained: takes only `machine`, reads its own live plant through
+ * `useKilnSimulationFor`. The map's hottest cell is exactly CAL-KLN-03.
+ */
+
+import React, { useMemo, useState } from "react";
+import { rowActivate } from "@/components/ui/row-activate";
 import { PillButton, PillNav } from "@/components/ui";
-import { simMinuteMs, simTimeMs, type RuleState } from "@/lib/kiln-sim/engine";
+import { useIndustrialData } from "@/providers/industrial-data-context";
+import { useKilnSimulationFor, useLiveMachineStatus } from "@/providers/kiln-simulation-context";
+import { conditionTone, toCondition, validityTone } from "@/components/ui/status";
+import { useSiteTimeZone } from "@/providers/use-site-time-zone";
+import { formatLocalTime } from "@/lib/time";
+import { formatDuration, simTimeMs, type RuleState, type SimFrame } from "@/lib/kiln-sim/engine";
 import type { Severity } from "@/lib/kiln-sim/signals";
 import {
   SHELL_ALERT,
@@ -10,998 +35,1130 @@ import {
   SHELL_DANGER,
   SHELL_DIA,
   SHELL_DZ,
-  SHELL_GIRTH,
+  SHELL_LAST_GOOD_MAX_AGE,
   SHELL_LEN,
   SHELL_NA,
+  SHELL_NORMAL_COVERAGE,
   SHELL_TYRES,
   SHELL_ZONES,
   buildShellMap,
   shellZoneAt,
   type ShellMap,
-  type ShellZoneStats,
 } from "@/lib/kiln-sim/shell-map";
-import { MX, MachineLabel, MachinePad, MachineSvg, PAINT, Bolt } from "./machine-kit/machine-kit";
-import { BandGauge, type Tone } from "./diagnostics-overview-tab";
-import { TrendChart, type TrendSample } from "./sensor-trend-graph";
+import type { AssetMachine } from "./assets-data";
+import type { AssetsSubPage } from "./assets-view";
+import type { Tone } from "./assets-shell-ui";
+import { StatusTag } from "@/components/ui/status-tag";
+import { focusSensorOn } from "./sensor-focus";
+import { TrendChart, TrendTimeZoneContext, type TrendSample } from "./sensor-trend-graph";
 import type { KilnSimulation } from "./kiln-seals-simulation";
-import "./diagnosis.css";
-import "./diagnosis/overview-tab.css";
+import { Empty, KpiStrip, PageHeader, Section, SectionIndex, WhyDisclosure, type KpiItem, type SectionIndexItem } from "./analysis/an-ui";
+import { DataTable, Num, PROG_SECTION_KEY, type Col } from "./prognosis/prog-ui";
+import { ANALYSIS_ANCHOR_KEY } from "./analysis/analysis-page";
+import { DIAGNOSIS_SECTION_KEY } from "./diagnosis-view";
+import { HeatScale, PolarChart, ProfileChart, ShellMapFigure, type LastGood } from "./thermal-map";
+import {
+  COLD_BAND,
+  COVERAGE,
+  HOT_DELTA,
+  RATE_WARN,
+  SEV_TONE,
+  SHIFT_MIN,
+  ZONE_DELTA,
+  coverageTone,
+  findHotSpots,
+  fmt0,
+  fmt1,
+  hiddenBreakdown,
+  ruleStage,
+  signed,
+  tempTone,
+  thermalLimits,
+  worst,
+  zoneEstimates,
+  zoneScanDeltas,
+  type HotSpot,
+  type ScanComparison,
+  type ZoneEstimate,
+} from "./thermal-derive";
+import "./analysis/analysis-page.css";
 import "./thermal-view.css";
 
-/**
- * Thermal tab (kiln only), on the Diagnosis page skeleton: KPI strip → the
- * SHL-KLN-01 shell scanner map to scale (or the longitudinal profile on the
- * same metre axis) → shell-maximum trend and hottest section → zone register
- * → thermal findings. Everything follows the live frame (`frame.shellProfile`,
- * CAL-KLN-03, STS-KLN-08), so the map's hottest cell is the CAL-KLN-03 value.
- */
+/** sessionStorage key another page can set to open Thermal at a section id. */
+export const THERMAL_SECTION_KEY = "ultron.thermal.section";
 
-const TONE: Record<Severity, Exclude<Tone, "neutral">> = { Normal: "good", Advisory: "warn", Critical: "bad" };
+const IDS = {
+  shell: "thm-shell",
+  zones: "thm-zones",
+  spots: "thm-spots",
+  rules: "thm-rules",
+  scanner: "thm-scanner",
+} as const;
+
+/** Trend window, simulated minutes. */
 const TREND_MIN = 180;
+const SHELL_AREA = Math.PI * SHELL_DIA * SHELL_LEN;
+const STATUS_LABEL: Record<Tone, string> = { good: "Normal", warn: "Warning", bad: "Alarm", idle: "No view", info: "Confirming" };
 
-/* Shared metre axis: map, kiln drawing and profile line up column for column. */
-const PX0 = 52;
-const PWD = 912;
-const XT = (z: number) => PX0 + (z / SHELL_LEN) * PWD;
-const PX_PER_M = PWD / SHELL_LEN;
-const HY0 = 186;
-const HH = 288;
-const YT = (a: number) => HY0 + (a / 360) * HH;
-const SHELL_Y = 92;
-const SHELL_H = SHELL_DIA * PX_PER_M;
-const GROUND = 160;
+/** Monochrome by default: status colour only for warning / alarm. */
+const quiet = (t: Tone): Tone => (t === "warn" || t === "bad" ? t : "idle");
+const alarmTone = (t: Tone): Tone | undefined => (t === "warn" || t === "bad" ? t : undefined);
 
-/** Thermal scale stops (°C → `--heat-*` token). */
-const HEAT_STOPS = [150, 200, 240, 275, 315, 355, 400, 460, 520] as const;
-const HEAT_LO = HEAT_STOPS[0];
-const HEAT_HI = HEAT_STOPS[HEAT_STOPS.length - 1];
-
-type Rgb = [number, number, number];
-type MapView = "map" | "profile";
-
-function hexRgb(hex: string): Rgb {
-  const h = hex.trim().replace("#", "");
-  const n = parseInt(h.length === 3 ? h.replace(/./g, "$&$&") : h, 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-function readRamp(): { stops: Array<[number, Rgb]>; mask: Rgb } {
-  const css = getComputedStyle(document.documentElement);
-  return {
-    stops: HEAT_STOPS.map((v) => [v, hexRgb(css.getPropertyValue(`--heat-${v}`) || "#000")]),
-    mask: hexRgb(css.getPropertyValue("--heat-mask") || "#3a3e44"),
-  };
-}
-
-function heat(stops: Array<[number, Rgb]>, v: number): Rgb {
-  if (v <= stops[0][0]) return stops[0][1];
-  for (let i = 1; i < stops.length; i++) {
-    if (v <= stops[i][0]) {
-      const [a, ca] = stops[i - 1];
-      const [b, cb] = stops[i];
-      const k = (v - a) / (b - a);
-      return [0, 1, 2].map((j) => Math.round(ca[j] + (cb[j] - ca[j]) * k)) as Rgb;
-    }
-  }
-  return stops[stops.length - 1][1];
-}
-
-/** Paints the map into a 149 × 72 bitmap (one pixel per cell) and returns it as a data URL. */
-function useHeatImage(map: ShellMap, nz: number): string {
-  const canvas = useRef<HTMLCanvasElement | null>(null);
-  const [url, setUrl] = useState("");
-  useEffect(() => {
-    if (!canvas.current) canvas.current = document.createElement("canvas");
-    const cv = canvas.current;
-    cv.width = nz;
-    cv.height = SHELL_NA;
-    const ctx = cv.getContext("2d");
-    if (!ctx) return;
-    const { stops, mask } = readRamp();
-    const img = ctx.createImageData(nz, SHELL_NA);
-    for (let i = 0; i < nz; i++) {
-      for (let k = 0; k < SHELL_NA; k++) {
-        const j = i * SHELL_NA + k;
-        const [r, g, b] = map.mask[j] ? mask : heat(stops, map.temp[j]);
-        const o = (k * nz + i) * 4;
-        img.data[o] = r;
-        img.data[o + 1] = g;
-        img.data[o + 2] = b;
-        img.data[o + 3] = 255;
-      }
-    }
-    ctx.putImageData(img, 0, 0);
-    setUrl(cv.toDataURL());
-  }, [map, nz]);
-  return url;
-}
-
-const fmt0 = (v: number) => (Number.isFinite(v) ? v.toFixed(0) : "—");
-const signed = (v: number, d = 0) => {
-  const r = Math.abs(v).toFixed(d);
-  return Number(r) === 0 ? r : `${v > 0 ? "+" : "−"}${r}`;
-};
-const tempTone = (v: number): Exclude<Tone, "neutral"> => (v >= SHELL_DANGER ? "bad" : v >= SHELL_ALERT ? "warn" : "good");
-
-function StatIcon({ children }: { children: React.ReactNode }) {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {children}
-    </svg>
-  );
-}
-
-const ICON = {
-  temp: (
-    <StatIcon>
-      <path d="M10 13.5V5a2 2 0 1 1 4 0v8.5a4 4 0 1 1-4 0z" />
-      <path d="M12 9v6" />
-    </StatIcon>
-  ),
-  delta: (
-    <StatIcon>
-      <path d="M3 17h18" strokeDasharray="2 3" />
-      <path d="m4 14 5-5 4 3 7-7" />
-    </StatIcon>
-  ),
-  area: (
-    <StatIcon>
-      <rect x="3.5" y="5" width="17" height="14" rx="2" />
-      <rect x="9" y="9" width="6" height="6" rx="1" strokeDasharray="2 2" />
-    </StatIcon>
-  ),
-  scan: (
-    <StatIcon>
-      <path d="M4 8V5h3M20 8V5h-3M4 16v3h3M20 16v3h-3" />
-      <path d="M7 12h10" />
-    </StatIcon>
-  ),
-  zone: (
-    <StatIcon>
-      <rect x="3" y="8" width="18" height="8" rx="4" />
-      <path d="M9 8v8M15 8v8" />
-    </StatIcon>
-  ),
-  rule: (
-    <StatIcon>
-      <path d="M12 3 2.5 20h19L12 3z" />
-      <path d="M12 10v4M12 17h.01" />
-    </StatIcon>
-  ),
-};
+/* ------------------------------------------------------------------ */
+/* Entry                                                               */
+/* ------------------------------------------------------------------ */
 
 export interface ThermalViewProps {
-  simulation: KilnSimulation;
-  onNavigateToTrends?: () => void;
-  onNavigateToDiagnosis?: () => void;
+  machine: AssetMachine;
 }
 
-export function ThermalView({ simulation, onNavigateToTrends, onNavigateToDiagnosis }: ThermalViewProps) {
+export function ThermalView({ machine }: ThermalViewProps) {
+  const simulation = useKilnSimulationFor(machine.id);
+  if (!simulation || !simulation.frame.defs.hasShell) {
+    return (
+      <div className="ast-root pg-analysis thm-root" aria-label="Thermal">
+        <header className="pg-analysis-head">
+          <div className="pg-analysis-head-main">
+            <h2 className="pg-analysis-title">Thermal</h2>
+          </div>
+        </header>
+        <section className="ast-card">
+          <Empty title="No shell scanner on this machine">Thermal needs a live kiln shell scanner profile and its shell maximum.</Empty>
+        </section>
+      </div>
+    );
+  }
+  return <ThermalPage machine={machine} simulation={simulation} />;
+}
+
+/* ------------------------------------------------------------------ */
+/* Section history of the scanner map, kept from the page opening.     */
+/* The kiln-seal engine keeps history for scalar tags only (CAL-KLN-03),*/
+/* so other sections' trends start when the page opens. The pyro line  */
+/* also keeps one scanner map per scan (`frame.shellScans`).           */
+/* ------------------------------------------------------------------ */
+
+interface ProfileSample {
+  t: number;
+  colMax: Array<number | null>;
+}
+
+function useProfileHistory(t: number, colMax: Array<number | null>): ProfileSample[] {
+  const [hist, setHist] = useState<{ t: number; buf: ProfileSample[] }>({ t: Number.NaN, buf: [] });
+  if (hist.t !== t) {
+    // Derived-state update during render (React's "store information from previous renders").
+    setHist((h) => (h.t === t ? h : { t, buf: [...h.buf.filter((s) => s.t < t).slice(-(TREND_MIN - 1)), { t, colMax }] }));
+  }
+  return hist.buf;
+}
+
+/** Least-squares rate, K per simulated hour, of (t in sim minutes, v). */
+function ratePerHour(pts: Array<{ t: number; v: number }>, n = 20): number | null {
+  const p = pts.slice(-n);
+  if (p.length < 5) return null;
+  const xm = p.reduce((a, b) => a + b.t, 0) / p.length;
+  const ym = p.reduce((a, b) => a + b.v, 0) / p.length;
+  let num = 0;
+  let den = 0;
+  for (const q of p) {
+    num += (q.t - xm) * (q.v - ym);
+    den += (q.t - xm) ** 2;
+  }
+  return den ? (num / den) * 60 : null;
+}
+
+/** Simulated hours as a duration label (formatDuration handles wall-clock mode). */
+function fmtHours(h: number): string {
+  if (!Number.isFinite(h) || h <= 0) return "—";
+  return formatDuration(h * 60);
+}
+
+interface SpotRow extends HotSpot {
+  rate: number | null;
+  /** Rate derived on this page from the section history (not the engine's CAL-KLN-03 slope). */
+  rateDerived: boolean;
+  persistence: string;
+  ttl: string | null;
+}
+
+/** Muted footnote-style provenance suffix. */
+function Est({ children = "est." }: { children?: string }) {
+  return <span className="thm-est">{children}</span>;
+}
+
+/* ------------------------------------------------------------------ */
+/* Page                                                                */
+/* ------------------------------------------------------------------ */
+
+function ThermalPage({ machine, simulation }: { machine: AssetMachine; simulation: KilnSimulation }) {
+  const { setActiveSubPage } = useIndustrialData();
+  const { timeZone } = useSiteTimeZone({ machineId: machine.id });
+  // One machine condition everywhere (same source as every other machine page).
+  const machineCondition = toCondition(useLiveMachineStatus(machine.id, { health: machine.health, status: machine.status }).status);
   const { frame } = simulation;
+  const { defs } = frame;
+  // Pyro line: shell-temperature deviation only (D4 ENGINEERING LIMITATION 3); thresholds and derived values per D5
+  // Tables 5.4.7a / 9.2 / 9.5, from the engine's thermal-map processing (`frame.shellThermal`).
+  const pyro = defs.plant === "pyro";
+  const lim = thermalLimits(pyro);
+  const th = frame.shellThermal ?? null;
+  // Map shown: live, or one of the maps kept around a finding (D5 Table 9.5: map snapshot attached to each finding).
+  const [snapKey, setSnapKey] = useState("live");
+  const [snapT, setSnapT] = useState<number | null>(null);
+  const snapEntry = th && snapKey !== "live" ? (th.findingMaps.find((f) => `${f.ruleId}@${f.since}` === snapKey) ?? null) : null;
+  const snapMap = snapEntry
+    ? (snapEntry.maps.find((x) => x.t === snapT) ?? snapEntry.maps.reduce((a, b) => (Math.abs(b.t - snapEntry.since) < Math.abs(a.t - snapEntry.since) ? b : a), snapEntry.maps[0]) ?? null)
+    : null;
+  const live = snapMap === null;
   const shellMax = frame.signals["CAL-KLN-03"];
-  const coverage = frame.signals["STS-KLN-08"];
-  const [view, setView] = useState<MapView>("map");
+  const coverageSig = frame.signals["STS-KLN-08"];
+  const torque = frame.signals["ELE-KLN-01"];
+  const speed = defs.speedTag ? frame.signals[defs.speedTag] : undefined;
+  const shellSystem = defs.signalByTag["CAL-KLN-03"]?.system ?? "";
+  // Thermal rules of this machine: the first is its hot-spot / refractory rule.
+  const ruleIds = defs.thermalRules;
+  const hotRuleId = ruleIds[0] ?? null;
+  const ringRuleId = ruleIds.find((id) => /ring|coating/i.test(defs.ruleById[id]?.name ?? "")) ?? null;
+  // Handheld scan of the shell, recorded by hand (manual record), if the machine has one.
+  const manualDef = defs.signals.find((d) => d.origin === "manual" && d.sub === defs.signalByTag["CAL-KLN-03"]?.sub) ?? null;
 
   const map = useMemo(
-    () => buildShellMap(frame.shellProfile, frame.shellModel, coverage?.value ?? 95.9, frame.t),
-    [frame.shellProfile, frame.shellModel, coverage?.value, frame.t],
+    () =>
+      snapMap
+        ? buildShellMap(snapMap.profile, snapMap.model, snapMap.coverage, snapMap.t, snapMap.local)
+        : buildShellMap(frame.shellProfile, frame.shellModel, coverageSig?.value ?? SHELL_NORMAL_COVERAGE, frame.t, th?.local ?? null),
+    [snapMap, frame.shellProfile, frame.shellModel, coverageSig?.value, frame.t, th?.local],
   );
-  const nz = map.colMax.length;
-  const heatUrl = useHeatImage(map, nz);
-  const status = shellMax?.status ?? "Normal";
-  const maxTone = TONE[status];
-  const covValue = coverage?.value ?? map.coverage;
-  const covTone = TONE[coverage?.status ?? "Normal"];
-  const modelAtMax = map.model[map.maxI];
-  const aboveModel = map.max - modelAtMax;
+  const bandFrom = live && th?.coldBand ? th.coldBand.from : lim.coldBand.from;
+  const bandTo = live && th?.coldBand ? th.coldBand.to : lim.coldBand.to;
+  const coldSpan = useMemo(() => ({ from: bandFrom, to: bandTo }), [bandFrom, bandTo]);
+  const lastGood = useMemo<LastGood | null>(
+    () => (th && live ? { v: th.lastGood, at: th.lastGoodAt, t: frame.t, maxAge: SHELL_LAST_GOOD_MAX_AGE } : null),
+    [th, live, frame.t],
+  );
+  const spots = useMemo(() => findHotSpots(map), [map]);
+  const estimates = useMemo(
+    () => zoneEstimates(map, spots, { coldBandResidual: frame.coldBandResidual, torqueZ: torque?.z ?? null, deviationOnly: pyro, coldBandSpan: coldSpan }),
+    [map, spots, frame.coldBandResidual, torque?.z, pyro, coldSpan],
+  );
+  const hidden = useMemo(() => hiddenBreakdown(map, SHELL_TYRES.map((t) => t.z)), [map]);
+  const history = useProfileHistory(frame.t, map.colMax);
+  // Zone change against the previous validated scan and the last shift (engine scan history, when kept).
+  const scanCmp = useMemo(() => (frame.shellScans ? zoneScanDeltas(frame.shellScans, SHELL_ZONES) : null), [frame.shellScans]);
+
+  const status: Severity = shellMax?.status ?? "Normal";
+  const coverage = coverageSig?.value ?? map.coverage;
+  const covTone = worst(coverageTone(coverage, lim.coverage), SEV_TONE[coverageSig?.status ?? "Normal"]);
   const slope = shellMax?.slopePerHour ?? null;
   const ttl = shellMax?.timeToLimit && shellMax.timeToLimit !== "—" ? shellMax.timeToLimit : null;
+  const hotZone = shellZoneAt(map.maxZ);
+  const modelAtMax = map.model[map.maxI];
+  const aboveModel = map.max - modelAtMax;
+  const margin = SHELL_ALERT - map.max;
+  const maxTone = worst(SEV_TONE[status], tempTone(map.max));
 
-  const findings = frame.rules.filter(
-    (r) => r.status !== "QUIET" && (r.subs.includes("shell-refractory") || r.tags.some((t) => t === "CAL-KLN-03" || t === "STS-KLN-08")),
+  const rulesById = useMemo(() => new Map(frame.rules.map((r) => [r.id, r])), [frame.rules]);
+  const shellRule = (hotRuleId && rulesById.get(hotRuleId)) || null;
+  const thermalRules = useMemo(() => {
+    // Pyro line: every rule that reads the shell map or the scanner is listed, quiet or not.
+    const shellInputs = pyro ? defs.rules.filter((d) => !ruleIds.includes(d.id) && d.inputs.some((tg) => tg === "CAL-KLN-03" || tg === "STS-KLN-08")).map((d) => d.id) : [];
+    const ids = [...ruleIds, ...shellInputs];
+    const base = ids.map((id) => rulesById.get(id)).filter((r): r is RuleState => Boolean(r));
+    const shellTags = new Set(["CAL-KLN-03", "STS-KLN-08", ...(manualDef ? [manualDef.tag] : [])]);
+    const extra = frame.rules.filter((r) => !ids.includes(r.id) && r.status !== "QUIET" && r.tags.some((t) => shellTags.has(t)));
+    return [...base, ...extra];
+  }, [frame.rules, rulesById, ruleIds, manualDef, pyro, defs.rules]);
+  const openRules = thermalRules.filter((r) => r.status !== "QUIET");
+
+  /* Hot-spot rows with persistence and growth (hottest: engine; others: page history). */
+  const spotRows: SpotRow[] = useMemo(
+    () =>
+      spots.map((s) => {
+        const series = history
+          .map((h) => ({ t: h.t, v: h.colMax[s.peakI] }))
+          .filter((p): p is { t: number; v: number } => p.v != null);
+        const isMax = s.peakI === map.maxI;
+        const engineRate = isMax && slope !== null;
+        const rate = engineRate ? slope : ratePerHour(series);
+        let run = 0;
+        for (let n = series.length - 1; n >= 0 && series[n].v - s.model >= HOT_DELTA; n--) run++;
+        let persistence: string;
+        if (isMax && shellRule?.status === "ACTIVE" && shellRule.since != null) persistence = fmtHours((frame.t - shellRule.since) / 60);
+        else if (s.delta < HOT_DELTA) persistence = "—";
+        else if (series.length < 2) persistence = "collecting";
+        else if (run >= series.length) persistence = `≥ ${fmtHours(run / 60)}`;
+        else persistence = fmtHours(run / 60);
+        const ttlSpot = isMax && ttl ? ttl : rate !== null && rate > 0.5 && s.peak < SHELL_ALERT ? fmtHours((SHELL_ALERT - s.peak) / rate) : null;
+        return { ...s, rate, rateDerived: rate !== null && !engineRate, persistence, ttl: ttlSpot };
+      }),
+    [spots, history, map.maxI, slope, shellRule, frame.t, ttl],
   );
+  const realSpots = spotRows.filter((s) => s.delta >= HOT_DELTA || s.peak >= SHELL_ALERT);
 
-  const trend = useMemo<TrendSample[]>(() => {
-    const h = frame.history["CAL-KLN-03"] ?? [];
-    const mh = frame.modelHistory["CAL-KLN-03"] ?? [];
-    const now = simTimeMs(frame.t);
-    const step = simMinuteMs();
-    const n = Math.min(h.length, TREND_MIN);
+  /* Selected section: a chosen hot spot, a clicked section, or the hottest section. */
+  const [selSpotId, setSelSpotId] = useState<string | null>(null);
+  const [manualI, setManualI] = useState<number | null>(null);
+  const selSpot = spotRows.find((s) => s.id === selSpotId) ?? null;
+  const selI = selSpot ? selSpot.peakI : (manualI ?? map.maxI);
+  const selZ = selI * SHELL_DZ;
+  const selRow = selSpot ?? spotRows.find((s) => s.peakI === selI) ?? null;
+
+  const selTrend = useMemo<{ samples: TrendSample[]; source: string }>(() => {
+    if (selI === map.maxI) {
+      const h = frame.history["CAL-KLN-03"] ?? [];
+      const mh = frame.modelHistory["CAL-KLN-03"] ?? [];
+      const n = Math.min(h.length, TREND_MIN);
+      const out: TrendSample[] = [];
+      for (let i = h.length - n; i < h.length; i++) out.push({ t: simTimeMs(frame.t - (h.length - 1 - i)), v: h[i], b: mh[i] });
+      return { samples: out, source: "CAL-KLN-03 · shell max" };
+    }
+    const m = map.model[selI];
     const out: TrendSample[] = [];
-    for (let i = h.length - n; i < h.length; i++) out.push({ t: now - (h.length - 1 - i) * step, v: h[i], b: mh[i] });
-    return out;
-  }, [frame.history, frame.modelHistory, frame.t]);
+    // Engine scan history (one map per scan), when kept: covers the hours before the page opened.
+    const scans = frame.shellScans?.filter((s) => s.t > frame.t - TREND_MIN) ?? [];
+    if (scans.length > 1) {
+      for (const s of scans) {
+        const v = s.profile[selI];
+        if (Number.isFinite(v)) out.push({ t: simTimeMs(s.t), v, b: m });
+      }
+      return { samples: out, source: `${selZ.toFixed(1)} m · scanner maps, one per scan` };
+    }
+    for (const s of history) {
+      const v = s.colMax[selI];
+      if (v != null) out.push({ t: simTimeMs(s.t), v, b: m });
+    }
+    return { samples: out, source: `${selZ.toFixed(1)} m · since page opened` };
+  }, [selI, map.maxI, map.model, frame.history, frame.modelHistory, frame.shellScans, frame.t, history, selZ]);
 
-  const shellMaxScale = Math.max(480, Math.ceil((map.max + 20) / 20) * 20);
-  const deltaScale = Math.max(80, Math.ceil((Math.abs(aboveModel) + 10) / 20) * 20);
+  /* Overall state. */
+  const rateTone: Tone = slope !== null && slope > lim.rateWarn ? "warn" : "good";
+  // D5 Table 5.4.7a: time to the danger limit, with a range from the rate's uncertainty (± 25 %).
+  const toDanger = live && pyro && slope !== null && slope > 0.5 && map.max < SHELL_DANGER ? (SHELL_DANGER - map.max) / slope : null;
+  const dangerText = toDanger === null ? null : `${fmtHours(toDanger)} (${fmtHours(toDanger / 1.25)}–${fmtHours(toDanger / 0.8)})`;
+  const area1h = live && th?.areaAboveAlert1h != null ? map.hotArea - th.areaAboveAlert1h : null;
+  const offZones = estimates.filter((e) => e.kind !== "normal" && e.kind !== "no-view");
+  const lastScan = formatLocalTime(simTimeMs(frame.t), { seconds: false, timeZone });
+
+  /* Navigation. */
+  const go = (sub: AssetsSubPage) => setActiveSubPage(sub);
+  const goAt = (sub: AssetsSubPage, key: string, id: string) => {
+    try {
+      sessionStorage.setItem(key, id);
+    } catch {
+      /* storage unavailable: the page opens at the top */
+    }
+    go(sub);
+  };
+  const openTrend = (tag: string) => {
+    focusSensorOn("trends", tag);
+    go("trends");
+  };
+  const openDiagnosis = () => goAt("diagnosis", DIAGNOSIS_SECTION_KEY, "dx-diagnosis");
+
+  const ruleTone = openRules.length ? worst(...openRules.map((r) => (r.status === "ACTIVE" ? SEV_TONE[r.severity] : "good"))) : "good";
+  const index: SectionIndexItem[] = [
+    { id: IDS.shell, label: "Shell", tone: alarmTone(maxTone) },
+    { id: IDS.zones, label: "Zones", tone: alarmTone(offZones.length ? worst(...offZones.map((e) => e.tone)) : "good") },
+    { id: IDS.spots, label: realSpots.length ? "Hot spots" : "Hottest section", tone: alarmTone(realSpots.length ? worst(...realSpots.map((s) => s.tone)) : "good") },
+    { id: IDS.rules, label: "Rules", tone: alarmTone(ruleTone) },
+    { id: IDS.scanner, label: "Scanner", tone: alarmTone(covTone) },
+  ];
+
+  const kpis: KpiItem[] = [
+    {
+      label: "Shell max",
+      value: fmt0(map.max),
+      unit: "°C",
+      tone: alarmTone(maxTone),
+      bar: <LimitTrack min={150} max={Math.max(480, Math.ceil((map.max + 20) / 20) * 20)} value={map.max} warn={SHELL_ALERT} bad={SHELL_DANGER} />,
+      foot: `${margin >= 0 ? `${fmt0(margin)} K to` : `${fmt0(-margin)} K over`} ${SHELL_ALERT} °C warning${pyro ? " (demo limit)" : ""}${dangerText ? ` · ${SHELL_DANGER} °C in ${dangerText}` : ""}`,
+    },
+    {
+      label: "Above model",
+      value: signed(aboveModel),
+      unit: "K",
+      tone: alarmTone(worst(aboveModel >= lim.hotDelta ? "warn" : "good", rateTone)),
+      bar: (
+        <LimitTrack
+          min={0}
+          max={Math.max(pyro ? 100 : 60, Math.ceil((Math.abs(aboveModel) + 10) / 20) * 20)}
+          value={Math.max(0, aboveModel)}
+          warn={lim.hotDelta}
+          bad={pyro ? 2 * lim.hotDelta : 40}
+        />
+      ),
+      foot: `${slope === null ? "—" : `${signed(slope, 1)} K/h`}${ttl ? ` · warning in ${ttl} est.` : ""}`,
+    },
+    {
+      label: `Area ≥ ${SHELL_ALERT} °C`,
+      value: map.hotArea.toFixed(1),
+      unit: "m²",
+      tone: alarmTone(map.hotArea > 2 ? "bad" : map.hotArea > 0 ? "warn" : "good"),
+      bar: <LimitTrack min={0} max={Math.max(5, Math.ceil(map.hotArea + 1))} value={map.hotArea} warn={0.01} bad={2} />,
+      foot: `of ${SHELL_AREA.toFixed(0)} m² shell${area1h !== null ? ` · ${signed(area1h, 1)} m² in 1 h` : ""}`,
+    },
+    {
+      label: "Scanner coverage",
+      value: fmt1(coverage),
+      unit: "%",
+      tone: alarmTone(covTone),
+      bar: <LimitTrack min={70} max={100} value={coverage} warn={lim.coverage.warn} bad={lim.coverage.alarm} low />,
+      foot: `${hidden.tyres.toFixed(1)} % behind tyres`,
+    },
+  ];
 
   return (
-    <div className="dx-page">
-      <div className="dxo-root">
-        {(onNavigateToTrends || onNavigateToDiagnosis) && (
-          <div className="dxo-toolbar">
-            <div className="dxo-toolbar-group" />
-            <div className="dxo-toolbar-group">
-              {onNavigateToTrends && (
-                <PillButton variant="secondary" onClick={onNavigateToTrends} style={{ padding: "6px 14px", fontSize: "0.8rem" }}>
-                  Trends
-                </PillButton>
-              )}
-              {onNavigateToDiagnosis && (
-                <PillButton variant="secondary" onClick={onNavigateToDiagnosis} style={{ padding: "6px 14px", fontSize: "0.8rem" }}>
-                  Diagnosis
-                </PillButton>
-              )}
-            </div>
-          </div>
-        )}
+    <div className="ast-root pg-frame pg-analysis thm-root" aria-label="Thermal">
+      <PageHeader
+        title="Thermal"
+        status={{ label: machineCondition, tone: conditionTone(machineCondition) }}
+        meta={[
+          { label: "Hottest", value: `${map.maxZ.toFixed(1)} m · ${map.maxAngle}° · ${hotZone}${live ? "" : " (kept map)"}` },
+          { label: "Scanner", value: `STS-KLN-08 · ${coverageSig?.quality ?? "—"}` },
+          { label: "Last scan", value: lastScan },
+        ]}
+        actions={
+          <PillButton variant="secondary" onClick={() => openTrend("CAL-KLN-03")}>
+            Trend CAL-KLN-03
+          </PillButton>
+        }
+      />
 
-        {/* ===================== Tier 1 · KPI strip ===================== */}
-        <section className="dxo-kpis thm-kpis" aria-label="Shell thermal indicators">
-          <div className="dxo-card dxo-stat">
-            <span className="dxo-stat-label">{ICON.temp}Shell maximum</span>
-            <div className="dxo-stat-value">
-              <strong>{fmt0(map.max)}</strong>
-              <span className="dxo-unit">°C</span>
-              <span className={`dxo-aside dxo-stat-tag dxo-tone-text-${maxTone}`}>CAL-KLN-03</span>
-            </div>
-            <BandGauge
-              min={150}
-              max={shellMaxScale}
-              bands={[
-                { to: SHELL_ALERT, tone: "good" },
-                { to: SHELL_DANGER, tone: "warn" },
-                { to: shellMaxScale, tone: "bad" },
-              ]}
-              value={map.max}
-              ticks={[
-                { at: 150, label: "150" },
-                { at: SHELL_ALERT, label: String(SHELL_ALERT) },
-                { at: SHELL_DANGER, label: String(SHELL_DANGER) },
-                { at: shellMaxScale, label: "°C" },
-              ]}
-              ariaLabel={`Shell maximum ${fmt0(map.max)} °C; alert ${SHELL_ALERT}, danger ${SHELL_DANGER} °C`}
-            />
-            <div className="dxo-stat-foot">
-              <span className="dxo-stat-name">
-                {map.maxZ.toFixed(1)} m · {map.maxAngle}° · {shellZoneAt(map.maxZ)}
+      <KpiStrip page items={kpis} label="Shell thermal indicators" />
+
+      <SectionIndex items={index} label="Thermal sections" pendingKey={THERMAL_SECTION_KEY} />
+
+      <div className="pg-frame-body pg-analysis-body">
+        {/* ===================== Shell: map + axial profile ===================== */}
+        <Section
+          id={IDS.shell}
+          title="Shell"
+          right={
+            <span className="thm-legend">
+              <span>
+                <i className="thm-key thm-key-mask" />
+                No view
               </span>
-              {ttl && <b>limit in {ttl}</b>}
-            </div>
-          </div>
-
-          <div className="dxo-card dxo-stat">
-            <span className="dxo-stat-label">{ICON.delta}Above model at hottest point</span>
-            <div className="dxo-stat-value">
-              <strong>{signed(aboveModel)}</strong>
-              <span className="dxo-unit">K</span>
-              <span className={`dxo-aside dxo-tone-text-${slope !== null && slope > 20 ? "bad" : "good"}`}>
-                {slope === null ? "—" : `${signed(slope, 1)} K/h`}
+              <span>
+                <i className="thm-key thm-key-spot" />
+                Hot spot
               </span>
-            </div>
-            <BandGauge
-              min={0}
-              max={deltaScale}
-              bands={[
-                { to: 20, tone: "good" },
-                { to: 40, tone: "warn" },
-                { to: deltaScale, tone: "bad" },
-              ]}
-              value={Math.max(0, aboveModel)}
-              ticks={[
-                { at: 0, label: "0" },
-                { at: 20, label: "20" },
-                { at: 40, label: "40" },
-                { at: deltaScale, label: "K" },
-              ]}
-              ariaLabel={`Hottest point ${signed(aboveModel)} K against the model profile`}
-            />
-            <div className="dxo-stat-foot">
-              <span className="dxo-stat-name">Model {fmt0(modelAtMax)} °C at this section</span>
-            </div>
-          </div>
-
-          <div className="dxo-card dxo-stat">
-            <span className="dxo-stat-label">{ICON.area}Area ≥ {SHELL_ALERT} °C</span>
-            <div className="dxo-stat-value">
-              <strong>{map.hotArea.toFixed(2)}</strong>
-              <span className="dxo-unit">m²</span>
-              <span className={`dxo-aside dxo-tone-text-${map.hotArea > 0 ? maxTone : "good"}`}>
-                {map.hotBox ? `${map.hotBox.z0.toFixed(1)}–${map.hotBox.z1.toFixed(1)} m` : "None"}
+              <span>
+                <i className="thm-key thm-key-box" />≥ {SHELL_ALERT} °C
               </span>
-            </div>
-            <BandGauge
-              min={0}
-              max={Math.max(5, Math.ceil(map.hotArea + 1))}
-              bands={[
-                { to: 0.5, tone: "good" },
-                { to: 2, tone: "warn" },
-                { to: Math.max(5, Math.ceil(map.hotArea + 1)), tone: "bad" },
-              ]}
-              value={map.hotArea}
-              ticks={[
-                { at: 0, label: "0" },
-                { at: 2, label: "2" },
-                { at: Math.max(5, Math.ceil(map.hotArea + 1)), label: "m²" },
-              ]}
-              ariaLabel={`Shell area at or above ${SHELL_ALERT} °C: ${map.hotArea.toFixed(2)} m²`}
-            />
-            <div className="dxo-stat-foot">
-              <span className="dxo-stat-name">Of {(Math.PI * SHELL_DIA * SHELL_LEN).toFixed(0)} m² shell</span>
-            </div>
-          </div>
-
-          <div className="dxo-card dxo-stat">
-            <span className="dxo-stat-label">{ICON.scan}Scanner coverage</span>
-            <div className="dxo-stat-value">
-              <strong>{covValue.toFixed(1)}</strong>
-              <span className="dxo-unit">%</span>
-              <span className={`dxo-aside dxo-stat-tag dxo-tone-text-${covTone}`}>STS-KLN-08</span>
-            </div>
-            <BandGauge
-              min={70}
-              max={100}
-              bands={[
-                { to: 80, tone: "bad" },
-                { to: 90, tone: "warn" },
-                { to: 100, tone: "good" },
-              ]}
-              value={covValue}
-              ticks={[
-                { at: 70, label: "70" },
-                { at: 80, label: "80" },
-                { at: 90, label: "90" },
-                { at: 100, label: "100 %" },
-              ]}
-              ariaLabel={`Scanner coverage ${covValue.toFixed(1)} %; alert below 90, alarm below 80 %`}
-            />
-            <div className="dxo-stat-foot">
-              <span className="dxo-stat-name">{covTone === "good" ? "Tyres only obstruct the view" : "Shell maximum may under-read"}</span>
-            </div>
-          </div>
-        </section>
-
-        {/* ===================== Tier 2 · Primary visual ===================== */}
-        <section className="dxo-primary" aria-label="Shell temperature">
-          <div className="dxo-card dxo-span-12">
-            <div className="dxo-card-head">
-              <h3 className="dxo-card-title">
-                {view === "map" ? "Shell thermal map" : "Longitudinal profile"}
-                <small>
-                  SHL-KLN-01 · {SHELL_LEN} m × 360° · {SHELL_DZ} m × {SHELL_DA}°
-                </small>
-              </h3>
-              <PillNav
-                items={[
-                  { id: "map", label: "Map" },
-                  { id: "profile", label: "Profile" },
-                ]}
-                activeId={view}
-                onChange={(id) => setView(id as MapView)}
-              />
-            </div>
-            {view === "map" ? (
-              <>
-                <ShellMapFigure map={map} heatUrl={heatUrl} status={status} />
-                <div className="thm-foot">
-                  <HeatScale />
-                  <span className="dxt-legend">
-                    <span>
-                      <i className="dxt-key thm-key-mask" />
-                      No view
-                    </span>
-                  </span>
-                </div>
-              </>
-            ) : (
-              <>
-                <ProfileChart map={map} />
-                <div className="dxt-legend">
-                  <span>
-                    <i className="dxt-key dxt-key--line" />
-                    Section maximum
-                  </span>
-                  <span>
-                    <i className="dxt-key thm-key-mean" />
-                    Section mean
-                  </span>
-                  <span>
-                    <i className="dxt-key dxt-key--base" />
-                    Model
-                  </span>
-                  <span>
-                    <i className="dxt-key dxt-key--warn" />
-                    Alert {SHELL_ALERT} °C
-                  </span>
-                  <span>
-                    <i className="dxt-key dxt-key--bad" />
-                    Danger {SHELL_DANGER} °C
-                  </span>
-                </div>
-              </>
+              <span>
+                <i className="thm-key thm-key-cold" />
+                Cold band
+              </span>
+            </span>
+          }
+        >
+          <div className="thm-card" aria-label="Shell scanner map and axial profile">
+            {th && th.findingMaps.length > 0 && (
+              <div className="thm-card-head thm-snap">
+                <PillNav
+                  ariaLabel="Map shown: live or kept around a finding"
+                  activeId={snapEntry ? snapKey : "live"}
+                  onChange={(id) => {
+                    setSnapKey(id);
+                    setSnapT(null);
+                  }}
+                  items={[
+                    { id: "live", label: "Live" },
+                    ...th.findingMaps.map((f) => ({ id: `${f.ruleId}@${f.since}`, label: `${f.ruleId} · ${formatLocalTime(simTimeMs(f.since), { seconds: false, timeZone })}` })),
+                  ]}
+                />
+                {snapEntry && snapMap && (
+                  <PillNav
+                    ariaLabel="Kept map time relative to the finding"
+                    activeId={String(snapMap.t)}
+                    onChange={(id) => setSnapT(Number(id))}
+                    items={snapEntry.maps.map((x) => ({ id: String(x.t), label: x.t === snapEntry.since ? "0" : `${x.t > snapEntry.since ? "+" : "−"}${Math.abs(x.t - snapEntry.since)} min` }))}
+                  />
+                )}
+              </div>
             )}
-          </div>
-
-          <div className="dxo-card dxo-span-7">
-            <div className="dxo-card-head">
-              <h3 className="dxo-card-title">
-                Shell maximum <small>CAL-KLN-03 · last {TREND_MIN / 60} h</small>
-              </h3>
-            </div>
-            <div className="dxt-legend">
-              <span>
-                <i className="dxt-key dxt-key--line" />
-                Measured
+            <div className="thm-card-head">
+              <span className="thm-meta">
+                {shellSystem ? `${shellSystem} · ` : ""}
+                {SHELL_LEN} m × 360° · {SHELL_DZ} m × {SHELL_DA}°
+                {pyro ? " · 148 cells × 72 (149 section nodes) · engine map (D5 Table 9.5)" : ""}
+                {snapEntry && snapMap ? ` · kept map ${formatLocalTime(simTimeMs(snapMap.t), { seconds: false, timeZone })} for ${snapEntry.ruleId}` : ""}
               </span>
-              <span>
-                <i className="dxt-key dxt-key--base" />
-                Model
-              </span>
-              <span>
-                <i className="dxt-key dxt-key--warn" />
-                Alert zone
-              </span>
-              <span>
-                <i className="dxt-key dxt-key--bad" />
-                Danger zone
+              <span className="thm-meta">
+                Section <strong className="ast-num thm-ink">{selZ.toFixed(1)} m</strong>
+                {(manualI !== null || selSpotId) && (
+                  <button
+                    type="button"
+                    className="thm-link"
+                    onClick={() => {
+                      setManualI(null);
+                      setSelSpotId(null);
+                    }}
+                  >
+                    Follow hottest
+                  </button>
+                )}
               </span>
             </div>
-            {trend.length > 1 ? (
-              <TrendChart
-                samples={trend}
-                timeDomain={[trend[0].t, trend[trend.length - 1].t]}
-                unit="°C"
-                limits={{ warn: SHELL_ALERT, alarm: SHELL_DANGER, mode: "high" }}
-                decimals={0}
-                height={260}
-                ariaLabel={`Shell maximum temperature in °C with alert limit ${SHELL_ALERT} and danger limit ${SHELL_DANGER}`}
-              />
-            ) : (
-              <div className="dxo-empty">Collecting history</div>
-            )}
-          </div>
-
-          <div className="dxo-card dxo-span-5">
-            <div className="dxo-card-head">
-              <h3 className="dxo-card-title">
-                Hottest section <small>{map.maxZ.toFixed(1)} m · {shellZoneAt(map.maxZ)}</small>
-              </h3>
+            <ShellMapFigure
+              map={map}
+              status={status}
+              spots={realSpots}
+              selI={selI}
+              selSpot={selSpot?.id ?? null}
+              onSelect={(i) => {
+                setSelSpotId(null);
+                setManualI(i);
+              }}
+              coldBand={coldSpan}
+              lastGood={lastGood}
+              handheld={live ? (th?.handheld?.points ?? null) : null}
+            />
+            <div className="thm-axis-pad">
+              <HeatScale />
             </div>
-            <div className="thm-section">
-              <PolarChart map={map} status={status} />
-              <dl className="dxo-spec thm-spec">
-                <dt>Hottest point</dt>
-                <dd>
-                  <span className={`dxo-tone-text-${maxTone}`}>{fmt0(map.max)} °C</span> at {map.maxAngle}°
-                </dd>
-                <dt>Section mean</dt>
-                <dd>{map.colMean[map.maxI] == null ? "—" : `${fmt0(map.colMean[map.maxI] as number)} °C`}</dd>
-                <dt>Model</dt>
-                <dd>{fmt0(modelAtMax)} °C</dd>
-                <dt>Rate of rise</dt>
-                <dd>{slope === null ? "—" : `${signed(slope, 1)} K/h`}</dd>
-                <dt>Time to limit</dt>
-                <dd>{ttl ?? "—"}</dd>
-              </dl>
+            <div className="thm-divider" />
+            <div className="thm-card-head">
+              <span className="thm-meta">Axial profile</span>
+              <span className="thm-legend">
+                <span>
+                  <i className="thm-key thm-key-line" />
+                  Section max
+                </span>
+                <span>
+                  <i className="thm-key thm-key-mean" />
+                  Mean
+                </span>
+                <span>
+                  <i className="thm-key thm-key-model" />
+                  Model
+                </span>
+              </span>
+            </div>
+            <ProfileChart map={map} selI={selI} spots={realSpots} coldBand={coldSpan} />
+          </div>
+        </Section>
+
+        {/* ===================== Zones (with lining estimate) ===================== */}
+        <Section
+          id={IDS.zones}
+          title="Zones"
+          right={
+            <span className="thm-actions">
+              <PillButton variant="secondary" className="pg-analysis-link" onClick={() => goAt("analysis", ANALYSIS_ANCHOR_KEY, "an-diagnosis")}>
+                Root cause
+              </PillButton>
+              <PillButton variant="secondary" className="pg-analysis-link" onClick={() => goAt("prognosis", PROG_SECTION_KEY, "prog-forecast")}>
+                Forecast
+              </PillButton>
+            </span>
+          }
+        >
+          <div className="thm-card" aria-label="Zones">
+            <ZoneTable estimates={estimates} hotZone={hotZone} torqueZ={torque?.z ?? null} pyro={pyro} scanCmp={scanCmp} />
+            <div className="thm-foot">
+              <WhyDisclosure summary="Method">
+                {scanCmp && (
+                  <p>
+                    Δ scan: zone mean of the latest validated scanner map
+                    {scanCmp.latestAt !== null ? ` (${formatLocalTime(simTimeMs(scanCmp.latestAt), { seconds: false, timeZone })})` : ""} minus the previous
+                    validated map{scanCmp.prevAt !== null ? ` (${formatLocalTime(simTimeMs(scanCmp.prevAt), { seconds: false, timeZone })})` : ""}. Δ shift: minus
+                    the last validated map at least {SHIFT_MIN / 60} h earlier
+                    {scanCmp.shiftAt !== null
+                      ? ` (${formatLocalTime(simTimeMs(scanCmp.shiftAt), { seconds: false, timeZone })})`
+                      : `; not available yet — ${scanCmp.kept} maps kept over ${formatDuration(scanCmp.spanMin)}`}
+                    . A map counts as validated only with scanner coverage ≥ {COVERAGE.warn} % and valid data.
+                  </p>
+                )}
+                {pyro ? (
+                  <>
+                    <p>
+                      Shell-temperature deviation is the scanner reading against the expected profile. Do not treat the shell scanner as refractory thickness or
+                      graphite seal temperature (D4, engineering limitation 3).
+                    </p>
+                    <p>
+                      Hot spot finding{hotRuleId ? ` (${hotRuleId})` : ""}: local maximum ≥ model + {lim.hotDelta} K, or a rise &gt; {lim.rateWarn} K/h, with
+                      the hottest cell standing above its section mean (local around the circumference); time to the {SHELL_DANGER} °C danger limit with a range.
+                      Regions ≥ {HOT_DELTA} K above the profile are highlighted on the map only. Coating loss: the whole circumference &gt; 15 K above the model over
+                      ≥ 6 m of the burning zone. Cold band: every visible cell of ≥ 2 m of the transition zone &gt; 10 K below the model, band mean ≤ −15 K
+                      {ringRuleId ? ` (${ringRuleId} also needs the torque rise)` : " (the ring finding also needs the torque rise)"}. Hidden cells show their
+                      last good value for {SHELL_LAST_GOOD_MAX_AGE} min, faded over the hatch; diamonds are the latest handheld round. Limits are {lim.source}, not
+                      plant-approved.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p>Lining thickness is not measured; the lining column is estimated from shell temperature against the model.</p>
+                    <p>
+                      Hot spot: a region ≥ {HOT_DELTA} K above the profile ({hotRuleId ? `${hotRuleId}, ` : ""}refractory loss). Coating loss: zone mean &gt; +
+                      {ZONE_DELTA} K. Ring: cold band {COLD_BAND.from}–{COLD_BAND.to} m &lt; −{ZONE_DELTA} K
+                      {ringRuleId ? ` (${ringRuleId} confirms with a torque residual and normal drive vibration)` : ""}. Build-up: zone mean &lt; −{ZONE_DELTA} K.
+                    </p>
+                  </>
+                )}
+              </WhyDisclosure>
             </div>
           </div>
-        </section>
+        </Section>
 
-        {/* ===================== Tier 3 · Registers ===================== */}
-        <section className="dxo-card dxo-table-card" aria-label="Zones">
-          <div className="dxo-card-head">
-            <h3 className="dxo-card-title">
-              Zones <small>mean of section maxima against the model</small>
-            </h3>
+        {/* ===================== Hot spots / hottest section ===================== */}
+        <Section id={IDS.spots} title={realSpots.length ? "Hot spots" : "Hottest section"}>
+          <div className="thm-card" aria-label="Hot spots">
+            <div className={realSpots.length ? "thm-spots" : "thm-spots is-single"}>
+              {realSpots.length > 0 && (
+                <div className="thm-spots-table">
+                  <SpotTable
+                    rows={realSpots}
+                    rateWarn={lim.rateWarn}
+                    selected={selRow?.id ?? null}
+                    onSelect={(id) => {
+                      setManualI(null);
+                      setSelSpotId(id);
+                    }}
+                  />
+                </div>
+              )}
+              <div className="thm-spots-detail">
+                <div className="thm-detail-polar">
+                  <span className="thm-meta">
+                    <strong className="ast-num thm-ink">{selZ.toFixed(1)} m</strong> · {shellZoneAt(selZ)}
+                  </span>
+                  <PolarChart map={map} i={selI} />
+                </div>
+                <SectionFacts map={map} i={selI} spot={selRow} engineRate={selI === map.maxI && live ? slope : null} />
+                <div className="thm-detail-trend">
+                  <span className="thm-meta">{selTrend.source}</span>
+                  {selTrend.samples.length > 1 ? (
+                    <TrendTimeZoneContext.Provider value={timeZone}>
+                      <TrendChart
+                        samples={selTrend.samples}
+                        timeDomain={[selTrend.samples[0].t, selTrend.samples[selTrend.samples.length - 1].t]}
+                        unit="°C"
+                        limits={{ warn: SHELL_ALERT, alarm: SHELL_DANGER, mode: "high" }}
+                        decimals={0}
+                        height={190}
+                        ariaLabel={`Section temperature in °C, measured and model, with warning ${SHELL_ALERT} and alarm ${SHELL_DANGER} °C`}
+                      />
+                    </TrendTimeZoneContext.Provider>
+                  ) : (
+                    <span className="thm-meta">Collecting section history…</span>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
-          <ZoneTable zones={map.zones} />
-        </section>
+        </Section>
 
-        <section className="dxo-card dxo-table-card" aria-label="Thermal findings">
-          <div className="dxo-card-head">
-            <h3 className="dxo-card-title">
-              Thermal findings <small>{findings.length} open</small>
-            </h3>
+        {/* ===================== Rules ===================== */}
+        <Section
+          id={IDS.rules}
+          title="Rules"
+          right={
+            <PillButton variant="secondary" className="pg-analysis-link" onClick={openDiagnosis}>
+              Rule evidence
+            </PillButton>
+          }
+        >
+          <div className="thm-card" aria-label="Thermal rules">
+            <RuleTable rules={thermalRules} now={frame.t} />
           </div>
-          {findings.length === 0 ? (
-            <div className="dxo-empty">No thermal findings · shell follows the model profile</div>
-          ) : (
-            <FindingsTable rules={findings} />
-          )}
-        </section>
+        </Section>
+
+        {/* ===================== Scanner ===================== */}
+        <Section
+          id={IDS.scanner}
+          title="Scanner"
+          right={
+            <PillButton
+              variant="secondary"
+              className="pg-analysis-link"
+              onClick={() => {
+                focusSensorOn("sensors", "STS-KLN-08");
+                go("sensors");
+              }}
+            >
+              STS-KLN-08
+            </PillButton>
+          }
+        >
+          <ScannerHealth
+            frame={frame}
+            limits={lim}
+            coverage={coverage}
+            covTone={covTone}
+            hidden={hidden}
+            lastScan={lastScan}
+            speedRpm={speed?.value ?? null}
+            speedTag={defs.speedTag}
+            manualTag={manualDef?.tag ?? null}
+            timeZone={timeZone}
+          />
+        </Section>
       </div>
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/* Map figure: kiln elevation, heat map, markers                       */
+/* KPI tile with a limit track                                         */
 /* ------------------------------------------------------------------ */
 
-function ShellMapFigure({ map, heatUrl, status }: { map: ShellMap; heatUrl: string; status: Severity }) {
-  const wrap = useRef<HTMLDivElement | null>(null);
-  const clipId = `thm-clip${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
-  const [tip, setTip] = useState<{ x: number; y: number; where: string; value: string; delta: string | null; zone: string } | null>(null);
-  const nz = map.colMax.length;
+interface BarSpec {
+  min: number;
+  max: number;
+  value: number;
+  warn: number;
+  bad: number;
+  /** Low-is-bad scale (coverage). */
+  low?: boolean;
+}
 
-  const onMove = (e: React.PointerEvent<SVGRectElement>) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    const wr = wrap.current?.getBoundingClientRect();
-    if (!wr) return;
-    const z = Math.max(0, Math.min(SHELL_LEN, ((e.clientX - r.left) / r.width) * SHELL_LEN));
-    const a = Math.max(0, Math.min(359.9, ((e.clientY - r.top) / r.height) * 360));
-    const i = Math.max(0, Math.min(nz - 1, Math.round(z / SHELL_DZ)));
-    const k = Math.min(SHELL_NA - 1, Math.floor(a / SHELL_DA));
-    const j = i * SHELL_NA + k;
-    const hidden = Boolean(map.mask[j]);
-    setTip({
-      x: Math.min(e.clientX - wr.left + 14, wr.width - 180),
-      y: e.clientY - wr.top + 14,
-      where: `${(i * SHELL_DZ).toFixed(1)} m · ${k * SHELL_DA}°`,
-      value: hidden ? "No view" : `${map.temp[j].toFixed(0)} °C`,
-      delta: hidden ? null : `${signed(map.temp[j] - map.model[i])} K vs model`,
-      zone: shellZoneAt(z),
-    });
-  };
-
-  const mx = XT(map.maxZ);
-  const my = YT(map.maxAngle + SHELL_DA / 2);
-  const flip = mx > PX0 + PWD - 140;
-
+/** Value on a track with alert / alarm marks. */
+function LimitTrack({ min, max, value, warn, bad, low }: BarSpec) {
+  const W = 200;
+  const x = (v: number) => 2 + Math.max(0, Math.min(1, (v - min) / (max - min))) * (W - 4);
+  const tone: Tone = low ? (value <= bad ? "bad" : value <= warn ? "warn" : "good") : value >= bad ? "bad" : value >= warn ? "warn" : "good";
   return (
-    <div className="thm-map" ref={wrap}>
-      <MachineSvg viewBox="0 0 1000 512" label={`Kiln shell thermal map to scale. Hottest ${map.max.toFixed(0)} °C at ${map.maxZ.toFixed(1)} m, ${map.maxAngle}°`}>
-        {/* Zones: quiet boundaries and labels above the drawing */}
-        {SHELL_ZONES.map((zn) => (
-          <MachineLabel key={zn.name} x={(XT(zn.from) + XT(zn.to)) / 2} y={14} size={zn.to - zn.from < 10 ? 8 : 8.5}>
-            {zn.to - zn.from < 10 ? zn.name.toUpperCase() : `${zn.name.toUpperCase()} · ${zn.from}–${zn.to} M`}
-          </MachineLabel>
-        ))}
-        {SHELL_ZONES.slice(1).map((zn) => (
-          <line key={zn.name} x1={XT(zn.from)} x2={XT(zn.from)} y1={4} y2={HY0 + HH} className="thm-zone-line" />
-        ))}
+    <svg className="thm-bar" viewBox={`0 0 ${W} 10`} preserveAspectRatio="none" aria-hidden="true">
+      <rect x="2" y="4" width={W - 4} height="2" className="thm-bar-track" />
+      <rect x={x(warn) - 0.75} y="1" width="1.5" height="8" className="thm-bar-mark" />
+      <rect x={x(bad) - 0.75} y="1" width="1.5" height="8" className="thm-bar-mark" />
+      <rect x={x(value) - 1.5} y="0" width="3" height="10" className="thm-bar-value" data-tone={alarmTone(tone)} />
+    </svg>
+  );
+}
 
-        <KilnElevation status={status} maxZ={map.maxZ} />
+function Cell({ title, sub }: { title: React.ReactNode; sub?: React.ReactNode }) {
+  return (
+    <span className="ast-cell-stack">
+      <span className="ast-cell-title">{title}</span>
+      {sub && <span className="ast-cell-sub">{sub}</span>}
+    </span>
+  );
+}
 
-        {/* Tyre and girth-gear references */}
-        {SHELL_TYRES.map((t) => (
-          <g key={t.label}>
-            <line x1={XT(t.z + 0.25)} x2={XT(t.z + 0.25)} y1={GROUND + 4} y2={HY0} className="thm-ref" />
-            <MachineLabel x={XT(t.z + 0.25)} y={HY0 - 8}>{`${t.label} · ${t.z} M`}</MachineLabel>
-          </g>
-        ))}
-        <MachineLabel x={XT(SHELL_GIRTH)} y={HY0 - 8}>{`GG · ${SHELL_GIRTH} M`}</MachineLabel>
+/** Numeric cell coloured only in warning / alarm. */
+function ToneNum({ tone, value, unit, strong }: { tone?: Tone; value: string; unit?: string; strong?: boolean }) {
+  const t = tone ? alarmTone(tone) : undefined;
+  return (
+    <span className="thm-tone-text" data-tone={t}>
+      <Num value={value} unit={unit} strong={strong} />
+    </span>
+  );
+}
 
-        {/* Heat map */}
-        <defs>
-          <clipPath id={clipId}>
-            <rect x={PX0} y={HY0} width={PWD} height={HH} rx={6} />
-          </clipPath>
-        </defs>
-        <rect x={PX0} y={HY0} width={PWD} height={HH} rx={6} className="thm-map-bg" />
-        {heatUrl && (
-          <image
-            href={heatUrl}
-            x={XT(-SHELL_DZ / 2)}
-            y={HY0}
-            width={XT(SHELL_LEN + SHELL_DZ / 2) - XT(-SHELL_DZ / 2)}
-            height={HH}
-            preserveAspectRatio="none"
-            clipPath={`url(#${clipId})`}
-            style={{ imageRendering: "pixelated" }}
-          />
-        )}
-        {[90, 180, 270].map((a) => (
-          <line key={a} x1={PX0} x2={PX0 + PWD} y1={YT(a)} y2={YT(a)} className="thm-map-grid" />
-        ))}
+/* ------------------------------------------------------------------ */
+/* Zones                                                               */
+/* ------------------------------------------------------------------ */
 
-        {/* ≥ alert area and the hottest cell */}
-        {map.hotBox && (
-          <rect
-            x={XT(map.hotBox.z0)}
-            y={YT(map.hotBox.a0)}
-            width={XT(map.hotBox.z1) - XT(map.hotBox.z0)}
-            height={YT(map.hotBox.a1) - YT(map.hotBox.a0)}
-            className="thm-hotbox"
-          />
-        )}
-        <g className="thm-cross">
-          <circle cx={mx} cy={my} r={9} />
-          <line x1={mx - 15} x2={mx - 5} y1={my} y2={my} />
-          <line x1={mx + 5} x2={mx + 15} y1={my} y2={my} />
-          <line x1={mx} x2={mx} y1={my - 15} y2={my - 5} />
-          <line x1={mx} x2={mx} y1={my + 5} y2={my + 15} />
-        </g>
-        <g>
-          <rect x={flip ? mx - 104 : mx + 16} y={my - 30} width={88} height={20} rx={10} className="thm-readout-bg" />
-          <text x={flip ? mx - 60 : mx + 60} y={my - 16} textAnchor="middle" className="thm-readout">
-            MAX {map.max.toFixed(0)} °C
-          </text>
-        </g>
-
-        {/* Axes */}
-        {Array.from({ length: SHELL_LEN / 5 + 1 }, (_, n) => n * 5).map((z) => (
-          <g key={z}>
-            <line x1={XT(z)} x2={XT(z)} y1={HY0 + HH + 2} y2={HY0 + HH + (z % 10 === 0 ? 8 : 5)} className="thm-axis-line" />
-            {z % 10 === 0 && (
-              <text x={XT(z)} y={HY0 + HH + 22} textAnchor="middle" className="dxt-tick">
-                {z} m
-              </text>
-            )}
-          </g>
-        ))}
-        <text x={PX0 + PWD} y={HY0 + HH + 22} textAnchor="end" className="dxt-tick">
-          burner ›
-        </text>
-        {[0, 90, 180, 270, 360].map((a) => (
-          <text key={a} x={PX0 - 8} y={YT(a) + 4} textAnchor="end" className="dxt-tick">
-            {a}°
-          </text>
-        ))}
-
-        <rect
-          x={PX0}
-          y={HY0}
-          width={PWD}
-          height={HH}
-          fill="transparent"
-          className="thm-hit"
-          onPointerMove={onMove}
-          onPointerLeave={() => setTip(null)}
+function ZoneTable({
+  estimates,
+  hotZone,
+  torqueZ,
+  pyro,
+  scanCmp,
+}: {
+  estimates: ZoneEstimate[];
+  hotZone: string;
+  torqueZ: number | null;
+  pyro: boolean;
+  scanCmp: ScanComparison | null;
+}) {
+  const scanCols: Col<ZoneEstimate>[] = scanCmp
+    ? [
+        {
+          key: "dscan",
+          header: "Δ scan K",
+          align: "right",
+          render: (e) => {
+            const d = scanCmp.byZone.get(e.zone.name)?.scan ?? null;
+            return <ToneNum tone={d !== null && Math.abs(d) >= HOT_DELTA ? "warn" : undefined} value={signed(d)} />;
+          },
+        },
+        {
+          key: "dshift",
+          header: "Δ shift K",
+          align: "right",
+          render: (e) => {
+            const d = scanCmp.byZone.get(e.zone.name)?.shift ?? null;
+            return <ToneNum tone={d !== null && Math.abs(d) >= ZONE_DELTA ? "warn" : undefined} value={signed(d)} />;
+          },
+        },
+      ]
+    : [];
+  const cols: Col<ZoneEstimate>[] = [
+    {
+      key: "zone",
+      header: "Zone",
+      render: (e) => <Cell title={e.zone.name === hotZone ? <>{e.zone.name} <span className="thm-flag">hottest</span></> : e.zone.name} sub={`${e.zone.from}–${e.zone.to} m`} />,
+    },
+    { key: "max", header: "Max °C", align: "right", render: (e) => <ToneNum tone={Number.isFinite(e.zone.max) ? tempTone(e.zone.max) : undefined} value={fmt0(e.zone.max)} strong /> },
+    { key: "mean", header: "Mean °C", align: "right", render: (e) => <Num value={fmt0(e.zone.mean)} /> },
+    { key: "model", header: "Model °C", align: "right", render: (e) => <Num value={fmt0(e.zone.model)} /> },
+    { key: "dev", header: "Δ mean K", align: "right", render: (e) => <ToneNum tone={Math.abs(e.meanDelta) > ZONE_DELTA ? "warn" : undefined} value={signed(e.meanDelta)} /> },
+    { key: "dmax", header: "Δ max K", align: "right", render: (e) => <ToneNum tone={e.maxDelta >= HOT_DELTA ? "warn" : undefined} value={signed(e.maxDelta)} /> },
+    ...scanCols,
+    { key: "above", header: `≥ ${SHELL_ALERT} °C %`, align: "right", render: (e) => <Num value={e.zone.pAbove.toFixed(1)} /> },
+    { key: "spots", header: "Hot spots", align: "right", render: (e) => <Num value={String(e.spots.filter((s) => s.delta >= HOT_DELTA).length)} /> },
+    {
+      key: "lining",
+      header: pyro ? "Shell-temperature deviation" : "Lining / coating",
+      render: (e) => (
+        <Cell
+          title={
+            <span className="thm-tone-text" data-tone={alarmTone(e.tone)}>
+              {e.label} {!pyro && e.kind !== "normal" && e.kind !== "no-view" && <Est />}
+            </span>
+          }
+          sub={e.coldBand !== null ? `Cold band ${COLD_BAND.from}–${COLD_BAND.to} m ${signed(e.coldBand)} K · torque ${signed(torqueZ, 1)}σ` : undefined}
         />
-      </MachineSvg>
-      {tip && (
-        <div className="dxt-tip" style={{ left: tip.x, top: tip.y }} role="status">
-          <span className="dxt-tip-time">
-            {tip.where} · {tip.zone}
-          </span>
-          <span className="dxt-tip-row">
-            <strong>{tip.value}</strong>
-            {tip.delta && <span className="dxt-tip-delta">{tip.delta}</span>}
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Side elevation of the kiln on the map's metre scale (machine-drawing kit). */
-function KilnElevation({ status, maxZ }: { status: Severity; maxZ: number }) {
-  const top = SHELL_Y - SHELL_H / 2;
-  const tyreH = SHELL_H + 14;
-  return (
-    <g aria-hidden="true">
-      <line x1={10} x2={996} y1={GROUND} y2={GROUND} stroke={MX.fine} strokeWidth={MX.w} />
-
-      {/* Feed-end housing */}
-      <rect x={XT(0) - 38} y={SHELL_Y - 42} width={42} height={84} rx={6} {...PAINT.body} />
-      <rect x={XT(0) - 30} y={SHELL_Y - 28} width={18} height={24} rx={3} {...PAINT.recess} />
-      <rect x={XT(0) - 32} y={SHELL_Y + 42} width={30} height={GROUND - SHELL_Y - 42} {...PAINT.body} />
-
-      {/* Shell */}
-      <rect x={XT(0)} y={top} width={PWD} height={SHELL_H} rx={3} {...PAINT.cylinder} />
-      <line x1={XT(0) + 4} x2={XT(SHELL_LEN) - 4} y1={top + 5} y2={top + 5} {...PAINT.hair} />
-
-      {/* Girth gear and pinion */}
-      <rect x={XT(SHELL_GIRTH) - 5} y={top - 12} width={10} height={SHELL_H + 24} rx={2} {...PAINT.body} />
-      {Array.from({ length: 9 }, (_, n) => top - 8 + n * ((SHELL_H + 16) / 8)).map((y) => (
-        <line key={y} x1={XT(SHELL_GIRTH) - 5} x2={XT(SHELL_GIRTH) + 5} y1={y} y2={y} {...PAINT.hair} />
-      ))}
-      <circle cx={XT(SHELL_GIRTH)} cy={SHELL_Y + SHELL_H / 2 + 19} r={7} {...PAINT.shaft} />
-      <rect x={XT(SHELL_GIRTH) - 15} y={SHELL_Y + SHELL_H / 2 + 26} width={30} height={GROUND - SHELL_Y - SHELL_H / 2 - 26} rx={2} {...PAINT.body} />
-
-      {/* Tyres on support rollers */}
-      {SHELL_TYRES.map((t) => {
-        const cx = XT(t.z + 0.25);
-        const ry = SHELL_Y + tyreH / 2 + 6;
-        return (
-          <g key={t.label}>
-            <rect x={XT(t.z - 0.25)} y={SHELL_Y - tyreH / 2} width={PX_PER_M} height={tyreH} rx={2} {...PAINT.shaft} />
-            <circle cx={cx - 11} cy={ry} r={6.5} {...PAINT.shaft} />
-            <circle cx={cx + 11} cy={ry} r={6.5} {...PAINT.shaft} />
-            <rect x={cx - 25} y={ry + 5} width={50} height={GROUND - ry - 5} rx={3} {...PAINT.body} />
-            <Bolt x={cx - 19} y={GROUND - 4} r={1.6} />
-            <Bolt x={cx + 19} y={GROUND - 4} r={1.6} />
-          </g>
-        );
-      })}
-
-      {/* Burner hood */}
-      <rect x={XT(SHELL_LEN) - 4} y={SHELL_Y - 50} width={34} height={100} rx={6} {...PAINT.body} />
-      <rect x={XT(SHELL_LEN) + 4} y={SHELL_Y - 21} width={17} height={42} rx={3} {...PAINT.recess} />
-      <rect x={XT(SHELL_LEN) + 6} y={SHELL_Y - 17} width={13} height={34} rx={2} fill={MX.heat} />
-      <rect x={XT(SHELL_LEN) + 2} y={SHELL_Y + 50} width={24} height={GROUND - SHELL_Y - 50} {...PAINT.body} />
-
-      {/* CAL-KLN-03 pad at the hottest section */}
-      <MachinePad x={XT(maxZ)} y={SHELL_Y} status={status} scale={0.9} />
-    </g>
-  );
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (e) => {
+        const t: Tone = Number.isFinite(e.zone.max) ? worst(tempTone(e.zone.max), e.tone === "idle" ? "good" : e.tone) : "idle";
+        return <StatusTag tone={quiet(t)} label={Number.isFinite(e.zone.max) ? STATUS_LABEL[t] : "No view"} />;
+      },
+    },
+  ];
+  return <DataTable columns={cols} data={estimates} rowKey={(e) => e.zone.name} label="Kiln zones against the model" />;
 }
 
 /* ------------------------------------------------------------------ */
-/* Scale, profile, polar                                               */
+/* Hot spots                                                           */
 /* ------------------------------------------------------------------ */
 
-function HeatScale() {
-  const W = 420;
-  const X = (v: number) => ((v - HEAT_LO) / (HEAT_HI - HEAT_LO)) * W;
-  const gradId = `thm-scale${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+function SpotTable({
+  rows,
+  selected,
+  onSelect,
+  rateWarn = RATE_WARN,
+  illustrativeAngle = false,
+}: {
+  rows: SpotRow[];
+  selected: string | null;
+  onSelect: (id: string) => void;
+  /** Warning rate of rise, K/h. */
+  rateWarn?: number;
+  /** The angle is synthesised from the axial profile. */
+  illustrativeAngle?: boolean;
+}) {
   return (
-    <svg viewBox={`-6 0 ${W + 34} 30`} className="thm-scale" role="img" aria-label={`Thermal scale ${HEAT_LO} to ${HEAT_HI} °C, alert ${SHELL_ALERT}, danger ${SHELL_DANGER}`}>
-      <defs>
-        <linearGradient id={gradId}>
-          {HEAT_STOPS.map((v) => (
-            <stop key={v} offset={`${((v - HEAT_LO) / (HEAT_HI - HEAT_LO)) * 100}%`} style={{ stopColor: `var(--heat-${v})` }} />
+    <div className="ui-table-container ast-table">
+      <table className="ui-table" aria-label="Hot spots, hottest first">
+        <thead>
+          <tr>
+            <th scope="col">#</th>
+            <th scope="col">{illustrativeAngle ? "Position (angle illus.)" : "Position"}</th>
+            <th scope="col" className="thm-r">
+              Peak °C
+            </th>
+            <th scope="col" className="thm-r">
+              Δ model K
+            </th>
+            <th scope="col" className="thm-r">
+              Area m²
+            </th>
+            <th scope="col" className="thm-r">
+              Rate K/h
+            </th>
+            <th scope="col" className="thm-r">
+              Persists
+            </th>
+            <th scope="col" className="thm-r">
+              To warning
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((s) => (
+            <tr
+              key={s.id}
+              className={`is-clickable ${selected === s.id ? "active" : ""}`}
+              {...rowActivate(() => onSelect(s.id), selected === s.id)}
+            >
+              <td>
+                <span className="ast-num thm-rank">{s.rank}</span>
+              </td>
+              <td>
+                <Cell title={<span className="ast-num">{`${s.peakZ.toFixed(1)} m · ${s.peakA}°`}</span>} sub={s.zone} />
+              </td>
+              <td className="thm-r">
+                <ToneNum tone={tempTone(s.peak)} value={fmt0(s.peak)} strong />
+              </td>
+              <td className="thm-r">
+                <Num value={signed(s.delta)} />
+              </td>
+              <td className="thm-r">
+                <Num value={s.area.toFixed(2)} />
+              </td>
+              <td className="thm-r">
+                {s.rate === null ? <span className="ast-muted">—</span> : <ToneNum tone={s.rate > rateWarn ? "warn" : undefined} value={signed(s.rate, 1)} />}
+              </td>
+              <td className="thm-r">
+                <span className="ast-num">{s.persistence}</span>
+              </td>
+              <td className="thm-r">
+                {s.ttl ? (
+                  <span className="ast-num">
+                    {s.ttl} <Est />
+                  </span>
+                ) : (
+                  <span className="ast-muted">{s.peak >= SHELL_ALERT ? "at warning" : "—"}</span>
+                )}
+              </td>
+            </tr>
           ))}
-        </linearGradient>
-      </defs>
-      <rect x={0} y={5} width={W} height={4} rx={2} fill={`url(#${gradId})`} />
-      <rect x={X(SHELL_ALERT) - 1} y={1} width={2} height={12} rx={1} className="thm-scale-limit" data-tone="warn" />
-      <rect x={X(SHELL_DANGER) - 1} y={1} width={2} height={12} rx={1} className="thm-scale-limit" data-tone="bad" />
-      {[150, 250, 350, 450].map((v) => (
-        <text key={v} x={X(v)} y={26} textAnchor="middle" className="dxt-tick">
-          {v}
-        </text>
-      ))}
-      <text x={X(SHELL_ALERT)} y={26} textAnchor="middle" className="dxt-tick thm-tick-tone" data-tone="warn">
-        {SHELL_ALERT}
-      </text>
-      <text x={X(SHELL_DANGER)} y={26} textAnchor="middle" className="dxt-tick thm-tick-tone" data-tone="bad">
-        {SHELL_DANGER}
-      </text>
-      <text x={W + 8} y={10} className="dxt-tick">
-        °C
-      </text>
-    </svg>
-  );
-}
-
-function ProfileChart({ map }: { map: ShellMap }) {
-  const h = 300;
-  const pt = 10;
-  const pb = 30;
-  const lo = 150;
-  const hi = Math.max(500, Math.ceil((map.max + 20) / 50) * 50);
-  const Y = (v: number) => pt + (h - pt - pb) * (1 - (v - lo) / (hi - lo));
-  const path = (arr: Array<number | null>) => {
-    let d = "";
-    let pen = false;
-    arr.forEach((v, i) => {
-      if (v == null) {
-        pen = false;
-        return;
-      }
-      d += `${pen ? "L" : "M"}${XT(i * SHELL_DZ).toFixed(1)},${Y(v).toFixed(1)}`;
-      pen = true;
-    });
-    return d;
-  };
-  const grid: number[] = [];
-  for (let v = lo; v <= hi; v += 50) grid.push(v);
-  const bottom = h - pb;
-
-  return (
-    <svg viewBox={`0 0 1000 ${h}`} className="thm-svg dxt-svg" role="img" aria-label="Shell temperature along the kiln: section maximum, mean and model">
-      <rect x={PX0} y={Y(SHELL_DANGER)} width={PWD} height={Y(SHELL_ALERT) - Y(SHELL_DANGER)} className="thm-band" data-tone="warn" />
-      <rect x={PX0} y={pt} width={PWD} height={Y(SHELL_DANGER) - pt} className="thm-band" data-tone="bad" />
-      {grid.map((v) => (
-        <g key={v}>
-          <line x1={PX0} x2={PX0 + PWD} y1={Y(v)} y2={Y(v)} className="dxt-gridline" />
-          <text x={PX0 - 8} y={Y(v) + 4} textAnchor="end" className="dxt-tick">
-            {v}
-          </text>
-        </g>
-      ))}
-      {SHELL_ZONES.slice(1).map((zn) => (
-        <line key={zn.name} x1={XT(zn.from)} x2={XT(zn.from)} y1={pt} y2={bottom} className="thm-zone-line" />
-      ))}
-      {SHELL_ZONES.map((zn) => (
-        <text key={zn.name} x={(XT(zn.from) + XT(zn.to)) / 2} y={pt + 14} textAnchor="middle" className="dxt-tick thm-zone-label">
-          {zn.name}
-        </text>
-      ))}
-      <line x1={PX0} x2={PX0 + PWD} y1={bottom} y2={bottom} className="dxt-axis" />
-      {Array.from({ length: 8 }, (_, n) => n * 10)
-        .filter((z) => z <= SHELL_LEN)
-        .map((z) => (
-          <text key={z} x={XT(z)} y={h - 10} textAnchor="middle" className="dxt-tick">
-            {z} m
-          </text>
-        ))}
-      <path d={path(map.model)} className="thm-line-model" />
-      <path d={path(map.colMean)} className="thm-line-mean" />
-      <path d={path(map.colMax)} className="dxt-line" />
-      <circle cx={XT(map.maxZ)} cy={Y(map.max)} r={4} className="dxt-end" />
-    </svg>
-  );
-}
-
-function PolarChart({ map, status }: { map: ShellMap; status: Severity }) {
-  const c = 150;
-  const R = (v: number) => 18 + Math.max(0, Math.min(1, (v - HEAT_LO) / (HEAT_HI - HEAT_LO))) * 110;
-  const pts: string[] = [];
-  const model: string[] = [];
-  for (let k = 0; k < SHELL_NA; k++) {
-    const th = ((k * SHELL_DA + SHELL_DA / 2) / 180) * Math.PI;
-    const rm = R(map.model[map.maxI]);
-    model.push(`${(c + rm * Math.sin(th)).toFixed(1)},${(c - rm * Math.cos(th)).toFixed(1)}`);
-    const j = map.maxI * SHELL_NA + k;
-    if (map.mask[j]) continue;
-    const r = R(map.temp[j]);
-    pts.push(`${(c + r * Math.sin(th)).toFixed(1)},${(c - r * Math.cos(th)).toFixed(1)}`);
-  }
-  return (
-    <svg viewBox="-20 -16 340 332" className="thm-polar" role="img" aria-label={`Temperature around the shell at ${map.maxZ.toFixed(1)} m`} data-tone={TONE[status]}>
-      {[200, 300].map((v) => (
-        <g key={v}>
-          <circle cx={c} cy={c} r={R(v)} className="dxt-gridline thm-ring" />
-          <text x={c - R(v) * 0.71 - 3} y={c + R(v) * 0.71 + 12} textAnchor="end" className="dxt-tick">
-            {v}
-          </text>
-        </g>
-      ))}
-      <circle cx={c} cy={c} r={R(SHELL_ALERT)} className="thm-ring-limit" data-tone="warn" />
-      <circle cx={c} cy={c} r={R(SHELL_DANGER)} className="thm-ring-limit" data-tone="bad" />
-      <line x1={c} x2={c} y1={c - 132} y2={c + 132} className="dxt-gridline" />
-      <line x1={c - 132} x2={c + 132} y1={c} y2={c} className="dxt-gridline" />
-      {[0, 90, 180, 270].map((a) => {
-        const th = (a / 180) * Math.PI;
-        return (
-          <text key={a} x={c + 144 * Math.sin(th)} y={c - 144 * Math.cos(th) + 4} textAnchor="middle" className="dxt-tick">
-            {a}°
-          </text>
-        );
-      })}
-      <polygon points={model.join(" ")} className="thm-polar-model" />
-      {pts.length > 2 && <polygon points={pts.join(" ")} className="thm-polar-shape" />}
-    </svg>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Registers                                                           */
-/* ------------------------------------------------------------------ */
-
-/** Value against the alert / danger limits on a common 150–520 °C scale. */
-function LimitBar({ value }: { value: number }) {
-  const W = 120;
-  const x = (v: number) => 4 + Math.max(0, Math.min(1, (v - HEAT_LO) / (HEAT_HI - HEAT_LO))) * (W - 8);
-  const tone = tempTone(value);
-  return (
-    <svg className="dxo-limit-bar" viewBox={`0 0 ${W} 14`} role="img" aria-label={`${fmt0(value)} °C; alert ${SHELL_ALERT}, danger ${SHELL_DANGER} °C`}>
-      <rect x="4" y="6" width={W - 8} height="2" rx="1" className="thm-bar-track" />
-      <rect x={x(SHELL_ALERT) - 1} y="2" width="2" height="10" rx="1" className="thm-scale-limit" data-tone="warn" />
-      <rect x={x(SHELL_DANGER) - 1} y="2" width="2" height="10" rx="1" className="thm-scale-limit" data-tone="bad" />
-      <circle cx={x(value)} cy="7" r="4" className="thm-bar-dot" data-tone={tone} />
-    </svg>
-  );
-}
-
-function ZoneTable({ zones }: { zones: ShellZoneStats[] }) {
-  return (
-    <div className="dxo-table-wrap">
-      <table className="dxo-table thm-table">
-        <thead>
-          <tr>
-            <th>Zone</th>
-            <th className="is-right">Mean</th>
-            <th className="is-right">Model</th>
-            <th className="is-right">Δ</th>
-            <th className="is-right">Max</th>
-            <th>Against limits</th>
-            <th className="is-right">≥ {SHELL_ALERT} °C</th>
-          </tr>
-        </thead>
-        <tbody>
-          {zones.map((z) => {
-            const d = z.mean - z.model;
-            const tone = tempTone(z.max);
-            return (
-              <tr key={z.name} className="thm-row">
-                <td>
-                  <span className="dxo-ident">
-                    <span className={`dxo-badge ${tone === "good" ? "" : `is-${tone}`}`}>{ICON.zone}</span>
-                    <span>
-                      <span className="dxo-primary-text">{z.name}</span>
-                      <span className="dxo-secondary-text">
-                        {z.from}–{z.to} m
-                      </span>
-                    </span>
-                  </span>
-                </td>
-                <td className="is-right">
-                  <span className="dxo-readout">
-                    <strong>{fmt0(z.mean)}</strong>
-                    <span>°C</span>
-                  </span>
-                </td>
-                <td className="is-right">
-                  <span className="dxo-readout">
-                    {fmt0(z.model)}
-                    <span>°C</span>
-                  </span>
-                </td>
-                <td className="is-right">
-                  <span className={`dxo-readout ${Math.abs(d) > 20 ? "is-warn" : ""}`}>
-                    <strong>{Number.isFinite(d) ? signed(d) : "—"}</strong>
-                    <span>K</span>
-                  </span>
-                </td>
-                <td className="is-right">
-                  <span className={`dxo-readout ${tone === "good" ? "" : `is-${tone}`}`}>
-                    <strong>{fmt0(z.max)}</strong>
-                    <span>°C</span>
-                  </span>
-                </td>
-                <td>
-                  <LimitBar value={z.max} />
-                </td>
-                <td className="is-right">
-                  <span className="dxo-readout">
-                    {z.pAbove.toFixed(1)}
-                    <span>%</span>
-                  </span>
-                </td>
-              </tr>
-            );
-          })}
         </tbody>
       </table>
     </div>
   );
 }
 
-function FindingsTable({ rules }: { rules: RuleState[] }) {
+function SectionFacts({
+  map,
+  i,
+  spot,
+  engineRate,
+  illustrativeAngle = false,
+}: {
+  map: ShellMap;
+  i: number;
+  spot: SpotRow | null;
+  engineRate: number | null;
+  illustrativeAngle?: boolean;
+}) {
+  const rate = spot?.rate ?? engineRate;
+  const derived = spot ? spot.rateDerived : false;
+  const top = map.colMax[i];
+  const mean = map.colMean[i];
+  const model = map.model[i];
+  let hotK = -1;
+  for (let k = 0; k < SHELL_NA; k++) {
+    const j = i * SHELL_NA + k;
+    if (!map.mask[j] && (hotK < 0 || map.temp[j] > map.temp[i * SHELL_NA + hotK])) hotK = k;
+  }
+  const rows: Array<[string, React.ReactNode]> = [
+    ["Max", <ToneNum key="m" tone={top == null ? undefined : tempTone(top)} value={fmt0(top)} unit="°C" strong />],
+    [
+      "At",
+      <span key="a">
+        <Num value={hotK >= 0 ? String(hotK * SHELL_DA) : "—"} unit="°" />
+        {illustrativeAngle && <Est>illus.</Est>}
+      </span>,
+    ],
+    ["Mean", <Num key="n" value={fmt0(mean)} unit="°C" />],
+    ["Model", <Num key="o" value={fmt0(model)} unit="°C" />],
+    ["Δ model", <Num key="d" value={top == null ? "—" : signed(top - model)} unit="K" />],
+    [
+      "Rate",
+      rate == null ? (
+        <span key="r" className="ast-muted">—</span>
+      ) : (
+        <span key="r">
+          <Num value={signed(rate, 1)} unit="K/h" />
+          {derived && <Est>calc.</Est>}
+        </span>
+      ),
+    ],
+  ];
   return (
-    <div className="dxo-table-wrap">
-      <table className="dxo-table thm-table">
-        <thead>
-          <tr>
-            <th>Finding</th>
-            <th>State</th>
-            <th className="is-right">Confidence</th>
-            <th>Evidence</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rules.map((r) => {
-            const active = r.status === "ACTIVE";
-            const tone = active ? TONE[r.severity] : "neutral";
-            return (
-              <tr key={r.id} className="thm-row">
-                <td>
-                  <span className="dxo-ident">
-                    <span className={`dxo-badge ${tone === "warn" || tone === "bad" ? `is-${tone}` : ""}`}>{ICON.rule}</span>
-                    <span>
-                      <span className="dxo-primary-text">{r.name}</span>
-                      <span className="dxo-secondary-text">{r.id}</span>
-                    </span>
-                  </span>
-                </td>
-                <td>
-                  <span className="ast-chip" data-tone={active ? tone : "idle"}>
-                    <span className="ast-chip-dot" />
-                    {active ? r.severity : `Pending ${r.persistence}/${r.threshold}`}
-                  </span>
-                </td>
-                <td className="is-right">
-                  <span className="dxo-readout">
-                    <strong>{r.confidence}</strong>
-                    <span>%</span>
-                  </span>
-                </td>
-                <td>
-                  <span className="dxo-secondary-text thm-wrap">{r.evidence}</span>
-                </td>
-                <td>
-                  <span className="dxo-secondary-text thm-wrap">{active ? r.action : "—"}</span>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <dl className="thm-dl">
+      {rows.map(([k, v]) => (
+        <div key={k}>
+          <dt>{k}</dt>
+          <dd>{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Rules                                                               */
+/* ------------------------------------------------------------------ */
+
+function RuleTable({ rules, now }: { rules: RuleState[]; now: number }) {
+  if (!rules.length) return <span className="thm-meta">No shell or scanner rule in the library for this machine.</span>;
+  const cols: Col<RuleState>[] = [
+    { key: "id", header: "Rule", width: "96px", render: (r) => <span className="ast-num thm-ink">{r.id}</span> },
+    { key: "name", header: "Name", render: (r) => <Cell title={r.name} sub={r.logic} /> },
+    {
+      key: "state",
+      header: "State",
+      render: (r) => {
+        const s = ruleStage(r);
+        return <StatusTag tone={quiet(s.stage === "Active" ? s.tone : s.stage === "Confirming" ? "warn" : "idle")} label={s.stage === "Active" ? r.severity : s.stage} />;
+      },
+    },
+    {
+      key: "count",
+      header: "Persistence",
+      align: "right",
+      render: (r) => {
+        const s = ruleStage(r);
+        if (s.stage === "Confirming") return <span className="ast-num">{`${r.persistence}/${r.threshold}`}</span>;
+        if (s.stage === "Clearing") return <span className="ast-num">{`${r.clean}/4 clean`}</span>;
+        return <span className="ast-muted">—</span>;
+      },
+    },
+    {
+      key: "since",
+      header: "Since",
+      align: "right",
+      render: (r) => (r.status === "ACTIVE" && r.since != null ? <Num value={fmtHours((now - r.since) / 60)} /> : <span className="ast-muted">—</span>),
+    },
+    {
+      key: "ev",
+      header: "Evidence",
+      render: (r) => <span className="ast-cell-text thm-wrap">{r.status === "QUIET" ? "—" : r.evidence || "—"}</span>,
+    },
+  ];
+  return <DataTable columns={cols} data={rules} rowKey={(r) => r.id} label="Shell and scanner rules" />;
+}
+
+/* ------------------------------------------------------------------ */
+/* Scanner                                                             */
+/* ------------------------------------------------------------------ */
+
+function ScannerHealth({
+  frame,
+  limits,
+  coverage,
+  covTone,
+  hidden,
+  lastScan,
+  speedRpm,
+  speedTag,
+  manualTag,
+  timeZone,
+}: {
+  frame: SimFrame;
+  limits: ReturnType<typeof thermalLimits>;
+  coverage: number;
+  covTone: Tone;
+  hidden: { tyres: number; other: number };
+  lastScan: string;
+  speedRpm: number | null;
+  speedTag: string | null;
+  manualTag: string | null;
+  timeZone: string | undefined;
+}) {
+  const cov = frame.signals["STS-KLN-08"];
+  const cal = frame.signals["CAL-KLN-03"];
+  const man = manualTag ? frame.signals[manualTag] : undefined;
+  const manDef = manualTag ? frame.defs.signalByTag[manualTag] : undefined;
+  const covDef = frame.defs.signalByTag["STS-KLN-08"];
+  // Latest matched handheld record (newest first), D4 Table 6.4 fields.
+  const rec = manualTag ? (frame.records?.find((r) => r.tag === manualTag) ?? null) : null;
+  const recField = (rx: RegExp) => rec?.fields.find((f) => rx.test(f.label))?.value ?? null;
+  const recDate = rec ? formatLocalTime(simTimeMs(rec.t), { date: true, seconds: false, timeZone }) : null;
+  const qTone = (q: string | undefined): Tone => (!q || q === "Good" ? "good" : validityTone(q));
+  const trend = useMemo<TrendSample[]>(() => {
+    const h = frame.history["STS-KLN-08"] ?? [];
+    const n = Math.min(h.length, TREND_MIN);
+    const out: TrendSample[] = [];
+    for (let i = h.length - n; i < h.length; i++) out.push({ t: simTimeMs(frame.t - (h.length - 1 - i)), v: h[i], b: SHELL_NORMAL_COVERAGE });
+    return out;
+  }, [frame.history, frame.t]);
+  const rev = speedRpm && speedRpm > 0 ? 60 / speedRpm : null;
+
+  const rows: Array<{ k: string; v: React.ReactNode; note?: string }> = [
+    {
+      k: "Coverage",
+      v: <ToneNum tone={covTone} value={fmt1(coverage)} unit="%" strong />,
+      note: `≥ ${limits.coverage.normal} % ${frame.defs.plant === "pyro" ? "target" : "normal"} · < ${limits.coverage.warn} warning · < ${limits.coverage.alarm} alarm${frame.defs.plant === "pyro" ? " · D5 Tables 5.4.7a / 9.2" : ""}`,
+    },
+    { k: "Behind tyres", v: <Num value={hidden.tyres.toFixed(1)} unit="%" />, note: "T1 11 m · T2 39 m · T3 60 m" },
+    { k: "Other obstruction", v: <ToneNum tone={hidden.other > 0.5 ? "warn" : undefined} value={hidden.other.toFixed(1)} unit="%" />, note: hidden.other > 0.5 ? "lens fouling / dust" : undefined },
+    { k: "CAL-KLN-03", v: <span className="thm-tone-text" data-tone={alarmTone(qTone(cal?.quality))}>{cal?.quality ?? "—"}</span>, note: cal?.qualityNote ?? undefined },
+    { k: "STS-KLN-08", v: <span className="thm-tone-text" data-tone={alarmTone(qTone(cov?.quality))}>{cov?.quality ?? "—"}</span>, note: cov?.qualityNote ?? undefined },
+    ...(rec
+      ? [
+          {
+            k: "Handheld scan",
+            v: <Num value={String(rec.value)} unit={rec.unit} strong />,
+            note: `${rec.tag} · ${recDate} · ${rec.review.toLowerCase()} · ${rec.by}`,
+          },
+          {
+            k: "Matched zone",
+            v: <span className="ast-num">{recField(/station|metre|angle/i) ?? rec.where}</span>,
+            note: [recField(/emissivity/i) ? `emissivity ${recField(/emissivity/i)}` : "", rec.method].filter(Boolean).join(" · "),
+          },
+          {
+            k: "Scanner, same zone",
+            v: <span className="ast-num">{recField(/scanner/i) ?? "—"}</span>,
+            note: recField(/difference/i) ? `handheld − scanner ${recField(/difference/i)}` : undefined,
+          },
+        ]
+      : man && manDef
+      ? [
+          {
+            k: "Handheld scan",
+            v: <ToneNum tone={SEV_TONE[man.status]} value={man.display} unit={manDef.unit} />,
+            note: `${manDef.tag} · ${manDef.name} · manual record`,
+          },
+        ]
+      : []),
+    ...(speedTag ? [{ k: "Revolution", v: <Num value={rev === null ? "—" : rev.toFixed(1)} unit="s" />, note: `${speedTag} ${fmt1(speedRpm)} rpm` }] : []),
+    { k: "Last map", v: <span className="ast-num">{lastScan}</span>, note: "map 10 min · values 1 min" },
+    ...(frame.defs.plant === "pyro"
+      ? [{ k: "Scan rate / resolution", v: <span className="ast-num">2–5 s · 0.5 m × 5°</span>, note: "scan per revolution; 148 × 72 cells; values 1 min; full map 10 min; maps kept ± 1 h around findings (D5 Tables 5.4.7a / 9.1 / 9.5)" }]
+      : covDef?.scanResolution
+        ? [{ k: "Scan rate / resolution", v: <span>Pending D5</span>, note: covDef.scanResolution }]
+        : []),
+    ...(frame.shellThermal?.handheld
+      ? frame.shellThermal.handheld.points.map((p) => ({
+          k: `Handheld ${p.m} m · ${p.angle}°`,
+          v: (
+            <ToneNum
+              tone={p.gap !== null && Math.abs(p.gap) > 25 ? "warn" : undefined}
+              value={p.gap === null ? "no view" : signed(p.gap)}
+              unit={p.gap === null ? undefined : "K"}
+            />
+          ),
+          note: `handheld ${p.hand.toFixed(0)} °C · scanner ${p.scan === null ? "no view" : `${p.scan.toFixed(0)} °C`} · round ${formatLocalTime(simTimeMs(frame.shellThermal!.handheld!.at), { seconds: false, timeZone })} · > 25 K = clean the window (SW-KLN-03)`,
+        }))
+      : []),
+    frame.defs.plant === "kiln"
+      ? { k: "Instrument", v: <span className="ast-num">0–600 °C · ±2 %</span>, note: "line scan 2–5 s · OPC UA" }
+      : { k: "Instrument", v: <span>{covDef?.instrument ?? "—"}</span> },
+  ];
+
+  return (
+    <div className="thm-card" aria-label="Scanner">
+      <div className="thm-scanner">
+        <dl className="thm-dl thm-dl-rows">
+          {rows.map((r) => (
+            <div key={r.k}>
+              <dt>{r.k}</dt>
+              <dd>{r.v}</dd>
+              <span className="thm-dl-note">{r.note ?? ""}</span>
+            </div>
+          ))}
+        </dl>
+        <div className="thm-scanner-trend">
+          <span className="thm-meta">STS-KLN-08 · coverage</span>
+          {trend.length > 1 ? (
+            <TrendTimeZoneContext.Provider value={timeZone}>
+              <TrendChart
+                samples={trend}
+                timeDomain={[trend[0].t, trend[trend.length - 1].t]}
+                unit="%"
+                limits={{ warn: limits.coverage.warn, alarm: limits.coverage.alarm, mode: "low" }}
+                decimals={1}
+                height={200}
+                ariaLabel={`Scanner coverage in %, with warning ${limits.coverage.warn} and alarm ${limits.coverage.alarm} %`}
+              />
+            </TrendTimeZoneContext.Provider>
+          ) : (
+            <span className="thm-meta">Collecting coverage history…</span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

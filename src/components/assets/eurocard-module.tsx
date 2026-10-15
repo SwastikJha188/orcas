@@ -11,22 +11,34 @@ import type { CabinetChannel, CabinetModule, SensorTypeCode } from "./rack-data"
 export type SlotState = "ok" | "warn" | "bad" | "empty";
 
 export const STATE_COLOR: Record<SlotState, string> = {
-  ok: "var(--status-success)",
+  // Healthy reads as neutral metal: status colour only for suspect / invalid.
+  ok: "var(--diagram-stroke)",
   warn: "var(--status-warning)",
   bad: "var(--status-danger)",
   empty: "var(--dx-stroke)",
 };
 
-/** 19" sub-rack: 84 HP usable width, 3U height. */
-export const RACK_HP = 84;
+/** 19" sub-rack, 3U: PSU + CPU + 6 HP module positions (84 HP for 12 positions). */
 export const PSU_HP = 8;
 export const CPU_HP = 4;
 export const SLOT_HP = 6;
+export const rackHp = (positions: number) => PSU_HP + CPU_HP + positions * SLOT_HP;
 
+/**
+ * Signal (hardware) state of a channel: what the acquisition chain says about
+ * the reading itself — invalid / bad quality is critical, suspect or stale is
+ * advisory. Process alarms (value beyond a limit) are not hardware faults; see
+ * `processState`.
+ */
 export function channelState(ch: CabinetChannel): SlotState {
-  if (ch.status === "Critical") return "bad";
-  if (ch.status === "Advisory" || !ch.ledOk) return "warn";
+  if (/invalid|bad|fault/i.test(ch.quality)) return "bad";
+  if (!ch.ledOk || /suspect|stale|uncertain/i.test(ch.quality)) return "warn";
   return "ok";
+}
+
+/** Process state of the measured value (alarm limits), independent of the hardware. */
+export function processState(ch: CabinetChannel): SlotState {
+  return ch.status === "Critical" ? "bad" : ch.status === "Advisory" ? "warn" : "ok";
 }
 
 export function worstState(states: SlotState[]): SlotState {
@@ -118,23 +130,7 @@ export function ModuleGlyph({ type, empty = false }: { type: SensorTypeCode; emp
 }
 
 /* ------------------------------------------------------------------
-   Channel connector grid: every channel the card carries, mapped ones
-   ringed in their state colour. Columns grow with the channel count so
-   an 18-channel RTD card fits the 6 HP face without dropping any.
-   ------------------------------------------------------------------ */
-
-export function channelGrid(capacity: number, width: number, height: number) {
-  const n = Math.max(1, capacity);
-  const cols = n <= 6 ? 1 : n <= 12 ? 2 : n <= 24 ? 3 : 4;
-  const rows = Math.ceil(n / cols);
-  const pitchX = width / cols;
-  const pitchY = Math.min(22, height / rows);
-  const r = Math.max(2.4, Math.min(7, pitchX / 2 - 2.5, pitchY / 2 - 1.5));
-  return { cols, rows, pitchX, pitchY, r };
-}
-
-/* ------------------------------------------------------------------
-   One 6 HP Eurocard module (or an empty position), in chassis coordinates.
+   One 6 HP single-channel module (or a spare position), in chassis coordinates.
    ------------------------------------------------------------------ */
 
 export interface EurocardModuleProps {
@@ -157,15 +153,11 @@ export function EurocardModule({ module: m, position, x, y, w, h, isSelected, se
   const mx = x + inset;
   const mw = w - inset * 2;
   const pos = String(position).padStart(2, "0");
+  const ch0 = m?.channels[0];
   const label = m
-    ? `Position ${pos}, card ${m.code}${m.model ? ` ${m.model}` : ""}${m.cardType ? `, ${m.cardType}` : ""}, ${m.channels.length} of ${m.capacity} channels mapped, ${stateSeverity(state)}`
-    : `Position ${pos}, empty`;
+    ? `Slot ${pos}, ${ch0 ? `${ch0.tag}, ` : ""}card ${m.code}${m.model ? ` ${m.model}` : ""} channel ${ch0?.channel ?? "—"} of ${m.cardCapacity}, ${stateSeverity(state)}`
+    : `Slot ${pos}, spare`;
 
-  const gridTop = y + 96;
-  const gridH = h - 96 - 28;
-  const ids = m ? channelIds(m) : [];
-  const g = channelGrid(ids.length, mw - 8, gridH);
-  const byChannel = new Map((m?.channels ?? []).map((c) => [c.channel, c]));
 
   return (
     <g
@@ -203,45 +195,31 @@ export function EurocardModule({ module: m, position, x, y, w, h, isSelected, se
             {typeLabel(m.sensorType)}
           </text>
           <text className="rack-mod-temp" x={cx} y={y + 85} textAnchor="middle">
-            {m.channels.length}/{m.capacity} ch
+            CH {ch0 ? (/^\d+$/.test(ch0.channel) ? ch0.channel.padStart(2, "0") : ch0.channel) : "—"}
           </text>
-          {/* Channel connectors */}
-          {ids.map((id, i) => {
-            const col = Math.floor(i / g.rows);
-            const row = i % g.rows;
-            const ccx = mx + 4 + g.pitchX * (col + 0.5);
-            const ccy = gridTop + g.pitchY * (row + 0.5);
-            const ch = byChannel.get(id);
-            const st = ch ? channelState(ch) : null;
-            const sel = ch && selectedChannel === ch.channel;
-            return (
-              <g key={id}>
-                <circle
-                  className="rack-mod-conn"
-                  cx={ccx}
-                  cy={ccy}
-                  r={g.r}
-                  style={st ? { stroke: STATE_COLOR[st], strokeWidth: sel ? 2.4 : 1.4 } : undefined}
-                />
-                <circle className="rack-mod-pin" cx={ccx} cy={ccy} r={Math.min(2, g.r / 2.5)} style={st ? { fill: STATE_COLOR[st] } : undefined} />
-              </g>
-            );
-          })}
+          {/* The slot's one connector, ringed in its signal state */}
+          {ch0 && (
+            <g>
+              <circle
+                className="rack-mod-conn"
+                cx={cx}
+                cy={y + 110}
+                r={9}
+                style={{ stroke: STATE_COLOR[channelState(ch0)], strokeWidth: selectedChannel === ch0.channel ? 2.6 : 1.6 }}
+              />
+              <circle className="rack-mod-pin" cx={cx} cy={y + 110} r={3} style={{ fill: STATE_COLOR[channelState(ch0)] }} />
+            </g>
+          )}
+          {/* Tag on the module label strip, read bottom-up */}
+          {ch0 && (
+            <text className="rack-mod-tag" transform={`translate(${cx + 4} ${y + h - 24}) rotate(-90)`}>
+              {ch0.tag}
+            </text>
+          )}
         </>
       ) : (
         <rect className="rack-mod-empty" x={mx + 3} y={y + 3} width={mw - 6} height={h - 6} rx={4} />
       )}
     </g>
   );
-}
-
-/**
- * Connector ids of a module: 1…capacity when channels are numbered, then any
- * mapped channel with another id, so nothing mapped is ever left off the face.
- */
-export function channelIds(m: CabinetModule): string[] {
-  const ids = Array.from({ length: m.capacity }, (_, i) => String(i + 1));
-  const known = new Set(ids);
-  for (const c of m.channels) if (!known.has(c.channel)) ids.push(c.channel);
-  return ids;
 }

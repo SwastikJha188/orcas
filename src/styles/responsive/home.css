@@ -1,0 +1,372 @@
+/* Responsive layer — home. See foundation.css for tiers and the :root prefix rule.
+
+   Home stays the full-screen 3D twin with floating HUD panels (plant twin and
+   machine twin share the ph-immersive / ph-hud classes). Per tier only the
+   panels move:
+     phone   twin fills the top of the page, panels follow as a scrolling sheet
+     tablet  twin stays full-bleed, panels dock to the right in a narrow column
+     laptop  baseline (docked right, trend strip along the bottom)
+     desktop wider panel column
+     wide/tv panel column and trend strip sized for big screens, twin centred
+             in the free area (useCoveredInset frames the camera around them)
+
+   plant-home.css stacks the HUD below its own 1100px breakpoint; from the
+   tablet tier up that is undone here so the panels keep floating. */
+
+/* ==========================================================================
+   Tablet and up: the HUD floats over the twin (undo plant-home.css ≤1100px)
+   ========================================================================== */
+@media (min-width: 600px) {
+  :root .ph-immersive {
+    display: block;
+    overflow: hidden;
+  }
+  :root .ph-stage {
+    position: absolute;
+    inset: 0;
+    height: auto;
+    margin: 0;
+    border-radius: 0;
+  }
+  :root .ph-hud {
+    display: grid;
+  }
+  :root .ph-hud-side,
+  :root .ph-hud-bottom {
+    margin: 0;
+    min-height: 0;
+  }
+  :root .ph-hud-side .ph-alert-list {
+    max-height: none;
+  }
+  :root .ph-hud-bottom.ph-strip {
+    grid-template-columns: minmax(0, 1fr);
+    height: 204px;
+  }
+  :root .ph-hud-bottom.ph-strip > .ph-card {
+    height: auto;
+  }
+  :root .ph-twin-inspector {
+    left: auto;
+    width: 268px;
+  }
+  :root .mt3-bar {
+    margin: 0;
+    flex-wrap: nowrap;
+    border-radius: var(--corner-pill);
+  }
+}
+
+/* ==========================================================================
+   Tablet 600–1023: twin full-bleed, panels docked right in a narrow column,
+   flat (no cockpit tilt at this size), trend strip shorter.
+   ========================================================================== */
+@media (min-width: 600px) and (max-width: 1023px) {
+  :root .ph-hud {
+    grid-template-columns: minmax(0, 1fr) 264px;
+    gap: 10px;
+    padding: 12px;
+  }
+  :root .ph-hud-side,
+  :root .ph-hud-bottom {
+    transform: none;
+  }
+  :root .ph-hud-side {
+    gap: 10px;
+  }
+  /* Gauge is a quick read here: smaller dial, alerts get the height. */
+  :root .ph-hud-side .ph-gauge-meter {
+    max-width: 200px;
+  }
+  :root .ph-hud-side .ph-gauge-value {
+    font-size: var(--fs-8xl);
+    line-height: 34px;
+  }
+  :root .ph-hud-side .ph-alerts {
+    min-height: 200px;
+  }
+  :root .ph-hud-bottom.ph-strip {
+    height: 172px;
+  }
+  /* Machine twin: the machine bar takes the full top row above the panel
+     column, so the name is never squeezed beside the narrow twin area. */
+  :root .ph-hud:has(> .mt3-bar) {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "bar bar"
+      ". side"
+      "bottom side";
+  }
+  :root .mt3-bar {
+    grid-area: bar;
+    max-width: 100%;
+  }
+  :root .mt3-title {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  :root .ph-twin-inspector {
+    width: 248px;
+  }
+  :root .ph-twin-hint {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   Laptop and up: restore the cockpit tilt removed by plant-home.css ≤1100px.
+   ========================================================================== */
+@media (min-width: 1024px) {
+  :root .ph-hud-side {
+    transform: rotateY(-3deg);
+  }
+  :root .ph-hud-bottom {
+    transform: rotateX(4deg);
+  }
+}
+
+/* ==========================================================================
+   Desktop 1440–1919: a slightly wider panel column.
+   ========================================================================== */
+@media (min-width: 1440px) {
+  :root .ph-hud {
+    grid-template-columns: minmax(0, 1fr) 340px;
+    padding: 20px 24px 24px;
+  }
+  :root .ph-body {
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
+}
+
+/* ==========================================================================
+   Wide 1920+ (and TV, which zooms back to ~2000px of layout): the panel
+   column widens, the trend strip becomes a contained instrument at the
+   bottom-left instead of a stretched band, and the twin sits centred in the
+   free area between them.
+   ========================================================================== */
+@media (min-width: 1920px) {
+  :root .ph-hud {
+    grid-template-columns: minmax(0, 1fr) 380px;
+    gap: 16px;
+    padding: 24px 28px 28px;
+  }
+  :root .ph-hud-side {
+    gap: 16px;
+  }
+  :root .ph-hud-bottom.ph-strip {
+    justify-self: start;
+    width: min(100%, 1040px);
+    height: 224px;
+  }
+  :root .ph-twin-inspector {
+    width: 300px;
+  }
+
+  /* Layout view: wider side column, and the map and trend never stretch past
+     a readable width on very large screens. */
+  :root .ph-root:not(.ph-immersive) {
+    padding: 24px 32px 32px;
+  }
+  :root .ph-root:not(.ph-immersive) > .ph-head,
+  :root .ph-root:not(.ph-immersive) > .ph-body {
+    width: 100%;
+    max-width: 2200px;
+    margin-inline: auto;
+  }
+  :root .ph-body {
+    grid-template-columns: minmax(0, 1fr) 400px;
+    gap: 16px;
+  }
+  :root .ph-main,
+  :root .ph-side {
+    gap: 16px;
+  }
+  :root .ph-inspector {
+    width: 300px;
+  }
+  :root .ops-center {
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  }
+
+  /* Copilot drawer: a little wider on big screens. */
+  :root .cp-drawer {
+    inline-size: min(500px, calc(100vw - 16px));
+  }
+}
+
+/* ==========================================================================
+   Phone ≤599: the twin fills the top of the page; the panels follow as a
+   scrolling sheet (machine bar, gauge, alerts, trend). The twin captures
+   touches for orbiting, so the sheet always peeks in below it to scroll.
+   ========================================================================== */
+@media (max-width: 599px) {
+  :root .ph-root {
+    padding: 12px;
+  }
+  :root .ph-immersive {
+    padding: 0;
+    overflow-x: hidden;
+  }
+  :root .ph-stage {
+    height: clamp(280px, 54dvh, 460px);
+    margin: 12px 12px 0;
+  }
+  :root .ph-hud-side,
+  :root .ph-hud-bottom {
+    margin: 10px 12px 0;
+    gap: 10px;
+  }
+  :root .ph-hud-bottom {
+    margin-bottom: 12px;
+  }
+  :root .ph-hud-bottom.ph-strip > .ph-card {
+    height: 252px;
+  }
+  /* Trend head wraps under the title: range tabs left, change right, one row. */
+  :root .ph-trend .ph-head-stack {
+    flex: 1 1 100%;
+    flex-direction: row-reverse;
+    align-items: center;
+    justify-content: space-between;
+  }
+  :root .ph-hud-side .ph-alert-list {
+    max-height: 360px;
+  }
+
+  /* Gauge: compact dial so the alerts appear on the first scroll. */
+  :root .ph-gauge-meter {
+    max-width: 200px;
+  }
+  :root .ph-gauge-value {
+    font-size: var(--fs-8xl);
+    line-height: 34px;
+  }
+
+  /* Machine bar above the twin: name on its own row, actions beneath. */
+  :root .mt3-bar {
+    margin: 12px 12px 0;
+    padding: 8px;
+    gap: 8px;
+    flex-wrap: wrap;
+    border-radius: var(--corner-card);
+  }
+  :root .mt3-title {
+    flex: 1 1 calc(100% - 120px);
+    min-width: 0;
+  }
+  :root .mt3-bar > .btn-pill:last-child {
+    margin-inline-start: auto;
+  }
+
+  /* Overlays inside the small stage: nav top-right, legend bottom-left on
+     one line, component inspector as a sheet over the lower stage. */
+  :root .ph-stage .twin-nav {
+    top: 10px;
+    right: 10px;
+    bottom: auto;
+  }
+  :root .ph-twin-legend {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    flex-wrap: nowrap;
+    gap: 10px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    white-space: nowrap;
+    border-radius: var(--corner-row);
+    width: fit-content;
+    max-width: calc(100% - 16px);
+  }
+  :root .ph-twin-legend::-webkit-scrollbar {
+    display: none;
+  }
+  :root .ph-twin-inspector {
+    top: auto;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: auto;
+    max-height: 70%;
+    padding: 12px 14px;
+    gap: 10px;
+  }
+  :root .mt3-sensors {
+    max-height: 160px;
+  }
+  /* Building / component labels: compact tags so they fit the small stage
+     (the label layout measures them, so leaders still line up). */
+  :root .ph-twin-label {
+    min-width: 0;
+    max-width: 168px;
+    padding: 4px 7px;
+  }
+  :root .ph-twin-label-head {
+    font-size: var(--fs-3xs);
+    letter-spacing: 0.06em;
+  }
+  :root .ph-twin-label-meta {
+    font-size: var(--fs-2xs);
+  }
+
+  /* Layout view: zones one per row and never wider than the card, units
+     full width, inspector below the map. */
+  :root .ph-canvas {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 10px;
+    gap: 10px;
+  }
+  :root .ph-zone {
+    min-width: 0;
+    padding: 10px;
+  }
+  :root .ph-zone-units {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  :root .ph-inspector {
+    width: auto;
+  }
+  :root .ops-center {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  :root .ops-row-actions {
+    padding-inline: 8px;
+  }
+
+  /* Toasts sit above the bottom tab bar, full width. */
+  :root .ops-toasts {
+    right: 12px;
+    left: 12px;
+    bottom: calc(var(--tabbar-height, 58px) + env(safe-area-inset-bottom, 0px) + 12px);
+    width: auto;
+  }
+
+  /* Copilot sheet contents: tighter thread, suggestion chips in one
+     scrolling row, 16px composer text so iOS does not zoom on focus. */
+  :root .cp-thread {
+    padding: 12px;
+    gap: 14px;
+  }
+  :root .cp-foot {
+    padding: 8px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  :root .cp-suggest {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    max-block-size: none;
+    scrollbar-width: none;
+  }
+  :root .cp-suggest::-webkit-scrollbar {
+    display: none;
+  }
+  :root .cp-suggest > * {
+    flex: none;
+  }
+  :root .cp-composer input {
+    font-size: var(--fs-xl);
+  }
+  :root .cp-conf-bar {
+    flex-basis: 64px;
+  }
+}

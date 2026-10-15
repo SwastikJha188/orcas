@@ -36,7 +36,8 @@ export const SOURCE_PROTOCOLS = [
   "Other",
 ] as const;
 
-export type PointDataType = "float" | "int" | "bool" | "string";
+/** "video" (camera stream) and "status+map" (shell scanner) carry no scalar reading. */
+export type PointDataType = "float" | "int" | "bool" | "string" | "video" | "status+map";
 
 export interface EdgeBroker {
   id: string;
@@ -88,6 +89,8 @@ export interface EdgeGateway {
   firmware: string | null;
   enabled: boolean;
   notes: string | null;
+  /** Network security zone (IEC 62443 / Purdue level), e.g. "Level 3 — site DMZ". Null when not recorded. */
+  securityZone?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -110,6 +113,8 @@ export interface EdgeSource {
   pollIntervalMs: number | null;
   enabled: boolean;
   notes: string | null;
+  /** Network security zone of the source system, e.g. "Level 2 — DCS / control". Null when not recorded. */
+  securityZone?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -149,6 +154,8 @@ export interface EdgePoint {
   /** Machine + signal tag this point feeds in the asset model. */
   machineId: string | null;
   signalTag: string | null;
+  /** Original tag in the plant DCS / PLC / historian ("pending plant tag list" until the export is mapped). */
+  sourceTag?: string | null;
   enabled: boolean;
 }
 
@@ -392,11 +399,13 @@ export interface MachineLivePoint {
   tag: string;
   name: string;
   signalTag: string | null;
+  /** Original DCS / PLC / historian tag of the point, when recorded. */
+  sourceTag?: string | null;
   unit: string | null;
   alertLimit: number | null;
   dangerLimit: number | null;
-  gateway: { id: string; code: string; name: string; brokerId: string | null };
-  source: { id: string; code: string; name: string; kind: SourceKind; protocol: string };
+  gateway: { id: string; code: string; name: string; brokerId: string | null; securityZone?: string | null };
+  source: { id: string; code: string; name: string; kind: SourceKind; protocol: string; securityZone?: string | null };
   card: string;
   /** The registry's card row (edge_cards) the point sits on; nulls when none is recorded. */
   cardInfo: { type: string | null; model: string | null; note: string | null; channelCount: number | null };
@@ -407,6 +416,7 @@ export interface MachineLivePoint {
     value: number | null;
     display: string | null;
     unit: string | null;
+    /** Time the gateway / broker reading was received by ULTRON (not the source time stamp). */
     updatedAt: string | null;
     cardType: string | null;
   };
@@ -417,7 +427,16 @@ export interface MachineAcquisition {
   serverNow: string;
   points: MachineLivePoint[];
   /** Per gateway: link state now. */
-  gateways: { id: string; code: string; name: string; brokerName: string | null; state: "online" | "stale" | "offline" | "waiting" | "disabled"; lastSeenAt: string | null; ip: string | null }[];
+  gateways: {
+    id: string;
+    code: string;
+    name: string;
+    brokerName: string | null;
+    state: "online" | "stale" | "offline" | "waiting" | "disabled";
+    lastSeenAt: string | null;
+    ip: string | null;
+    securityZone?: string | null;
+  }[];
 }
 
 // ---------------------------------------------------------------- commissioning

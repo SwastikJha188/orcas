@@ -1,0 +1,694 @@
+/* Responsive layer — machine-diagnostics. See foundation.css for tiers and the :root prefix rule.
+   Owns: the shared machine page frame (.pg-frame*, .pg-analysis-section box)
+   and the Overview, Sensors, Thermal and Rack machine tabs. */
+
+/* ==========================================================================
+   1. SHARED MACHINE PAGE FRAME
+   .pg-frame > .pg-frame-head + .pg-frame-kpis + .pg-frame-body > .pg-analysis-section
+   The KPI strip follows the frame's own width (container query), so it is
+   right whatever the workspace padding or drawer state is.
+   ========================================================================== */
+
+:root .ast-root.pg-frame {
+  container: pg-frame / inline-size;
+}
+
+/* KPI strip by available width: 4-up ≥ 720px, 2×2 below (never one column). */
+:root .pg-frame-kpis {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@container pg-frame (min-width: 720px) {
+  :root .pg-frame-kpis {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* Tablet: header wraps cleanly, actions stay right-aligned when they fit. */
+@media (max-width: 1023px) {
+  :root .pg-frame-head {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  :root .pg-frame-head-main {
+    flex-wrap: wrap;
+    align-items: baseline;
+    flex: 1 1 320px;
+  }
+  :root .pg-frame-meta {
+    flex-basis: 100%;
+    flex-wrap: wrap;
+    gap: 2px 18px;
+  }
+  :root .pg-frame-kpi {
+    padding: 14px 16px;
+  }
+  :root .pg-frame-kpi-value {
+    font-size: var(--fs-5xl);
+  }
+}
+
+/* Phone: stacked header, actions on their own full-width row, 2×2 KPIs. */
+@media (max-width: 599px) {
+  :root .pg-frame {
+    --pg-frame-gap: 12px;
+  }
+  :root .pg-frame-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    min-height: 0;
+  }
+  :root .pg-frame-head-main {
+    flex: none;
+    gap: 4px 12px;
+  }
+  :root .pg-frame-title {
+    font-size: var(--fs-xl);
+  }
+  /* Meta: one aligned label · value line per pair; long values ellipsize. */
+  :root .pg-frame-meta {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+    overflow: visible;
+  }
+  :root .pg-frame-meta > div {
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 8px;
+    overflow: hidden;
+  }
+  :root .pg-frame-actions {
+    inline-size: 100%;
+    max-inline-size: 100%;
+    justify-content: stretch;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  /* Buttons share the row and wrap to a second row when their labels need it;
+     a label never runs past the frame. */
+  :root .pg-frame-actions > * {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-inline-size: 100%;
+    justify-content: center;
+  }
+  :root .pg-frame-actions > .btn-pill {
+    padding-inline: 14px;
+  }
+  :root .pg-frame-actions > .nav-pill-group {
+    flex: 1 1 100%;
+  }
+  :root .pg-frame-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  :root .pg-frame-kpi {
+    gap: 6px;
+    padding: 12px 14px;
+  }
+  :root .pg-frame-kpi-label {
+    font-size: var(--fs-2xs);
+  }
+  :root .pg-frame-kpi-value {
+    font-size: var(--fs-3xl);
+  }
+  :root .pg-frame-kpi-unit {
+    font-size: var(--fs-sm);
+  }
+  :root .pg-frame-kpi-foot {
+    font-size: var(--fs-xs);
+  }
+  :root .pg-frame .pg-frame-body {
+    padding-bottom: 16px;
+  }
+  :root .pg-analysis-section {
+    gap: 12px;
+    padding: 14px;
+    border-radius: var(--corner-card);
+  }
+}
+
+/* Wide: a touch more air, and the frame stops growing past 2200px. */
+@media (min-width: 1920px) {
+  :root .ast-root.pg-frame {
+    --pg-frame-gap: 20px;
+    inline-size: 100%;
+    max-inline-size: 2200px;
+    margin-inline: auto;
+  }
+  :root .pg-frame-kpis {
+    gap: 16px;
+  }
+  :root .pg-frame-kpi {
+    padding: 18px 22px;
+  }
+  :root .pg-frame-kpi-value {
+    font-size: var(--fs-8xl);
+  }
+  :root .pg-analysis-section {
+    padding: 20px 24px;
+  }
+}
+
+@media (max-width: 599px) {
+  :root .pg-frame-meta :is(dt, dd) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  :root .pg-frame-kpi-label {
+    letter-spacing: 0.02em;
+  }
+}
+
+/* ==========================================================================
+   2. OVERVIEW (pg-ov-*)
+   ========================================================================== */
+
+/* Wide: Operating point and Status by area side by side under the machine. */
+@media (min-width: 1920px) {
+  :root .pg-frame .pg-ov-body {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    align-items: start;
+  }
+  :root .pg-ov-body > * {
+    grid-column: 1 / -1;
+  }
+  :root .pg-ov-body > #ov-operating {
+    grid-column: 1;
+  }
+  :root .pg-ov-body > #ov-areas {
+    grid-column: 2;
+  }
+  :root .pg-ov-machine {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+  }
+  :root .pg-ov-groups {
+    max-height: 640px;
+  }
+  :root .pg-ov-canvas {
+    min-height: 420px;
+  }
+  :root .pg-ov-areas .pg-ov-detail {
+    max-width: 240px;
+  }
+}
+
+/* Tablet: the sub-assembly list sits under the drawing in two balanced columns
+   of rows would break the table, so it stays one list, capped in height. */
+@media (max-width: 1023px) {
+  :root .pg-ov-groups {
+    max-height: 420px;
+    overflow-y: auto;
+  }
+  /* The screen-reader-only spans are absolutely placed: keep them inside the
+     table scroller so they never widen the workspace. */
+  :root .pg-ov-flush {
+    position: relative;
+  }
+  /* Operating point: tag and normal band drop (the range bar shows the band). */
+  :root .pg-ov-table:not(.pg-ov-areas):not(.pg-ov-groups-table) :is(th, td):is(:nth-child(2), :nth-child(6)) {
+    display: none;
+  }
+  :root .pg-ov-detail {
+    max-width: 220px;
+  }
+}
+
+@media (max-width: 599px) {
+  :root .pg-ov-canvas {
+    min-height: 0;
+    padding: 10px 4px;
+  }
+  :root .pg-ov-drawing-head {
+    gap: 6px 12px;
+  }
+  :root .pg-ov-counts {
+    gap: 6px 12px;
+  }
+  :root .pg-ov-groups {
+    margin-inline: -14px;
+    max-height: 360px;
+  }
+  :root .pg-ov-callout {
+    gap: 8px 12px;
+  }
+  :root .pg-ov-callout-main {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  :root .pg-ov-flush {
+    inline-size: auto;
+    max-inline-size: none;
+    margin-inline: -14px;
+  }
+  :root .pg-ov-table :is(th, td) {
+    padding: 10px 12px;
+  }
+  /* Rows open on tap: the trailing link keeps only its chevron. */
+  :root .pg-ov-areas .pg-ov-link {
+    font-size: 0;
+    gap: 0;
+  }
+  :root .pg-ov-areas .pg-ov-trail {
+    width: 20px;
+    padding-inline: 0 12px;
+  }
+}
+
+/* ==========================================================================
+   3. SENSORS (pg-sensors-*)
+   Register columns: 1 sensor · 2 measurement · 3 location · 4 range ·
+   5 rack slot · 6 sampling · 7 live value · 8 limits · 9 data · 10 menu.
+   Group header rows are a single th and are never hidden.
+   ========================================================================== */
+
+/* Tablet + phone: the detail panel becomes a bottom sheet pinned to the
+   viewport while the register is in view, instead of landing after 46 rows. */
+@media (max-width: 1023px) {
+  :root .pg-sensors .ast-sm.has-panel > .ast-panel {
+    position: sticky;
+    top: auto;
+    /* Sticky insets count from the workspace's content box: reach past its
+       bottom padding (32px tablet, 24px phone; assets-workspace.css). */
+    bottom: -32px;
+    z-index: 5;
+    max-block-size: 48vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 14px 16px 16px;
+    border-top: 1px solid var(--separator);
+    border-radius: var(--corner-card) var(--corner-card) 0 0;
+    background: var(--workspace-bg);
+  }
+
+  /* Register: sensor · live value · limits · data · menu (the measurement
+     name already sits under the tag). */
+  :root #sensors-register .ui-table thead th:is(:nth-child(2), :nth-child(3), :nth-child(4), :nth-child(5), :nth-child(6)),
+  :root #sensors-register .ui-table tbody tr:not(.pg-sensors-group) td:is(:nth-child(2), :nth-child(3), :nth-child(4), :nth-child(5), :nth-child(6)) {
+    display: none;
+  }
+
+  /* Validity: since, rules held, health input drop; methods lose "covers". */
+  :root #sensors-validity div.pg-sensors-table:has(thead th:nth-child(8)) :is(th, td):is(:nth-child(4), :nth-child(5), :nth-child(6), :nth-child(7)),
+  :root #sensors-validity div.pg-sensors-table:not(:has(thead th:nth-child(7))) :is(th, td):is(:nth-child(3), :nth-child(5)) {
+    display: none;
+  }
+
+  /* Acquisition chain: kind · protocol and gateway drop. */
+  :root #sensors-chain .pg-sensors-table :is(th, td):is(:nth-child(2), :nth-child(3)) {
+    display: none;
+  }
+  :root :is(#sensors-validity, #sensors-chain) .ast-table.ui-table-container .ui-table tbody td {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 599px) {
+  :root .pg-sensors .ast-sm.has-panel > .ast-panel {
+    max-block-size: 52vh;
+    bottom: -24px;
+    margin-inline: -14px;
+    gap: 12px;
+  }
+  :root .pg-sensors .ast-sm-table {
+    padding: 4px 0 6px;
+  }
+
+  /* Map: clusters flow full width, cards two-up (the stage sets a fixed px
+     column width inline, which would overflow a phone). */
+  :root .pg-sensors .ast-smr-scene {
+    padding: 14px 10px 12px;
+  }
+  :root .pg-sensors .ast-smw-flow > .ast-smw-cluster {
+    flex: 1 1 100%;
+  }
+  :root .pg-sensors .ast-smw-flow .ast-smw-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  /* Register: sensor · live value · data (row tap opens the sheet with every action). */
+  :root #sensors-register .ui-table thead th:is(:nth-child(8), :nth-child(10)),
+  :root #sensors-register .ui-table tbody tr:not(.pg-sensors-group) td:is(:nth-child(8), :nth-child(10)) {
+    display: none;
+  }
+  :root #sensors-register .ast-table.ui-table-container .ui-table :is(thead th, tbody td) {
+    padding-inline: 8px;
+  }
+  :root #sensors-register .pg-sensors-clip {
+    max-width: 120px;
+  }
+  :root #sensors-register .pg-sensors-id {
+    gap: 8px;
+  }
+  :root #sensors-register .ast-health-cell {
+    display: none;
+  }
+  :root #sensors-register .ast-toolbar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  :root #sensors-register :is(.ast-search, .ast-toolbar-group:has(.ast-search)) {
+    inline-size: 100%;
+  }
+  :root #sensors-register .pg-sensors-group th {
+    white-space: normal;
+  }
+
+  /* Validity: sensor · data · check; methods: method · check · flagged. */
+  :root #sensors-validity div.pg-sensors-table:has(thead th:nth-child(8)) :is(th, td):nth-child(8),
+  :root #sensors-validity div.pg-sensors-table:not(:has(thead th:nth-child(7))) :is(th, td):nth-child(4) {
+    display: none;
+  }
+
+  /* Acquisition chain: source · sensors · live · no data. */
+  :root #sensors-chain .pg-sensors-table :is(th, td):is(:nth-child(4), :nth-child(7)) {
+    display: none;
+  }
+
+  :root .pg-sensors .pg-analysis-section .ui-table-container {
+    inline-size: auto;
+    max-inline-size: none;
+    margin-inline: -14px;
+  }
+  :root .pg-sensors .ast-table.ui-table-container .ui-table tbody td {
+    white-space: normal;
+  }
+  :root .pg-sensors .ast-table.ui-table-container .ui-table :is(thead th, tbody td) {
+    padding-inline: 8px;
+  }
+  :root .pg-sensors .pg-sensors-wrap {
+    min-width: 0;
+  }
+}
+
+/* ==========================================================================
+   4. THERMAL (thm-*)
+   ========================================================================== */
+
+/* Wide: rules beside the scanner; map, zones and spots keep the full width. */
+@media (min-width: 1920px) {
+  :root .thm-root .pg-frame-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+  }
+  :root .thm-root .pg-frame-body > * {
+    grid-column: 1 / -1;
+  }
+  :root .thm-root .pg-frame-body > #thm-rules {
+    grid-column: 1;
+  }
+  :root .thm-root .pg-frame-body > #thm-scanner {
+    grid-column: 2;
+  }
+  :root .thm-root .thm-scanner {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Shell card: scanner map and axial profile side by side instead of a
+     1500px-tall stack. Children: head · map · scale · divider · head · chart. */
+  :root #thm-shell .thm-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 32px;
+    row-gap: 8px;
+    align-items: start;
+  }
+  :root #thm-shell .thm-card > :nth-child(1) { grid-column: 1; grid-row: 1; }
+  :root #thm-shell .thm-card > :nth-child(2) { grid-column: 1; grid-row: 2; }
+  :root #thm-shell .thm-card > :nth-child(3) { grid-column: 1; grid-row: 3; }
+  :root #thm-shell .thm-card > .thm-divider { display: none; }
+  :root #thm-shell .thm-card > :nth-child(5) { grid-column: 2; grid-row: 1; }
+  :root #thm-shell .thm-card > :nth-child(n + 6) { grid-column: 2; grid-row: 2 / span 2; }
+}
+
+/* Laptop: the ten-column zones table fits the card without a scrollbar. */
+@media (max-width: 1439px) {
+  :root #thm-zones .ast-table.ui-table-container .ui-table :is(thead th, tbody td) {
+    padding-inline: 12px;
+  }
+}
+
+/* Tablet: zones drop mean, model, Δ max and coverage %; rules drop count and since. */
+@media (max-width: 1023px) {
+  :root #thm-zones :is(th, td):is([data-col="mean"], [data-col="model"], [data-col="dmax"], [data-col="above"]),
+  :root #thm-rules :is(th, td):is([data-col="count"], [data-col="since"]) {
+    display: none;
+  }
+  :root .thm-root .thm-dl-rows > div {
+    grid-template-columns: 140px 110px minmax(0, 1fr);
+  }
+  :root #thm-zones td[data-col="lining"] {
+    white-space: normal;
+    min-inline-size: 160px;
+  }
+  :root #thm-zones td[data-col="lining"] * {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 599px) {
+  /* Tables stack into labelled rows here (machine-insights.css stacks every
+     .pg-analysis table on phone). Zones: zone over max · Δ mean · spots ·
+     status; the lining estimate stays in the zone's Analysis link.
+     Rules: rule id over name · state. */
+  :root #thm-zones :is(th, td)[data-col="lining"],
+  :root #thm-rules :is(th, td)[data-col="ev"] {
+    display: none;
+  }
+  :root .thm-root .thm-card .ui-table-container {
+    inline-size: auto;
+    max-inline-size: none;
+    margin-inline: -14px;
+  }
+  :root .thm-root .ast-table.ui-table-container .ui-table :is(thead th, tbody td) {
+    padding-inline: 10px;
+  }
+
+  :root .thm-root .thm-card-head {
+    flex-wrap: wrap;
+    gap: 4px 12px;
+  }
+  :root .thm-root .thm-legend {
+    gap: 4px 12px;
+  }
+
+  /* Hot spot / hottest section: polar, facts, trend stacked. */
+  :root .thm-root .thm-spots-detail,
+  :root .thm-root .thm-spots.is-single .thm-spots-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  :root .thm-root .thm-spots.is-single .thm-dl {
+    padding-top: 0;
+  }
+  :root .thm-root .thm-spots .thm-dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  :root .thm-root .thm-detail-trend {
+    grid-column: auto;
+  }
+
+  /* Scanner facts: label · value on one line, the note beneath. */
+  :root .thm-root .thm-dl-rows > div {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px 12px;
+  }
+  :root .thm-root .thm-dl-rows .thm-dl-note {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ==========================================================================
+   5. RACK (pg-rack-*)
+   ========================================================================== */
+
+/* Wide: slots and calculated signals share a row; chassis, channels and
+   cabinet keep the full width. */
+@media (min-width: 1920px) {
+  :root .pg-rack .pg-frame-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-auto-flow: row dense;
+    align-items: start;
+  }
+  :root .pg-rack .pg-frame-body > * {
+    grid-column: 1 / -1;
+  }
+  :root .pg-rack .pg-frame-body:has(> #rack-calculated) > #rack-slots {
+    grid-column: 1;
+  }
+  :root .pg-rack .pg-frame-body > #rack-calculated {
+    grid-column: 2;
+  }
+  :root .pg-rack-chassis-body {
+    grid-template-columns: minmax(0, 1fr) 380px;
+  }
+}
+
+/* Tablet: inspector under the chassis, card facts beside its channel list. */
+@media (min-width: 600px) and (max-width: 1023px) {
+  :root .pg-rack-inspect {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-content: start;
+    gap: 14px 24px;
+  }
+  :root .pg-rack-inspect > .pg-rack-inspect-head {
+    grid-column: 1 / -1;
+  }
+  :root .pg-rack-inspect > .pg-rack-chlist {
+    grid-column: 2;
+    grid-row: 2 / span 3;
+  }
+  :root .pg-rack-inspect > :not(.pg-rack-inspect-head, .pg-rack-chlist) {
+    grid-column: 1;
+  }
+}
+
+/* Tablet: low-priority columns drop. */
+@media (max-width: 1023px) {
+  :root .pg-rack-slots :is(th, td)[data-col="sensors"],
+  :root .pg-rack-channels :is(th, td):is([data-col="card"], [data-col="reg"], [data-col="process"], [data-col="open"]),
+  :root .pg-rack-calc :is(th, td)[data-col="basis"] {
+    display: none;
+  }
+}
+
+@media (max-width: 599px) {
+  :root .pg-rack-canvas {
+    padding: 8px 4px;
+  }
+  /* Rack switch: one sideways-scrolling row instead of a wrapped block. */
+  :root .pg-rack-switch.nav-pill-wrap {
+    flex-wrap: nowrap;
+    max-inline-size: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  :root .pg-rack-switch .nav-pill {
+    flex: none;
+  }
+  :root .pg-rack-card-head {
+    gap: 10px;
+  }
+  :root #rack-slots .pg-actions {
+    flex-wrap: nowrap;
+    max-inline-size: 100%;
+  }
+
+  /* Slots: slot · module · state. Channels: location · sensor · reading.
+     Calculated: value · reading · process. */
+  :root .pg-rack-slots :is(th, td):is([data-col="signal"], [data-col="channels"]),
+  :root .pg-rack-channels :is(th, td):is([data-col="rate"], [data-col="signal"]),
+  :root .pg-rack-calc :is(th, td):is([data-col="inputs"], [data-col="open"]) {
+    display: none;
+  }
+
+  /* Cabinet spec: the group column folds away; item over recorded / specified. */
+  :root .pg-rack-spec.ui-table-container .ui-table :is(th, td)[data-col="group"] {
+    display: none;
+  }
+  :root .pg-rack-spec .ui-table thead {
+    display: none;
+  }
+  :root .pg-rack-spec .ui-table,
+  :root .pg-rack-spec .ui-table tbody {
+    display: block;
+    inline-size: 100%;
+  }
+  :root .pg-rack-spec .ui-table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 14px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--separator);
+  }
+  :root .pg-rack-spec.ui-table-container .ui-table tbody td {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-inline-size: 0;
+    padding: 0;
+    border: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  :root .pg-rack-spec .ui-table tbody td[data-col="item"] {
+    grid-column: 1;
+    grid-row: 1;
+    font-weight: 500;
+  }
+  :root .pg-rack-spec.ui-table-container .ui-table tbody td[data-col="state"] {
+    grid-column: 2;
+    grid-row: 1;
+    align-items: flex-end;
+  }
+  :root .pg-rack-spec .ui-table tbody td:is([data-col="rec"], [data-col="spec"])::before {
+    content: attr(data-label);
+    font-size: var(--fs-xs);
+    color: var(--text-muted);
+  }
+
+  /* Channels: fixed location / reading widths, the sensor name ellipsizes. */
+  :root .pg-rack-channels .ui-table {
+    table-layout: fixed;
+    inline-size: 100%;
+  }
+  /* !important: ui/Table sets these column widths inline. */
+  :root .pg-rack-channels th[data-col="loc"] {
+    width: 100px !important;
+  }
+  :root .pg-rack-channels th[data-col="reading"] {
+    width: 92px !important;
+  }
+  :root .pg-rack-channels td[data-col="sensor"] .ast-cell-stack {
+    min-inline-size: 0;
+  }
+  :root .pg-rack-channels td[data-col="sensor"] :is(.ast-cell-title, .ast-cell-sub) {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  :root .pg-rack .pg-table-card .ui-table-container {
+    inline-size: auto;
+    max-inline-size: none;
+    margin-inline: -14px;
+  }
+  /* Channels sits inside the inspector card, not on the section edge: no bleed. */
+  :root .pg-rack .pg-table-card .ui-table-container.pg-rack-channels,
+  :root .pg-rack .ui-table-container.pg-rack-channels {
+    margin-inline: 0;
+  }
+  :root .pg-rack .ast-table.ui-table-container .ui-table :is(thead th, tbody td),
+  :root .pg-rack .ui-table-container.pg-rack-table .ui-table :is(thead th, tbody td) {
+    padding-inline: 10px;
+  }
+}
+
+/* Section-header controls (filter pills, toggles) never widen the page: the
+   right slot shrinks and its pill rows scroll inside it. All machine pages. */
+:root .pg-frame :is(.pg-analysis-section-right, .pg-health-card-right) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Section index: below laptop, the right slot (Trends window pills, Diagnosis
+   scope chip) takes its own row under the section pills instead of being
+   pushed off the edge. */
+@media (max-width: 1023px) {
+  :root .pg-frame .pg-analysis-index { flex-wrap: wrap; row-gap: 4px; }
+  :root .pg-frame .pg-analysis-index-list { flex: 1 1 100%; min-width: 0; }
+  :root .pg-frame .pg-analysis-index-right {
+    flex: 1 1 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  :root .pg-frame .pg-analysis-index-right::-webkit-scrollbar { display: none; }
+}
