@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PillButton, PillNav } from "@/components/ui";
 import { useApi } from "@/lib/api-cache";
+import { combinedTrack } from "@/lib/health-recorder";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { PRIMARY_PYRO_ID, isLiveMachine, useKilnFleet, usePrimaryMachineId } from "@/providers/kiln-simulation-context";
 import type { KilnSimulation } from "@/components/assets/kiln-seals-simulation";
@@ -31,6 +32,7 @@ import { useCoveredInset, type Side } from "./twin/use-covered-inset";
 import { AlertsFeed, HealthTrendCard, PlantHealthGauge, conditionSummary, type HomeActivity, type HomeAlert } from "./home-widgets";
 import "@/components/assets/assets-shell.css";
 import "./plant-home.css";
+import { homeActive } from "./home-active";
 
 /* The pyro line's site overview replaces the generic plant twin for that plant only (three.js stays out of the first chunk). */
 const PyroSiteOverview = dynamic(() => import("./twin/pyro-site-overview").then((m) => m.PyroSiteOverview), {
@@ -149,19 +151,18 @@ export function PlantHome() {
     [live],
   );
 
-  /* Health over time: live machines carry their history; the others hold
-     their recorded health, so the plant average moves with the live plant. */
-  const trend = useMemo(() => {
-    if (!frame || machines.length === 0) return { series: [] as number[], labels: [] as string[] };
-    const liveNodes = new Set(live.map((l) => l.node));
-    const others = machines.filter((m) => !liveNodes.has(m)).reduce((n, m) => n + machineCondition(m, lookup).health, 0);
-    return {
-      series: frame.healthHistory.overall.map(
-        (_, i) => (others + live.reduce((n, l) => n + (l.sim.frame.healthHistory.overall[i] ?? l.sim.frame.overall), 0)) / machines.length,
-      ),
-      labels: frame.times.map((t) => formatClock(t).clock),
-    };
-  }, [frame, live, machines, lookup]);
+  /* Health over time, on the real clock (@/lib/health-recorder): live machines
+     are recorded every tick; the others hold their recorded health, so the
+     plant average moves with the live plant. */
+  const trackPlant = useCallback(
+    (from: number) => {
+      const liveNodes = new Set(live.map((l) => l.node));
+      const others = machines.filter((m) => !liveNodes.has(m)).reduce((n, m) => n + machineCondition(m, lookup).health, 0);
+      const ids = live.map((l) => l.node.machineId!);
+      return combinedTrack(ids, from, (v) => (others + ids.reduce((n, id) => n + v[id], 0)) / machines.length);
+    },
+    [live, machines, lookup],
+  );
 
   /* Alerts: confirmed rules from the live engine; for machines without live
      telemetry, the Advisory / Critical findings in diagnosis_records and the
@@ -408,7 +409,7 @@ export function PlantHome() {
             <AlertsFeed alerts={alerts} activity={activity} onOpen={openDiagnosis} loading={stored.loading} error={stored.error} />
           </aside>
           <div ref={bottomRef} className="ph-hud-bottom ph-strip">
-            <HealthTrendCard series={trend.series} labels={trend.labels} />
+            <HealthTrendCard track={trackPlant} />
           </div>
         </div>
       </div>
@@ -435,7 +436,7 @@ export function PlantHome() {
             onOpen={(id) => navigateToMachine(id, "overview")}
           />
           <div className="ph-strip">
-            <HealthTrendCard series={trend.series} labels={trend.labels} />
+            <HealthTrendCard track={trackPlant} />
           </div>
           {hasLive && <OpsCenter />}
         </div>
@@ -470,7 +471,7 @@ function PlantMap({
 
   useEffect(() => {
     if (!selected) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onSelect(null);
+    const onKey = (e: KeyboardEvent) => homeActive.current && e.key === "Escape" && onSelect(null);
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [selected, onSelect]);

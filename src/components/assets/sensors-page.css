@@ -33,10 +33,10 @@
 
 /* Diagram card: data-quality mark in place of the point label. */
 .pg-sensors-qmark {
+  font-family: var(--font-mono);
   font-size: var(--fs-xs);
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--tone);
   white-space: nowrap;
 }
@@ -44,10 +44,10 @@
 .pg-sensors-flag {
   display: inline-block;
   margin-left: 6px;
+  font-family: var(--font-mono);
   font-size: var(--fs-xs);
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--tone);
 }
 
@@ -55,6 +55,8 @@
 .pg-sensors-table .ui-table th.pg-sensors-r,
 .pg-sensors-table .ui-table td.pg-sensors-r {
   text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .pg-sensors-table .ui-table td.pg-sensors-r .ast-sm-reading {
@@ -100,7 +102,8 @@
 }
 
 .pg-sensors-formula {
-  font-size: var(--fs-md);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
   color: var(--dx-ink);
   white-space: normal;
   max-width: 300px;
@@ -112,9 +115,8 @@
   text-align: left;
   font-size: var(--fs-sm);
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-muted);
+  letter-spacing: 0;
+  color: var(--dx-ink);
   border-bottom: 1px solid var(--separator);
 }
 
@@ -127,14 +129,13 @@
 }
 
 .pg-sensors-group-name {
-  color: var(--page-fg);
+  color: var(--dx-ink);
   margin-right: 10px;
 }
 
 .pg-sensors-group .ast-caption {
   font-weight: 400;
   letter-spacing: 0;
-  text-transform: none;
 }
 
 .pg-sensors-register {
@@ -176,13 +177,12 @@
   padding: 16px 20px;
 }
 
-/* Small upper-case sub-label inside a section card (one table each). */
+/* Sentence-case sub-label inside a section card (one table each). */
 .pg-sensors-sub {
   margin: 8px 0 0;
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--text-muted);
 }
 

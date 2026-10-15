@@ -523,6 +523,18 @@ export function createSim(scenarioId = "healthy", seed = 20261012): SimState {
   return s;
 }
 
+/** A running engine as structured-cloneable data: the PRNG as its state, the frame without its defs. */
+export type FrozenSim = Omit<SimState, "rand"> & { rand: number };
+
+/** Snapshot `s` to post across a worker boundary; `thawSim` resumes the exact same run. */
+export function freezeSim(s: SimState): FrozenSim {
+  return { ...s, rand: (s.rand as Rng).state(), frame: s.frame && ({ ...s.frame, defs: undefined } as unknown as SimFrame) };
+}
+
+export function thawSim(f: FrozenSim): SimState {
+  return { ...f, rand: mulberry32(f.rand), frame: f.frame && { ...f.frame, defs: KILN_DEFS } };
+}
+
 function blankSim(rand: () => number): SimState {
   return {
     t: -HISTORY_LEN,

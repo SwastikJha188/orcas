@@ -66,6 +66,12 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export function EdgeProvider({ children }: { children: React.ReactNode }) {
+  const existing = useContext(EdgeContext);
+  if (existing) return <>{children}</>;
+  return <EdgeProviderInner>{children}</EdgeProviderInner>;
+}
+
+function EdgeProviderInner({ children }: { children: React.ReactNode }) {
   const [registry, setRegistry] = useState<EdgeRegistry | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

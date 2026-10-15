@@ -5,6 +5,7 @@ import { StatusTag } from "@/components/ui/status-tag";
 import { PillButton, PillNav } from "@/components/ui";
 import { healthTone, type Tone } from "@/components/assets/assets-shell-ui";
 import { smoothPath } from "@/components/ui/sparkline";
+import { HEALTH_STEP_MS, type HealthPoint } from "@/lib/health-recorder";
 import type { Distribution } from "@/components/assets/hierarchy/hierarchy-model";
 import { useKilnOps } from "@/providers/kiln-ops-context";
 import { conditionTone, worstCondition, type Condition } from "@/components/ui/status";
@@ -186,6 +187,73 @@ export interface HomeActivity {
   detail: string;
 }
 
+/* Feed motion (after the Gigaton "Recent actions" feed): a new entry opens its
+   slot from zero height at the top, so the entries below glide down one place,
+   while the card itself drops in from above and fades up; its status tint then
+   settles over ENTER_MS. An entry that goes away closes its slot the same way. */
+const ENTER_MS = 1600;
+const LEAVE_MS = 420;
+/** Entries arriving together open one after another, this far apart. */
+const STAGGER_MS = 70;
+
+type Phase = "enter" | "idle" | "leave";
+type Shown<T> = { item: T; key: string; phase: Phase; delay: number };
+
+/**
+ * Entries with their motion phase. The first populated list draws still;
+ * after that, new keys enter and removed keys linger LEAVE_MS while their
+ * slot closes. Idempotent per render, so a discarded or doubled render is safe.
+ */
+function usePresence<T>(items: T[], keyOf: (item: T) => string): Shown<T>[] {
+  const mem = useRef<{
+    seeded: boolean;
+    first: Map<string, number>;
+    prev: Array<{ key: string; item: T }>;
+    leaving: Map<string, { item: T; index: number; at: number }>;
+  }>({ seeded: false, first: new Map(), prev: [], leaving: new Map() });
+  const m = mem.current;
+  const now = Date.now();
+  const keys = items.map(keyOf);
+  const present = new Set(keys);
+  if (!m.seeded && items.length) {
+    m.seeded = true;
+    for (const k of keys) m.first.set(k, -Infinity);
+  }
+  for (const k of keys) {
+    if (!m.first.has(k)) m.first.set(k, now);
+    m.leaving.delete(k);
+  }
+  m.prev.forEach((p, index) => {
+    if (!present.has(p.key) && !m.leaving.has(p.key)) m.leaving.set(p.key, { item: p.item, index, at: now });
+  });
+  for (const [k, l] of m.leaving) if (now - l.at > LEAVE_MS) m.leaving.delete(k);
+  for (const k of [...m.first.keys()]) if (!present.has(k) && !m.leaving.has(k)) m.first.delete(k);
+  m.prev = items.map((item, i) => ({ key: keys[i], item }));
+
+  const batch = new Map<number, number>();
+  const out: Shown<T>[] = items.map((item, i) => {
+    const at = m.first.get(keys[i]) ?? -Infinity;
+    if (now - at >= ENTER_MS) return { item, key: keys[i], phase: "idle", delay: 0 };
+    const n = batch.get(at) ?? 0;
+    batch.set(at, n + 1);
+    return { item, key: keys[i], phase: "enter", delay: n * STAGGER_MS };
+  });
+  for (const [k, l] of [...m.leaving].sort((a, b) => a[1].index - b[1].index)) {
+    out.splice(Math.min(l.index, out.length), 0, { item: l.item, key: k, phase: "leave", delay: 0 });
+  }
+  return out;
+}
+
+/** Slot attributes for an entry in its motion phase; a leaving entry is inert. */
+function slotProps(phase: Phase, delay: number) {
+  return {
+    className: "ph-feed-slot",
+    "data-phase": phase === "idle" ? undefined : phase,
+    style: delay ? ({ "--enter-delay": `${delay}ms` } as React.CSSProperties) : undefined,
+    ...(phase === "leave" ? { inert: true, "aria-hidden": true } : {}),
+  };
+}
+
 export function AlertsFeed({
   alerts,
   activity = [],
@@ -205,6 +273,8 @@ export function AlertsFeed({
   const [open, setOpen] = useState<string | null>(null);
   const ops = useKilnOps();
   const active = alerts.filter((a) => !a.cleared);
+  const shownAlerts = usePresence(alerts, (a) => a.id);
+  const shownActivity = usePresence(activity, (e) => e.id);
   const danger = active.filter((a) => a.level === "danger").length;
   return (
     <section className="ast-card ph-card ph-alerts" aria-label="Alerts">
@@ -243,75 +313,79 @@ export function AlertsFeed({
             <div className="ph-feed-quiet ast-caption">No active alerts.</div>
           )}
           <ul className="ph-feed">
-          {alerts.map((a) => {
-            const expanded = open === a.id;
+          {shownAlerts.map(({ item: a, phase, delay }) => {
+            const expanded = open === a.id && phase !== "leave";
             const tone: Tone = a.cleared ? "idle" : a.level === "danger" ? "bad" : "warn";
             return (
-              <li key={a.id} className="ph-alert" data-tone={tone} data-cleared={a.cleared ? "" : undefined}>
-                <button type="button" className="ph-alert-row" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : a.id)}>
-                  <span className="ph-alert-top">
-                    <span className="ph-alert-age ast-num">{a.age ?? "on record"}</span>
-                    <span className="ph-alert-machine">{a.machine}</span>
-                    <span className="ph-level">{a.cleared ? "CLEARED" : a.level === "danger" ? "CRITICAL" : "ADVISORY"}</span>
-                  </span>
-                  <span className="ph-alert-finding">{a.finding}</span>
-                  <span className="ph-alert-reading ast-num">{a.reading}</span>
-                </button>
-                {expanded && (
-                  <div className="ph-alert-more">
-                    <p>{a.recommendation}</p>
-                    <span className="ast-caption ast-num">
-                      {a.raised ? `Raised ${a.raised}` : "On record"}
-                      {a.origin ? ` · ${a.origin}` : ""}
-                      {a.cleared ? ` · cleared ${a.cleared}` : ""} · {a.machineId}
+              <li key={a.id} {...slotProps(phase, delay)}>
+                <div className="ph-alert" data-tone={tone} data-cleared={a.cleared ? "" : undefined}>
+                  <button type="button" className="ph-alert-row" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : a.id)}>
+                    <span className="ph-alert-top">
+                      <span className="ph-alert-age ast-num">{a.age ?? "on record"}</span>
+                      <span className="ph-alert-machine">{a.machine}</span>
+                      <span className="ph-level">{a.cleared ? "CLEARED" : a.level === "danger" ? "CRITICAL" : "ADVISORY"}</span>
                     </span>
-                    <div className="ph-alert-actions">
-                      {(() => {
-                        // Live findings of the plant's primary machine (id "<machine>:<ruleId>") can be acted on.
-                        const ruleId = !a.cleared && a.machineId === ops.machineId && a.id.split(":").length === 2 ? a.id.split(":")[1] : null;
-                        const live = ruleId ? ops.alerts.find((x) => x.ruleId === ruleId) : null;
-                        if (!live) return null;
-                        return (
-                          <>
-                            {!live.acknowledged && (
-                              <PillButton variant="secondary" onClick={() => void ops.acknowledge(live.ruleId)}>
-                                Acknowledge
-                              </PillButton>
-                            )}
-                            {live.workOrderId === null ? (
-                              <PillButton variant="primary" onClick={() => void ops.createWorkOrder(live.ruleId)}>
-                                Create work order
-                              </PillButton>
-                            ) : (
-                              <span className="ast-caption ast-num">WO-{live.workOrderId} raised</span>
-                            )}
-                          </>
-                        );
-                      })()}
-                      <PillButton variant="secondary" onClick={() => onOpen(a.machineId)}>
-                        Open diagnosis
-                      </PillButton>
+                    <span className="ph-alert-finding">{a.finding}</span>
+                    <span className="ph-alert-reading ast-num">{a.reading}</span>
+                  </button>
+                  {expanded && (
+                    <div className="ph-alert-more">
+                      <p>{a.recommendation}</p>
+                      <span className="ast-caption ast-num">
+                        {a.raised ? `Raised ${a.raised}` : "On record"}
+                        {a.origin ? ` · ${a.origin}` : ""}
+                        {a.cleared ? ` · cleared ${a.cleared}` : ""} · {a.machineId}
+                      </span>
+                      <div className="ph-alert-actions">
+                        {(() => {
+                          // Live findings of the plant's primary machine (id "<machine>:<ruleId>") can be acted on.
+                          const ruleId = !a.cleared && a.machineId === ops.machineId && a.id.split(":").length === 2 ? a.id.split(":")[1] : null;
+                          const live = ruleId ? ops.alerts.find((x) => x.ruleId === ruleId) : null;
+                          if (!live) return null;
+                          return (
+                            <>
+                              {!live.acknowledged && (
+                                <PillButton variant="secondary" onClick={() => void ops.acknowledge(live.ruleId)}>
+                                  Acknowledge
+                                </PillButton>
+                              )}
+                              {live.workOrderId === null ? (
+                                <PillButton variant="primary" onClick={() => void ops.createWorkOrder(live.ruleId)}>
+                                  Create work order
+                                </PillButton>
+                              ) : (
+                                <span className="ast-caption ast-num">WO-{live.workOrderId} raised</span>
+                              )}
+                            </>
+                          );
+                        })()}
+                        <PillButton variant="secondary" onClick={() => onOpen(a.machineId)}>
+                          Open diagnosis
+                        </PillButton>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </li>
             );
           })}
           </ul>
-          {activity.length > 0 && (
+          {shownActivity.length > 0 && (
             <>
               <h3 className="ph-feed-label">Recent activity</h3>
               <ul className="ph-feed">
-                {activity.map((e) => (
-                  <li key={e.id} className="ph-alert ph-activity" data-tone={e.tone}>
-                    <div className="ph-alert-row">
-                      <span className="ph-alert-top">
-                        <span className="ph-alert-age ast-num">{e.clock}</span>
-                        <span className="ph-alert-machine">{e.machine}</span>
-                        <span className="ph-level">{e.tag}</span>
-                      </span>
-                      <span className="ph-alert-finding">{e.title}</span>
-                      {e.detail && <span className="ph-alert-reading">{e.detail}</span>}
+                {shownActivity.map(({ item: e, phase, delay }) => (
+                  <li key={e.id} {...slotProps(phase, delay)}>
+                    <div className="ph-alert ph-activity" data-tone={e.tone}>
+                      <div className="ph-alert-row">
+                        <span className="ph-alert-top">
+                          <span className="ph-alert-age ast-num">{e.clock}</span>
+                          <span className="ph-alert-machine">{e.machine}</span>
+                          <span className="ph-level">{e.tag}</span>
+                        </span>
+                        <span className="ph-alert-finding">{e.title}</span>
+                        {e.detail && <span className="ph-alert-reading">{e.detail}</span>}
+                      </div>
                     </div>
                   </li>
                 ))}
@@ -350,14 +424,37 @@ function formatSpan(minutes: number) {
   return `${Number.isInteger(h) ? h : h.toFixed(1)} h`;
 }
 
+/** Most points drawn: longer windows average neighbouring buckets. */
+const MAX_POINTS = 360;
+/** A jump between recorded buckets larger than this is a gap (page closed or hidden). */
+const GAP_MS = 3 * HEALTH_STEP_MS;
+
+const clockOf = (ms: number, seconds = false) =>
+  new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", ...(seconds ? { second: "2-digit" } : {}) });
+
+/** Average runs of `k` buckets so the line keeps at most MAX_POINTS points; gaps stay gaps. */
+function thin(points: HealthPoint[]): Array<{ t: number; v: number }> {
+  const valid = points.filter((p): p is { t: number; v: number } => p.v !== null);
+  const k = Math.ceil(valid.length / MAX_POINTS);
+  if (k <= 1) return valid;
+  const out: Array<{ t: number; v: number }> = [];
+  for (let i = 0; i < valid.length; i += k) {
+    const run = valid.slice(i, i + k);
+    // Never average across a gap: cut the run where it breaks.
+    const cut = run.findIndex((p, j) => j > 0 && p.t - run[j - 1].t > GAP_MS);
+    const part = cut > 0 ? run.slice(0, cut) : run;
+    out.push({ t: part[part.length - 1].t, v: part.reduce((n, p) => n + p.v, 0) / part.length });
+    if (cut > 0) out.push(...run.slice(cut).map((p) => ({ t: p.t, v: p.v })));
+  }
+  return out;
+}
+
 export function HealthTrendCard({
-  series,
-  labels,
+  track,
   height,
 }: {
-  /** One sample a minute, oldest first. */
-  series: number[];
-  labels: string[];
+  /** Recorded health on the real clock from `from` (epoch ms) to now (`@/lib/health-recorder`). */
+  track: (from: number) => HealthPoint[];
   /** Fixed plot height in px; without it the plot fills the card. */
   height?: number;
 }) {
@@ -379,14 +476,20 @@ export function HealthTrendCard({
     }
   };
 
-  const n = Number(period);
-  const values = series.slice(-n);
-  const times = labels.slice(-n);
-  const spanMin = Math.max(0, values.length - 1);
-  const spanLabel = formatSpan(spanMin);
-  const delta = values.length >= 2 ? Math.round(values[values.length - 1] - values[0]) : null;
-  const latest = values.length ? values[values.length - 1] : null;
+  // The window is real time: 1 h means the last 60 minutes on the wall clock.
+  const windowMs = Number(period) * 60_000;
+  const now = Date.now();
+  const from = now - windowMs;
+  const points = thin(track(from));
+  const spanLabel = formatSpan(Number(period));
+  const first = points[0] ?? null;
+  const latest = points.length ? points[points.length - 1].v : null;
+  const delta = points.length >= 2 ? Math.round(points[points.length - 1].v - points[0].v) : null;
   const tone: Tone = latest === null ? "idle" : levelTone(latest);
+  // The window reaches back before the recording started (page opened recently, or closed for a while).
+  const partial = first !== null && first.t - from > GAP_MS;
+  // The change is measured over what was recorded, not the whole window.
+  const deltaSpan = partial && first ? formatSpan((points[points.length - 1].t - first.t) / 60_000) : spanLabel;
 
   const [ref, size] = useSize<HTMLDivElement>(320, height ?? 120);
   const gradId = useSvgId("ph-trend-area");
@@ -397,34 +500,44 @@ export function HealthTrendCard({
   const padT = 6;
   const padB = 22;
   const plotH = h - padT - padB;
+  const plotW = width - padL - padR;
   const y = (v: number) => padT + ((AXIS_HI - Math.max(AXIS_LO, Math.min(AXIS_HI, v))) / (AXIS_HI - AXIS_LO)) * plotH;
-  const x = (i: number) => padL + (i / Math.max(1, values.length - 1)) * (width - padL - padR);
-  const pts = values.map((v, i) => ({ x: x(i), y: y(v) }));
-  const line = pts.length >= 2 ? smoothPath(pts) : "";
-  const area = line ? `${line} L ${pts[pts.length - 1].x} ${padT + plotH} L ${pts[0].x} ${padT + plotH} Z` : "";
+  const x = (t: number) => padL + Math.max(0, Math.min(1, (t - from) / windowMs)) * plotW;
+  const pts = points.map((p) => ({ x: x(p.t), y: y(p.v) }));
+  // One path per recorded stretch: a gap in the recording is a gap in the line.
+  const segments: Array<Array<{ x: number; y: number }>> = [];
+  points.forEach((p, i) => {
+    if (i === 0 || p.t - points[i - 1].t > GAP_MS) segments.push([]);
+    segments[segments.length - 1].push(pts[i]);
+  });
+  const lines = segments.map((seg) => (seg.length >= 2 ? smoothPath(seg) : `M ${seg[0].x} ${seg[0].y} l 0.01 0`));
+  const areas = segments.map((seg, i) => (seg.length >= 2 ? `${lines[i]} L ${seg[seg.length - 1].x} ${padT + plotH} L ${seg[0].x} ${padT + plotH} Z` : ""));
   const [hover, setHover] = useState<number | null>(null);
-  const hp = hover !== null ? pts[hover] : null;
+  const hi = hover !== null && hover < points.length ? hover : null;
+  const hp = hi !== null ? pts[hi] : null;
 
   return (
     <section className="ast-card ph-card ph-trend" aria-label="Health over time">
       <div className="ast-card-head ph-card-head">
         <div className="ph-head-text">
           <h2 className="ast-card-title">Health over time</h2>
-          <span className="ph-sub">{spanMin > 0 ? `Condition score · last ${spanLabel}` : "Condition score"}</span>
+          <span className="ph-sub">
+            {partial && first ? `Condition score · last ${spanLabel} · recorded since ${clockOf(first.t)}` : `Condition score · last ${spanLabel}`}
+          </span>
         </div>
         <div className="ph-head-stack">
           {delta !== null && (
             <span className="ph-move ast-num">
               <b data-tone={delta > 0 ? "good" : delta < 0 ? "bad" : undefined}>{delta === 0 ? "±0" : `${delta > 0 ? "+" : "−"}${Math.abs(delta)}`}</b>{" "}
-              {delta === 0 ? `steady over ${spanLabel}` : `over ${spanLabel}`}
+              {delta === 0 ? `steady over ${deltaSpan}` : `over ${deltaSpan}`}
             </span>
           )}
           <PillNav items={PERIODS} activeId={period} onChange={choose} className="ph-head-nav" />
         </div>
       </div>
       <div ref={ref} className="ph-chart ph-chart-fill" style={height ? { height, flex: "none" } : undefined}>
-        {values.length < 2 ? (
-          <span className="ph-sub">Collecting samples — the trend draws once there are two.</span>
+        {points.length < 2 ? (
+          <span className="ph-sub">Recording health on the plant clock — the trend draws after the first {HEALTH_STEP_MS / 1000} s.</span>
         ) : (
           <svg
             width={width}
@@ -433,8 +546,11 @@ export function HealthTrendCard({
             aria-label={`Plant health over the last ${spanLabel}, now ${Math.round(latest ?? 0)} of 100`}
             onMouseMove={(e) => {
               const r = e.currentTarget.getBoundingClientRect();
-              const rel = (e.clientX - r.left - padL) / Math.max(1, r.width - padL - padR);
-              setHover(Math.max(0, Math.min(values.length - 1, Math.round(rel * (values.length - 1)))));
+              const px = ((e.clientX - r.left) / Math.max(1, r.width)) * width;
+              // Nearest recorded point to the pointer.
+              let best = 0;
+              for (let i = 1; i < pts.length; i++) if (Math.abs(pts[i].x - px) < Math.abs(pts[best].x - px)) best = i;
+              setHover(best);
             }}
             onMouseLeave={() => setHover(null)}
           >
@@ -454,20 +570,22 @@ export function HealthTrendCard({
                 </text>
               </g>
             ))}
-            <path d={area} fill={`url(#${gradId})`} />
-            <path className="ph-line" data-tone={tone} d={line} />
+            {areas.map((d, i) => d && <path key={`a${i}`} d={d} fill={`url(#${gradId})`} />)}
+            {lines.map((d, i) => (
+              <path key={`l${i}`} className="ph-line" data-tone={tone} d={d} />
+            ))}
             <text className="ph-axis" x={padL} y={h - 4}>
               {spanLabel} ago
             </text>
             <text className="ph-axis" x={width - padR} y={h - 4} textAnchor="end">
               now
             </text>
-            {hp && hover !== null && (
+            {hp && hi !== null && (
               <g>
                 <line className="ph-cross" x1={hp.x} x2={hp.x} y1={padT} y2={padT + plotH} />
                 <circle className="ph-dot" data-tone={tone} cx={hp.x} cy={hp.y} r={3.5} />
                 <text className="ph-tip" x={Math.min(Math.max(hp.x, padL + 40), width - 50)} y={padT + 12} textAnchor="middle">
-                  {values[hover].toFixed(1)} · {times[hover]}
+                  {points[hi].v.toFixed(1)} · {clockOf(points[hi].t, true)}
                 </text>
               </g>
             )}

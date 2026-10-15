@@ -62,7 +62,7 @@
 .pg-chev {
   color: var(--text-muted);
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: none;
 }
 
 .ui-table tbody tr:hover .pg-chev,
@@ -72,7 +72,7 @@
 }
 
 .pg-root .ui-table tbody tr:focus-visible {
-  outline: 2px solid var(--signal-blue);
+  outline: 2px solid var(--accent-primary);
   outline-offset: -2px;
   border-radius: var(--corner-row);
 }

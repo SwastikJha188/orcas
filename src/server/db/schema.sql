@@ -578,6 +578,48 @@ CREATE TABLE IF NOT EXISTS work_orders (
 CREATE INDEX IF NOT EXISTS idx_work_orders_machine ON work_orders(machine_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_work_orders_assignee ON work_orders(assignee_user_id);
 
+-- Inspection results against the machine maintenance checklists (OSW-PE-MNT / SMT-PYR-01).
+CREATE TABLE IF NOT EXISTS maintenance_records (
+  id SERIAL PRIMARY KEY,
+  machine_id VARCHAR(64) NOT NULL REFERENCES machines(id) ON DELETE CASCADE,
+  kind VARCHAR(16) NOT NULL CHECK (kind IN ('equipment', 'sensor')),
+  task_id VARCHAR(32) NOT NULL,
+  result VARCHAR(8) NOT NULL CHECK (result IN ('Pass', 'Defect', 'NA', 'Hold')),
+  note TEXT,
+  inspector_user_id VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
+  work_order_id INTEGER REFERENCES work_orders(id) ON DELETE SET NULL,
+  recorded_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_maintenance_records_machine ON maintenance_records(machine_id, kind, recorded_at DESC);
+
+-- Checklist items added on site for one machine (shown as U-<id>), placed in a document section.
+CREATE TABLE IF NOT EXISTS maintenance_custom_tasks (
+  id SERIAL PRIMARY KEY,
+  machine_id VARCHAR(64) NOT NULL REFERENCES machines(id) ON DELETE CASCADE,
+  kind VARCHAR(16) NOT NULL CHECK (kind IN ('equipment', 'sensor')),
+  unit_code VARCHAR(16) NOT NULL,
+  group_num VARCHAR(16) NOT NULL,
+  route VARCHAR(16) NOT NULL,
+  component VARCHAR(200) NOT NULL,
+  check_text TEXT NOT NULL,
+  pass_text TEXT,
+  created_by_user_id VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_maintenance_custom_tasks_machine ON maintenance_custom_tasks(machine_id, kind);
+
+-- Items taken off one machine's checklist (document or site-added); deleting the row puts the item back.
+CREATE TABLE IF NOT EXISTS maintenance_removed_tasks (
+  machine_id VARCHAR(64) NOT NULL REFERENCES machines(id) ON DELETE CASCADE,
+  kind VARCHAR(16) NOT NULL CHECK (kind IN ('equipment', 'sensor')),
+  task_id VARCHAR(32) NOT NULL,
+  removed_by_user_id VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
+  removed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (machine_id, kind, task_id)
+);
+
 CREATE TABLE IF NOT EXISTS alert_acks (
   rule_id VARCHAR(64) NOT NULL,
   machine_id VARCHAR(64) NOT NULL REFERENCES machines(id) ON DELETE CASCADE,

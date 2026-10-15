@@ -40,8 +40,18 @@ function useAnchoredMenu(width: number) {
     if (!r) return;
     // TV tier: rects are zoomed px; the portalled menu is placed in CSS px under body { zoom }.
     const uz = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-zoom")) || 1;
-    const left = Math.max(8, Math.min(r.right / uz - width, window.innerWidth / uz - width - 8));
-    setPos({ left, top: r.bottom / uz + 6 });
+    const vw = window.innerWidth / uz;
+    const vh = window.innerHeight / uz;
+    const menuH = menu.current?.offsetHeight || 280;
+    if (r.left / uz < 96 && vw >= 600) {
+      const left = Math.min(r.right / uz + 8, vw - width - 8);
+      const top = Math.max(8, Math.min(r.top / uz, vh - menuH - 12));
+      setPos({ left, top });
+    } else {
+      const left = Math.max(8, Math.min(r.right / uz - width, vw - width - 8));
+      const top = Math.max(8, Math.min(r.bottom / uz + 6, vh - menuH - 12));
+      setPos({ left, top });
+    }
   }, [width]);
 
   const close = useCallback((refocus = true) => {
@@ -52,8 +62,12 @@ function useAnchoredMenu(width: number) {
   useLayoutEffect(() => {
     if (!open) return;
     place();
+    const raf = requestAnimationFrame(place);
     window.addEventListener("resize", place);
-    return () => window.removeEventListener("resize", place);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", place);
+    };
   }, [open, place]);
 
   // Close on outside press and Escape; arrow keys move between items.
@@ -126,6 +140,7 @@ function Trigger({
       aria-haspopup="menu"
       aria-expanded={open}
       aria-label={`${kind}: ${label}. Change`}
+      title={`${kind}: ${label}`}
       data-open={open || undefined}
       onClick={onClick}
       disabled={disabled}

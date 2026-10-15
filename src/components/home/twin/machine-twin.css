@@ -65,7 +65,6 @@
 .mt3-sensor-name { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mt3-sensor-value { color: var(--dx-ink); }
 
-.mt3-pad-tip { white-space: nowrap; }
 
 @media (max-width: 1100px) {
   .mt3-bar {

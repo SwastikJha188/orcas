@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { LiquidGlassShell } from "@/components/liquid-glass-shell";
 import { PlantHome } from "@/components/home/plant-home";
@@ -11,7 +11,9 @@ import {
 import { KilnSimulationProvider } from "@/providers/kiln-simulation-context";
 import { KilnOpsProvider } from "@/providers/kiln-ops-context";
 import { AiEngineProvider } from "@/providers/ai-engine-context";
+import { EdgeProvider } from "@/providers/edge-context";
 import { SignInScreen } from "@/components/auth/sign-in";
+import { homeActive } from "@/components/home/home-active";
 
 // Home is the landing tab; the other workspaces load on first visit.
 const AssetsView = dynamic(() => import("@/components/assets/assets-view").then((m) => m.AssetsView));
@@ -21,6 +23,12 @@ const ConfigureView = dynamic(() => import("@/components/configure/configure-vie
 
 function UltronWorkspaceContent() {
   const { activeTab, setActiveTab, setSelectedMachineId, navigateToMachine } = useIndustrialData();
+
+  // Home stays mounted once opened: rebuilding its 3D scene froze the page for
+  // up to a second on every return. It is hidden (and its loop idles) meanwhile.
+  const [homeVisited, setHomeVisited] = useState(activeTab === "home");
+  if (activeTab === "home" && !homeVisited) setHomeVisited(true);
+  homeActive.current = activeTab === "home";
 
   // Copilot "Open Diagnosis": go straight to the machine's Diagnosis tab, on the rule when given.
   useEffect(() => {
@@ -57,11 +65,19 @@ function UltronWorkspaceContent() {
         aria-label="Workspace Content"
         style={{ height: "100%", overflow: "hidden" }}
       >
-        {activeTab === "home" && <PlantHome />}
-        {activeTab === "assets" && <AssetsView />}
-        {activeTab === "devices" && <IndustrialDevicesView />}
-        {activeTab === "assetiq" && <AssetIqHubView />}
-        {activeTab === "configure" && <ConfigureView />}
+        {/* A tab's code loading suspends here, inside the providers: without this
+            boundary React discarded the whole first render and rebuilt the plant. */}
+        <Suspense fallback={null}>
+          {homeVisited && (
+            <div className="workspace-keepalive" hidden={activeTab !== "home"}>
+              <PlantHome />
+            </div>
+          )}
+          {activeTab === "assets" && <AssetsView />}
+          {activeTab === "devices" && <IndustrialDevicesView />}
+          {activeTab === "assetiq" && <AssetIqHubView />}
+          {activeTab === "configure" && <ConfigureView />}
+        </Suspense>
       </section>
     </main>
   );
@@ -76,7 +92,9 @@ function AuthGate() {
     <KilnSimulationProvider>
       <KilnOpsProvider>
         <AiEngineProvider>
-          <UltronWorkspaceContent />
+          <EdgeProvider>
+            <UltronWorkspaceContent />
+          </EdgeProvider>
         </AiEngineProvider>
       </KilnOpsProvider>
     </KilnSimulationProvider>

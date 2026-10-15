@@ -63,15 +63,14 @@
     cursor: pointer;
   }
   :root .hx-tree-toggle:focus-visible {
-    outline: 2px solid var(--signal-blue);
+    outline: 2px solid var(--accent-primary);
     outline-offset: -2px;
   }
   :root .hx-tree-toggle-label {
     flex: none;
     font-size: var(--fs-xs);
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    font-weight: 500;
+    letter-spacing: -0.01em;
     color: var(--text-muted);
   }
   :root .hx-tree-toggle-node {
@@ -86,7 +85,7 @@
   :root .hx-tree-toggle > svg {
     flex: none;
     color: var(--text-muted);
-    transition: transform 0.15s ease;
+    transition: transform 140ms var(--ease-out);
   }
   :root .hx-tree-toggle[aria-expanded="true"] > svg {
     transform: rotate(180deg);

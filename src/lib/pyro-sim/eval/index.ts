@@ -16,12 +16,15 @@ import { evalQualityRules } from "./quality";
 
 export { bearingHit, type EvalContext, type Hit, type Lead, type Values } from "./context";
 export {
+  adoptLineMemory,
   applyAnalyserCycle,
+  lineMemory,
   qualityNoteOf,
   screenQuality,
   shiftValidityOf,
   signalQuality,
   spanOf,
+  type HealthMem,
   type QualityInput,
   type QualityScreen,
   type ShiftTally,

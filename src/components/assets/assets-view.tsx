@@ -12,10 +12,14 @@ import { MachineHealthPage } from "./health-page";
 import { TrendsView } from "./trends-view";
 import type { AssetMachine } from "./assets-data";
 import { MachineRackTab } from "./acquisition/acquisition-view";
-import { useKilnSimulationFor } from "@/providers/kiln-simulation-context";
+import { isLiveMachine, useKilnSimulationFor } from "@/providers/kiln-simulation-context";
+import { defsFor } from "@/lib/live-defs";
 import { IconBack } from "./assets-shell-ui";
 import { SimulationView } from "./simulation-view";
 import { ThermalView } from "./thermal-view";
+import { MaintenanceView } from "./maintenance/maintenance-view";
+import { PYRO_MACHINE_BY_ID } from "@/lib/pyro-sim/signals";
+import { revalidateApi } from "@/lib/api-cache";
 import "./assets-shell.css";
 
 // Machine tabs, ordered by the operator's questions:
@@ -30,12 +34,15 @@ export type AssetsSubPage =
   | "sensors"
   | "rack"
   | "thermal"
-  | "simulation";
+  | "simulation"
+  | "maintenance"
+  | "maintenance-sensors";
 
-// Five tabs. Diagnosis and Sensors each hold several pages, switched by a view
+// Six tabs. Diagnosis, Maintenance and Sensors each hold several pages, switched by a view
 // control at the end of the tab row. Page ids stay addressable on their own
 // (deep links, cross-page buttons), the tab row just groups them.
-type TabGroup = { id: string; label: string; views: { id: AssetsSubPage; label: string; requires?: "live" | "shell" }[] };
+type Requirement = "live" | "shell" | "checklist";
+type TabGroup = { id: string; label: string; views: { id: AssetsSubPage; label: string; requires?: Requirement }[] };
 
 const TAB_GROUPS: TabGroup[] = [
   { id: "overview", label: "Overview", views: [{ id: "overview", label: "Overview" }] },
@@ -51,6 +58,15 @@ const TAB_GROUPS: TabGroup[] = [
   },
   { id: "prognosis", label: "Prognosis", views: [{ id: "prognosis", label: "Prognosis" }] },
   { id: "analysis", label: "Analysis", views: [{ id: "analysis", label: "Analysis" }] },
+  {
+    // Pyro-line machines: the OSWARteck equipment and instrument checklists.
+    id: "maintenance",
+    label: "Maintenance",
+    views: [
+      { id: "maintenance", label: "Equipment", requires: "checklist" },
+      { id: "maintenance-sensors", label: "Instruments", requires: "checklist" },
+    ],
+  },
   {
     id: "sensors",
     label: "Sensors",
@@ -163,6 +179,16 @@ export function AssetsView({
     }
   }, [activeSubPage, selectedMachine?.id]);
 
+  // Prefetch the machine's maintenance checklists so the Maintenance tab opens at once.
+  const prefetchId = selectedMachine && PYRO_MACHINE_BY_ID[selectedMachine.id] ? selectedMachine.id : null;
+  useEffect(() => {
+    if (!prefetchId) return;
+    const id = window.setTimeout(() => {
+      for (const kind of ["equipment", "sensor"]) void revalidateApi(`/api/maintenance?machineId=${encodeURIComponent(prefetchId)}&kind=${kind}`);
+    }, 800);
+    return () => window.clearTimeout(id);
+  }, [prefetchId]);
+
   // If no machine is selected, display the Assets Directory Homepage with the sidebar!
   if (!selectedMachineId || !selectedMachine) {
     return (
@@ -170,12 +196,18 @@ export function AssetsView({
     );
   }
 
-  // Simulation exists on live machines, Thermal on those with a shell scanner; elsewhere show Overview.
-  const hasShell = Boolean(kilnSimulation?.frame.defs.hasShell);
-  const available = (req: "live" | "shell" | undefined) => !req || (req === "shell" ? hasShell : Boolean(kilnSimulation));
-  const page =
-    (activeSubPage === "simulation" && !available("live")) || (activeSubPage === "thermal" && !available("shell")) ? "overview" : activeSubPage;
+  // Simulation exists on live machines, Thermal on those with a shell scanner,
+  // Maintenance on machines with a checklist; elsewhere show Overview. Read from
+  // the machine's definitions, not its frame, so the tabs hold still while the
+  // live plant is starting.
+  const hasShell = Boolean(defsFor(selectedMachine.id)?.hasShell);
+  const hasChecklist = Boolean(PYRO_MACHINE_BY_ID[selectedMachine.id]);
+  const available = (req: Requirement | undefined) =>
+    !req || (req === "shell" ? hasShell : req === "checklist" ? hasChecklist : isLiveMachine(selectedMachine.id));
+  const pageView = TAB_GROUPS.flatMap((g) => g.views).find((v) => v.id === activeSubPage);
+  const page = pageView && !available(pageView.requires) ? "overview" : activeSubPage;
   const groupViews = (g: TabGroup) => g.views.filter((v) => available(v.requires));
+  const tabs = TAB_GROUPS.filter((g) => groupViews(g).length > 0);
   const activeGroup = groupOf(page);
   const activeViews = groupViews(activeGroup);
 
@@ -207,7 +239,7 @@ export function AssetsView({
         {/* 1. HORIZONTAL PILL NAVIGATION (Tabs) */}
         <div className="machine-tabs-bar" ref={tabsRef}>
           <PillNav
-            items={TAB_GROUPS}
+            items={tabs}
             activeId={activeGroup.id}
             onChange={(id) => {
               const group = TAB_GROUPS.find((g) => g.id === id);
@@ -306,9 +338,15 @@ export function AssetsView({
         )}
 
         {/* Live demonstration: playback, scenario library, findings, event log. */}
-        {page === "simulation" && kilnSimulation && (
+        {page === "simulation" && (
           <section className="subpage-content" aria-label="Simulation">
-            <SimulationView simulation={kilnSimulation} />
+            <SimulationView simulation={kilnSimulation ?? null} />
+          </section>
+        )}
+
+        {(page === "maintenance" || page === "maintenance-sensors") && hasChecklist && (
+          <section className="subpage-content" aria-label="Maintenance">
+            <MaintenanceView machine={selectedMachine} kind={page === "maintenance" ? "equipment" : "sensor"} />
           </section>
         )}
 

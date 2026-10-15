@@ -6,8 +6,8 @@
  * light with soft shadows and a cool fill. One look for every twin: the floor
  * reads lit near the scene and fades into the fog at the edges.
  */
-import { useThree } from "@react-three/fiber";
-import React, { useEffect } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
+import React, { useEffect, useState } from "react";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { TwinColors } from "./plant-twin-canvas";
@@ -21,23 +21,46 @@ export const TWIN_GL: Partial<THREE.WebGLRendererParameters> & { toneMapping: TH
   toneMappingExposure: 1.05,
 };
 
+/** A priority subscriber takes over rendering from r3f; this one draws nothing, so no frame is drawn. */
+function HoldFrames() {
+  useFrame(() => {}, 1);
+  return null;
+}
+
+/**
+ * Baking the room into an environment map takes ~35 ms, so it gets a task of
+ * its own after the canvas mounts; no frame is drawn until it is in place.
+ */
 function Environment({ intensity }: { intensity: number }) {
   const gl = useThree((st) => st.gl);
   const scene = useThree((st) => st.scene);
   const invalidate = useThree((st) => st.invalidate);
+  const [ready, setReady] = useState(false);
   useEffect(() => {
+    let env: THREE.Texture | null = null;
     const pmrem = new THREE.PMREMGenerator(gl);
-    const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    scene.environment = env;
+    const bake = setTimeout(() => {
+      env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      scene.environment = env;
+      setReady(true);
+    }, 0);
+    return () => {
+      clearTimeout(bake);
+      scene.environment = null;
+      env?.dispose();
+      pmrem.dispose();
+      setReady(false);
+    };
+  }, [gl, scene, invalidate]);
+  useEffect(() => {
     scene.environmentIntensity = intensity;
     invalidate();
-    return () => {
-      scene.environment = null;
-      env.dispose();
-      pmrem.dispose();
-    };
-  }, [gl, scene, intensity, invalidate]);
-  return null;
+  }, [scene, intensity, invalidate]);
+  // First frame once the hold is gone (its subscriber leaves before this runs).
+  useEffect(() => {
+    if (ready) invalidate();
+  }, [ready, invalidate]);
+  return ready ? null : <HoldFrames />;
 }
 
 /**

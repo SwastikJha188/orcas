@@ -34,19 +34,21 @@
 }
 
 .pg-diag .ast-kpi-label {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
 }
 
 .pg-diag .ast-kpi-value {
+  font-family: var(--font-mono);
   font-size: var(--fs-5xl);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .pg-diag .ast-kpi .pg-kpi-text {
   font-size: var(--fs-5xl);
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.1;
   color: var(--dx-ink);
   font-variant-numeric: tabular-nums;
@@ -104,7 +106,8 @@
 
 .pg-diag-code {
   margin-left: 4px;
-  font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
   font-weight: 400;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
@@ -204,7 +207,8 @@
 }
 
 .pg-diag-cited {
-  font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
   color: var(--dx-ink-2);
   font-variant-numeric: tabular-nums;
 }
@@ -221,6 +225,8 @@
 .pg-diag-log-time {
   width: 1%;
   white-space: nowrap;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   color: var(--text-muted);
 }
 
@@ -290,7 +296,7 @@
 }
 
 .pg-diag-ztick {
-  font-family: var(--font-ui);
+  font-family: var(--font-mono);
   font-size: var(--fs-3xs);
   fill: var(--text-muted);
 }
@@ -350,22 +356,20 @@
 
 .pg-diag-subhead {
   margin: 0;
-  font-size: var(--fs-xs);
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: 0;
   color: var(--text-muted);
 }
 
 /* Rule matrix */
 .pg-diag-group th {
   padding: 16px 16px 8px;
-  font-size: var(--fs-xs);
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: 0;
   text-align: left;
-  color: var(--text-muted);
+  color: var(--dx-ink);
   border-bottom: 1px solid var(--separator);
 }
 

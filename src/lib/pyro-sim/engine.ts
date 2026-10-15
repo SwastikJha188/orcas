@@ -42,13 +42,13 @@ import { describeLimit, evaluateLimit, resolveLimit, stateSeverity, type Severit
 import { pyroLimitContext } from "./limits";
 import { PYRO_MACHINES, PYRO_SIGNALS, PYRO_SIGNAL_BY_TAG, PYRO_SUBASSEMBLIES, PYRO_SYSTEMS, type PyroSignalDef } from "./signals";
 import { PYRO_RULES_BY_MACHINE, pyroRule } from "./rules";
-import { PYRO_SCENARIOS, effectLevel, pyroScenario, type PyroScenario } from "./scenarios";
+import { PYRO_SCENARIOS, effectLevel, pyroScenario, registerPyroScenario, type PyroScenario } from "./scenarios";
 import { isEquipmentEffect, type PyroSignalEffect } from "./scenarios/common";
 import { EQUIPMENT_IDS, EQUIPMENT_LABEL, EQUIPMENT_MACHINE, defaultEquipment, machineRunning, observedEquipment, unitRunning, type EquipmentId, type EquipmentState, type EquipmentStates } from "./equipment";
 import { PYRO_DEFS } from "./defs";
 import type { ManualRecord } from "../plant-defs";
 import { CLR_BASE, HANDHELD_EMISSIVITY, PROFILE_N, SCANNER_EMISSIVITY, SIGNED, clamp, emissivityMatched, median, slope } from "./shared";
-import { applyAnalyserCycle, evaluateRules, qualityNoteOf, screenQuality, shiftValidityOf, signalQuality, type Hit, type Lead } from "./eval";
+import { adoptLineMemory, applyAnalyserCycle, evaluateRules, lineMemory, qualityNoteOf, screenQuality, shiftValidityOf, signalQuality, type HealthMem, type Hit, type Lead } from "./eval";
 import { instrumentReading } from "./sensor-meta";
 import {
   SHELL_ALERT,
@@ -282,7 +282,83 @@ export interface LineState {
   /** Process state: inventories, transport lags, cooler bed, equipment run states and interlocks. */
   plant: PlantState;
   machines: Record<string, MachineState>;
+  /** Live-demo knobs (event generator, sensor noise, health response, hold rotation). */
+  sim: LineSimSettings;
+  /** Fault and instrument events layered on top of each machine's own scenario. */
+  injections: Injection[];
+  /** Minute the event generator next considers an event. */
+  nextEventAt: number;
+  injSeq: number;
 }
+
+/**
+ * Live-demo knobs of the line, set from the Simulation page. Every alert the
+ * generator causes still comes from the rules: an event only moves signals
+ * (a fault on the plant, or a wrong reading), the rules judge them.
+ */
+export interface LineSimSettings {
+  /** Event generator on. */
+  events: boolean;
+  /** Mean simulated minutes between generated events (1 min = 1 s at 1×). */
+  eventEvery: number;
+  /** Minutes an event takes to drive its signals to the alerting point. */
+  eventLead: number;
+  /** Minutes an event holds there before it eases off and its rules clear. */
+  eventLife: number;
+  /** Most generated events running at once. */
+  maxEvents: number;
+  /** Share of generated events that are instrument faults; the rest are equipment / process faults. */
+  sensorShare: number;
+  /** Severity of generated events: 1 = the calibrated alerting point. */
+  intensity: number;
+  /** Measurement noise × each signal's D5 sigma. */
+  noise: number;
+  /** Health response to normal sensor scatter (0: flat while every signal is within 3σ). */
+  healthDrift: number;
+  /** Minutes a held fault stays before the crew repairs it and the next develops (0: hold until changed). */
+  holdMinutes: number;
+  /** Machines the generator may pick (missing = allowed). */
+  machines: Record<string, boolean>;
+}
+
+/** One event layered on a machine: a library scenario's effects, time-compressed to `target`. */
+export interface Injection {
+  id: number;
+  machine: string;
+  scenarioId: string;
+  name: string;
+  kind: "sensor" | "fault" | "trip" | "custom";
+  start: number;
+  /** Minute the event starts easing off. */
+  end: number;
+  /** Scenario minute it holds at (Infinity: runs on in real time). */
+  target: number;
+  /** Scenario minutes per simulated minute while developing. */
+  pace: number;
+  scale: number;
+  auto: boolean;
+}
+
+/** Off: the validation suite and fresh lines run exactly as calibrated. */
+export const QUIET_SIM_SETTINGS: LineSimSettings = {
+  events: false,
+  eventEvery: 5,
+  eventLead: 4,
+  eventLife: 14,
+  maxEvents: 6,
+  sensorShare: 0.4,
+  intensity: 1,
+  noise: 1,
+  healthDrift: 0,
+  holdMinutes: 0,
+  machines: {},
+};
+
+/** The live demonstration: an alert about every 5 s at 1×, health moving every few seconds. */
+export const LIVE_SIM_SETTINGS: LineSimSettings = { ...QUIET_SIM_SETTINGS, events: true, healthDrift: 1, holdMinutes: 180 };
+
+/** Minutes an event takes to fade out after `end`. */
+const EVENT_FADE = 6;
 
 function freshFx(): Fx {
   return { scMin: 0, intensity: 1, mitigated: false, repairStart: null, repairFrom: 1, repairDur: 30, hold: null };
@@ -347,6 +423,10 @@ function blankLine(rand: Rng): LineState {
     staleSince: {},
     plant: blankPlant(),
     machines: Object.fromEntries(MACHINE_IDS.map((id) => [id, blankMachine(id)])),
+    sim: { ...QUIET_SIM_SETTINGS, machines: {} },
+    injections: [],
+    nextEventAt: 0,
+    injSeq: 0,
   };
 }
 
@@ -1008,7 +1088,230 @@ function startHold(line: LineState, ms: MachineState): void {
   st.pace = Math.max(1, h.at / HOLD_LEAD);
   ms.fx.scMin = 0;
   ms.fx.hold = h.at;
-  st.holdUntil = Infinity;
+  // A held fault is repaired at a planned stop after `holdMinutes` (± 20 %) and the next one develops.
+  const hm = line.sim.holdMinutes;
+  st.holdUntil = hm > 0 ? line.t + HOLD_LEAD + Math.round(hm * (0.8 + 0.4 * line.rand())) : Infinity;
+}
+
+/* ------------------------------------------------------------------ */
+/* Events (live demo layer)                                            */
+/* ------------------------------------------------------------------ */
+
+/** Line drivers that move the operating point: a change holds every model-residual rule on the line, so the generator leaves them alone. */
+const OPERATING_DRIVERS = new Set(["feed", "feedSp", "coal", "coalSp", "kilnSpeed", "idFan", "coolerAir", "ambient"]);
+
+/**
+ * Library scenarios the generator skips: compressed to a few minutes they do not reach their own finding
+ * reliably (slow ramps, inventory faults, faults that read as a data-quality issue first). Still available as
+ * manual triggers on the Simulation page. Measured headless (seed 20261014, lead 4 min).
+ */
+const EVENT_SKIP = new Set([
+  "fsl-status-stuck",
+  "fsl-gate-sticking",
+  "fsl-silo-low",
+  "fsl-silo-bridging",
+  "kfs-sfm-backflow",
+  "kln-scanner-underread",
+  "kln-bearing-rtd-drift",
+  "kln-oil-degradation",
+  "clr-vib-loose-cable",
+  "clr-ir-window-dirty",
+  "hmr-bearing-lube",
+  "csl-silo-full",
+]);
+
+function eventKindOf(sc: PyroScenario): Injection["kind"] {
+  if (sc.group === "Custom") return "custom";
+  if (sc.effects.some(isEquipmentEffect)) return "trip";
+  return sc.group === "Sensor validation" ? "sensor" : "fault";
+}
+
+/**
+ * Library scenarios the generator may raise on a machine: ones that end in a
+ * finding, stay on their own machine (no trips, no operating-point moves) and
+ * are not cross-machine line scenarios.
+ */
+export function eventPool(machine: string, kind: "sensor" | "fault"): PyroScenario[] {
+  return (PYRO_SCENARIOS[machine] ?? []).filter(
+    (sc) =>
+      sc.expected.length > 0 &&
+      !sc.id.startsWith("line-") &&
+      !EVENT_SKIP.has(sc.id) &&
+      eventKindOf(sc) === kind &&
+      !sc.effects.some((e) => !isEquipmentEffect(e) && e.target.kind === "driver" && OPERATING_DRIVERS.has(e.target.name)),
+  );
+}
+
+/** "+2h 40m" → 160 plant minutes (null when quiet). */
+function detectionMinutes(sc: PyroScenario): number | null {
+  const m = /(\d+)h\s*(\d+)m/.exec(sc.documentedDetection);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+
+/** Scenario minute where the finding sits firmly raised: the calibrated hold point, else past the measured detection. */
+function alertingMinute(machine: string, sc: PyroScenario): number {
+  const held = PYRO_HOLDS[machine]?.advisory.find((h) => h.id === sc.id) ?? PYRO_HOLDS[machine]?.critical.find((h) => h.id === sc.id);
+  if (held) return held.at;
+  const det = detectionMinutes(sc) ?? 30;
+  return det + Math.max(8, Math.round(det * 0.25));
+}
+
+/** Scenario minute an event has reached at `t`. */
+function injectionMinute(j: Injection, t: number): number {
+  return Math.min((t - j.start) * j.pace, j.target);
+}
+
+/** Effect scale at `t`: full until `end`, then fading to zero over EVENT_FADE minutes. */
+function injectionScale(j: Injection, t: number): number {
+  return t <= j.end ? j.scale : j.scale * Math.max(0, 1 - (t - j.end) / EVENT_FADE);
+}
+
+export interface InjectOptions {
+  /** Minutes until it eases off (default: lead + `eventLife`; trips and custom faults run in real time). */
+  life?: number;
+  /** Severity scale (default `intensity`). */
+  scale?: number;
+  auto?: boolean;
+}
+
+/**
+ * Layer a library or custom scenario on `machine` as an event. Faults are
+ * time-compressed so they reach their alerting point in about `eventLead`
+ * minutes and hold there; trips and custom faults run in real time.
+ */
+export function injectEvent(line: LineState, machine: string, scenarioId: string, opts: InjectOptions = {}): Injection | null {
+  const ms = line.machines[machine];
+  const sc = pyroScenario(machine, scenarioId);
+  if (!ms || sc.id === "healthy") return null;
+  const cfg = line.sim;
+  const kind = eventKindOf(sc);
+  const realTime = kind === "trip" || kind === "custom";
+  const target = realTime ? Infinity : alertingMinute(machine, sc);
+  const pace = realTime ? 1 : Math.max(1, target / Math.max(1, cfg.eventLead));
+  const life = opts.life ?? (realTime ? Math.max(cfg.eventLife, 20) : Math.ceil(target / pace) + cfg.eventLife);
+  const j: Injection = {
+    id: ++line.injSeq,
+    machine,
+    scenarioId: sc.id,
+    name: sc.name,
+    kind,
+    start: line.t,
+    end: line.t + Math.max(1, Math.round(life)),
+    target,
+    pace,
+    scale: opts.scale ?? cfg.intensity,
+    auto: opts.auto ?? false,
+  };
+  line.injections.push(j);
+  pushEvent(line, ms, {
+    kind: "scenario",
+    severity: "Normal",
+    title: `Event: ${sc.name}`,
+    detail: `${opts.auto ? "Event generator" : "Operator"} · ${kind === "sensor" ? "instrument fault" : kind === "trip" ? "equipment trip" : kind === "custom" ? "custom signal fault" : "equipment fault"} · expected ${sc.expected.join(", ") || "no alarm"}`,
+  });
+  syncStory(ms);
+  return j;
+}
+
+/** Ease an event off now (its rules clear through hysteresis). */
+export function clearEvent(line: LineState, id: number): void {
+  const j = line.injections.find((x) => x.id === id);
+  if (j && j.end > line.t) j.end = line.t;
+}
+
+export function clearEvents(line: LineState, machine?: string): void {
+  for (const j of line.injections) if ((!machine || j.machine === machine) && j.end > line.t) j.end = line.t;
+}
+
+export function setLineSettings(line: LineState, patch: Partial<LineSimSettings>): void {
+  const was = line.sim;
+  line.sim = { ...was, ...patch, machines: { ...was.machines, ...(patch.machines ?? {}) } };
+  // A faster cadence applies at once rather than after the old wait.
+  if (patch.eventEvery !== undefined || (patch.events && !was.events)) line.nextEventAt = Math.min(line.nextEventAt, line.t + 1);
+}
+
+/** Generator: one event about every `eventEvery` minutes on a random allowed machine. */
+function stepEvents(s: LineState): void {
+  const t = s.t;
+  s.injections = s.injections.filter((j) => t < j.end + EVENT_FADE);
+  const cfg = s.sim;
+  if (!cfg.events || cfg.eventEvery <= 0 || t < s.nextEventAt) return;
+  s.nextEventAt = t + Math.max(1, Math.round(cfg.eventEvery * (0.7 + 0.6 * s.rand())));
+  if (s.injections.filter((j) => j.auto && t < j.end).length >= cfg.maxEvents) return;
+  raiseEvent(s, s.rand() < cfg.sensorShare ? "sensor" : "fault", undefined, true);
+}
+
+/**
+ * Raise one event from the pool now: on `machine`, or on the allowed machine
+ * with the fewest running events. Skips scenarios already running there or
+ * touching the signals of the machine's own scenario.
+ */
+export function raiseEvent(s: LineState, kind: "sensor" | "fault", machine?: string, auto = false): Injection | null {
+  const t = s.t;
+  const live = s.injections.filter((j) => t < j.end);
+  const busy = new Set(live.map((j) => `${j.machine}:${j.scenarioId}`));
+  const machines = machine ? [machine] : MACHINE_IDS.filter((id) => s.sim.machines[id] !== false);
+  if (!machines.length) return null;
+  // Machines with the fewest running events first, so alerts spread over the line.
+  const load = (id: string) => live.filter((j) => j.machine === id).length;
+  const least = Math.min(...machines.map(load));
+  const order = machines.filter((id) => load(id) === least);
+  for (let tries = 0; tries < 6; tries++) {
+    const id = order[Math.floor(s.rand() * order.length)];
+    const ms = s.machines[id];
+    const own = pyroScenario(id, ms.scenarioId);
+    const ownTags = new Set(own.effects.filter((e): e is PyroSignalEffect => !isEquipmentEffect(e)).map((e) => (e.target.kind === "signal" ? e.target.tag : e.target.name)));
+    const pool = eventPool(id, kind).filter(
+      (sc) =>
+        sc.id !== ms.scenarioId &&
+        !busy.has(`${id}:${sc.id}`) &&
+        !sc.effects.some((e) => !isEquipmentEffect(e) && ownTags.has(e.target.kind === "signal" ? e.target.tag : e.target.name)),
+    );
+    if (pool.length) return injectEvent(s, id, pool[Math.floor(s.rand() * pool.length)].id, { auto });
+  }
+  return null;
+}
+
+/** A hand-made fault on one signal (Simulation page builder). */
+export interface SignalFaultSpec {
+  machine: string;
+  tag: string;
+  /** step: offset · drift: grows by `delta` per `rampMin` · ramp: reaches `delta` over `rampMin` · osc: ±`delta` with period `rampMin` · spike: `delta` for `rampMin` · noise: random ±`delta` · freeze: reading stuck. */
+  shape: "step" | "ramp" | "drift" | "osc" | "spike" | "noise" | "freeze";
+  delta: number;
+  rampMin: number;
+  /** Only the reading is wrong (instrument fault); otherwise the plant itself moves. */
+  sensor: boolean;
+  /** Minutes until it eases off. */
+  life: number;
+}
+
+let customSeq = 0;
+
+/** Register `spec` as a custom scenario and run it as an event in real time. */
+export function injectSignalFault(line: LineState, spec: SignalFaultSpec): Injection | null {
+  const def = PYRO_SIGNAL_BY_TAG[spec.tag];
+  if (!def || !line.machines[spec.machine]) return null;
+  const freeze = spec.shape === "freeze";
+  const what = freeze
+    ? "reading frozen"
+    : `${spec.shape} ${spec.delta >= 0 ? "+" : "−"}${Math.abs(spec.delta)}${def.unit ? ` ${def.unit}` : ""}`;
+  const sc: PyroScenario = {
+    id: `custom-${++customSeq}`,
+    machine: spec.machine,
+    name: `${def.name}: ${what}${spec.sensor || freeze ? " (sensor)" : ""}`,
+    group: "Custom",
+    expected: [],
+    documentedDetection: "quiet",
+    description: `Custom ${spec.sensor || freeze ? "instrument" : "process"} fault on ${spec.tag} built on the Simulation page.`,
+    effects: [
+      freeze
+        ? { target: { kind: "signal", tag: spec.tag }, hold: true, onsetMin: 0, rampMin: 0, shape: "step", sensor: true }
+        : { target: { kind: "signal", tag: spec.tag }, delta: spec.delta, onsetMin: 0, rampMin: Math.max(0, spec.rampMin), shape: spec.shape as Exclude<SignalFaultSpec["shape"], "freeze">, sensor: spec.sensor },
+    ],
+  };
+  registerPyroScenario(sc);
+  return injectEvent(line, spec.machine, sc.id, { life: spec.life, scale: 1 });
 }
 
 const isHeld = (ms: MachineState) => ms.fx.hold !== null && (ms.story.profile === "advisory" || ms.story.profile === "critical");
@@ -1228,6 +1531,27 @@ export function createLine(seed = 20261014): LineState {
   return s;
 }
 
+/** A running line as structured-cloneable data: the PRNG as its state, frames without their defs. */
+export type FrozenLine = Omit<LineState, "rand"> & { rand: number; mem: HealthMem | undefined };
+
+/** Snapshot `s` to post across a worker boundary; `thawLine` resumes the exact same run. */
+export function freezeLine(s: LineState): FrozenLine {
+  const machines = Object.fromEntries(
+    Object.entries(s.machines).map(([id, ms]) => [id, { ...ms, frame: ms.frame && ({ ...ms.frame, defs: undefined } as unknown as SimFrame) }]),
+  );
+  return { ...s, rand: s.rand.state(), machines, mem: lineMemory(s) };
+}
+
+export function thawLine(f: FrozenLine): LineState {
+  const machines = Object.fromEntries(
+    Object.entries(f.machines).map(([id, ms]) => [id, { ...ms, frame: ms.frame && { ...ms.frame, defs: PYRO_DEFS[id] } }]),
+  );
+  const { mem, ...rest } = f;
+  const s: LineState = { ...rest, rand: mulberry32(f.rand), machines };
+  adoptLineMemory(s, mem);
+  return s;
+}
+
 /* ------------------------------------------------------------------ */
 /* Step                                                                */
 /* ------------------------------------------------------------------ */
@@ -1251,6 +1575,8 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
     s.ar[key] = next;
     return next;
   };
+
+  stepEvents(s);
 
   /* ---------------- per-machine scenario progression ---------------- */
   const scenarioOf: Record<string, PyroScenario> = {};
@@ -1281,9 +1607,14 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
   for (const ms of Object.values(s.machines)) {
     const scenario = scenarioOf[ms.id];
     const bgScenario = ms.bg && t <= ms.bg.end ? pyroScenario(ms.id, ms.bg.scenarioId) : null;
+    // Events on this machine: each one's effects at its own (compressed) scenario minute and fade.
+    const events = s.injections
+      .filter((j) => j.machine === ms.id)
+      .map((j) => ({ sc: pyroScenario(ms.id, j.scenarioId), at: injectionMinute(j, t), scale: injectionScale(j, t) }));
     const equipmentLayers = [
       ...scenario.effects.map((e) => ({ e, at: smOf[ms.id], scale: ms.fx.intensity })),
       ...(bgScenario ? bgScenario.effects.map((e) => ({ e, at: t - ms.bg!.start, scale: 1 })) : []),
+      ...events.flatMap((v) => v.sc.effects.map((e) => ({ e, at: v.at, scale: v.scale }))),
     ];
     for (const { e, at, scale } of equipmentLayers) {
       if (!isEquipmentEffect(e) || scale < 0.3 || at < e.onsetMin || (e.untilMin !== undefined && at >= e.untilMin)) continue;
@@ -1295,6 +1626,11 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
     const layered = [
       ...mainEffects.map((e) => ({ e, at: smOf[ms.id], scale: ms.fx.intensity })),
       ...bgEffects.filter((e) => !mainTags.has(e.target.kind === "signal" ? e.target.tag : e.target.name)).map((e) => ({ e, at: t - ms.bg!.start, scale: 1 })),
+      ...events.flatMap((v) =>
+        v.sc.effects
+          .filter((e): e is PyroSignalEffect => !isEquipmentEffect(e) && !mainTags.has(e.target.kind === "signal" ? e.target.tag : e.target.name))
+          .map((e) => ({ e, at: v.at, scale: v.scale })),
+      ),
     ];
     for (const { e, at, scale } of layered) {
       let lvl = effectLevel(e as never, at);
@@ -1473,7 +1809,7 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
     if (def.calculated || def.origin === "manual") continue;
     const base = truth[def.tag];
     if (base === undefined) continue;
-    let noise = ar(`n:${def.tag}`, def.sigma, def.tag.startsWith("VIB") ? 0.6 : 0.75);
+    let noise = ar(`n:${def.tag}`, def.sigma * s.sim.noise, def.tag.startsWith("VIB") ? 0.6 : 0.75);
     // A stopped unit: the MCC reports zero current / speed, the flow meter its low-flow cut-off, a pickup only background.
     if (!unitRunning(eq, def.tag) || (def.tag === "FLO-BRN-01" && base < 0.01 * C0)) {
       if (/^(ELE|SPD|FLO)-/.test(def.tag) && base < 0.01 * Math.max(1, def.base)) noise = 0;
@@ -2075,13 +2411,21 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
 
     // Health: residual and limit penalties per sub-assembly, rule penalties on top.
     const subs: Record<string, HealthCell> = {};
+    // Health drift: normal sensor scatter inside 3σ also costs a little, so health follows the readings minute to minute.
+    const drift = s.sim.healthDrift;
     for (const sa of defs.subassemblies) {
       let penalty = 0;
+      let scatter = 0;
+      let scattered = 0;
       for (const def of mySignals) {
         if (def.sub !== sa.id || def.origin === "manual") continue;
         const sg = signals[def.tag];
         if (sg.quality !== "Good") continue;
-        if (sg.z !== null) penalty += Math.min(12, Math.max(0, Math.abs(sg.z) - 3.0) * 1.4);
+        if (sg.z !== null) {
+          penalty += Math.min(12, Math.max(0, Math.abs(sg.z) - 3.0) * 1.4);
+          scatter += Math.min(3, Math.abs(sg.z));
+          scattered += 1;
+        }
         penalty += sg.limitSeverity === "Critical" ? 22 : sg.limitSeverity === "Advisory" ? 9 : 0;
       }
       for (const r of rules) {
@@ -2089,14 +2433,28 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
         if (!r.subs.includes(sa.id)) continue;
         penalty += r.status === "PENDING" ? 4 : r.severity === "Critical" ? 30 : 13;
       }
-      const raw = clamp(99 - penalty, 12, 99);
+      let raw: number;
+      let sm2: number;
       const key = `sub:${sa.id}`;
-      const prev = ms.smooth[key] ?? raw;
-      const sm2 = prev + (raw - prev) * 0.25;
+      if (drift > 0) {
+        // Findings and limits move health over minutes (a short event dents it, a held fault drags it down);
+        // the scatter of the readings moves it every minute or two by a point or so.
+        const penKey = `pen:${sa.id}`;
+        const pen = ms.smooth[penKey] ?? penalty;
+        const penS = pen + (penalty - pen) * (penalty > pen ? 0.14 : 0.08);
+        ms.smooth[penKey] = penS;
+        raw = clamp(99 - penS - (scattered ? drift * 3.5 * (scatter / scattered) : 0), 12, 99);
+        const prev = ms.smooth[key] ?? raw;
+        sm2 = prev + (raw - prev) * 0.5;
+      } else {
+        raw = clamp(99 - penalty, 12, 99);
+        const prev = ms.smooth[key] ?? raw;
+        sm2 = prev + (raw - prev) * 0.25;
+      }
       ms.smooth[key] = sm2;
       const intKey = `int:${sa.id}`;
       const prevInt = ms.smooth[intKey];
-      const h = prevInt !== undefined && Math.abs(sm2 - prevInt) < 0.7 ? prevInt : Math.round(sm2);
+      const h = prevInt !== undefined && Math.abs(sm2 - prevInt) < (drift > 0 ? 0.4 : 0.7) ? prevInt : Math.round(sm2);
       ms.smooth[intKey] = h;
       let status: Severity = h < 60 ? "Critical" : h < 85 ? "Advisory" : "Normal";
       for (const r of rules) if (r.status === "ACTIVE" && r.subs.includes(sa.id) && !NOT_SCORED.has(r.category)) status = maxSev(status, r.severity);

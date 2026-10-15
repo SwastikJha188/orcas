@@ -13,7 +13,7 @@
  */
 import { Line, useGLTF, useProgress } from "@react-three/drei";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
-import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, use, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import {
@@ -23,9 +23,11 @@ import {
   type TwinCallout,
   type TwinScene,
 } from "./plant-twin-model";
+import { createInfiniteGrid } from "./infinite-grid";
 import { TwinHtml } from "./twin-html";
 import { TWIN_GL, TwinLighting } from "./twin-lighting";
 import { TwinControls, clearTwinPose, loadTwinPose, usePersistTwinPose, useTwinNavigation, type TwinNavMode } from "./twin-nav";
+import { rimsOf } from "./twin-rims";
 import { TWIN_RESIZE, twinEvents, useTwinDpr } from "./use-ui-zoom";
 
 export type TwinCameraCommand = { kind: "fit" | "zoom-in" | "zoom-out" | "focus"; n: number };
@@ -224,17 +226,6 @@ export function fitPoints(
 
 /* ---------------------------------------------------------------- building */
 
-/** Rim lines per source geometry (clones share geometry, so each is built once). */
-const RIMS = new WeakMap<THREE.BufferGeometry, THREE.EdgesGeometry>();
-function rimOf(g: THREE.BufferGeometry): THREE.EdgesGeometry {
-  let e = RIMS.get(g);
-  if (!e) {
-    e = new THREE.EdgesGeometry(g, 32);
-    RIMS.set(g, e);
-  }
-  return e;
-}
-
 /**
  * One clone per placed building, plus its bounds measured before it is attached
  * (once in the scene graph, world matrices would include the placement). The CAD
@@ -242,18 +233,27 @@ function rimOf(g: THREE.BufferGeometry): THREE.EdgesGeometry {
  * raised graphite for pale parts, near-black recesses for glazing, and a
  * mid-grey rim on every hard edge.
  */
+function kitMaterials(colors: Pick<TwinColors, "plinth" | "plinthTop" | "ground" | "rimIdle">) {
+  const kit = (color: string, roughness: number, metalness: number) =>
+    new THREE.MeshStandardMaterial({ color, roughness, metalness, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+  return {
+    body: kit(colors.plinth, 0.72, 0.12),
+    raised: kit(colors.plinthTop, 0.65, 0.18),
+    deep: kit(colors.ground, 0.4, 0.2),
+    rim: new THREE.LineBasicMaterial({ color: colors.rimIdle, transparent: true, opacity: 0.85 }),
+  };
+}
+
 function useModelInstance(url: string, colors: TwinColors) {
   const { scene } = useGLTF(url);
+  // Rim lines are built in a worker; the building waits (suspends) for them.
+  const rims = use(rimsOf(scene));
+  const { plinth, plinthTop, ground, rimIdle } = colors;
   return useMemo(() => {
     const root = scene.clone(true);
     root.position.set(0, 0, 0);
     root.updateMatrixWorld(true);
-    const kit = (color: string, roughness: number, metalness: number) =>
-      new THREE.MeshStandardMaterial({ color, roughness, metalness, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
-    const body = kit(colors.plinth, 0.72, 0.12);
-    const raised = kit(colors.plinthTop, 0.65, 0.18);
-    const deep = kit(colors.ground, 0.4, 0.2);
-    const rim = new THREE.LineBasicMaterial({ color: colors.rimIdle, transparent: true, opacity: 0.85 });
+    const { body, raised, deep, rim } = kitMaterials({ plinth, plinthTop, ground, rimIdle });
     const box = new THREE.Box3();
     root.traverse((n) => {
       if (isMesh(n)) {
@@ -261,14 +261,14 @@ function useModelInstance(url: string, colors: TwinColors) {
         const c = src?.color;
         const lum = c ? 0.3 * c.r + 0.59 * c.g + 0.11 * c.b : 0.5;
         n.material = src?.transparent || lum < 0.08 ? deep : lum > 0.5 ? raised : body;
-        n.add(new THREE.LineSegments(rimOf(n.geometry), rim));
+        n.add(new THREE.LineSegments(rims.get(n.geometry), rim));
         n.castShadow = true;
         n.receiveShadow = true;
         box.expandByObject(n);
       }
     });
     return { root, box };
-  }, [scene, colors.plinth, colors.plinthTop, colors.ground, colors.rimIdle]);
+  }, [scene, rims, plinth, plinthTop, ground, rimIdle]);
 }
 
 function Building({
@@ -717,17 +717,67 @@ export function fogRange(radius: number): [number, number] {
  * ending against it.
  */
 export function Ground({ colors, extent }: { colors: TwinColors; extent: number }) {
-  const reach = fogRange(extent)[1] + Math.max(140, extent * 6);
+  const [fogNear, fogFar] = fogRange(extent);
+  const reach = fogFar + Math.max(140, extent * 6);
   const size = Math.ceil((reach * 2) / 10) * 10;
+  const invalidate = useThree((st) => st.invalidate);
+  // 2 m cells drawn by the shader, anti-aliased and thinned where they shrink to a few
+  // pixels: a GridHelper's 1 px lines turned to crawling moiré whenever the camera moved.
+  const grid = useMemo(() => createInfiniteGrid({ cell: 2, fade: [fogNear, fogFar] }), [fogNear, fogFar]);
+  useEffect(
+    () => () => {
+      grid.mesh.geometry.dispose();
+      (grid.mesh.material as THREE.Material).dispose();
+    },
+    [grid],
+  );
+  useEffect(() => {
+    grid.setColor(colors.grid, 1);
+    invalidate();
+  }, [grid, colors.grid, invalidate]);
+  useFrame(({ camera }) => grid.follow(camera));
   return (
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow raycast={() => undefined}>
         <planeGeometry args={[size, size]} />
         <meshStandardMaterial color={colors.ground} roughness={1} metalness={0} />
       </mesh>
-      <gridHelper args={[size, size / 2, colors.grid, colors.grid]} position={[0, 0.01, 0]} raycast={() => null} />
+      <primitive object={grid.mesh} />
     </group>
   );
+}
+
+/**
+ * Links the buildings' shader programs while their models load, so the frame
+ * they first appear in does not stall on it. The stand-ins carry the same
+ * materials and shadow flags as `Building`; programs are shared by key, so the
+ * real meshes reuse them. Starts once the environment map is in place, since it
+ * is part of the program key.
+ */
+function WarmBuildingShaders({ colors }: { colors: TwinColors }) {
+  const started = useRef(false);
+  useFrame(({ gl, scene, camera }) => {
+    if (started.current || !scene.environment) return;
+    started.current = true;
+    const { body, rim } = kitMaterials(colors);
+    const box = new THREE.BoxGeometry();
+    const caster = (m: THREE.Material) => Object.assign(new THREE.Mesh(box, m), { castShadow: true, receiveShadow: true });
+    const edges = new THREE.EdgesGeometry(box);
+    const stand = new THREE.Group().add(
+      caster(body),
+      caster(new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.2 })),
+      Object.assign(new THREE.Mesh(box, new THREE.MeshStandardMaterial({ polygonOffset: true })), { receiveShadow: true }),
+      new THREE.Mesh(box, new THREE.MeshBasicMaterial({ toneMapped: false })),
+      new THREE.LineSegments(edges, rim),
+    );
+    // Only the geometry goes: disposing a material would release the very program it linked.
+    const dispose = () => {
+      box.dispose();
+      edges.dispose();
+    };
+    gl.compileAsync(stand, camera, scene).then(dispose, dispose);
+  });
+  return null;
 }
 
 function LoadingOverlay() {
@@ -758,6 +808,7 @@ function SceneContents({ scene, callouts, selectedId, onSelect, command, colors,
         <meshBasicMaterial />
       </mesh>
 
+      <WarmBuildingShaders colors={colors} />
       <Suspense fallback={null}>
         {scene.buildings.map((b) => (
           <Building

@@ -15,7 +15,7 @@
 }
 
 .ph-root :focus-visible {
-  outline: 2px solid var(--signal-blue);
+  outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
 }
 
@@ -28,10 +28,10 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0;
   color: var(--text-muted);
 }
 
@@ -213,18 +213,19 @@
 .ph-zone-name {
   flex: 1;
   min-width: 0;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--page-fg);
+  letter-spacing: -0.01em;
+  color: var(--dx-ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .ph-zone-meta {
+  font-family: var(--font-mono);
   font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
   color: var(--text-muted);
   white-space: nowrap;
 }
@@ -267,15 +268,20 @@
   text-align: left;
   cursor: pointer;
   min-width: 0;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: none;
 }
 
 .ph-unit:hover {
   background: var(--row-hover-bg);
+  border-color: var(--border-hover);
+}
+
+.ph-unit:active {
+  transform: scale(0.98);
 }
 
 .ph-unit[aria-pressed="true"] {
-  border-color: var(--signal-blue);
+  border-color: var(--accent-primary);
   background: var(--row-hover-bg);
 }
 
@@ -449,14 +455,17 @@
   display: inline-flex;
   align-items: baseline;
   gap: 3px;
+  font-family: var(--font-mono);
   font-size: var(--fs-9xl);
   line-height: 40px;
-  font-weight: 500;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
   color: var(--dx-ink);
 }
 
 .ph-gauge-of {
+  font-family: var(--font-mono);
   font-size: var(--fs-sm);
   font-weight: 400;
   letter-spacing: 0;
@@ -465,8 +474,9 @@
 
 .ph-gauge-target {
   margin-top: 2px;
+  font-family: var(--font-mono);
   font-size: var(--fs-2xs);
-  letter-spacing: 0.14em;
+  letter-spacing: 0.02em;
   color: var(--text-muted);
 }
 
@@ -495,30 +505,98 @@
   margin: 8px 0 0;
   font-size: var(--fs-xs);
   font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--text-muted);
 }
 
 .ph-feed-quiet {
   padding: 12px 14px;
   border-radius: var(--corner-row);
-  background: var(--hover-faint);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-canvas);
 }
 
 .ph-alert {
   border-radius: var(--corner-row);
-  background: var(--hover-faint);
-  animation: ph-feed-in 0.35s ease-out;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-canvas);
 }
 
-@keyframes ph-feed-in {
-  from { opacity: 0; transform: translateY(-6px); }
-  to { opacity: 1; transform: none; }
+/* Feed motion (home-widgets usePresence). The slot is a one-row grid, so
+   animating the row from 0fr to 1fr opens room for the entry and every entry
+   below glides down with it; the negative margin takes back the list gap
+   while the slot is closed. The card drops in from above inside the slot. */
+.ph-feed-slot {
+  --slot-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  display: grid;
+  grid-template-rows: 1fr;
+  min-width: 0;
+}
+
+.ph-feed-slot > .ph-alert {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ph-feed-slot[data-phase="enter"] {
+  animation: ph-slot-open 420ms var(--slot-ease) var(--enter-delay, 0ms) both;
+}
+
+.ph-feed-slot[data-phase="enter"] > .ph-alert {
+  animation:
+    ph-card-drop 420ms var(--slot-ease) var(--enter-delay, 0ms) both,
+    ph-card-settle 1600ms ease-out var(--enter-delay, 0ms) both;
+}
+
+.ph-feed-slot[data-phase="leave"] {
+  pointer-events: none;
+  animation: ph-slot-close 380ms var(--slot-ease) both;
+}
+
+.ph-feed-slot[data-phase="leave"] > .ph-alert {
+  animation: ph-card-lift 300ms ease-in both;
+}
+
+@keyframes ph-slot-open {
+  from { grid-template-rows: 0fr; margin-bottom: -8px; }
+  to { grid-template-rows: 1fr; margin-bottom: 0; }
+}
+
+@keyframes ph-slot-close {
+  from { grid-template-rows: 1fr; margin-bottom: 0; }
+  to { grid-template-rows: 0fr; margin-bottom: -8px; }
+}
+
+@keyframes ph-card-drop {
+  from { transform: translateY(-55%); opacity: 0; }
+  60% { opacity: 1; }
+  to { transform: none; opacity: 1; }
+}
+
+@keyframes ph-card-lift {
+  to { transform: translateY(-30%); opacity: 0; }
+}
+
+/* A new entry arrives tinted with its status and settles to the quiet tile. */
+@keyframes ph-card-settle {
+  from {
+    background: color-mix(in srgb, var(--tone, var(--text-muted)) 14%, var(--bg-canvas));
+    border-color: color-mix(in srgb, var(--tone, var(--text-muted)) 45%, var(--border-subtle));
+  }
+  to {
+    background: var(--bg-canvas);
+    border-color: var(--border-subtle);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ph-alert { animation: none; }
+  .ph-feed-slot[data-phase],
+  .ph-feed-slot[data-phase] > .ph-alert {
+    animation: none;
+  }
+  .ph-feed-slot[data-phase="leave"] {
+    display: none;
+  }
 }
 
 .ph-alert-row {
@@ -526,13 +604,14 @@
   flex-direction: column;
   gap: 6px;
   width: 100%;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border: none;
   border-radius: var(--corner-row);
   background: transparent;
   color: var(--page-fg);
   font: inherit;
   text-align: left;
+  transition: none;
 }
 
 button.ph-alert-row {
@@ -540,7 +619,7 @@ button.ph-alert-row {
 }
 
 button.ph-alert-row:hover {
-  background: var(--active-faint);
+  background: var(--row-hover-bg);
 }
 
 .ph-alert-top {
@@ -552,13 +631,15 @@ button.ph-alert-row:hover {
 
 .ph-level {
   flex: none;
-  padding: 2px 7px;
-  border-radius: var(--corner-sm);
-  background: color-mix(in srgb, var(--tone) 14%, transparent);
+  padding: 1px 7px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--tone) 32%, transparent);
+  background: color-mix(in srgb, var(--tone) 12%, transparent);
   color: var(--tone);
+  font-family: var(--font-mono);
   font-size: var(--fs-2xs);
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-weight: 500;
+  letter-spacing: 0;
 }
 
 .ph-alert-machine {
@@ -573,8 +654,10 @@ button.ph-alert-row:hover {
 
 .ph-alert-age {
   flex: none;
-  font-size: var(--fs-sm);
-  letter-spacing: 0.04em;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
   color: var(--text-muted);
   white-space: nowrap;
 }
@@ -591,7 +674,9 @@ button.ph-alert-row:hover {
 }
 
 .ph-alert-reading {
-  font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
   line-height: 1.4;
   color: var(--text-muted);
 }
@@ -601,6 +686,7 @@ button.ph-alert-row:hover {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  font-family: var(--font-mono);
   font-size: var(--fs-xs);
   font-weight: 500;
   color: var(--status-success);
@@ -625,7 +711,7 @@ button.ph-alert-row:hover {
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
-  padding: 0 14px 12px;
+  padding: 0 12px 10px;
 }
 
 .ph-alert-more p {
@@ -633,10 +719,11 @@ button.ph-alert-row:hover {
   font-size: var(--fs-sm);
   line-height: 1.45;
   color: var(--page-fg);
+  max-width: 68ch;
 }
 
 .ph-alert-more .btn-pill {
-  padding: 5px 14px;
+  padding: 5px 12px;
   font-size: var(--fs-sm);
 }
 
@@ -648,7 +735,7 @@ button.ph-alert-row:hover {
 
 .ph-chart svg {
   display: block;
-  font-family: var(--font-ui);
+  font-family: var(--font-mono);
 }
 
 /* Plot that takes the card's remaining height (graph strip). */
@@ -773,8 +860,7 @@ button.ph-alert-row:hover {
 }
 
 /* ==========================================================================
-   3D plant twin (ph-twin-*). The floating legend uses the cheap CSS glass tier;
-   labels and the inspector are opaque — they sit over moving geometry.
+   3D plant twin (ph-twin-*). Crisp 1px bordered terminal cards.
    ========================================================================== */
 .ph-twin {
   position: relative;
@@ -798,6 +884,7 @@ button.ph-alert-row:hover {
   display: flex;
   align-items: center;
   justify-content: center;
+  font-family: var(--font-mono);
   font-size: var(--fs-sm);
   color: var(--text-muted);
   pointer-events: none;
@@ -822,10 +909,9 @@ button.ph-alert-row:hover {
   flex-wrap: wrap;
   gap: 4px 12px;
   padding: 5px 10px;
-  border-radius: var(--corner-pill);
-  background: color-mix(in srgb, var(--topbar-bg) 72%, transparent);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--card-bg);
   font-size: var(--fs-xs);
   color: var(--text-muted);
 }
@@ -853,9 +939,7 @@ button.ph-alert-row:hover {
   border-top-color: var(--signal-blue);
 }
 
-/* Floating building label (drei <Html>). `--dx`/`--dy` are set by the canvas
-   label layout when the label has to clear another one; a hairline leader
-   then runs from the label's edge back to its building. */
+/* Floating building label (drei <Html>). */
 .ph-twin-label {
   position: relative;
   transform: translate(var(--dx, 0px), var(--dy, 0px));
@@ -865,15 +949,15 @@ button.ph-alert-row:hover {
   min-width: 136px;
   max-width: 260px;
   padding: 6px 9px;
-  border-radius: var(--corner-sm);
-  background: var(--card-glass-bg);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
   border: 1px solid var(--separator);
   white-space: nowrap;
-  transition: border-color 0.15s ease;
+  transition: border-color var(--dur-fast) var(--ease-out);
 }
 
 .ph-twin-label[data-active] {
-  border-color: var(--signal-blue);
+  border-color: var(--accent-primary);
 }
 
 .ph-twin-label::after {
@@ -895,8 +979,7 @@ button.ph-alert-row:hover {
   gap: 6px;
   font-size: var(--fs-2xs);
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--dx-ink);
   min-width: 0;
 }
@@ -920,13 +1003,15 @@ button.ph-alert-row:hover {
   justify-content: space-between;
   gap: 10px;
   padding-left: 12px;
+  font-family: var(--font-mono);
   font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
   color: var(--tone);
 }
 
 .ph-twin-label-meta b {
   color: var(--dx-ink);
-  font-weight: 500;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -937,6 +1022,7 @@ button.ph-alert-row:hover {
   margin-top: 4px;
   padding-top: 4px;
   border-top: 1px solid var(--separator);
+  font-family: var(--font-mono);
   font-size: var(--fs-2xs);
   color: var(--text-muted);
 }
@@ -949,7 +1035,7 @@ button.ph-alert-row:hover {
 
 .ph-twin-label-more b {
   color: var(--dx-ink);
-  font-weight: 500;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -984,6 +1070,7 @@ button.ph-alert-row:hover {
   font-size: var(--fs-md);
   text-align: left;
   cursor: pointer;
+  transition: none;
 }
 
 .ph-twin-machines button:hover {
@@ -1000,7 +1087,9 @@ button.ph-alert-row:hover {
 }
 
 .ph-twin-mhealth {
+  font-family: var(--font-mono);
   font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
   color: var(--text-muted);
 }
 
@@ -1029,10 +1118,7 @@ button.ph-alert-row:hover {
 }
 
 /* ==========================================================================
-   Immersive home (3D twin view). The twin fills the page, with no header; the
-   health gauge, alerts and trend float over it as HUD panels, angled slightly toward
-   the viewer like a cockpit display. The HUD grid ignores the pointer, so the
-   empty middle orbits the twin; only the panels themselves take input.
+   Immersive home (3D twin view). Flat HUD panels with crisp 1px borders.
    ========================================================================== */
 .ph-immersive {
   position: relative;
@@ -1065,7 +1151,6 @@ button.ph-alert-row:hover {
   gap: 12px;
   padding: 20px 24px 24px;
   pointer-events: none;
-  perspective: 1600px;
 }
 
 .ph-hud-side {
@@ -1075,8 +1160,6 @@ button.ph-alert-row:hover {
   gap: 12px;
   min-height: 0;
   pointer-events: auto;
-  transform: rotateY(-3deg);
-  transform-origin: right center;
 }
 
 .ph-hud-side .ph-alerts {
@@ -1087,8 +1170,6 @@ button.ph-alert-row:hover {
   grid-area: bottom;
   min-width: 0;
   pointer-events: auto;
-  transform: rotateX(4deg);
-  transform-origin: center bottom;
 }
 
 /* HUD panels use the shared frosted card glass (globals.css). */

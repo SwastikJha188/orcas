@@ -66,13 +66,33 @@ export function OverviewPage({
 
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [focusGroup, setFocusGroup] = useState<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const machineRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsFullscreen(false);
+    };
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isFullscreen]);
 
   const select = (tag: string | null) => {
     setSelectedTag(tag);
     // Picking a point opens its component; clearing the pick keeps the component on screen.
     if (tag) setFocusGroup(d.groupOfTag.get(tag) ?? null);
-    if (tag) machineRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (tag && !isFullscreen) machineRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  };
+
+  const selectGroupFromTable = (id: string | null) => {
+    setFocusGroup(id);
+    if (id) machineRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
   };
 
   const hasData = sensors.length > 0 || groups.rows.length > 0 || isLiveHealth;
@@ -149,50 +169,101 @@ export function OverviewPage({
 
   return (
     <div className="ast-root pg-frame pg-ov" aria-label="Overview">
-      <PageHeader
-        title="Overview"
-        status={hasData ? { label: conditionLabel, tone } : null}
-        meta={[
-          speedState && { label: "State", value: speedState },
-          machine.criticality && { label: "Criticality", value: machine.criticality.split(" ")[0] },
-          { label: "Source", value: frame ? "Live (simulated)" : isLiveHealth ? "Live" : "Stored" },
-          { label: "Updated", value: d.updatedAt ?? "—", title: d.tz.label },
-        ]}
-      />
+      {/* 1. MACHINE & COMPONENTS VIEWPORT AT THE TOP (fits in one screen by default, with Full Screen mode) */}
+      <section
+        id={OV_SECTIONS.machine}
+        ref={machineRef}
+        className="pg-analysis-section ast-card pg-ov-machine-sec"
+        data-fullscreen={isFullscreen || undefined}
+        aria-label="Machine"
+      >
+        <div className="pg-ov-hero-head">
+          <div className="pg-ov-hero-meta">
+            <h2 className="pg-analysis-h2">Machine</h2>
+            {hasData && (
+              <span className="pg-frame-status" data-tone={tone === "good" ? undefined : tone}>
+                <span className="ast-chip-dot" aria-hidden="true" />
+                {conditionLabel}
+              </span>
+            )}
+            <dl className="pg-frame-meta">
+              {hasData && (
+                <div>
+                  <dt>Health</dt>
+                  <dd className="ast-num">{overall}%</dd>
+                </div>
+              )}
+              {speedState && (
+                <div>
+                  <dt>State</dt>
+                  <dd className="ast-num">{speedState}</dd>
+                </div>
+              )}
+              {machine.criticality && (
+                <div>
+                  <dt>Criticality</dt>
+                  <dd className="ast-num">{machine.criticality.split(" ")[0]}</dd>
+                </div>
+              )}
+              <div>
+                <dt>Updated</dt>
+                <dd className="ast-num" title={d.tz.label}>{d.updatedAt ?? "—"}</dd>
+              </div>
+            </dl>
+          </div>
+          <div className="pg-ov-hero-actions">
+            {locateTag && (
+              <PillButton variant="secondary" onClick={() => select(locateTag)}>
+                Locate worst point
+              </PillButton>
+            )}
+            <PillButton
+              variant="secondary"
+              onClick={() => setIsFullscreen((f) => !f)}
+              icon={
+                isFullscreen ? (
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M6 2v4H2M10 2v4h4M6 14v-4H2M10 14v-4h4" />
+                  </svg>
+                ) : (
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" />
+                  </svg>
+                )
+              }
+            >
+              {isFullscreen ? "Exit full screen" : "Full screen"}
+            </PillButton>
+          </div>
+        </div>
 
+        <div className="pg-ov-machine" data-wide="">
+          <MachineDrawing
+            machine={machine}
+            d={d}
+            selectedTag={selectedTag}
+            focusGroup={focusGroup}
+            component={focusGroup}
+            setComponent={setFocusGroup}
+            onSelect={select}
+            go={go}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={() => setIsFullscreen((f) => !f)}
+          />
+        </div>
+      </section>
+
+      {/* 2. KEY FIGURES & DETAILED SECTIONS BELOW */}
       <KpiStrip page items={kpis} label="Key figures" />
 
       <SectionIndex items={index} label="Overview sections" pendingKey={OVERVIEW_SECTION_KEY} />
 
       <div className="pg-frame-body pg-ov-body">
-        {/* ------------------------------------------------- Machine */}
-        <Section
-          id={OV_SECTIONS.machine}
-          title="Machine"
-          right={
-            locateTag ? (
-              <PillButton variant="secondary" onClick={() => select(locateTag)}>
-                Locate worst point
-              </PillButton>
-            ) : undefined
-          }
-        >
-          {/* The drawing (whole machine or a picked component) takes the full section width; the component list is a grid under it. */}
-          <div ref={machineRef} className="pg-ov-machine" data-wide="">
-            <MachineDrawing
-              machine={machine}
-              d={d}
-              selectedTag={selectedTag}
-              focusGroup={focusGroup}
-              component={focusGroup}
-              setComponent={setFocusGroup}
-              onSelect={select}
-              go={go}
-            />
-            <GroupList d={d} cap={conditionLabel} focusGroup={focusGroup} setFocusGroup={setFocusGroup} />
-          </div>
-        </Section>
-
+        {groups.rows.length > 0 && (
+          <Section id="ov-subassemblies" title={groups.level}>
+            <GroupList d={d} cap={conditionLabel} focusGroup={focusGroup} setFocusGroup={selectGroupFromTable} />
+          </Section>
+        )}
         <OvOperatingSection machine={machine} d={d} go={go} />
         <OvAreasSection machine={machine} d={d} go={go} />
       </div>
@@ -219,6 +290,8 @@ function MachineDrawing({
   setComponent,
   onSelect,
   go,
+  isFullscreen,
+  onToggleFullscreen,
 }: {
   machine: AssetMachine;
   d: OverviewDigest;
@@ -229,6 +302,8 @@ function MachineDrawing({
   setComponent: (id: string | null) => void;
   onSelect: (tag: string | null) => void;
   go: (p: AssetsSubPage) => void;
+  isFullscreen: boolean;
+  onToggleFullscreen: () => void;
 }) {
   const { sensors, counts, catalog, pageDots, placedTags } = d;
 
@@ -379,15 +454,21 @@ function MachineDrawing({
           </div>
         </div>
       )}
-      <div className="mx-canvas pg-ov-canvas">
+      <div className="mx-canvas pg-ov-canvas" data-fullscreen={isFullscreen || undefined}>
         {measure}
         {partMeasure}
-        <BlenderViewport scopeLabel={`${machine.id} · ${sheet ?? (part ? part.shortName.toUpperCase() : "OVERVIEW")}`}>
+        <BlenderViewport
+          scopeLabel={`${machine.id} · ${sheet ?? (part ? part.shortName.toUpperCase() : "OVERVIEW")}`}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={onToggleFullscreen}
+        >
           {sheet ? (
             !box || !art ? null : detail ? (
               <SensorWidgetStage
                 key={sheet}
-                fitDrawing
+                fitDrawing={isFullscreen}
+                compact={!isFullscreen}
+                maxDrawingHeight={isFullscreen ? 460 : 200}
                 sensors={cardSensors}
                 aspect={box[2] / box[3]}
                 positionOf={(s) => {
@@ -409,7 +490,9 @@ function MachineDrawing({
             !partBox ? null : (
               <SensorWidgetStage
                 key={part.id}
-                fitDrawing
+                fitDrawing={isFullscreen}
+                compact={!isFullscreen}
+                maxDrawingHeight={isFullscreen ? 460 : 200}
                 sensors={cardSensors}
                 aspect={partBox[2] / partBox[3]}
                 positionOf={(s) => {

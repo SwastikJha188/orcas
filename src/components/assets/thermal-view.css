@@ -57,13 +57,14 @@
 .thm-flag {
   margin-left: 8px;
   padding: 1px 7px;
-  border-radius: var(--corner-pill);
-  background: var(--hover-faint);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-canvas);
   color: var(--text-muted);
+  font-family: var(--font-mono);
   font-size: var(--fs-2xs);
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   vertical-align: 1px;
 }
 
@@ -74,7 +75,7 @@
   margin-left: 6px;
   padding: 3px 10px;
   border: 0;
-  border-radius: var(--corner-pill);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
   font: inherit;
@@ -183,14 +184,16 @@
 
 .thm-dl dt {
   font-size: var(--fs-xs);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-weight: 500;
+  letter-spacing: 0;
   color: var(--text-muted);
 }
 
 .thm-dl dd {
   margin: 0;
+  font-family: var(--font-mono);
   font-size: var(--fs-base);
+  font-variant-numeric: tabular-nums;
   color: var(--dx-ink);
 }
 

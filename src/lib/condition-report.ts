@@ -129,6 +129,18 @@ export function recordFrames<T extends Record<string, SimFrame>>(frames: T): T {
   return frames;
 }
 
+/** The running totals as structured-cloneable data (to carry a pre-roll recorded in a worker). */
+export type ReportTotals = Array<[string, Acc]>;
+
+export function exportReportTotals(): ReportTotals {
+  return [...ACC];
+}
+
+/** Take over totals recorded elsewhere (`exportReportTotals`), replacing those of the same machines. */
+export function importReportTotals(totals: ReportTotals): void {
+  for (const [id, a] of totals) ACC.set(id, a);
+}
+
 /** Snapshot of the report for the given machines (missing machines are skipped). */
 export function conditionReport(machineIds: string[], frames: Record<string, SimFrame | null | undefined>): MachineReport[] {
   const out: MachineReport[] = [];

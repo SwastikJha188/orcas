@@ -7,13 +7,14 @@
  *
  * The kiln is a built model in real metres (kiln-twin-3d), with every D4 signal
  * on its physical anchor. Other machine types are extruded from their schematic
- * primitives (machine-twin-model), and their DB sensor coordinates are dropped
- * onto the nearest surface by a raycast. Status is carried by the pads, the
- * plinth rim and the component labels; selection by signal-blue edges.
+ * primitives (machine-twin-model). Sensor points are not drawn on the twin;
+ * pyro sensor coordinates only place the field instruments and size each
+ * component's label anchor. Status is carried by the component labels;
+ * selection by signal-blue edges.
  *
  * Loaded with next/dynamic (ssr: false).
  */
-import { Billboard, Edges } from "@react-three/drei";
+import { Edges } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -90,8 +91,6 @@ const VIEW_DIR = new THREE.Vector3(0.58, 0.34, 1).normalize();
 /** Kiln shell skin: 74 m, burning zone 40–66 m (D4 Table 5.3a). */
 const KILN_SKIN: ShellSkin = { length: 74, burning: [40, 66] };
 
-const toneColor = (t: Tone, c: TwinColors) => (t === "bad" ? c.bad : t === "warn" ? c.warn : t === "good" ? c.good : c.idle);
-const padTone = (s: SchematicDot["status"]): Tone => (s === "Critical" ? "bad" : s === "Advisory" ? "warn" : "good");
 
 /* ---------------------------------------------------------------- generic model */
 
@@ -173,7 +172,7 @@ function GenericModel({ prims, map, owners }: { prims: MachinePrim[]; map: Frame
   );
 }
 
-/* ---------------------------------------------------------------- pads */
+/* ---------------------------------------------------------------- sensor points */
 
 interface PlacedPad {
   dot: SchematicDot;
@@ -189,7 +188,7 @@ const Y_UP = new THREE.Vector3(0, 1, 0);
  * transmitter housing with a dark display face, and a conduit run down to the floor
  * or the surface below — so every pad sits on the instrument it reads.
  */
-function Instruments({ pads, mats, edge }: { pads: PlacedPad[]; mats: { model: THREE.Material; machined: THREE.Material; recess: THREE.Material; steel: THREE.Material }; edge: string }) {
+const Instruments = React.memo(function Instruments({ pads, mats, edge }: { pads: PlacedPad[]; mats: { model: THREE.Material; machined: THREE.Material; recess: THREE.Material; steel: THREE.Material }; edge: string }) {
   return (
     <group>
       {pads.map(({ dot, mount }) => {
@@ -220,86 +219,7 @@ function Instruments({ pads, mats, edge }: { pads: PlacedPad[]; mats: { model: T
       })}
     </group>
   );
-}
-
-function Pads({ pads, px, colors, panel, focusId }: { pads: PlacedPad[]; px: number; colors: TwinColors; panel: string; focusId: string | null }) {
-  const [hover, setHover] = useState<string | null>(null);
-  // Pads keep a constant on-screen size (`px`, CSS px radius), like the drawings' pads, at any machine size or zoom.
-  const refs = useRef(new Map<string, THREE.Group>());
-  const v = useMemo(() => new THREE.Vector3(), []);
-  useFrame(({ camera, size }) => {
-    const tan = Math.tan(THREE.MathUtils.degToRad((camera as THREE.PerspectiveCamera).fov / 2));
-    for (const g of refs.current.values()) {
-      g.getWorldPosition(v);
-      g.scale.setScalar((px * 2 * camera.position.distanceTo(v) * tan) / Math.max(1, size.height));
-    }
-  });
-  const radius = 1; // unit pad, scaled per frame
-  return (
-    <group>
-      {pads.map(({ dot, p }) => {
-        const tone = padTone(dot.status);
-        const c = toneColor(tone, colors);
-        const dim = Boolean(focusId && dot.systemId && dot.systemId !== focusId);
-        const on = tone !== "good";
-        const op = dim ? 0.25 : 1;
-        return (
-          <group key={dot.tag} position={p}>
-            {/* Machine-kit measurement pad: hollow ring when healthy, filled with a halo when it needs attention. */}
-            <Billboard>
-              <group
-                ref={(g) => {
-                  if (g) refs.current.set(dot.tag, g);
-                  else refs.current.delete(dot.tag);
-                }}
-                onPointerOver={(e) => {
-                  e.stopPropagation();
-                  setHover(dot.tag);
-                  document.body.style.cursor = "pointer";
-                }}
-                onPointerOut={() => {
-                  setHover(null);
-                  document.body.style.cursor = "";
-                }}
-              >
-                <mesh renderOrder={12}>
-                  <circleGeometry args={[radius * 0.78, 28]} />
-                  <meshBasicMaterial color={on ? c : panel} toneMapped={false} transparent opacity={op} depthWrite={false} depthTest={false} />
-                </mesh>
-                <mesh renderOrder={13}>
-                  <ringGeometry args={[radius * 0.72, radius, 32]} />
-                  <meshBasicMaterial color={c} toneMapped={false} transparent opacity={op} depthWrite={false} depthTest={false} />
-                </mesh>
-                {on && !dim && (
-                  <mesh renderOrder={11} raycast={() => undefined}>
-                    <ringGeometry args={[radius * 1.15, radius * 2.1, 36]} />
-                    <meshBasicMaterial color={c} transparent opacity={0.22} depthWrite={false} depthTest={false} toneMapped={false} />
-                  </mesh>
-                )}
-              </group>
-            </Billboard>
-            {hover === dot.tag && (
-              <TwinHtml zIndexRange={[60, 50]} style={{ pointerEvents: "none" }}>
-                <div className="ph-twin-label mt3-pad-tip" data-tone={tone}>
-                  <span className="ph-twin-label-head">
-                    <i aria-hidden="true" />
-                    <span className="ph-twin-label-name">{dot.tag}</span>
-                  </span>
-                  <span className="ph-twin-label-meta">
-                    {dot.name}
-                    <b>
-                      {dot.value} {dot.unit}
-                    </b>
-                  </span>
-                </div>
-              </TwinHtml>
-            )}
-          </group>
-        );
-      })}
-    </group>
-  );
-}
+});
 
 /* ---------------------------------------------------------------- labels */
 
@@ -579,7 +499,13 @@ function SceneContents({
   }, [isKiln, pyro, generic, kilnOwn, genericOwn, invalidate]);
 
   // Sensor pads: kiln tags on their physical anchors; others raycast onto the surface.
+  // `dots` is a new array every live tick, but only the sensors' positions matter here:
+  // re-raycasting the whole model each second stalled the camera once a second.
+  const dotsRef = useRef(dots);
+  dotsRef.current = dots;
+  const dotPlaces = dots.map((d) => `${d.tag}:${d.x}:${d.y}:${d.systemId ?? ""}`).join("|");
   const pads = useMemo<PlacedPad[]>(() => {
+    const dots = dotsRef.current;
     if (isKiln) {
       return dots.flatMap((dot) => {
         const a = KILN_ANCHORS[dot.tag];
@@ -634,7 +560,8 @@ function SceneContents({
       const hit = ray.intersectObject(root, true)[0];
       return [{ dot, p: new THREE.Vector3(wx, wy, hit ? hit.point.z + 0.1 : 0) }];
     });
-  }, [isKiln, pyro, dots, map, bounds, toModel]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on dotPlaces, not on live values
+  }, [isKiln, pyro, dotPlaces, map, bounds, toModel]);
 
   // Pyro models are merged per material, so a subsystem's extent comes from its sensor pads.
   const padBounds = useMemo(() => {
@@ -702,6 +629,12 @@ function SceneContents({
   // Machine-kit rule: the slab rim stays quiet; status lives on the measurement pads and labels.
   void machineTone;
   const rim = colors.rimIdle;
+  // The built model only changes with its parts and owners; live ticks must not re-render it
+  // (hover and selection still reach its parts through PartCtx).
+  const builtModel = useMemo(
+    () => (pyro ? <primitive object={pyro.group} /> : isKiln ? <KilnModel owners={kilnOwn} /> : <GenericModel prims={generic.prims} map={map} owners={genericOwn} />),
+    [pyro, isKiln, kilnOwn, generic.prims, map, genericOwn],
+  );
 
   return (
     <>
@@ -736,14 +669,11 @@ function SceneContents({
       <PartCtx.Provider value={ctx}>
         {/* The built model stands on the plinth. */}
         <group ref={model} position={[0, isKiln || pyro ? PLINTH_H : 0, 0]}>
-          {pyro ? <primitive object={pyro.group} /> : isKiln ? <KilnModel owners={kilnOwn} /> : <GenericModel prims={generic.prims} map={map} owners={genericOwn} />}
+          {builtModel}
         </group>
       </PartCtx.Provider>
 
       {pyro && <Instruments pads={pads} mats={pyro.mats} edge={colors.rimIdle} />}
-      <group position={[0, isKiln ? PLINTH_H : 0, 0]}>
-        <Pads pads={pads} px={6} colors={colors} panel={paints.deep} focusId={selectedId ?? hover} />
-      </group>
 
       {bounds &&
         systems.map((s) => {

@@ -7,15 +7,83 @@
    ========================================================================== */
 
 .pg-ov {
-  gap: 16px;
+  gap: 14px;
 }
 
 .pg-ov-body {
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 20px;
   min-width: 0;
   padding-bottom: 24px;
+}
+
+/* ------------------------------------------------------ top machine hero card & fullscreen */
+.pg-ov-machine-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+}
+
+.pg-ov-hero-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-height: 28px;
+}
+
+.pg-ov-hero-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-width: 0;
+}
+
+.pg-ov-hero-actions {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pg-ov-hero-actions .btn-pill {
+  padding: 5px 12px;
+  font-size: var(--fs-sm);
+}
+
+.pg-ov-machine-sec[data-fullscreen] {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  margin: 0;
+  border-radius: 0;
+  border: 0;
+  background: var(--bg-canvas);
+  padding: 16px 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.pg-ov-machine-sec[data-fullscreen] .pg-ov-machine,
+.pg-ov-machine-sec[data-fullscreen] .pg-ov-drawing {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pg-ov-machine-sec[data-fullscreen] .pg-ov-canvas {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
 }
 
 /* ------------------------------------------------------ status dot */
@@ -58,8 +126,7 @@
 .pg-ov-label {
   font-size: var(--fs-xs);
   font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--text-muted);
 }
 
@@ -73,7 +140,7 @@
 /* ---------------------------------------------- machine: drawing + list */
 .pg-ov-machine {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  grid-template-columns: minmax(0, 1fr);
   gap: 0;
   scroll-margin-top: 72px;
   min-width: 0;
@@ -82,9 +149,9 @@
 .pg-ov-drawing {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-  padding-right: 20px;
+  padding-right: 0;
 }
 
 .pg-ov-drawing-head {
@@ -92,41 +159,69 @@
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 8px 16px;
+  gap: 6px 16px;
 }
 
 .pg-ov-counts {
   display: inline-flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 16px;
-  font-size: var(--fs-sm);
+  gap: 14px;
+  font-size: var(--fs-xs);
   color: var(--text-muted);
 }
 
-/* The canvas takes its drawing's own proportions (no stretch to the list beside it), so the drawing fills it edge to edge at any width. */
+/* The canvas fits inside one screen by default; in full screen mode it expands to the viewport. */
 .pg-ov-canvas {
   position: relative;
   border-radius: var(--corner-row);
-  padding: 8px 12px;
+  padding: 6px 12px;
   overflow: hidden;
 }
 
 /* Canvas chrome (scope badge + zoom bar on top, axis gizmo bottom-left) gets its own strips, never over the drawing or its cards. */
 .pg-ov-canvas > .mx-vp {
-  padding: 34px 0 34px;
+  padding: 28px 0 8px;
+}
+
+.pg-ov-canvas[data-fullscreen] > .mx-vp {
+  padding: 36px 0 24px;
 }
 
 .pg-ov-canvas .mx-vp-gizmo {
   bottom: 2px;
-  transform: scale(0.8);
+  transform: scale(0.75);
   transform-origin: left bottom;
 }
 
-.pg-ov-canvas .ast-sch {
+/* Default single-screen height cap for whole-machine schematics (both LineSheet .mx-svg and MachineSchematic .ast-sch). */
+.pg-ov-canvas:not([data-fullscreen]) > .mx-vp > div > .mx-svg,
+.pg-ov-canvas:not([data-fullscreen]) .ast-sch {
   width: 100%;
   height: auto;
-  max-height: min(520px, 64vh);
+  max-height: clamp(220px, calc(100vh - 360px), 360px);
+}
+
+.pg-ov-canvas[data-fullscreen] > .mx-vp > div > .mx-svg,
+.pg-ov-canvas[data-fullscreen] .ast-sch {
+  width: 100%;
+  height: auto;
+  max-height: calc(100vh - 200px);
+}
+
+.pg-ov-drawing > .lsh-note {
+  padding: 8px 12px;
+}
+
+.pg-ov-drawing > .lsh-note h4 {
+  display: inline;
+  margin-right: 6px;
+  font-size: var(--fs-xs);
+}
+
+.pg-ov-drawing > .lsh-note p {
+  display: inline;
+  font-size: var(--fs-xs);
 }
 
 .pg-ov-hint {
@@ -160,6 +255,15 @@
   width: max-content;
 }
 
+.pg-ov-nav-scroll .nav-pill {
+  padding: 4px 12px;
+  font-size: var(--fs-sm);
+}
+
+.pg-ov-nav-scroll .nav-pill.active {
+  padding: 4px 12px;
+}
+
 .pg-ov-stepper {
   display: inline-flex;
   align-items: center;
@@ -168,6 +272,7 @@
 }
 
 .pg-ov-stepper-pos {
+  font-family: var(--font-mono);
   font-size: var(--fs-xs);
   color: var(--text-muted);
   padding: 0 4px;
@@ -181,23 +286,24 @@
   width: 24px;
   height: 24px;
   padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--corner-pill);
-  background: var(--pill-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
   color: var(--page-fg);
   font: inherit;
   font-size: var(--fs-md);
   line-height: 1;
   cursor: pointer;
-  transition: background-color 120ms cubic-bezier(0.23, 1, 0.32, 1), transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+  transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), transform 60ms var(--ease-out);
 }
 
 .pg-ov-step-btn:hover {
-  background: var(--hover-faint);
+  background: var(--bg-surface-elevated);
+  border-color: var(--border-hover);
 }
 
 .pg-ov-step-btn:active {
-  transform: scale(0.95);
+  transform: scale(0.97);
 }
 
 .pg-ov-step-reset {
@@ -205,9 +311,9 @@
   align-items: center;
   height: 22px;
   padding: 0 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--corner-pill);
-  background: var(--pill-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
   color: var(--page-fg);
   font: inherit;
   font-size: var(--fs-xs);
@@ -216,34 +322,44 @@
 }
 
 .pg-ov-step-reset:hover {
-  background: var(--hover-faint);
+  background: var(--bg-surface-elevated);
+  border-color: var(--border-hover);
 }
 
-/* The component list never sets the row height: it matches the drawing column and scrolls inside it. */
+/* Sub-assembly grid list */
 .pg-ov-groups {
-  border-left: 1px solid var(--separator);
-  padding: 0 0 0 8px;
-  margin-right: -16px;
   min-width: 0;
-  height: 0;
-  min-height: 100%;
-  max-height: 520px;
-  overflow-y: auto;
-  scrollbar-width: thin;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+  border-left: 0;
+  padding: 0;
+  margin: 0;
 }
 
+.pg-ov-groups-table,
+.pg-ov-groups-table thead,
+.pg-ov-groups-table thead tr,
 .pg-ov-groups-table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: var(--card-bg, #262528);
+  display: block;
+  width: auto;
 }
 
-.pg-ov-groups-th {
-  display: flex;
+.pg-ov-groups-table thead th:last-child {
+  display: none;
+}
+
+.pg-ov-groups-table tbody {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  column-gap: 16px;
+}
+
+.pg-ov-groups-table tbody tr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 76px;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
 }
 
 .pg-ov-group-name {
@@ -279,10 +395,10 @@
 }
 
 .pg-ov-callout-tag {
+  font-family: var(--font-mono);
   font-size: var(--fs-xs);
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--text-muted);
 }
 
@@ -298,8 +414,10 @@
 }
 
 .pg-ov-callout-value {
+  font-family: var(--font-mono);
   font-size: var(--fs-4xl);
-  font-weight: 500;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   color: var(--dx-ink, var(--page-fg));
 }
 

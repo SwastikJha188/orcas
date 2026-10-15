@@ -9,6 +9,10 @@ export interface PillButtonProps extends React.ButtonHTMLAttributes<HTMLButtonEl
   pressed?: boolean;
   /** Trailing node after the label (e.g. a chevron). */
   trailing?: React.ReactNode;
+  /** Pending/loading state (State 6 of 8-state interactive system). */
+  loading?: boolean;
+  /** Feedback state (States 7 & 8: error or success). */
+  state?: "default" | "error" | "success";
 }
 
 export function PillButton({
@@ -19,6 +23,9 @@ export function PillButton({
   className = "",
   pressed,
   trailing,
+  loading = false,
+  state = "default",
+  disabled,
   ...props
 }: PillButtonProps) {
   const variantClass = variant === "primary" ? "btn-pill-primary" : variant === "danger" ? "btn-pill-secondary btn-pill-danger" : "btn-pill-secondary";
@@ -28,9 +35,17 @@ export function PillButton({
       type="button"
       className={`btn-pill ${variantClass} ${className}`.trim()}
       aria-pressed={pressed}
+      aria-busy={loading || undefined}
+      data-loading={loading ? "true" : undefined}
+      data-state={state !== "default" ? state : undefined}
+      disabled={disabled || loading}
       {...props}
     >
-      {icon && <span className="btn-pill-icon">{icon}</span>}
+      {loading ? (
+        <span className="btn-pill-spinner" aria-hidden="true" />
+      ) : (
+        icon && <span className="btn-pill-icon">{icon}</span>
+      )}
       <span>{children}</span>
       {trailing}
       {hasDropdown && (

@@ -113,7 +113,8 @@ function closeStaleOnce(machineId: string): Promise<void> {
       .then((rows) =>
         Promise.all(
           rows
-            .filter((w) => w.status === "open" || w.status === "in_progress")
+            // Only work orders raised from a simulated finding (rule id); maintenance and manual ones stay open.
+            .filter((w) => Boolean(w.ruleId) && (w.status === "open" || w.status === "in_progress"))
             .map((w) =>
               api<OpsWorkOrder>(`/api/work-orders/${w.id}`, {
                 method: "PATCH",

@@ -23,7 +23,7 @@ import React, { useMemo, useState } from "react";
 import { rowActivate } from "@/components/ui/row-activate";
 import { PillButton, PillNav } from "@/components/ui";
 import { useIndustrialData } from "@/providers/industrial-data-context";
-import { useKilnSimulationFor, useLiveMachineStatus } from "@/providers/kiln-simulation-context";
+import { useKilnSimulationFor, useLiveMachineStatus, useLivePlantStarting } from "@/providers/kiln-simulation-context";
 import { conditionTone, toCondition, validityTone } from "@/components/ui/status";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { formatLocalTime } from "@/lib/time";
@@ -114,6 +114,7 @@ export interface ThermalViewProps {
 
 export function ThermalView({ machine }: ThermalViewProps) {
   const simulation = useKilnSimulationFor(machine.id);
+  const starting = useLivePlantStarting();
   if (!simulation || !simulation.frame.defs.hasShell) {
     return (
       <div className="ast-root pg-analysis thm-root" aria-label="Thermal">
@@ -123,7 +124,11 @@ export function ThermalView({ machine }: ThermalViewProps) {
           </div>
         </header>
         <section className="ast-card">
-          <Empty title="No shell scanner on this machine">Thermal needs a live kiln shell scanner profile and its shell maximum.</Empty>
+          {starting ? (
+            <Empty title="Starting the live plant…" />
+          ) : (
+            <Empty title="No shell scanner on this machine">Thermal needs a live kiln shell scanner profile and its shell maximum.</Empty>
+          )}
         </section>
       </div>
     );

@@ -114,14 +114,14 @@
 }
 
 /* ==========================================================================
-   Laptop and up: restore the cockpit tilt removed by plant-home.css ≤1100px.
+   Laptop and up: keep HUD panels flat for crisp subpixel terminal legibility.
    ========================================================================== */
 @media (min-width: 1024px) {
   :root .ph-hud-side {
-    transform: rotateY(-3deg);
+    transform: none;
   }
   :root .ph-hud-bottom {
-    transform: rotateX(4deg);
+    transform: none;
   }
 }
 

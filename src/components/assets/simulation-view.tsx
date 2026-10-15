@@ -6,6 +6,7 @@ import { ACTION, conditionTone, type Tone } from "@/components/ui/status";
 import { StatusTag } from "@/components/ui/status-tag";
 import { WhyDisclosure } from "./analysis/an-ui";
 import { useIndustrialData } from "@/providers/industrial-data-context";
+import { useLivePlantStarting } from "@/providers/kiln-simulation-context";
 import type { KilnScenario } from "@/lib/kiln-sim/scenarios";
 import type { RuleState, SimEvent, StoryProfile } from "@/lib/kiln-sim/engine";
 import type { Severity } from "@/lib/kiln-sim/signals";
@@ -13,6 +14,7 @@ import { fmtMin, suiteCases, summariseSuite, type SuiteCase, type TestResult } f
 import { pyroSuiteCases, RUN_MIN as PYRO_RUN_MIN, type PyroScenarioRun } from "@/lib/pyro-sim/suite";
 import { SIM_SPEEDS, type KilnSimulation } from "./kiln-seals-simulation";
 import { SimulationResponseChart, type ResponseMarker } from "./simulation-response-chart";
+import { SimulationControl } from "./simulation-control";
 import "./simulation-view.css";
 
 /**
@@ -69,17 +71,18 @@ function bySeverity(a: RuleState, b: RuleState) {
  * Keyed by scenario library: the kiln fleet shares one, each pyro machine has its own.
  */
 type SuiteRun = { results: TestResult[]; at: number };
-const memory: { suites: Record<string, SuiteRun>; filter: string; eventsScope: string } = { suites: {}, filter: "all", eventsScope: "scenario" };
+const memory: { suites: Record<string, SuiteRun>; filter: string; eventsScope: string; view: "control" | "scenarios" } = { suites: {}, filter: "all", eventsScope: "scenario", view: "control" };
 
 type Triggered = { id: string; at: number; severity: Severity };
 type LiveVerdict = { label: string; tone: Tone };
 
 export function SimulationView({ simulation }: { simulation: KilnSimulation | null }) {
+  const starting = useLivePlantStarting();
   if (!simulation) {
     return (
       <div className="ast-root sim-page">
         <section className="ast-card ast-empty" aria-label="Simulation">
-          No live simulation for this machine.
+          {starting ? "Starting the live plant…" : "No live simulation for this machine."}
         </section>
       </div>
     );
@@ -111,6 +114,11 @@ function SimulationModule({ simulation, suiteKey }: { simulation: KilnSimulation
   const [suite, setSuite] = useState<SuiteRun | null>(memory.suites[suiteKey] ?? null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  /** Pyro line: plant-wide Control (generator, quick actions, events) or this machine's Scenarios. */
+  const [viewState, setViewState] = useState(memory.view);
+  const setView = (v: "control" | "scenarios") => setViewState((memory.view = v));
+  const line = simulation.line;
+  const view = line ? viewState : "scenarios";
   const cancel = useRef(false);
   useEffect(() => () => void (cancel.current = true), []);
 
@@ -265,205 +273,222 @@ function SimulationModule({ simulation, suiteKey }: { simulation: KilnSimulation
         </div>
       </header>
 
-      <div className="sim-mode">
+      {line && (
         <PillNav
+          ariaLabel="Simulation views"
           items={[
-            { id: "auto", label: "Autopilot" },
-            { id: "manual", label: "Manual" },
+            { id: "control", label: "Plant control" },
+            { id: "scenarios", label: `${machineId} scenarios` },
           ]}
-          activeId={autopilot ? "auto" : "manual"}
-          onChange={(id) => setAutopilot(id === "auto")}
+          activeId={view}
+          onChange={(id) => setView(id as "control" | "scenarios")}
         />
-        {autopilot ? (
-          <>
-            <span className="sim-sep" aria-hidden="true" />
-            <span className="ast-caption">Hold {noun}</span>
-            <PillNav items={PROFILES} activeId={profile} onChange={(id) => setProfile(id as StoryProfile)} />
-          </>
-        ) : (
-          <span className="ast-caption">Manual: the scenario you pick below keeps running until you change it.</span>
-        )}
-      </div>
+      )}
 
-      {/* ---------------- KPI strip ---------------- */}
-      <dl className="ast-kpis sim-kpis">
-        <SimKpi
-          label="Scenario elapsed"
-          value={`+${fmtMin(frame.scenarioMinute)}`}
-          note={documented !== null ? `Documented detection +${fmtMin(documented)} · plant time` : "Must stay quiet · plant time"}
-        />
-        <SimKpi
-          label={expected.length ? "Expected rules triggered" : "Findings raised (expect none)"}
-          value={expected.length ? `${hitExpected.length} / ${expected.length}` : String(triggered.length)}
-          tone={verdict.tone === "good" ? "good" : verdict.tone === "bad" ? "bad" : undefined}
-          note={unexpected.length ? `Unexpected: ${unexpected.map((u) => u.id).join(", ")}` : verdict.label}
-        />
-        <SimKpi
-          label="Open findings"
-          value={`${confirmed.length} confirmed`}
-          note={`${findings.length - confirmed.length} pending · ${p.evaluated} rules evaluated`}
-          tone={confirmed.some((r) => r.severity === "Critical") ? "bad" : undefined}
-        />
-        <SimKpi
-          label="Machine health"
-          value={`${Math.round(frame.overall)} %`}
-          tone={condTone === "good" ? "good" : condTone === "bad" ? "bad" : undefined}
-          note={`${frame.condition} · ${p.beyond3s} signals beyond 3σ`}
-        />
-      </dl>
+      {line && view === "control" && <SimulationControl simulation={simulation} line={line} />}
 
-      {/* ---------------- primary visual ---------------- */}
-      <section className="ast-card" aria-label="Plant response">
-        <div className="ast-card-head sim-card-head-row">
-          <div className="sim-card-head-text">
-            <h2 className="ast-card-title">{scenario.name}</h2>
-            <span className="ast-caption">
-              {isCustom ? "Custom scenario" : scenario.group} · expected {expected.length ? expected.join(", ") : "no alarm"}
-            </span>
+      {view === "scenarios" && (
+        <>
+          <div className="sim-mode">
+            <PillNav
+              items={[
+                { id: "auto", label: "Autopilot" },
+                { id: "manual", label: "Manual" },
+              ]}
+              activeId={autopilot ? "auto" : "manual"}
+              onChange={(id) => setAutopilot(id === "auto")}
+            />
+            {autopilot ? (
+              <>
+                <span className="sim-sep" aria-hidden="true" />
+                <span className="ast-caption">Hold {noun}</span>
+                <PillNav items={PROFILES} activeId={profile} onChange={(id) => setProfile(id as StoryProfile)} />
+              </>
+            ) : (
+              <span className="ast-caption">Manual: the scenario you pick below keeps running until you change it.</span>
+            )}
           </div>
-          <StatusTag tone={verdict.tone} label={verdict.label} />
-        </div>
-        <p className="sim-desc">{scenario.description}</p>
-        {progressPct !== null && (
-          <div className="sim-progress-row">
-            <div
-              className="sim-progress"
-              role="progressbar"
-              aria-label="Progress to the documented detection time"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={Math.round(progressPct)}
-              data-tone={verdict.tone}
-            >
-              <i style={{ width: `${progressPct}%` }} />
+
+          {/* ---------------- KPI strip ---------------- */}
+          <dl className="ast-kpis sim-kpis">
+            <SimKpi
+              label="Scenario elapsed"
+              value={`+${fmtMin(frame.scenarioMinute)}`}
+              note={documented !== null ? `Documented detection +${fmtMin(documented)} · plant time` : "Must stay quiet · plant time"}
+            />
+            <SimKpi
+              label={expected.length ? "Expected rules triggered" : "Findings raised (expect none)"}
+              value={expected.length ? `${hitExpected.length} / ${expected.length}` : String(triggered.length)}
+              tone={verdict.tone === "good" ? "good" : verdict.tone === "bad" ? "bad" : undefined}
+              note={unexpected.length ? `Unexpected: ${unexpected.map((u) => u.id).join(", ")}` : verdict.label}
+            />
+            <SimKpi
+              label="Open findings"
+              value={`${confirmed.length} confirmed`}
+              note={`${findings.length - confirmed.length} pending · ${p.evaluated} rules evaluated`}
+              tone={confirmed.some((r) => r.severity === "Critical") ? "bad" : undefined}
+            />
+            <SimKpi
+              label="Machine health"
+              value={`${Math.round(frame.overall)} %`}
+              tone={condTone === "good" ? "good" : condTone === "bad" ? "bad" : undefined}
+              note={`${frame.condition} · ${p.beyond3s} signals beyond 3σ`}
+            />
+          </dl>
+
+          {/* ---------------- primary visual ---------------- */}
+          <section className="ast-card" aria-label="Plant response">
+            <div className="ast-card-head sim-card-head-row">
+              <div className="sim-card-head-text">
+                <h2 className="ast-card-title">{scenario.name}</h2>
+                <span className="ast-caption">
+                  {isCustom ? "Custom scenario" : scenario.group} · expected {expected.length ? expected.join(", ") : "no alarm"}
+                </span>
+              </div>
+              <StatusTag tone={verdict.tone} label={verdict.label} />
             </div>
-            <span className="ast-caption ast-num">
-              +{fmtMin(frame.scenarioMinute)} of +{fmtMin(documented)}
-            </span>
-          </div>
-        )}
-        <SimulationResponseChart
-          times={frame.times}
-          health={frame.healthHistory.overall}
-          start={start}
-          documented={documented}
-          markers={markers}
-        />
-        <div className="sim-chart-foot ast-caption ast-num">
-          <span>
-            Signals valid {p.valid} · suspect {p.suspect} · invalid {p.invalid}
-          </span>
-          <span>
-            Rules matching {p.matching} · pending {p.pending} · confirmed {p.confirmed}
-          </span>
-        </div>
-      </section>
+            <p className="sim-desc">{scenario.description}</p>
+            {progressPct !== null && (
+              <div className="sim-progress-row">
+                <div
+                  className="sim-progress"
+                  role="progressbar"
+                  aria-label="Progress to the documented detection time"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(progressPct)}
+                  data-tone={verdict.tone}
+                >
+                  <i style={{ width: `${progressPct}%` }} />
+                </div>
+                <span className="ast-caption ast-num">
+                  +{fmtMin(frame.scenarioMinute)} of +{fmtMin(documented)}
+                </span>
+              </div>
+            )}
+            <SimulationResponseChart
+              times={frame.times}
+              health={frame.healthHistory.overall}
+              start={start}
+              documented={documented}
+              markers={markers}
+            />
+            <div className="sim-chart-foot ast-caption ast-num">
+              <span>
+                Signals valid {p.valid} · suspect {p.suspect} · invalid {p.invalid}
+              </span>
+              <span>
+                Rules matching {p.matching} · pending {p.pending} · confirmed {p.confirmed}
+              </span>
+            </div>
+          </section>
 
-      {/* ---------------- scenario register ---------------- */}
-      <section className="ast-card sim-table-card" aria-label="Validation scenarios">
-        <div className="ast-card-head sim-card-head sim-card-head-row">
-          <div className="sim-card-head-text">
-            <h2 className="ast-card-title">
-              Validation scenarios <span className="ast-muted ast-num">{scenarios.length}</span>
-            </h2>
-            <span className="ast-caption ast-num">
-              {summary && suite
-                ? `Simulated headless run ${new Date(suite.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${summary.passed}/${summary.total} matched · detection ${pct(summary.detection)} · no false alarm ${pct(summary.noFalseAlarm)} · mean lead ${fmtMin(summary.meanLead)} · not field evidence`
-                : `Run a scenario live on this ${noun}, or run all headless to score expected against triggered rules.`}
-            </span>
-          </div>
-          <div className="sim-actions">
-            <PillNav items={FILTERS} activeId={filter} onChange={setFilter} />
-            <PillButton variant="secondary" onClick={runSuite} disabled={progress !== null} title="Runs every scenario on its own engine; the live plant is untouched">
-              {progress ? `Running ${progress.done}/${progress.total}` : suite ? "Re-run all headless" : "Run all headless"}
-            </PillButton>
-          </div>
-        </div>
-        {progress && (
-          <div className="sim-progress sim-progress-flush" role="progressbar" aria-label="Headless validation run" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done}>
-            <i style={{ width: `${(progress.done / progress.total) * 100}%` }} />
-          </div>
-        )}
-        <Table
-          className="ast-table sim-register"
-          columns={registerColumns({
-            runningId: scenario.id,
-            numberOf,
-            liveTriggered: triggered,
-            verdict,
-            suiteById,
-            onRun: applyScenario,
-          })}
-          data={registerRows}
-          keyExtractor={(s) => s.id}
-          selectedId={scenario.id}
-        />
-        <WhyDisclosure summary="Method">
-          {isKilnPlant ? (
-            <p className="ast-caption">
-              Scenarios, expected rules and documented detection times follow the kiln system specification D5, Table 9.8. A headless run plays every
-              scenario on its own engine; the live plant is untouched.
-            </p>
-          ) : (
-            <p className="ast-caption">
-              Scenarios and expected rules follow the pyro line specification D4-OSW-PE-PYR Rev. 02. Documented detection times were measured on this
-              simulation and show scripted demo behaviour, not a field detection rate. A headless run plays every scenario on its own line for{" "}
-              {fmtMin(PYRO_RUN_MIN)}: it matches when the expected rule confirms on {machineId} and no other rule confirms anywhere on the line. Detection
-              is counted from the scenario start. The live plant is untouched.
-            </p>
-          )}
-        </WhyDisclosure>
-      </section>
+          {/* ---------------- scenario register ---------------- */}
+          <section className="ast-card sim-table-card" aria-label="Validation scenarios">
+            <div className="ast-card-head sim-card-head sim-card-head-row">
+              <div className="sim-card-head-text">
+                <h2 className="ast-card-title">
+                  Validation scenarios <span className="ast-muted ast-num">{scenarios.length}</span>
+                </h2>
+                <span className="ast-caption ast-num">
+                  {summary && suite
+                    ? `Simulated headless run ${new Date(suite.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${summary.passed}/${summary.total} matched · detection ${pct(summary.detection)} · no false alarm ${pct(summary.noFalseAlarm)} · mean lead ${fmtMin(summary.meanLead)} · not field evidence`
+                    : `Run a scenario live on this ${noun}, or run all headless to score expected against triggered rules.`}
+                </span>
+              </div>
+              <div className="sim-actions">
+                <PillNav items={FILTERS} activeId={filter} onChange={setFilter} />
+                <PillButton variant="secondary" onClick={runSuite} disabled={progress !== null} title="Runs every scenario on its own engine; the live plant is untouched">
+                  {progress ? `Running ${progress.done}/${progress.total}` : suite ? "Re-run all headless" : "Run all headless"}
+                </PillButton>
+              </div>
+            </div>
+            {progress && (
+              <div className="sim-progress sim-progress-flush" role="progressbar" aria-label="Headless validation run" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done}>
+                <i style={{ width: `${(progress.done / progress.total) * 100}%` }} />
+              </div>
+            )}
+            <Table
+              className="ast-table sim-register"
+              columns={registerColumns({
+                runningId: scenario.id,
+                numberOf,
+                liveTriggered: triggered,
+                verdict,
+                suiteById,
+                onRun: applyScenario,
+              })}
+              data={registerRows}
+              keyExtractor={(s) => s.id}
+              selectedId={scenario.id}
+            />
+            <WhyDisclosure summary="Method">
+              {isKilnPlant ? (
+                <p className="ast-caption">
+                  Scenarios, expected rules and documented detection times follow the kiln system specification D5, Table 9.8. A headless run plays every
+                  scenario on its own engine; the live plant is untouched.
+                </p>
+              ) : (
+                <p className="ast-caption">
+                  Scenarios and expected rules follow the pyro line specification D4-OSW-PE-PYR Rev. 02. Documented detection times were measured on this
+                  simulation and show scripted demo behaviour, not a field detection rate. A headless run plays every scenario on its own line for{" "}
+                  {fmtMin(PYRO_RUN_MIN)}: it matches when the expected rule confirms on {machineId} and no other rule confirms anywhere on the line. Detection
+                  is counted from the scenario start. The live plant is untouched.
+                </p>
+              )}
+            </WhyDisclosure>
+          </section>
 
-      {/* ---------------- findings ---------------- */}
-      <section className="ast-card sim-table-card" aria-label="Findings raised">
-        <div className="ast-card-head sim-card-head sim-card-head-row">
-          <h2 className="ast-card-title">
-            Findings raised <span className="ast-muted ast-num">{findings.length}</span>
-          </h2>
-        </div>
-        {findings.length === 0 ? (
-          <p className="ast-caption sim-empty">
-            No finding open. All signals follow the reference model · {p.evaluated} rules evaluated · ambient est.{" "}
-            <span className="ast-num">{frame.drivers.ambientEst.toFixed(1)} °C</span>
-          </p>
-        ) : (
-          <Table
-            className="ast-table"
-            columns={findingColumns({ start, expected, performAction, go: setActiveSubPage })}
-            data={findings}
-            keyExtractor={(r) => r.id}
-          />
-        )}
-      </section>
+          {/* ---------------- findings ---------------- */}
+          <section className="ast-card sim-table-card" aria-label="Findings raised">
+            <div className="ast-card-head sim-card-head sim-card-head-row">
+              <h2 className="ast-card-title">
+                Findings raised <span className="ast-muted ast-num">{findings.length}</span>
+              </h2>
+            </div>
+            {findings.length === 0 ? (
+              <p className="ast-caption sim-empty">
+                No finding open. All signals follow the reference model · {p.evaluated} rules evaluated · ambient est.{" "}
+                <span className="ast-num">{frame.drivers.ambientEst.toFixed(1)} °C</span>
+              </p>
+            ) : (
+              <Table
+                className="ast-table"
+                columns={findingColumns({ start, expected, performAction, go: setActiveSubPage })}
+                data={findings}
+                keyExtractor={(r) => r.id}
+              />
+            )}
+          </section>
 
-      {/* ---------------- event log ---------------- */}
-      <section className="ast-card sim-table-card" aria-label="Event log">
-        <div className="ast-card-head sim-card-head sim-card-head-row">
-          <h2 className="ast-card-title">
-            Event log <span className="ast-muted ast-num">latest {events.length}</span>
-          </h2>
-          <PillNav
-            items={[
-              { id: "scenario", label: "This scenario" },
-              { id: "all", label: "All" },
-            ]}
-            activeId={eventsScope}
-            onChange={setEventsScope}
-          />
-        </div>
-        {events.length === 0 ? (
-          <p className="ast-caption sim-empty">No events since the scenario started.</p>
-        ) : (
-          <Table
-            className="ast-table"
-            columns={eventColumns}
-            data={events.map((e, i) => ({ ...e, key: `${e.t}-${i}-${e.title}` }))}
-            keyExtractor={(e) => e.key}
-          />
-        )}
-      </section>
-
+          {/* ---------------- event log ---------------- */}
+          <section className="ast-card sim-table-card" aria-label="Event log">
+            <div className="ast-card-head sim-card-head sim-card-head-row">
+              <h2 className="ast-card-title">
+                Event log <span className="ast-muted ast-num">latest {events.length}</span>
+              </h2>
+              <PillNav
+                items={[
+                  { id: "scenario", label: "This scenario" },
+                  { id: "all", label: "All" },
+                ]}
+                activeId={eventsScope}
+                onChange={setEventsScope}
+              />
+            </div>
+            {events.length === 0 ? (
+              <p className="ast-caption sim-empty">No events since the scenario started.</p>
+            ) : (
+              <Table
+                className="ast-table"
+                columns={eventColumns}
+                data={events.map((e, i) => ({ ...e, key: `${e.t}-${i}-${e.title}` }))}
+                keyExtractor={(e) => e.key}
+              />
+            )}
+          </section>
+        </>
+      )}
     </div>
   );
 }

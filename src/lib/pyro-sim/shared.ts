@@ -18,7 +18,8 @@ export const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.mi
 
 export function median(values: number[]): number {
   if (values.length === 0) return 0;
-  const s = [...values].sort((a, b) => a - b);
+  // Typed-array sort: numeric order without a comparator callback.
+  const s = Float64Array.from(values).sort();
   const mid = Math.floor(s.length / 2);
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }

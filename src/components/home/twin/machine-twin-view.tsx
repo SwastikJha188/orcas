@@ -1,14 +1,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PillButton } from "@/components/ui";
 import type { AssetMachine } from "@/components/assets/assets-data";
 import type { AssetsSubPage } from "@/components/assets/assets-view";
 import { IconBack, IconChevron, IconClose, StatusTag, healthTone, severityTone, type Tone } from "@/components/assets/assets-shell-ui";
 import type { Distribution } from "@/components/assets/hierarchy/hierarchy-model";
 import { useMachineOverview } from "@/components/assets/machine-diagram";
-import { formatClock } from "@/lib/kiln-sim/engine";
+import { healthTrack } from "@/lib/health-recorder";
 import { AlertsFeed, HealthTrendCard, PlantHealthGauge, type HomeActivity, type HomeAlert } from "../home-widgets";
 import type { TwinPaints } from "./twin-part";
 import type { MachineTwinSystem } from "./machine-twin-canvas";
@@ -137,14 +137,10 @@ export function MachineTwinHome({
     return d;
   }, [systems]);
 
-  // Live machines carry their health history; the others show the empty state.
-  const trend = useMemo(
-    () =>
-      frame
-        ? { series: frame.healthHistory.overall, labels: frame.times.map((t) => formatClock(t).clock) }
-        : { series: [] as number[], labels: [] as string[] },
-    [frame],
-  );
+  // Health over time on the real clock (@/lib/health-recorder), recorded every live tick;
+  // machines without a live engine show the empty state.
+  const machineId = frame ? machine.id : null;
+  const trackMachine = useCallback((from: number) => (machineId ? healthTrack(machineId, from) : []), [machineId]);
 
   const tone: Tone = worst === "Normal" ? healthTone(overall) : severityTone(worst);
   const selected = twinSystems.find((s) => s.id === selectedId) ?? null;
@@ -261,7 +257,7 @@ export function MachineTwinHome({
           <AlertsFeed alerts={alerts} activity={activity} onOpen={onOpenDiagnosis} loading={alertsLoading} error={alertsError} />
         </aside>
         <div ref={bottomRef} className="ph-hud-bottom ph-strip">
-          <HealthTrendCard series={trend.series} labels={trend.labels} />
+          <HealthTrendCard track={trackMachine} />
         </div>
       </div>
     </div>

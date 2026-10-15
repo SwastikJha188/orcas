@@ -136,7 +136,7 @@ interface AnalyserMem {
   blowback: number;
 }
 
-interface HealthMem {
+export interface HealthMem {
   /** Sticky rate-of-change flags: residual before the jump and the jump. */
   rate: Record<string, { pre: number; jump: number }>;
   noisy: Set<string>;
@@ -155,6 +155,15 @@ interface HealthMem {
 }
 
 const MEM = new WeakMap<LineState, HealthMem>();
+
+/** A line's screening memory, to carry it with the line across a worker boundary (`freezeLine` / `thawLine`). */
+export function lineMemory(s: LineState): HealthMem | undefined {
+  return MEM.get(s);
+}
+
+export function adoptLineMemory(s: LineState, m: HealthMem | undefined): void {
+  if (m) MEM.set(s, m);
+}
 
 function memOf(s: LineState): HealthMem {
   let m = MEM.get(s);
@@ -273,8 +282,22 @@ export function screenQuality(q: QualityInput): QualityScreen {
   }
   const settled = (tag: string, n = SETTLE_MIN) => t - (m.run[tag]?.since ?? -Infinity) >= n;
   /** A rule of the line (not data quality) is building or confirmed on this tag: its discordance has a fault pattern. */
-  const patterned = (tag: string) =>
-    MACHINE_IDS.some((id) => Object.entries(s.machines[id]?.rules ?? {}).some(([rid, mem]) => !DQ_RULE.test(rid) && mem.status !== "QUIET" && mem.tags.includes(tag)));
+  // Rule state does not change while the readings are screened: collect the tags once per minute.
+  let patternedTags: Set<string> | null = null;
+  const patterned = (tag: string) => {
+    if (!patternedTags) {
+      patternedTags = new Set();
+      for (const id of MACHINE_IDS) {
+        const rules = s.machines[id]?.rules;
+        if (!rules) continue;
+        for (const rid in rules) {
+          const mem = rules[rid];
+          if (mem.status !== "QUIET" && !DQ_RULE.test(rid)) for (const t of mem.tags) patternedTags.add(t);
+        }
+      }
+    }
+    return patternedTags.has(tag);
+  };
   const analyserStatus = (tag: string) => {
     const a = ANALYSER_OF[tag];
     return a ? (m.analyser[a.id] ?? { status: "OK", blowback: 0 }) : null;

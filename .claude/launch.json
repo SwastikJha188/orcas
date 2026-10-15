@@ -44,6 +44,20 @@
         "NEXT_DIST_DIR": ".next-health"
       },
       "port": 3110
+    },
+    {
+      "name": "ultron-twinperf",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "next",
+        "start",
+        "-p",
+        "3140"
+      ],
+      "env": {
+        "NEXT_DIST_DIR": ".next-twinperf"
+      },
+      "port": 3140
     }
   ]
 }

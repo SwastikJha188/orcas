@@ -338,10 +338,14 @@ export function BlenderViewport({
   scopeLabel,
   children,
   className,
+  isFullscreen = false,
+  onToggleFullscreen,
 }: {
   scopeLabel?: string;
   children: React.ReactNode;
   className?: string;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }) {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -392,6 +396,7 @@ export function BlenderViewport({
       className={`mx-vp ${className ?? ""}`.trim()}
       data-zoomed={zoom > 1 || undefined}
       data-panning={panning || undefined}
+      data-fullscreen={isFullscreen || undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -417,6 +422,31 @@ export function BlenderViewport({
           {(zoom !== 1 || pan.x !== 0 || pan.y !== 0) && (
             <button type="button" className="mx-vp-btn" onClick={resetView} aria-label="Fit view" title="Frame all">
               Fit
+            </button>
+          )}
+          {onToggleFullscreen && (
+            <button
+              type="button"
+              className="mx-vp-btn mx-vp-btn-fs"
+              onClick={onToggleFullscreen}
+              aria-label={isFullscreen ? "Exit full screen" : "Full screen"}
+              title={isFullscreen ? "Exit full screen (Esc)" : "Full screen"}
+            >
+              {isFullscreen ? (
+                <>
+                  <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M6 2v4H2M10 2v4h4M6 14v-4H2M10 14v-4h4" />
+                  </svg>
+                  <span>Exit full screen</span>
+                </>
+              ) : (
+                <>
+                  <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" />
+                  </svg>
+                  <span>Full screen</span>
+                </>
+              )}
             </button>
           )}
         </div>

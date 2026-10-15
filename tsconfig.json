@@ -31,16 +31,20 @@
   "include": [
     "**/*.ts",
     "**/*.tsx",
+    ".next-health/types/**/*.ts",
     ".next-memtest-prod/types/**/*.ts",
     ".next-memtest-tp/types/**/*.ts",
     ".next-memtest-wp/types/**/*.ts",
+    ".next-perf-rims/types/**/*.ts",
+    ".next-perf/types/**/*.ts",
     ".next-preview/types/**/*.ts",
     ".next-responsive/types/**/*.ts",
+    ".next-twinperf/types/**/*.ts",
     ".next-verify-97703c/types/**/*.ts",
     ".next-verify-build/types/**/*.ts",
     ".next/types/**/*.ts",
     "next-env.d.ts",
-    ".next-health/types/**/*.ts"
+    ".next-dev-rims/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

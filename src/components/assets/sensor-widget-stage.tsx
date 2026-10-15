@@ -113,13 +113,32 @@ function pack(ideals: number[], widths: number[], gap: number, total: number): n
   return x;
 }
 
-function layoutStage(width: number, clusters: Cluster[], aspect: number, detailed: boolean, fit: boolean) {
-  const maxH = detailed ? 390 : 430;
-  // `fit`: the drawing takes its own proportions edge to edge (no letterbox, no cap).
-  const dh = fit ? Math.round(width / aspect) : Math.round(Math.min(width / Math.max(aspect, 1.85), maxH));
-  const dw = width;
-  const dx = 0;
-  const span = (list: Cluster[]) => list.reduce((a, c) => a + c.width, 0) + CLUSTER_GAP * Math.max(0, list.length - 1);
+function layoutStage(
+  width: number,
+  clusters: Cluster[],
+  aspect: number,
+  detailed: boolean,
+  fit: boolean,
+  compact: boolean,
+  maxDrawingHeight?: number,
+) {
+  const defaultMaxH = detailed ? (compact ? 210 : 390) : 430;
+  const maxH = maxDrawingHeight ?? defaultMaxH;
+  const safeAspect = Math.max(aspect, 0.5);
+  const naturalH = Math.round(width / safeAspect);
+  const dh =
+    maxDrawingHeight != null || compact
+      ? Math.min(naturalH, maxH)
+      : fit
+        ? naturalH
+        : Math.round(Math.min(width / Math.max(aspect, 1.85), maxH));
+  const dw = dh < naturalH ? Math.min(width, Math.round(dh * safeAspect)) : width;
+  const dx = Math.round((width - dw) / 2);
+  const clusterGap = compact ? 10 : CLUSTER_GAP;
+  const minW = compact ? 132 : detailed ? 160 : CARD_W;
+  const minSpan = (list: Cluster[]) =>
+    list.reduce((a, c) => a + c.cols * minW + Math.max(0, c.cols - 1) * CARD_GAP, 0) +
+    clusterGap * Math.max(0, list.length - 1);
 
   const byV = [...clusters].sort((a, b) => a.v - b.v || a.u - b.u);
   let nTop = byV.filter((c) => c.v < 0.5).length;
@@ -132,11 +151,13 @@ function layoutStage(width: number, clusters: Cluster[], aspect: number, detaile
     } else {
       nTop = Math.ceil(clusters.length / 2);
     }
-  } else if (span(clusters) > width || nTop === 0 || nTop === clusters.length) {
-    const half = span(clusters) / 2;
+  } else if (minSpan(clusters) > width || nTop === 0 || nTop === clusters.length) {
+    const half = minSpan(clusters) / 2;
     let acc = 0;
     nTop = 0;
-    while (nTop < byV.length && acc + byV[nTop].width / 2 < half) acc += byV[nTop++].width + CLUSTER_GAP;
+    while (nTop < byV.length && acc + (byV[nTop].cols * minW) / 2 < half) {
+      acc += byV[nTop++].cols * minW + clusterGap;
+    }
     if (clusters.length >= 2) {
       nTop = Math.min(Math.max(1, nTop), clusters.length - 1);
     }
@@ -145,16 +166,18 @@ function layoutStage(width: number, clusters: Cluster[], aspect: number, detaile
   const rowsOf = (list: Cluster[]): PlacedRow[] => {
     if (list.length === 0) return [];
     const sorted = [...list].sort((a, b) => a.u - b.u);
-    const nRows = Math.max(1, Math.ceil(span(sorted) / width));
-    const target = span(sorted) / nRows;
+    const totalMin = minSpan(sorted);
+    const nRows = Math.max(1, Math.ceil(totalMin / width));
+    const target = totalMin / nRows;
     const rows: Cluster[][] = [[]];
     let acc = 0;
     for (const c of sorted) {
+      const cMinW = c.cols * minW + Math.max(0, c.cols - 1) * CARD_GAP;
       const row = rows[rows.length - 1];
-      const next = acc + (row.length ? CLUSTER_GAP : 0) + c.width;
-      if (row.length && (next > width || (next > target + c.width / 2 && rows.length < nRows))) {
+      const next = acc + (row.length ? clusterGap : 0) + cMinW;
+      if (row.length && (next > width || (next > target + cMinW / 2 && rows.length < nRows))) {
         rows.push([c]);
-        acc = c.width;
+        acc = cMinW;
       } else {
         row.push(c);
         acc = next;
@@ -164,10 +187,9 @@ function layoutStage(width: number, clusters: Cluster[], aspect: number, detaile
       // Expand cards proportionally when a row has spare horizontal room so there is no dead side space.
       const totalCols = row.reduce((sum, c) => sum + c.cols, 0);
       const totalInternalGaps = row.reduce((sum, c) => sum + Math.max(0, c.cols - 1) * CARD_GAP, 0);
-      const totalClusterGaps = Math.max(0, row.length - 1) * CLUSTER_GAP;
+      const totalClusterGaps = Math.max(0, row.length - 1) * clusterGap;
       const availForCards = width - totalInternalGaps - totalClusterGaps;
-      const minW = detailed ? 184 : CARD_W;
-      const maxW = detailed ? 360 : 230;
+      const maxW = detailed ? (compact ? 260 : 360) : 230;
       const adaptiveCardW = Math.min(maxW, Math.max(minW, Math.floor(availForCards / Math.max(1, totalCols))));
 
       const sizedRow = row.map((c) => ({
@@ -186,7 +208,7 @@ function layoutStage(width: number, clusters: Cluster[], aspect: number, detaile
       const xs = pack(
         ideals,
         sizedRow.map((c) => c.width),
-        CLUSTER_GAP,
+        clusterGap,
         width
       );
       return { clusters: sizedRow.map((cluster, i) => ({ cluster, x: xs[i] })) };
@@ -208,10 +230,16 @@ export function SensorWidgetStage({
   onToggle,
   limitOf,
   fitDrawing = false,
+  compact = false,
+  maxDrawingHeight,
 }: {
   sensors: DetailedSensorInfo[];
   /** Size the drawing box to `aspect` at the full stage width (no height cap), so the drawing has no empty margin. */
   fitDrawing?: boolean;
+  /** Compact single-screen mode: tighter cards and bounded drawing height so the component fits in one screen. */
+  compact?: boolean;
+  /** Optional explicit max height (px) for the drawing area. */
+  maxDrawingHeight?: number;
   /** Engine limit per tag for live machines, so band limits draw both sides. */
   limitOf?: (tag: string) => LimitRule | null | undefined;
   /** Drawing width / height. */
@@ -289,8 +317,8 @@ export function SensorWidgetStage({
   }, [sensors, positionOf, groups, cardW]);
 
   const stage = useMemo(
-    () => (width >= STAGE_MIN_W ? layoutStage(width, clusters, aspect, detailed, fitDrawing) : null),
-    [width, clusters, aspect, detailed, fitDrawing]
+    () => (width >= STAGE_MIN_W ? layoutStage(width, clusters, aspect, detailed, fitDrawing, compact, maxDrawingHeight) : null),
+    [width, clusters, aspect, detailed, fitDrawing, compact, maxDrawingHeight]
   );
 
   const hot = hover ?? selectedTag;
@@ -464,7 +492,7 @@ export function SensorWidgetStage({
     );
 
   return (
-    <div ref={ref} className="ast-smw-stage" data-hot={hot ? "" : undefined}>
+    <div ref={ref} className="ast-smw-stage" data-hot={hot ? "" : undefined} data-compact={compact || undefined}>
       {stage ? (
         <>
           {leaders.length > 0 && (

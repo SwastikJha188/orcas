@@ -160,10 +160,9 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -171,10 +170,12 @@
 }
 
 .pg-frame-kpi-value {
+  font-family: var(--font-mono);
   font-size: var(--fs-6xl);
-  font-weight: 500;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   line-height: 1.1;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   color: var(--dx-ink, var(--page-fg));
   white-space: nowrap;
   overflow: hidden;
@@ -186,6 +187,7 @@
 }
 
 .pg-frame-kpi-unit {
+  font-family: var(--font-ui);
   margin-left: 4px;
   font-size: var(--fs-md);
   font-weight: 400;
@@ -575,16 +577,16 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--text-muted);
 }
 
 .pg-analysis-fact-value {
+  font-family: var(--font-mono);
   font-size: var(--fs-5xl);
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.15;
   color: var(--dx-ink);
   font-variant-numeric: tabular-nums;
@@ -592,10 +594,12 @@
 }
 
 .pg-analysis-fact-value .ast-unit {
+  font-family: var(--font-ui);
   font-size: var(--fs-md);
 }
 
 .pg-analysis-fact-text {
+  font-family: var(--font-ui);
   font-size: var(--fs-lg);
   line-height: 1.3;
 }
@@ -671,6 +675,7 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
+  transition: none;
 }
 
 .pg-analysis-chain-node:hover:not(:disabled) {
@@ -687,8 +692,7 @@
   gap: 6px;
   font-size: var(--fs-xs);
   font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--text-muted);
 }
 

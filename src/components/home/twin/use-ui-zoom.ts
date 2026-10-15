@@ -13,9 +13,11 @@ export function readUiZoom(): number {
 /**
  * Renderer pixel ratio for a three.js canvas under the TV zoom. The canvas is
  * laid out in CSS px and then magnified by `zoom`, so its drawing buffer must
- * scale by the same factor to stay crisp.
+ * scale by the same factor to stay crisp. Capped at 2, not below: a buffer
+ * smaller than a Retina screen is upscaled by the browser, and its 1 px edge
+ * lines resample unevenly and shimmer while the camera moves.
  */
-export function useTwinDpr(max = 1.75): number {
+export function useTwinDpr(max = 2): number {
   const [dpr, setDpr] = useState(1);
   useEffect(() => {
     const update = () => setDpr(Math.min(window.devicePixelRatio || 1, max) * readUiZoom());

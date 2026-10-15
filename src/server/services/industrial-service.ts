@@ -50,14 +50,10 @@ async function checkAndSeed(): Promise<boolean> {
     }
     return true;
   } catch (err) {
-    console.warn("Database check triggered 3NF seed attempt:", err);
-    try {
-      await seedDatabase();
-      return true;
-    } catch (seedErr) {
-      console.error("Auto-seed error:", seedErr);
-      return false;
-    }
+    // A failed check (timeout, lock wait, network) is not an empty database:
+    // seeding starts with TRUNCATE, so never seed on an error. Retry next read.
+    console.warn("Database seed check failed; not seeding:", err instanceof Error ? err.message : err);
+    return false;
   }
 }
 

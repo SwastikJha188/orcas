@@ -25,6 +25,9 @@ type LiveCell = Pick<SimFrame, "overall" | "condition">;
 export type KilnLiveStatus = { frame: LiveCell; byMachine: Record<string, LiveCell> };
 const KilnStatusContext = createContext<KilnLiveStatus | null>(null);
 
+/** True while the live engines are still being built (about a second after the app mounts). */
+const LiveStartingContext = createContext(false);
+
 /** Primary machine of the kiln-seal plant. Plant-aware code uses `usePrimaryMachineId()`. */
 export const PRIMARY_KILN_ID = "KLN-01";
 /** Primary machine of the pyro line. */
@@ -54,7 +57,9 @@ export function KilnSimulationProvider({ children }: { children: React.ReactNode
   const key = Object.entries(fleet)
     .map(([id, s]) => `${id}:${s.frame.overall}:${s.frame.condition}`)
     .join("|");
-  const status = useMemo<KilnLiveStatus>(() => {
+  const status = useMemo<KilnLiveStatus | null>(() => {
+    // No live status until the engines are built: pages show their stored health meanwhile.
+    if (!key) return null;
     const byMachine: Record<string, LiveCell> = {};
     for (const [id, s] of Object.entries(fleet)) byMachine[id] = { overall: s.frame.overall, condition: s.frame.condition };
     return { frame: byMachine[primaryId], byMachine };
@@ -65,7 +70,9 @@ export function KilnSimulationProvider({ children }: { children: React.ReactNode
     <PrimaryMachineContext.Provider value={primaryId}>
       <KilnFleetContext.Provider value={fleet}>
         <KilnSimulationContext.Provider value={primary}>
-          <KilnStatusContext.Provider value={status}>{children}</KilnStatusContext.Provider>
+          <KilnStatusContext.Provider value={status}>
+            <LiveStartingContext.Provider value={status === null}>{children}</LiveStartingContext.Provider>
+          </KilnStatusContext.Provider>
         </KilnSimulationContext.Provider>
       </KilnFleetContext.Provider>
     </PrimaryMachineContext.Provider>
@@ -101,6 +108,15 @@ export function useKilnSimulationFor(machineId: string | null | undefined): Kiln
 /** Live kiln health / condition, or `null` outside the provider. Re-renders only on change. */
 export function useKilnLiveStatus(): KilnLiveStatus | null {
   return useContext(KilnStatusContext);
+}
+
+/**
+ * True during the second or so after the app mounts while the live plant is
+ * still being built (off the main thread). Live hooks return `null` / `{}`
+ * meanwhile; a page that would otherwise say "no live data" can say so.
+ */
+export function useLivePlantStarting(): boolean {
+  return useContext(LiveStartingContext);
 }
 
 /** True for the kiln-seal fleet (`KILN_FLEET`) only. Use `isLiveMachine` for "has a live engine". */

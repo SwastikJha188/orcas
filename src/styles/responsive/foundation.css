@@ -95,16 +95,19 @@
   :root .brand-btn { flex: none; }
   :root .cp-topbar-actions { min-width: 0; gap: 0; }
 
-  /* Context switchers: icon-less, truncated, no separator. */
-  :root .ctx-switchers { margin-inline-end: 2px; gap: 4px; min-width: 0; }
-  :root .ctx-sep,
-  :root .ctx-trigger-icon { display: none; }
-  :root .ctx-trigger {
-    max-inline-size: 30vw;
-    padding: 0 10px;
-    gap: 5px;
-    font-size: var(--fs-sm);
+  /* Context switchers inside sidebar rail stay icon-only. */
+  :root .nav-rail .ctx-switchers {
+    flex-direction: row;
+    margin-inline-end: 0;
+    gap: 2px;
   }
+  :root .nav-rail .ctx-trigger {
+    inline-size: 36px;
+    block-size: 36px;
+    max-inline-size: 36px;
+    padding: 0;
+  }
+  :root .nav-rail .ctx-trigger-icon { display: inline-flex; }
 
   /* Menus become bottom sheets above the tab bar. */
   :root .ctx-menu {
@@ -130,14 +133,20 @@
     grid-column: 1;
     grid-row: 3;
     flex-direction: row;
-    align-items: stretch;
+    align-items: center;
     justify-content: space-around;
     gap: 2px;
     padding: 4px 6px env(safe-area-inset-bottom, 0px);
     border-top: 1px solid var(--separator);
     background: var(--topbar-bg);
+    overflow-x: auto;
   }
   :root .nav-rail-group { display: contents; }
+  :root .nav-rail-footer {
+    flex-direction: row;
+    margin-top: 0;
+    gap: 2px;
+  }
   :root .rail-divider { display: none; }
   :root .rail-btn {
     flex: 1 1 0;

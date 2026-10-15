@@ -20,7 +20,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  createSim,
   performAction as enginePerformAction,
   setAutopilot as engineSetAutopilot,
   setProfile as engineSetProfile,
@@ -30,23 +29,34 @@ import {
   stepSim,
   type OperatorAction,
   type SimFrame,
-  type SimState,
   type StoryPhase,
   type StoryProfile,
 } from "@/lib/kiln-sim/engine";
 import { KILN_SCENARIOS, scenarioById, type KilnScenario } from "@/lib/kiln-sim/scenarios";
 import { KILN_FLEET } from "@/lib/kiln-sim/fleet";
 import {
-  createLine,
+  LIVE_SIM_SETTINGS,
+  clearEvent as lineClearEvent,
+  clearEvents as lineClearEvents,
+  injectEvent as lineInjectEvent,
+  injectSignalFault as lineInjectSignalFault,
   performAction as linePerformAction,
+  raiseEvent as lineRaiseEvent,
   setAutopilot as lineSetAutopilot,
+  setLineSettings as lineSetSettings,
   setProfile as lineSetProfile,
   setScenario as lineSetScenario,
   stepLine,
+  type Injection,
+  type LineSimSettings,
   type LineState,
+  type SignalFaultSpec,
 } from "@/lib/pyro-sim/engine";
-import { PYRO_FLEET, PYRO_LINE_SEED } from "@/lib/pyro-sim/fleet";
+import { PYRO_FLEET } from "@/lib/pyro-sim/fleet";
 import { recordFrames } from "@/lib/condition-report";
+import { flushHealth, recordHealth } from "@/lib/health-recorder";
+import { finishFleet, prerollFleet, type FleetEngines, type FleetSnapshot } from "@/lib/fleet-boot";
+import type { FleetBootRequest } from "@/lib/fleet-boot.worker";
 import { PYRO_SCENARIOS, pyroScenario } from "@/lib/pyro-sim/scenarios";
 import { PYRO_MACHINE_IDS } from "@/lib/pyro-sim/signals";
 
@@ -174,9 +184,6 @@ function toTimeSeries(frame: SimFrame): SealTimeSeriesPoint[] {
   return out;
 }
 
-/** Simulated minutes run before the first frame, so each kiln opens already in its condition. */
-const PRE_ROLL_MIN = 90;
-
 /** Real milliseconds per simulated minute at a speed (simulated minutes per tick). */
 const msPerMin = (speed: number) => TICK_MS / speed;
 
@@ -189,80 +196,118 @@ function anchorClock(tEnd: number, speed: number) {
   setWallClock(tEnd, Date.now(), msPerMin(speed));
 }
 
-/** The pyro line: one engine for all six machines, on the same clock and pre-roll as the kilns. */
-function createPyroLine(): LineState {
-  const line = createLine(PYRO_LINE_SEED);
-  for (const m of PYRO_FLEET) {
-    lineSetAutopilot(line, m.machineId, true);
-    lineSetProfile(line, m.machineId, m.profile);
-  }
-  anchorClock(line.t + PRE_ROLL_MIN, 1);
-  for (let i = 1; i < PRE_ROLL_MIN; i++) recordFrames(stepLine(line, false));
-  recordFrames(stepLine(line, true));
-  for (const ms of Object.values(line.machines)) {
-    ms.events = ms.events.filter((e) => e.kind !== "scenario" && !(e.kind === "action" && e.title.startsWith("Autopilot")));
-    if (ms.frame) ms.frame = { ...ms.frame, events: ms.events.slice() };
-  }
-  return line;
-}
-
 const isPyro = (id: string) => PYRO_MACHINE_IDS.has(id);
 
-function createFleet(): Record<string, SimState> {
-  const out: Record<string, SimState> = {};
-  for (const k of KILN_FLEET) {
-    const sim = createSim("healthy", k.seed);
-    engineSetAutopilot(sim, true);
-    engineSetProfile(sim, k.profile);
-    // All kilns run on one clock: the first frame lands on "now".
-    anchorClock(sim.t + PRE_ROLL_MIN, 1);
-    for (let i = 1; i < PRE_ROLL_MIN; i++) stepSim(sim, false);
-    stepSim(sim, true);
-    sim.events = sim.events.filter((e) => e.kind !== "scenario" && !(e.kind === "action" && e.title.startsWith("Autopilot")));
-    sim.frame = { ...sim.frame!, events: sim.events.slice() };
-    out[k.machineId] = sim;
-  }
-  return out;
+// The engines are built once per page, and React may discard a first render
+// (a lazy tab suspending, StrictMode), so they live here rather than in a ref.
+// Building them (warm-up + pre-roll) takes most of a second; a worker does
+// that so the page never freezes, and the last minute is stepped here so the
+// frames are this page's own. Until they arrive the fleet is empty and pages
+// show their non-live values, as they do outside the provider.
+let fleetEngines: FleetEngines | null = null;
+let fleetBoot: Promise<FleetEngines> | null = null;
+
+function bootFleet(): Promise<FleetEngines> {
+  return (fleetBoot ??= new Promise<FleetSnapshot>((resolve) => {
+    // All engines run on one clock: the first frame lands on "now".
+    const request: FleetBootRequest = { nowMs: Date.now(), msPerMin: msPerMin(1) };
+    const onMainThread = () => resolve(prerollFleet(request.nowMs, request.msPerMin));
+    let worker: Worker;
+    try {
+      worker = new Worker(new URL("../../lib/fleet-boot.worker.ts", import.meta.url));
+    } catch {
+      onMainThread();
+      return;
+    }
+    worker.onmessage = (e: MessageEvent<FleetSnapshot>) => {
+      worker.terminate();
+      resolve(e.data);
+    };
+    worker.onerror = () => {
+      worker.terminate();
+      onMainThread();
+    };
+    worker.postMessage(request);
+  }).then((snap) => (fleetEngines = finishFleet(snap, (tEnd) => anchorClock(tEnd, 1)))));
+}
+
+/** What the Simulation page shows of the line's demo layer: its knobs and the events layered on it. */
+export interface LineSimView {
+  t: number;
+  settings: LineSimSettings;
+  events: Injection[];
+  nextEventAt: number;
+}
+
+function lineView(line: LineState | undefined): LineSimView | null {
+  if (!line) return null;
+  return { t: line.t, settings: line.sim, events: line.injections.map((j) => ({ ...j })), nextEventAt: line.nextEventAt };
+}
+
+/** Hand every machine's health to the wall-clock recorder (Health over time reads it, not the per-minute frame history). */
+function recordFleetHealth(frames: Record<string, SimFrame>): void {
+  recordHealth(Object.fromEntries(Object.entries(frames).map(([id, f]) => [id, f.overall])));
+}
+
+function currentFrames(e: FleetEngines | null): Record<string, SimFrame> {
+  if (!e) return {};
+  return {
+    ...Object.fromEntries(Object.entries(e.sims).map(([id, sim]) => [id, sim.frame!])),
+    ...Object.fromEntries(Object.entries(e.line.machines).map(([id, ms]) => [id, ms.frame!])),
+  };
 }
 
 /**
  * Owns every kiln engine and advances them together, one simulated minute per
- * tick (several when fast-forwarding), with one state update per tick.
+ * tick (several when fast-forwarding), with one state update per tick. Empty
+ * until the engines are built (about a second after the first mount).
  */
 export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimulation> {
-  const simsRef = useRef<Record<string, SimState> | null>(null);
-  if (simsRef.current === null) simsRef.current = createFleet();
-  const lineRef = useRef<LineState | null>(null);
-  if (lineRef.current === null) lineRef.current = createPyroLine();
-
-  const [frames, setFrames] = useState<Record<string, SimFrame>>(() => ({
-    ...Object.fromEntries(Object.entries(simsRef.current!).map(([id, sim]) => [id, sim.frame!])),
-    ...Object.fromEntries(Object.entries(lineRef.current!.machines).map(([id, ms]) => [id, ms.frame!])),
-  }));
+  const [frames, setFrames] = useState<Record<string, SimFrame>>(() => currentFrames(fleetEngines));
+  const [ready, setReady] = useState(() => fleetEngines !== null);
+  useEffect(() => {
+    if (ready) return;
+    let mounted = true;
+    void bootFleet().then((e) => {
+      if (!mounted) return;
+      setFrames(currentFrames(e));
+      setReady(true);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [ready]);
+  const [lineSim, setLineSim] = useState<LineSimView | null>(() => lineView(fleetEngines?.line));
+  useEffect(() => {
+    if (ready) setLineSim(lineView(fleetEngines?.line));
+  }, [ready]);
   const [isPaused, setIsPaused] = useState(false);
   const [speedMultiplier, setSpeedMultiplier] = useState<number>(1);
   const [rotationAngle, setRotationAngle] = useState(0);
 
   /** Re-read the frames after an out-of-step change to one engine. */
   const refresh = useCallback((id: string) => {
-    const frame = isPyro(id) ? lineRef.current!.machines[id]?.frame : simsRef.current![id]?.frame;
+    const frame = isPyro(id) ? fleetEngines!.line.machines[id]?.frame : fleetEngines!.sims[id]?.frame;
     if (frame) setFrames((f) => ({ ...f, [id]: frame }));
+    if (isPyro(id)) setLineSim(lineView(fleetEngines!.line));
   }, []);
 
   useEffect(() => {
-    if (!enabled || isPaused) return;
+    if (!enabled || isPaused || !ready) return;
     const stepAll = (minutes: number) => {
       const next: Record<string, SimFrame> = {};
-      const sims = Object.values(simsRef.current!);
+      const sims = Object.values(fleetEngines!.sims);
       if (sims.length) anchorClock(sims[0].t + minutes, speedMultiplier);
-      for (const [id, sim] of Object.entries(simsRef.current!)) {
+      for (const [id, sim] of Object.entries(fleetEngines!.sims)) {
         for (let i = 1; i < minutes; i++) stepSim(sim, false);
         next[id] = stepSim(sim, true);
       }
-      const line = lineRef.current!;
+      const line = fleetEngines!.line;
       for (let i = 1; i < minutes; i++) recordFrames(stepLine(line, false));
       Object.assign(next, recordFrames(stepLine(line, true)));
       setFrames(next);
+      setLineSim(lineView(line));
+      recordFleetHealth(next);
     };
     // A hidden tab neither steps the plant nor re-renders; on return the
     // missed minutes are simulated in one go (capped) and drawn once.
@@ -283,21 +328,23 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
       if (missed >= 1) stepAll(missed);
     };
     document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", flushHealth);
     return () => {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", flushHealth);
     };
-  }, [enabled, isPaused, speedMultiplier]);
+  }, [enabled, isPaused, speedMultiplier, ready]);
 
   /** Manual scenario pick: switches that kiln's autopilot off. */
   const applyScenario = useCallback((id: string, scenarioId: string) => {
     if (isPyro(id)) {
-      lineSetAutopilot(lineRef.current!, id, false);
-      lineSetScenario(lineRef.current!, id, scenarioId);
+      lineSetAutopilot(fleetEngines!.line, id, false);
+      lineSetScenario(fleetEngines!.line, id, scenarioId);
       refresh(id);
       return;
     }
-    const sim = simsRef.current![id];
+    const sim = fleetEngines!.sims[id];
     if (!sim) return;
     engineSetAutopilot(sim, false);
     engineSetScenario(sim, scenarioId);
@@ -307,11 +354,11 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
 
   const setAutopilot = useCallback((id: string, on: boolean) => {
     if (isPyro(id)) {
-      lineSetAutopilot(lineRef.current!, id, on);
+      lineSetAutopilot(fleetEngines!.line, id, on);
       refresh(id);
       return;
     }
-    const sim = simsRef.current![id];
+    const sim = fleetEngines!.sims[id];
     if (!sim) return;
     engineSetAutopilot(sim, on);
     refresh(id);
@@ -319,11 +366,11 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
 
   const setProfile = useCallback((id: string, profile: StoryProfile) => {
     if (isPyro(id)) {
-      lineSetProfile(lineRef.current!, id, profile);
+      lineSetProfile(fleetEngines!.line, id, profile);
       refresh(id);
       return;
     }
-    const sim = simsRef.current![id];
+    const sim = fleetEngines!.sims[id];
     if (!sim) return;
     engineSetProfile(sim, profile);
     refresh(id);
@@ -332,11 +379,11 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
   /** Operator action on a finding: acknowledge (log only), mitigate (temporary relief) or repair (recover). */
   const performAction = useCallback((id: string, ruleId: string, kind: OperatorAction) => {
     if (isPyro(id)) {
-      linePerformAction(lineRef.current!, id, ruleId, kind);
+      linePerformAction(fleetEngines!.line, id, ruleId, kind);
       refresh(id);
       return;
     }
-    const sim = simsRef.current![id];
+    const sim = fleetEngines!.sims[id];
     if (!sim) return;
     enginePerformAction(sim, ruleId, kind);
     refresh(id);
@@ -347,29 +394,106 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
   speedRef.current = speedMultiplier;
   const advance = useCallback((minutes: number) => {
     const next: Record<string, SimFrame> = {};
-    const sims = Object.values(simsRef.current!);
+    const sims = Object.values(fleetEngines!.sims);
     if (sims.length) anchorClock(sims[0].t + minutes, speedRef.current);
-    for (const [id, sim] of Object.entries(simsRef.current!)) {
+    for (const [id, sim] of Object.entries(fleetEngines!.sims)) {
       for (let i = 1; i < minutes; i++) stepSim(sim, false);
       next[id] = stepSim(sim, true);
     }
-    const line = lineRef.current!;
+    const line = fleetEngines!.line;
     for (let i = 1; i < minutes; i++) recordFrames(stepLine(line, false));
     Object.assign(next, recordFrames(stepLine(line, true)));
     setFrames(next);
+    setLineSim(lineView(line));
+    recordFleetHealth(next);
   }, []);
 
+  /* ---------------- pyro line demo layer (events, noise, health drift) ---------------- */
+
+  /** Re-read every pyro frame and the line view after a change to the line. */
+  const refreshLine = useCallback(() => {
+    const line = fleetEngines!.line;
+    setFrames((f) => ({ ...f, ...Object.fromEntries(Object.entries(line.machines).map(([id, ms]) => [id, ms.frame!])) }));
+    setLineSim(lineView(line));
+  }, []);
+
+  const line = useMemo<LineControls>(
+    () => ({
+      setSettings: (patch) => {
+        lineSetSettings(fleetEngines!.line, patch);
+        refreshLine();
+      },
+      resetSettings: () => {
+        lineSetSettings(fleetEngines!.line, { ...LIVE_SIM_SETTINGS, machines: Object.fromEntries(PYRO_FLEET.map((m) => [m.machineId, true])) });
+        refreshLine();
+      },
+      inject: (machine, scenarioId) => {
+        lineInjectEvent(fleetEngines!.line, machine, scenarioId);
+        refreshLine();
+      },
+      raise: (kind, machine) => {
+        lineRaiseEvent(fleetEngines!.line, kind, machine);
+        refreshLine();
+      },
+      burst: (n) => {
+        const l = fleetEngines!.line;
+        for (let i = 0; i < n; i++) lineRaiseEvent(l, l.rand() < l.sim.sensorShare ? "sensor" : "fault");
+        refreshLine();
+      },
+      signalFault: (spec) => {
+        lineInjectSignalFault(fleetEngines!.line, spec);
+        refreshLine();
+      },
+      clear: (id) => {
+        lineClearEvent(fleetEngines!.line, id);
+        refreshLine();
+      },
+      clearAll: (machine) => {
+        lineClearEvents(fleetEngines!.line, machine);
+        refreshLine();
+      },
+      setAllProfiles: (profile) => {
+        const l = fleetEngines!.line;
+        for (const id of Object.keys(l.machines)) {
+          lineSetAutopilot(l, id, true);
+          lineSetProfile(l, id, profile);
+        }
+        refreshLine();
+      },
+      restoreMix: () => {
+        const l = fleetEngines!.line;
+        for (const m of PYRO_FLEET) {
+          lineSetAutopilot(l, m.machineId, true);
+          lineSetProfile(l, m.machineId, m.profile);
+        }
+        refreshLine();
+      },
+      repairAll: () => {
+        const l = fleetEngines!.line;
+        lineClearEvents(l);
+        for (const [id, ms] of Object.entries(l.machines)) {
+          const sc = pyroScenario(id, ms.scenarioId);
+          if (sc.expected.length) linePerformAction(l, id, sc.expected[0], "repair");
+        }
+        refreshLine();
+      },
+    }),
+    [refreshLine],
+  );
+
   const controls = useMemo(
-    () => ({ applyScenario, setAutopilot, setProfile, performAction, advance, setIsPaused, setSpeedMultiplier }),
-    [applyScenario, setAutopilot, setProfile, performAction, advance],
+    () => ({ applyScenario, setAutopilot, setProfile, performAction, advance, setIsPaused, setSpeedMultiplier, line }),
+    [applyScenario, setAutopilot, setProfile, performAction, advance, line],
   );
 
   return useMemo(
     () =>
       Object.fromEntries(
-        [...KILN_FLEET, ...PYRO_FLEET].map((k) => [k.machineId, buildSimulation(k.machineId, frames[k.machineId], rotationAngle, isPaused, speedMultiplier, controls)]),
+        [...KILN_FLEET, ...PYRO_FLEET]
+          .filter((k) => frames[k.machineId])
+          .map((k) => [k.machineId, buildSimulation(k.machineId, frames[k.machineId], rotationAngle, isPaused, speedMultiplier, controls, lineSim)]),
       ),
-    [frames, rotationAngle, isPaused, speedMultiplier, controls],
+    [frames, rotationAngle, isPaused, speedMultiplier, controls, lineSim],
   );
 }
 
@@ -381,7 +505,30 @@ type FleetControls = {
   advance: (minutes: number) => void;
   setIsPaused: (paused: boolean) => void;
   setSpeedMultiplier: (speed: number) => void;
+  line: LineControls;
 };
+
+/** Plant-wide controls of the pyro line's demo layer (Simulation page). */
+export interface LineControls {
+  setSettings: (patch: Partial<LineSimSettings>) => void;
+  /** Back to the live demo defaults, every machine allowed. */
+  resetSettings: () => void;
+  /** Run a library scenario on a machine as an event (time-compressed to its alerting point). */
+  inject: (machine: string, scenarioId: string) => void;
+  /** Raise one generated event now, on `machine` or the least busy one. */
+  raise: (kind: "sensor" | "fault", machine?: string) => void;
+  /** Raise `n` generated events at once. */
+  burst: (n: number) => void;
+  signalFault: (spec: SignalFaultSpec) => void;
+  clear: (id: number) => void;
+  clearAll: (machine?: string) => void;
+  /** Autopilot on every machine, held at `profile`. */
+  setAllProfiles: (profile: StoryProfile) => void;
+  /** The demo mix of `PYRO_FLEET` (healthy / advisory / critical machines). */
+  restoreMix: () => void;
+  /** Clear every event and repair every machine's own fault. */
+  repairAll: () => void;
+}
 
 /** One kiln's view of the fleet: its frame plus controls bound to it. Clock and speed are fleet-wide. */
 function buildSimulation(
@@ -391,6 +538,7 @@ function buildSimulation(
   isPaused: boolean,
   speedMultiplier: number,
   c: FleetControls,
+  lineSim: LineSimView | null,
 ) {
   // Pyro scenarios share the kiln scenario shape (driver names differ, which no page reads).
   const pyro = isPyro(machineId);
@@ -420,6 +568,8 @@ function buildSimulation(
     speedMultiplier,
     setSpeedMultiplier: c.setSpeedMultiplier,
     rotationAngle,
+    /** The pyro line's demo layer (events, noise, health drift); null on the kiln-seal fleet. */
+    line: pyro && lineSim ? { ...lineSim, ...c.line } : null,
     get sensorData() {
       return (_sensorData ??= toSensorData(frame, rotationAngle));
     },

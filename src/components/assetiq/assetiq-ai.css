@@ -70,10 +70,12 @@
 }
 
 .aiq-model-num {
+  font-family: var(--font-mono);
   font-size: var(--fs-6xl);
   font-weight: 500;
   line-height: 1.1;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
   color: var(--dx-ink);
 }
 
@@ -101,7 +103,9 @@
 
 .aiq-model-meta dd {
   margin: 2px 0 0;
+  font-family: var(--font-mono);
   font-size: var(--fs-base);
+  font-variant-numeric: tabular-nums;
   color: var(--dx-ink);
 }
 
@@ -165,6 +169,8 @@
 }
 
 .aiq-ticker-time {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   color: var(--text-muted);
 }
 
@@ -215,8 +221,10 @@
 }
 
 .aiq-hist-tick {
+  font-family: var(--font-mono);
   fill: var(--text-muted);
   font-size: var(--fs-2xs);
+  font-variant-numeric: tabular-nums;
 }
 
 .aiq-learn {
@@ -234,8 +242,10 @@
 }
 
 .aiq-learn-pct {
+  font-family: var(--font-mono);
   color: var(--dx-ink);
   font-size: var(--fs-base);
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 1280px) {

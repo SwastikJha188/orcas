@@ -1,0 +1,689 @@
+/* ==========================================================================
+   Machine › Maintenance. Prefix: mt-  ·  Builds on assets-shell.css (ast-*)
+   and analysis-page.css (pg-frame / sections). Semantic tokens only.
+   Layout: rounds list (left) · round sheet with checkpoints (right).
+   ========================================================================== */
+
+.mt-rounds {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+/* ---- progress bar ---- */
+
+.mt-bar {
+  position: relative;
+  display: block;
+  flex: 1;
+  height: 4px;
+  min-width: 48px;
+  border-radius: var(--corner-pill);
+  background: var(--separator);
+  overflow: hidden;
+}
+
+.mt-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--dx-ink);
+  opacity: 0.85;
+  transition: width 0.3s ease;
+}
+
+.mt-bar.is-wide {
+  height: 6px;
+  min-width: 160px;
+}
+
+/* ---- rounds list ---- */
+
+.mt-round-list {
+  padding: 8px;
+  position: sticky;
+  top: 12px;
+}
+
+.mt-round-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mt-round-list li + li {
+  border-top: 1px solid var(--separator);
+}
+
+.mt-round-list li:first-child {
+  margin-bottom: 4px;
+}
+
+.mt-round {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--corner-row);
+  background: transparent;
+  color: var(--page-fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.mt-round:hover {
+  background: var(--row-hover-bg);
+}
+
+.mt-round.active {
+  background: var(--pill-active-bg);
+}
+
+.mt-round:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: -2px;
+}
+
+.mt-round-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mt-round-name {
+  font-size: var(--fs-md);
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+.mt-round-status {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.mt-round-status[data-tone] {
+  color: var(--tone);
+  font-weight: 500;
+}
+
+.mt-round-basis {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.mt-round-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+/* ---- round sheet ---- */
+
+.mt-sheet {
+  padding: 16px 8px 8px;
+  min-width: 0;
+}
+
+.mt-sheet-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 24px;
+  padding: 0 12px 12px;
+}
+
+.mt-sheet-title h3 {
+  margin: 0 0 2px;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+.mt-sheet-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mt-sheet-count {
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--dx-ink);
+  white-space: nowrap;
+}
+
+.mt-sheet-count span {
+  font-size: var(--fs-md);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.mt-sheet-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 12px 8px;
+  border-bottom: 1px solid var(--separator);
+}
+
+/* ---- assemblies ---- */
+
+.mt-assembly + .mt-assembly {
+  margin-top: 4px;
+}
+
+.mt-assembly-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 14px 12px 6px;
+}
+
+.mt-assembly-name {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--dx-ink);
+}
+
+.mt-assembly-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.mt-checkpoints {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* ---- checkpoint ---- */
+
+.mt-cp {
+  border-top: 1px solid var(--separator);
+}
+
+.mt-cp-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 10px 12px;
+  border-radius: var(--corner-row);
+  transition: background 0.15s ease;
+}
+
+.mt-cp-row:hover,
+.mt-cp.is-expanded > .mt-cp-row {
+  background: var(--row-hover-bg);
+}
+
+.mt-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 50%;
+  border: 1.5px solid var(--separator);
+  color: var(--dx-ink);
+}
+
+.mt-mark.is-set {
+  border-color: color-mix(in srgb, var(--dx-ink) 35%, transparent);
+}
+
+.mt-mark.is-dashed {
+  border-style: dashed;
+}
+
+.mt-mark[data-tone] {
+  color: var(--tone);
+  border-color: color-mix(in srgb, var(--tone) 55%, transparent);
+  background: color-mix(in srgb, var(--tone) 12%, transparent);
+}
+
+.mt-cp-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mt-cp-main:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.mt-cp-title {
+  font-size: var(--fs-md);
+  font-weight: 500;
+  color: var(--dx-ink);
+  line-height: 1.35;
+}
+
+.mt-cp-tag {
+  margin-right: 8px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.mt-cp-check {
+  font-size: var(--fs-md);
+  color: var(--page-fg);
+  line-height: 1.45;
+}
+
+.mt-cp-check .mt-step-label {
+  display: inline;
+  margin-right: 6px;
+}
+
+.mt-cp-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.mt-cp-meta > span + span::before {
+  content: "·";
+  margin: 0 6px;
+  color: var(--text-muted);
+}
+
+.mt-cp-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.mt-cp-mode svg {
+  margin-right: 2px;
+}
+
+.mt-cp-last[data-tone] {
+  color: var(--tone);
+}
+
+.mt-cp-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mt-cp-chevron {
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.mt-cp-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+/* ---- checkbox: the one primary action on a row ---- */
+
+.mt-check {
+  position: relative;
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+}
+
+.mt-check input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+
+.mt-check span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--corner-sm);
+  border: 1.5px solid color-mix(in srgb, var(--text-muted) 70%, transparent);
+  color: transparent;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.mt-check:hover span {
+  border-color: var(--dx-ink);
+}
+
+.mt-check input:checked + span {
+  background: var(--btn-primary-bg);
+  border-color: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
+}
+
+.mt-check input:focus-visible + span {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 2px;
+}
+
+.mt-check input:disabled {
+  cursor: not-allowed;
+}
+
+.mt-check input:disabled:not(:checked) + span {
+  border-style: dashed;
+  opacity: 0.6;
+}
+
+/* Done rows step back so what is left stands out. */
+.mt-cp.is-done .mt-cp-title,
+.mt-cp.is-done .mt-cp-check {
+  color: var(--text-muted);
+}
+
+.mt-cp-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--corner-pill);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.mt-cp-more:hover {
+  background: var(--hover-faint);
+  color: var(--dx-ink);
+}
+
+.mt-cp-more:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 1px;
+}
+
+.mt-notice {
+  padding: 8px 12px 0;
+}
+
+.mt-notice .ui-form-note {
+  margin: 0;
+}
+
+/* ---- report a problem (detail) ---- */
+
+.mt-report {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mt-report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mt-report-btn[data-result="Hold"][aria-pressed="true"] {
+  color: var(--status-warning);
+  background: color-mix(in srgb, var(--status-warning) 14%, transparent);
+}
+
+.mt-report-btn[data-result="Defect"][aria-pressed="true"] {
+  color: var(--status-danger);
+  background: color-mix(in srgb, var(--status-danger) 14%, transparent);
+}
+
+.mt-detail-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--separator);
+}
+
+.mt-remove {
+  margin-left: auto;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.mt-remove:hover {
+  color: var(--status-danger);
+}
+
+.mt-remove:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.mt-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  font-size: var(--fs-sm);
+  color: var(--page-fg);
+}
+
+/* ---- removed items ---- */
+
+.mt-removed {
+  margin-top: 8px;
+  padding: 8px 12px 4px;
+  border-top: 1px solid var(--separator);
+}
+
+.mt-removed-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.mt-removed-toggle:hover {
+  color: var(--dx-ink);
+}
+
+.mt-removed-toggle:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.mt-removed ul {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.mt-removed li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--separator);
+}
+
+.mt-removed-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* ---- inline note form + detail ---- */
+
+.mt-cp-form,
+.mt-cp-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 12px 14px 46px;
+}
+
+.mt-cp-form .ui-form-note,
+.mt-cp-detail .ui-form-note {
+  margin: 0;
+}
+
+.mt-note {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 640px;
+}
+
+.mt-note-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mt-step-label {
+  display: block;
+  font-size: var(--fs-xs, 11px);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text-muted);
+}
+
+.mt-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px 24px;
+}
+
+.mt-step p {
+  margin: 4px 0 0;
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  color: var(--page-fg);
+}
+
+.mt-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 16px;
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+.mt-facts dt {
+  color: var(--text-muted);
+}
+
+.mt-facts dd {
+  margin: 0;
+  color: var(--page-fg);
+}
+
+.mt-history ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mt-history li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.mt-history li p {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: var(--fs-md);
+  color: var(--page-fg);
+  line-height: 1.45;
+}
+
+@media (max-width: 720px) {
+  .mt-cp-row {
+    grid-template-columns: 22px minmax(0, 1fr);
+  }
+
+  .mt-cp-side {
+    grid-column: 2;
+  }
+
+  .mt-cp-form,
+  .mt-cp-detail {
+    padding-left: 12px;
+  }
+}
+
+@media (max-width: 960px) {
+  .mt-rounds {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Rounds become a horizontal strip above the sheet. */
+  .mt-round-list {
+    position: static;
+    overflow-x: auto;
+  }
+
+  .mt-round-list ul {
+    flex-direction: row;
+  }
+
+  .mt-round-list li {
+    flex: 0 0 200px;
+    margin: 0;
+    border-top: 0;
+  }
+}

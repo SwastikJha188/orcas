@@ -66,6 +66,8 @@
 }
 
 .pg-cfg-bar-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   text-align: right;
   color: var(--dx-ink);
 }
@@ -140,6 +142,8 @@
 
 .pg-cfg-db-facts dd {
   margin: 2px 0 0;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   color: var(--dx-ink);
 }
 

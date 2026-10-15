@@ -1,6 +1,6 @@
 "use client";
 
-import { type ComponentType } from "react";
+import { useMemo, type ComponentType } from "react";
 import {
   HomeIcon,
   AssetsIcon,
@@ -11,6 +11,7 @@ import {
 import { ThemeToggle } from "./theme-toggle";
 import { CopilotLauncher } from "./copilot/copilot";
 import { ContextSwitchers } from "./context-switchers";
+import { useEdge } from "@/providers/edge-context";
 
 export type WorkspaceTab = "home" | "assets" | "devices" | "assetiq" | "configure";
 
@@ -42,6 +43,46 @@ function RailButton({ id, label, Icon, active, onSelect }: { id: WorkspaceTab; l
   );
 }
 
+function GatewayNavbarStatus({ onSelectTab }: { onSelectTab?: (tab: WorkspaceTab) => void }) {
+  const { registry, snapshot, error } = useEdge();
+
+  const allActive = useMemo(() => {
+    if (!registry && !error) return true;
+    if (error || !registry || registry.gateways.length === 0) return false;
+    if (!registry.gateways.every((g) => g.enabled)) return false;
+
+    const liveByCode = new Map((snapshot?.gateways ?? []).map((g) => [g.gatewayId, g]));
+    const brokerStateById = new Map((snapshot?.brokers ?? []).map((b) => [b.brokerId, b.state]));
+    const brokerById = new Map(registry.brokers.map((b) => [b.id, b]));
+
+    for (const gw of registry.gateways) {
+      const live = liveByCode.get(gw.code);
+      if (live && live.state !== "ONLINE") return false;
+      if (gw.brokerId) {
+        const broker = brokerById.get(gw.brokerId);
+        const bState = brokerStateById.get(gw.brokerId);
+        if (broker?.enabled && bState && (bState === "offline" || bState === "reconnecting")) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }, [registry, snapshot, error]);
+
+  return (
+    <button
+      type="button"
+      className="navbar-gw-status"
+      data-active={allActive ? "true" : "false"}
+      onClick={() => onSelectTab?.("devices")}
+      title={allActive ? "All edge gateways are active — click to open Devices" : "One or more gateways are inactive — click to open Devices"}
+    >
+      <span className="navbar-gw-dot" aria-hidden="true" />
+      <span>All Gateways active</span>
+    </button>
+  );
+}
+
 export function LiquidGlassShell({ activeTab = "home", onSelectTab }: LiquidGlassShellProps) {
   return (
     <>
@@ -53,9 +94,7 @@ export function LiquidGlassShell({ activeTab = "home", onSelectTab }: LiquidGlas
           <img src="/brand/wordmark-light.png" alt="" className="brand-logo brand-logo-light" />
         </button>
         <div className="cp-topbar-actions">
-          <ContextSwitchers />
-          <CopilotLauncher />
-          <ThemeToggle />
+          <GatewayNavbarStatus onSelectTab={onSelectTab} />
         </div>
       </header>
 
@@ -68,6 +107,13 @@ export function LiquidGlassShell({ activeTab = "home", onSelectTab }: LiquidGlas
         <div className="rail-divider" />
         <div className="nav-rail-group">
           <RailButton id="configure" label="Configure" Icon={ConfigureIcon} active={activeTab === "configure"} onSelect={onSelectTab} />
+        </div>
+
+        <div className="nav-rail-footer">
+          <ContextSwitchers />
+          <div className="rail-divider" />
+          <CopilotLauncher />
+          <ThemeToggle />
         </div>
       </nav>
 

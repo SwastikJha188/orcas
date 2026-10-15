@@ -74,23 +74,40 @@ export interface RuntimeBrokerConfig {
 // ---------------------------------------------------------------- bootstrap
 // On globalThis, not module scope: Next compiles each route separately in dev,
 // so a module variable re-ran the whole schema on the first hit of every route.
-const globalForEdge = globalThis as typeof globalThis & { __orcasEdgeReady?: Promise<void> | null };
+const globalForEdge = globalThis as typeof globalThis & { __orcasEdgeReady?: Promise<void> | null; __orcasEdgeSync?: Promise<void> };
 
 /** Creates the edge tables on first use and seeds them from the plant data once. */
 export function ensureEdgeRegistry(): Promise<void> {
   globalForEdge.__orcasEdgeReady ??= (async () => {
     const before = await query<{ t: string | null }>("SELECT to_regclass('public.edge_gateways')::text AS t");
     const existed = before.rows[0]?.t !== null;
-    const init = await initDatabase();
-    if (!init.success) throw new Error(`edge schema: ${init.message}`);
-    await ensureBuiltInFormats();
-    await backfillCards();
-    if (!existed) await seedEdgeRegistry();
+    if (!existed) {
+      const init = await initDatabase();
+      if (!init.success) throw new Error(`edge schema: ${init.message}`);
+      await ensureBuiltInFormats();
+      await backfillCards();
+      await seedEdgeRegistry();
+      return;
+    }
+    // Tables exist: bring the schema up to date in the background, so no read
+    // waits for DDL (or for another server's locks) on a cold start.
+    globalForEdge.__orcasEdgeSync = (async () => {
+      const init = await initDatabase();
+      if (!init.success) return;
+      await ensureBuiltInFormats();
+      await backfillCards();
+    })().catch((err) => console.error("[edge] background schema sync failed:", (err as Error).message));
   })().catch((err) => {
     globalForEdge.__orcasEdgeReady = null;
     throw err;
   });
   return globalForEdge.__orcasEdgeReady;
+}
+
+/** Resolves once this process's background schema sync (if any) has finished. */
+export async function edgeSchemaSynced(): Promise<void> {
+  await ensureEdgeRegistry();
+  await globalForEdge.__orcasEdgeSync;
 }
 
 /** The ULTRON contract is always present as a read-only format row. */

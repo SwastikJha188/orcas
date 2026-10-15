@@ -182,15 +182,6 @@
   :root .pg-ov-body > #ov-areas {
     grid-column: 2;
   }
-  :root .pg-ov-machine {
-    grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
-  }
-  :root .pg-ov-groups {
-    max-height: 640px;
-  }
-  :root .pg-ov-canvas {
-    min-height: 420px;
-  }
   :root .pg-ov-areas .pg-ov-detail {
     max-width: 240px;
   }

@@ -11,8 +11,7 @@
 .pg-rack-kicker {
   font-size: var(--fs-sm);
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--text-muted);
 }
 
@@ -57,19 +56,20 @@
   align-items: center;
   height: 24px;
   padding: 0 10px;
-  border: 0;
-  border-radius: var(--corner-pill);
-  background: var(--hover-faint);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
   color: var(--page-fg);
   font: inherit;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs);
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.12s ease;
+  transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
 }
 
 .pg-rack-link:hover {
   background: var(--row-hover-bg);
+  border-color: var(--border-hover);
 }
 
 .pg-rack-actions {
@@ -207,7 +207,7 @@
   justify-content: space-between;
   gap: 8px;
   font-size: var(--fs-xl);
-  font-weight: 500;
+  font-weight: 600;
   color: var(--dx-ink);
 }
 
@@ -230,6 +230,7 @@
 
 .pg-rack-dl dd {
   margin: 0;
+  font-family: var(--font-mono);
   color: var(--page-fg);
   overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
@@ -264,6 +265,7 @@
   font-size: var(--fs-md);
   text-align: left;
   cursor: pointer;
+  transition: none;
 }
 
 .pg-rack-chlist-row:hover,
@@ -277,6 +279,7 @@
 }
 
 .pg-rack-chlist-ch {
+  font-family: var(--font-mono);
   color: var(--text-muted);
 }
 
@@ -284,12 +287,15 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  font-family: var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .pg-rack-chlist-val {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   text-align: right;
   white-space: nowrap;
 }
@@ -300,7 +306,7 @@
   width: 100%;
   height: auto;
   user-select: none;
-  font-family: var(--font-ui);
+  font-family: var(--font-mono);
 }
 
 .rack-ear {
@@ -333,7 +339,7 @@
 .rack-slot-num {
   font-size: var(--fs-2xs);
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   fill: var(--mx-label);
   font-variant-numeric: tabular-nums;
 }
@@ -346,7 +352,7 @@
   fill: var(--mx-paint-body, var(--mx-body));
   stroke: var(--mx-edge);
   stroke-width: 1.5;
-  transition: stroke 0.12s ease;
+  transition: stroke var(--dur-fast) var(--ease-out);
 }
 
 .rack-mod-line {
@@ -366,8 +372,7 @@
 .rack-mod-type {
   font-size: var(--fs-xs);
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
   fill: var(--dx-ink-2);
 }
 

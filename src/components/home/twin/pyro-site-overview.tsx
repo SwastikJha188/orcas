@@ -1,10 +1,11 @@
 "use client";
 
 import * as THREE from "three";
+import { homeActive } from "../home-active";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PillButton, PillNav } from "@/components/ui";
-import { twinHint, usePersistedNavMode, type TwinNavMode } from "./twin-nav-ui";
+import { PillButton } from "@/components/ui";
+import { twinHint, usePersistedNavMode, type TwinNavMode, type TwinNudgeAction } from "./twin-nav-ui";
 import { StatusTag } from "@/components/ui/status-tag";
 import { type Condition, type Tone, conditionTone, toCondition, worstCondition } from "@/components/ui/status";
 import { IconChevron, IconClose } from "@/components/assets/assets-shell-ui";
@@ -15,6 +16,7 @@ import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useKilnFleet } from "@/providers/kiln-simulation-context";
 import type { TwinInset } from "./plant-twin-canvas";
 import { hasWebGL } from "./plant-twin";
+import { createInfiniteGrid } from "./infinite-grid";
 import { readUiZoom } from "./use-ui-zoom";
 import "./pyro-site-overview.css";
 import { INFRA, LINE, applyKitPalette, buildSite, createKitMats, readPalette, type InfraKey, type MachineKey, type NodeKey, type V3 } from "./pyro-plant-model";
@@ -119,6 +121,8 @@ interface SceneApi {
   setTones: (tones: Partial<Record<MachineKey, Tone>>) => void;
   /** Multiply the camera distance (zoom buttons). */
   zoom: (factor: number) => void;
+  /** Direct Move / Orbit / Zoom nudge from toolbar buttons. */
+  nudge: (action: TwinNudgeAction) => void;
 }
 
 interface Rect {
@@ -310,6 +314,9 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
     renderer.setClearColor(0x000000, 0);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // The sun and the site never move: draw the 4096² shadow map once, not on every camera frame.
+    renderer.shadowMap.autoUpdate = false;
+    renderer.shadowMap.needsUpdate = true;
     const el = renderer.domElement;
     el.className = "pso-gl";
     el.tabIndex = 0;
@@ -348,7 +355,9 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
     const mats = createKitMats();
     const site = buildSite(scene, mats);
 
-    let grid: THREE.GridHelper | null = null;
+    // 3 m cells, faded out before the camera's far plane so the floor never ends.
+    const grid = createInfiniteGrid({ cell: 3, fade: [450, 1300] });
+    scene.add(grid.mesh);
     const applyPalette = () => {
       applyKitPalette(mats, site.edgeMat, palette);
       for (const m of site.dataMats) m.color.set(palette.data);
@@ -362,17 +371,7 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
       hemi.intensity = palette.dark ? 1.45 : 0.8;
       sun.intensity = palette.dark ? 1.35 : 0.95;
       sun.color.set(palette.sun);
-      if (grid) {
-        scene.remove(grid);
-        grid.geometry.dispose();
-        (grid.material as THREE.Material).dispose();
-      }
-      grid = new THREE.GridHelper(540, 180, new THREE.Color(palette.grid), new THREE.Color(palette.grid));
-      grid.position.y = 0.01;
-      const gm = grid.material as THREE.LineBasicMaterial;
-      gm.transparent = true;
-      gm.opacity = palette.dark ? 0.32 : 0.45;
-      scene.add(grid);
+      grid.setColor(palette.grid, palette.dark ? 0.32 : 0.45);
     };
     applyPalette();
 
@@ -433,10 +432,13 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
     };
 
     const resize = () => {
+      // Hidden (Home kept alive behind another tab): keep the last size and pose.
+      if (root.clientWidth === 0 || root.clientHeight === 0) return;
       const w = Math.max(1, root.clientWidth);
       const h = Math.max(1, root.clientHeight);
       size = { w, h };
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75) * readUiZoom());
+      // Full Retina resolution (see useTwinDpr): an upscaled buffer shimmers in motion.
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2) * readUiZoom());
       renderer.setSize(w, h, false);
       camera.aspect = w / h;
       camera.fov = w < 700 ? 46 : 36;
@@ -568,6 +570,7 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
     let drag: { x: number; y: number; pan: boolean; moved: boolean; id: number } | null = null;
     let hoverKey: NodeKey | null = null;
     let pinch: number | null = null;
+    let spacePan = false;
     const clampPhi = (p: number) => Math.min(PHI_MAX, Math.max(PHI_MIN, p));
     const clampR = (r: number) => Math.min(rMax, Math.max(R_MIN, r));
     const touch = () => {
@@ -577,8 +580,8 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
 
     const onPointerDown = (e: PointerEvent) => {
       if (e.pointerType === "touch" && pinch !== null) return;
-      const alt = e.shiftKey || e.button === 2;
-      drag = { x: e.clientX, y: e.clientY, pan: (live.current.navMode === "move") !== alt, moved: false, id: e.pointerId };
+      const pan = e.shiftKey || e.ctrlKey || e.metaKey || spacePan || e.button === 1 || e.button === 2;
+      drag = { x: e.clientX, y: e.clientY, pan, moved: false, id: e.pointerId };
       try {
         el.setPointerCapture(e.pointerId);
       } catch {
@@ -634,7 +637,14 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
     const onContext = (e: Event) => e.preventDefault();
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      goal.r = clampR(goal.r * (1 + Math.sign(e.deltaY) * 0.08));
+      if (!e.ctrlKey && !e.metaKey && (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY) * 0.35)) {
+        const s = (2 * goal.r * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) / Math.max(1, size.h);
+        const dx = e.shiftKey && Math.abs(e.deltaX) < 1 ? e.deltaY : e.deltaX;
+        const dy = e.shiftKey && Math.abs(e.deltaX) < 1 ? 0 : e.deltaY;
+        walk(-dy * s * 0.9, dx * s * 0.9);
+      } else {
+        goal.r = clampR(goal.r * (1 + Math.sign(e.deltaY) * 0.08));
+      }
       touch();
     };
     const onTouchStart = (e: TouchEvent) => {
@@ -657,6 +667,10 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
       if (e.touches.length < 2) pinch = null;
     };
     const onKey = (e: KeyboardEvent) => {
+      if (e.code === "Space") {
+        spacePan = true;
+        return;
+      }
       const k = e.key;
       const step = Math.max(2, goal.r * 0.06);
       if (k === "w" || k === "W" || k === "ArrowUp") walk(step, 0);
@@ -673,6 +687,9 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
       e.preventDefault();
       touch();
     };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === "Space") spacePan = false;
+    };
 
     el.addEventListener("pointerdown", onPointerDown);
     el.addEventListener("pointermove", onPointerMove);
@@ -685,6 +702,7 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
     el.addEventListener("touchmove", onTouchMove, { passive: true });
     el.addEventListener("touchend", onTouchEnd, { passive: true });
     el.addEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKeyUp);
 
     /* ---------------- theme + size ---------------- */
     const onTheme = () => {
@@ -699,6 +717,12 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
     const ro = new ResizeObserver(resize);
     ro.observe(root);
     resize();
+    // A restored GL context starts with an empty shadow map.
+    const onRestored = () => {
+      renderer.shadowMap.needsUpdate = true;
+      dirty = true;
+    };
+    el.addEventListener("webglcontextrestored", onRestored);
 
     /* ---------------- api ---------------- */
     const snap = () => {
@@ -755,6 +779,18 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
         goal.r = clampR(goal.r * factor);
         touch();
       },
+      nudge: (action) => {
+        const step = Math.max(4, goal.r * 0.08);
+        if (action === "move-up") walk(step, 0);
+        else if (action === "move-down") walk(-step, 0);
+        else if (action === "move-left") walk(0, -step);
+        else if (action === "move-right") walk(0, step);
+        else if (action === "orbit-left") goal.theta += 0.14;
+        else if (action === "orbit-right") goal.theta -= 0.14;
+        else if (action === "zoom-in") goal.r = clampR(goal.r * 0.82);
+        else if (action === "zoom-out") goal.r = clampR(goal.r * 1.22);
+        touch();
+      },
       setTones: () => {
         // Status is drawn on the label pads; just redraw.
         dirty = true;
@@ -766,6 +802,8 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
     let lastInset = "";
     const tick = () => {
       raf = requestAnimationFrame(tick);
+      // Home stays mounted behind other tabs; draw nothing while it is hidden.
+      if (root.clientWidth === 0) return;
       const { inset: i, autoRotate: spin, reduce: still } = live.current;
       const insetKey = `${i.top}|${i.right}|${i.bottom}|${i.left}|${live.current.selected ? 1 : 0}`;
       if (insetKey !== lastInset) {
@@ -799,6 +837,7 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
       if (Math.abs(off.x) > 0.5 || Math.abs(off.y) > 0.5) camera.setViewOffset(size.w, size.h, off.x, off.y, size.w, size.h);
       else camera.clearViewOffset();
       place();
+      grid.follow(camera);
       renderer.render(scene, camera);
       layoutLabels();
     };
@@ -821,6 +860,8 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
       el.removeEventListener("touchmove", onTouchMove);
       el.removeEventListener("touchend", onTouchEnd);
       el.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
+      el.removeEventListener("webglcontextrestored", onRestored);
       const disposed = new Set<THREE.Material>();
       scene.traverse((o) => {
         const m = o as THREE.Mesh;
@@ -857,7 +898,7 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
 
   useEffect(() => {
     if (!selected) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setSelected(null);
+    const onKey = (e: KeyboardEvent) => homeActive.current && e.key === "Escape" && setSelected(null);
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [selected]);
@@ -955,21 +996,34 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
           Simulated
         </span>
         <span className="pso-tool-sep" aria-hidden="true" />
-        <PillNav
-          items={[
-            { id: "move", label: "Move" },
-            { id: "orbit", label: "Orbit" },
-          ]}
-          activeId={navMode}
-          onChange={(id) => setNavMode(id as TwinNavMode)}
-        />
+        <span className="pso-sim">Move</span>
+        <button type="button" className="pso-tool pso-tool-icon" onClick={() => apiRef.current?.nudge("move-left")} aria-label="Move left" title="Move left (A / Left arrow / Right-drag)">
+          ←
+        </button>
+        <button type="button" className="pso-tool pso-tool-icon" onClick={() => apiRef.current?.nudge("move-up")} aria-label="Move forward" title="Move forward (W / Up arrow / Right-drag)">
+          ↑
+        </button>
+        <button type="button" className="pso-tool pso-tool-icon" onClick={() => apiRef.current?.nudge("move-down")} aria-label="Move back" title="Move back (S / Down arrow / Right-drag)">
+          ↓
+        </button>
+        <button type="button" className="pso-tool pso-tool-icon" onClick={() => apiRef.current?.nudge("move-right")} aria-label="Move right" title="Move right (D / Right arrow / Right-drag)">
+          →
+        </button>
         <span className="pso-tool-sep" aria-hidden="true" />
+        <span className="pso-sim">Orbit</span>
+        <button type="button" className="pso-tool pso-tool-icon" onClick={() => apiRef.current?.nudge("orbit-left")} aria-label="Orbit left" title="Orbit left (Q / Left-drag)">
+          ↺
+        </button>
+        <button type="button" className="pso-tool pso-tool-icon" onClick={() => apiRef.current?.nudge("orbit-right")} aria-label="Orbit right" title="Orbit right (E / Left-drag)">
+          ↻
+        </button>
         <button type="button" className="pso-tool pso-tool-icon" onClick={() => apiRef.current?.zoom(0.8)} aria-label="Zoom in" title="Zoom in">
           +
         </button>
         <button type="button" className="pso-tool pso-tool-icon" onClick={() => apiRef.current?.zoom(1.25)} aria-label="Zoom out" title="Zoom out">
           −
         </button>
+        <span className="pso-tool-sep" aria-hidden="true" />
         <button
           type="button"
           className="pso-tool"

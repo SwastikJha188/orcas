@@ -11,6 +11,7 @@ import { useIndustrialData } from "@/providers/industrial-data-context";
 import {
   useKilnFleet,
   useKilnSimulation,
+  useLivePlantStarting,
   usePrimaryMachineId,
 } from "@/providers/kiln-simulation-context";
 import { useAiEngine } from "@/providers/ai-engine-context";
@@ -283,6 +284,7 @@ export function EngineTab() {
   const fleet = useKilnFleet();
   const sim = useKilnSimulation();
   const ai = useAiEngine();
+  const starting = useLivePlantStarting();
   const frame = sim?.machineId === primaryId ? sim.frame : null;
   const models = ai?.engine.models ?? [];
 
@@ -306,7 +308,7 @@ export function EngineTab() {
 
   if (!frame || !ai) {
     return (
-      <EmptyCard title={`No live inference: the ${primaryId} simulation is not running.`} />
+      <EmptyCard title={starting ? "Starting the live plant…" : `No live inference: the ${primaryId} simulation is not running.`} />
     );
   }
 
