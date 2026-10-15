@@ -67,12 +67,34 @@ interface PlacedRow {
   clusters: Array<{ cluster: Cluster; x: number }>;
 }
 
+interface PlacedFlank {
+  clusters: Cluster[];
+  cols: number;
+  cardW: number;
+  width: number;
+}
+
+type StageLayout =
+  | {
+      mode: "flank";
+      drawing: { w: number; h: number };
+      left: PlacedFlank;
+      right: PlacedFlank;
+    }
+  | {
+      mode: "bands";
+      drawing: { w: number; h: number };
+      top: PlacedRow[];
+      bottom: PlacedRow[];
+    };
+
 interface LeaderLine {
   tag: string;
   groupId: string | null;
   tone: Tone;
-  cx: number;
+  ax: number;
   ay: number;
+  stubX: number;
   stubY: number;
   px: number;
   py: number;
@@ -113,29 +135,40 @@ function pack(ideals: number[], widths: number[], gap: number, total: number): n
   return x;
 }
 
-function layoutStage(
+/** Detailed (component) card height before the first card is measured: full, and compact. */
+const EST_CARD_H = 92;
+const EST_DENSE_H = 66;
+const ROW_GAP = 10;
+/** Stage gap between a band or flank and the drawing (matches .ast-smw-stage gap). */
+const STAGE_GAP = 14;
+
+type Scored<T> = T & {
+  /** Stage height the layout needs. */
+  need: number;
+  /** Width the layout needs beyond the stage (cards plus a minimum drawing). */
+  overW: number;
+};
+
+/** Smallest drawing width a flank layout may leave between its card columns. */
+const MIN_FLANK_DRAW_W = 240;
+
+/** Drawing area, less heavy penalties for anything that does not fit the stage. */
+function scoreOf(l: Scored<StageLayout>, width: number, availH: number): number {
+  return l.drawing.w * l.drawing.h - Math.max(0, l.need - availH) * width * 4 - l.overW * availH * 4;
+}
+
+function layoutBands(
   width: number,
+  availH: number,
   clusters: Cluster[],
   aspect: number,
   detailed: boolean,
-  fit: boolean,
   compact: boolean,
-  maxDrawingHeight?: number,
-) {
-  const defaultMaxH = detailed ? (compact ? 210 : 390) : 430;
-  const maxH = maxDrawingHeight ?? defaultMaxH;
-  const safeAspect = Math.max(aspect, 0.5);
-  const naturalH = Math.round(width / safeAspect);
-  const dh =
-    maxDrawingHeight != null || compact
-      ? Math.min(naturalH, maxH)
-      : fit
-        ? naturalH
-        : Math.round(Math.min(width / Math.max(aspect, 1.85), maxH));
-  const dw = dh < naturalH ? Math.min(width, Math.round(dh * safeAspect)) : width;
-  const dx = Math.round((width - dw) / 2);
+  cardH: number,
+): Scored<StageLayout & { mode: "bands" }> {
+  const safeAspect = Math.max(aspect, 0.3);
   const clusterGap = compact ? 10 : CLUSTER_GAP;
-  const minW = compact ? 132 : detailed ? 160 : CARD_W;
+  const minW = compact ? 132 : detailed ? 168 : CARD_W;
   const minSpan = (list: Cluster[]) =>
     list.reduce((a, c) => a + c.cols * minW + Math.max(0, c.cols - 1) * CARD_GAP, 0) +
     clusterGap * Math.max(0, list.length - 1);
@@ -144,7 +177,6 @@ function layoutStage(
   let nTop = byV.filter((c) => c.v < 0.5).length;
 
   if (detailed) {
-    // Never leave a lonely 1-card orphan row or split <= 4 cards across two sparse bands.
     if (clusters.length <= 4) {
       const avgV = clusters.reduce((a, c) => a + c.v, 0) / Math.max(1, clusters.length);
       nTop = avgV <= 0.55 ? clusters.length : 0;
@@ -162,6 +194,27 @@ function layoutStage(
       nTop = Math.min(Math.max(1, nTop), clusters.length - 1);
     }
   }
+
+  const topList = byV.slice(0, nTop);
+  const botList = byV.slice(nTop);
+
+  const countRows = (list: Cluster[]) => {
+    if (list.length === 0) return 0;
+    return Math.max(1, Math.ceil(minSpan(list) / width));
+  };
+
+  const nTopRows = countRows(topList);
+  const nBotRows = countRows(botList);
+  // Grouped clusters carry a label line over their cards.
+  const rowH = detailed ? cardH : cardH + 22;
+  const bandH = (n: number) => (n > 0 ? n * rowH + (n - 1) * 12 + STAGE_GAP : 0);
+  const bandsH = bandH(nTopRows) + bandH(nBotRows);
+
+  // The drawing takes the full width, or the height left over by the bands, whichever binds first.
+  const naturalH = Math.round(width / safeAspect);
+  const dh = Math.max(120, Math.min(naturalH, availH - bandsH));
+  const dw = Math.min(width, Math.round(dh * safeAspect));
+  const dx = Math.round((width - dw) / 2);
 
   const rowsOf = (list: Cluster[]): PlacedRow[] => {
     if (list.length === 0) return [];
@@ -184,12 +237,11 @@ function layoutStage(
       }
     }
     return rows.map((row) => {
-      // Expand cards proportionally when a row has spare horizontal room so there is no dead side space.
       const totalCols = row.reduce((sum, c) => sum + c.cols, 0);
       const totalInternalGaps = row.reduce((sum, c) => sum + Math.max(0, c.cols - 1) * CARD_GAP, 0);
       const totalClusterGaps = Math.max(0, row.length - 1) * clusterGap;
       const availForCards = width - totalInternalGaps - totalClusterGaps;
-      const maxW = detailed ? (compact ? 260 : 360) : 230;
+      const maxW = detailed ? (compact ? 260 : 300) : 240;
       const adaptiveCardW = Math.min(maxW, Math.max(minW, Math.floor(availForCards / Math.max(1, totalCols))));
 
       const sizedRow = row.map((c) => ({
@@ -199,24 +251,120 @@ function layoutStage(
       }));
 
       const rowSpan = sizedRow.reduce((a, c) => a + c.width, 0) + totalClusterGaps;
-      // When cards nearly fill the row (or in detailed component view with >=3 cards), distribute across full width.
       const distributeEvenly = detailed && sizedRow.length >= 3 && rowSpan >= width * 0.72;
       const ideals = distributeEvenly
-        ? sizedRow.map((c, i) => ((i + 0.5) / sizedRow.length) * width)
+        ? sizedRow.map((_, i) => ((i + 0.5) / sizedRow.length) * width)
         : sizedRow.map((c) => dx + c.u * dw);
 
       const xs = pack(
         ideals,
         sizedRow.map((c) => c.width),
         clusterGap,
-        width
+        width,
       );
       return { clusters: sizedRow.map((cluster, i) => ({ cluster, x: xs[i] })) };
     });
   };
 
-  const top = rowsOf(byV.slice(0, nTop));
-  return { drawing: { w: dw, h: dh }, top, bottom: rowsOf(byV.slice(nTop)) };
+  return {
+    mode: "bands",
+    drawing: { w: dw, h: dh },
+    top: rowsOf(topList),
+    bottom: rowsOf(botList),
+    need: bandsH + dh,
+    overW: 0,
+  };
+}
+
+/**
+ * Cards in columns left and right of the drawing. Each side takes as many
+ * columns as it needs for its cards to fit the stage height; spare width
+ * widens the cards, and the drawing keeps the rest at its own proportions.
+ */
+function layoutFlanks(
+  width: number,
+  availH: number,
+  clusters: Cluster[],
+  aspect: number,
+  compact: boolean,
+  cardH: number,
+): Scored<StageLayout & { mode: "flank" }> {
+  const safeAspect = Math.max(aspect, 0.3);
+  const byU = [...clusters].sort((a, b) => a.u - b.u || a.v - b.v);
+
+  let leftRaw: Cluster[] = [];
+  let rightRaw: Cluster[] = [];
+  if (byU.length === 1) {
+    if (byU[0].u < 0.45) leftRaw = [byU[0]];
+    else rightRaw = [byU[0]];
+  } else {
+    const nLeft = Math.ceil(byU.length / 2);
+    leftRaw = byU.slice(0, nLeft);
+    rightRaw = byU.slice(nLeft);
+  }
+
+  // Sort each flank top-to-bottom by pad v so leader lines never cross.
+  const sortByV = (list: Cluster[]) => [...list].sort((a, b) => a.v - b.v || a.u - b.u);
+  const leftList = sortByV(leftRaw);
+  const rightList = sortByV(rightRaw);
+
+  const perCol = Math.max(1, Math.floor((availH + ROW_GAP) / (cardH + ROW_GAP)));
+  const colsFor = (n: number) => (n ? Math.min(n, Math.ceil(n / perCol)) : 0);
+  const leftCols = colsFor(leftList.length);
+  const rightCols = colsFor(rightList.length);
+
+  const minCardW = compact ? 156 : 186;
+  const maxCardW = compact ? 260 : 320;
+  const flankGap = 18;
+  const sideW = (cols: number, cw: number) => (cols ? cols * cw + (cols - 1) * CARD_GAP : 0);
+  const gaps = (leftCols ? flankGap : 0) + (rightCols ? flankGap : 0);
+
+  // Drawing first: as large as the stage height allows within the width the narrowest cards leave.
+  const freeW = width - sideW(leftCols, minCardW) - sideW(rightCols, minCardW) - gaps;
+  const maxDrawW = Math.max(160, freeW);
+  const dh = Math.max(120, Math.min(availH, Math.round(maxDrawW / safeAspect)));
+  const dw = Math.min(maxDrawW, Math.round(dh * safeAspect));
+
+  // Spare width widens the cards (up to a readable maximum).
+  const totalCols = leftCols + rightCols;
+  const internalGaps = (leftCols ? (leftCols - 1) * CARD_GAP : 0) + (rightCols ? (rightCols - 1) * CARD_GAP : 0);
+  const cardW = totalCols
+    ? Math.min(maxCardW, Math.max(minCardW, Math.floor((width - dw - gaps - internalGaps) / totalCols)))
+    : minCardW;
+
+  const rows = Math.max(leftCols ? Math.ceil(leftList.length / leftCols) : 0, rightCols ? Math.ceil(rightList.length / rightCols) : 0);
+  const flankH = rows ? rows * cardH + (rows - 1) * ROW_GAP : 0;
+
+  const sizeClusters = (list: Cluster[]) => list.map((c) => ({ ...c, cardW, width: c.cols * cardW + (c.cols - 1) * CARD_GAP }));
+
+  return {
+    mode: "flank",
+    drawing: { w: dw, h: dh },
+    left: { clusters: sizeClusters(leftList), cols: leftCols, cardW, width: sideW(leftCols, cardW) },
+    right: { clusters: sizeClusters(rightList), cols: rightCols, cardW, width: sideW(rightCols, cardW) },
+    need: Math.max(dh, flankH),
+    overW: Math.max(0, MIN_FLANK_DRAW_W - freeW),
+  };
+}
+
+/**
+ * Picks the arrangement that gives the drawing the most area while the whole
+ * stage fits `availH`: cards above / below a wide drawing, or beside a tall
+ * one. When nothing fits, the one that overflows least.
+ */
+function layoutStage(
+  width: number,
+  availH: number,
+  clusters: Cluster[],
+  aspect: number,
+  detailed: boolean,
+  compact: boolean,
+  cardH: number,
+): Scored<StageLayout> {
+  const bands = layoutBands(width, availH, clusters, aspect, detailed, compact, cardH);
+  if (!detailed || clusters.length === 0 || width < 760) return bands;
+  const flank = layoutFlanks(width, availH, clusters, aspect, compact, cardH);
+  return scoreOf(flank, width, availH) >= scoreOf(bands, width, availH) ? flank : bands;
 }
 
 export function SensorWidgetStage({
@@ -229,8 +377,10 @@ export function SensorWidgetStage({
   selectedTag,
   onToggle,
   limitOf,
-  fitDrawing = false,
   compact = false,
+  fill = false,
+  fillHeight,
+  onLayout,
   maxDrawingHeight,
 }: {
   sensors: DetailedSensorInfo[];
@@ -240,6 +390,15 @@ export function SensorWidgetStage({
   compact?: boolean;
   /** Optional explicit max height (px) for the drawing area. */
   maxDrawingHeight?: number;
+  /**
+   * Fill the parent's height (the parent must give the stage a definite
+   * height): the drawing and its cards are laid out to fit that box.
+   */
+  fill?: boolean;
+  /** Fill mode: plan for this height instead of the measured one (the parent may shorten the box to `onLayout`'s need). */
+  fillHeight?: number;
+  /** Height (px) the chosen layout needs: lets a fill-mode parent give back unused height. */
+  onLayout?: (need: number) => void;
   /** Engine limit per tag for live machines, so band limits draw both sides. */
   limitOf?: (tag: string) => LimitRule | null | undefined;
   /** Drawing width / height. */
@@ -259,7 +418,9 @@ export function SensorWidgetStage({
   onToggle: (tag: string | null) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
+  const [size, setSize] = useState<{ w: number; h: number; vh: number }>({ w: 0, h: 0, vh: 900 });
+  // Measured card heights, per density, so each layout is planned with real sizes.
+  const [cardHs, setCardHs] = useState({ full: EST_CARD_H, dense: EST_DENSE_H });
   const [hover, setHover] = useState<string | null>(null);
   const [hoverGroup, setHoverGroup] = useState<string | null>(null);
   const [leaders, setLeaders] = useState<LeaderLine[]>([]);
@@ -267,13 +428,26 @@ export function SensorWidgetStage({
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const update = () => setWidth(Math.round(el.clientWidth));
+    const update = () => {
+      const next = {
+        w: Math.round(el.clientWidth),
+        h: Math.round(el.clientHeight),
+        vh: typeof window !== "undefined" ? window.innerHeight : 900,
+      };
+      setSize((prev) => (prev.w === next.w && prev.h === next.h && prev.vh === next.vh ? prev : next));
+    };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
-    return () => ro.disconnect();
+    window.addEventListener("resize", update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+    };
   }, []);
 
+  const width = size.w;
+  const vh = size.vh;
   const detailed = !groups;
   const cardW = detailed ? CARD_W_DETAILED : CARD_W;
 
@@ -316,10 +490,45 @@ export function SensorWidgetStage({
     return out;
   }, [sensors, positionOf, groups, cardW]);
 
-  const stage = useMemo(
-    () => (width >= STAGE_MIN_W ? layoutStage(width, clusters, aspect, detailed, fitDrawing, compact, maxDrawingHeight) : null),
-    [width, clusters, aspect, detailed, fitDrawing, compact, maxDrawingHeight]
-  );
+  const availH = fill && (fillHeight ?? size.h) > 0 ? (fillHeight ?? size.h) : (maxDrawingHeight ?? Math.max(400, Math.min(vh - 210, 780)));
+  // In fill mode, compact cards take over when they give the drawing clearly more room
+  // (full-size cards that cannot fit, or crowd the drawing on a short screen).
+  const stage = useMemo(() => {
+    if (width < STAGE_MIN_W) return null;
+    const full = layoutStage(width, availH, clusters, aspect, detailed, compact, compact ? cardHs.dense : cardHs.full);
+    if (compact || !fill || !detailed) return { ...full, dense: compact };
+    const dense = layoutStage(width, availH, clusters, aspect, detailed, true, cardHs.dense);
+    const fullScore = scoreOf(full, width, availH);
+    const denseScore = scoreOf(dense, width, availH);
+    const preferDense = denseScore > 0 ? denseScore * 0.8 > fullScore : denseScore > fullScore;
+    return preferDense ? { ...dense, dense: true } : { ...full, dense: false };
+  }, [width, availH, clusters, aspect, detailed, compact, fill, cardHs]);
+
+  // Report the height the content needs: the planned layout, or the stacked content when too narrow for one.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!onLayout || !el || width === 0) return;
+    if (stage) {
+      onLayout(stage.need);
+      return;
+    }
+    const kids = Array.from(el.children) as HTMLElement[];
+    const gap = parseFloat(getComputedStyle(el).rowGap) || 0;
+    const h = kids.reduce((a, k) => a + k.offsetHeight, 0) + gap * Math.max(0, kids.length - 1);
+    if (h > 0) onLayout(Math.ceil(h));
+  }, [onLayout, stage, width, clusters.length]);
+
+  // Lay out with the cards' real height (names wrap, limit bars), not an estimate.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !stage) return;
+    let max = 0;
+    el.querySelectorAll<HTMLElement>(".ast-smw-card").forEach((c) => {
+      max = Math.max(max, c.offsetHeight);
+    });
+    const slot = stage.dense ? "dense" : "full";
+    if (max > 0 && Math.abs(max - cardHs[slot]) > 2) setCardHs((prev) => ({ ...prev, [slot]: max }));
+  }, [stage, cardHs]);
 
   const hot = hover ?? selectedTag;
   const drawing = renderDrawing(hot, hover, hoverGroup);
@@ -362,22 +571,49 @@ export function SensorWidgetStage({
           const pRect = padEl.getBoundingClientRect();
           if (cRect.width === 0 || pRect.width === 0) continue;
 
-          const cx = (cRect.left + cRect.width / 2 - stageRect.left) / scaleX;
+          const cLeft = (cRect.left - stageRect.left) / scaleX;
+          const cRight = (cRect.right - stageRect.left) / scaleX;
+          const cx = (cLeft + cRight) / 2;
           const cTop = (cRect.top - stageRect.top) / scaleY;
           const cBottom = (cRect.bottom - stageRect.top) / scaleY;
+          const cy = (cTop + cBottom) / 2;
           const px = (pRect.left + pRect.width / 2 - stageRect.left) / scaleX;
           const py = (pRect.top + pRect.height / 2 - stageRect.top) / scaleY;
 
-          const fromTop = cBottom <= py;
-          const ay = fromTop ? cBottom : cTop;
-          const stubY = ay + (fromTop ? 10 : -10);
+          let ax = cx;
+          let ay = cy;
+          let stubX = cx;
+          let stubY = cy;
+
+          if (stage.mode === "flank") {
+            if (cRight <= px + 12) {
+              ax = cRight;
+              ay = cy;
+              stubX = ax + 12;
+              stubY = ay;
+            } else if (cLeft >= px - 12) {
+              ax = cLeft;
+              ay = cy;
+              stubX = ax - 12;
+              stubY = ay;
+            } else {
+              const fromTop = cBottom <= py;
+              ay = fromTop ? cBottom : cTop;
+              stubY = ay + (fromTop ? 10 : -10);
+            }
+          } else {
+            const fromTop = cBottom <= py;
+            ay = fromTop ? cBottom : cTop;
+            stubY = ay + (fromTop ? 10 : -10);
+          }
 
           next.push({
             tag: t,
             groupId: groupByTag.get(t) ?? null,
             tone: severityTone(it.sensor.status),
-            cx,
+            ax,
             ay,
+            stubX,
             stubY,
             px,
             py,
@@ -396,7 +632,7 @@ export function SensorWidgetStage({
       mo.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage, layoutKey, width]);
+  }, [stage, layoutKey, width, vh]);
 
   const card = (it: Item) => {
     const s = it.sensor;
@@ -491,15 +727,34 @@ export function SensorWidgetStage({
       </div>
     );
 
+  const flank = (side: PlacedFlank, edge: "left" | "right") =>
+    side.clusters.length > 0 && (
+      <div
+        className={`ast-smw-flank is-${edge}`}
+        style={{
+          width: side.width,
+          gridTemplateColumns: `repeat(${side.cols}, ${side.cardW}px)`,
+        }}
+      >
+        {side.clusters.map((c) => cluster(c))}
+      </div>
+    );
+
   return (
-    <div ref={ref} className="ast-smw-stage" data-hot={hot ? "" : undefined} data-compact={compact || undefined}>
+    <div
+      ref={ref}
+      className="ast-smw-stage"
+      data-mode={stage?.mode}
+      data-hot={hot ? "" : undefined}
+      data-compact={(stage?.dense ?? compact) || undefined}
+      data-fill={fill || undefined}
+    >
       {stage ? (
         <>
           {leaders.length > 0 && (
             <svg className="ast-smw-leaders" aria-hidden="true">
               {leaders.map((l) => {
                 const isHot = l.tag === hot || (l.groupId !== null && l.groupId === hoverGroup);
-                // On whole-machine view, keep ambient leaders subtle; on component view, show clear CAD callout lines.
                 if (!detailed && !isHot && hot) return null;
                 return (
                   <g
@@ -510,23 +765,44 @@ export function SensorWidgetStage({
                     data-detailed={detailed || undefined}
                   >
                     <path
-                      d={`M ${l.cx.toFixed(1)} ${l.ay.toFixed(1)} L ${l.cx.toFixed(1)} ${l.stubY.toFixed(1)} L ${l.px.toFixed(1)} ${l.py.toFixed(1)}`}
+                      d={`M ${l.ax.toFixed(1)} ${l.ay.toFixed(1)} L ${l.stubX.toFixed(1)} ${l.stubY.toFixed(1)} L ${l.px.toFixed(1)} ${l.py.toFixed(1)}`}
                     />
-                    <circle cx={l.cx} cy={l.ay} r={2.2} />
+                    <circle cx={l.ax} cy={l.ay} r={2.2} />
                   </g>
                 );
               })}
             </svg>
           )}
-          {band(stage.top, "top")}
-          <div className="ast-smw-drawing" style={{ width: stage.drawing.w, height: stage.drawing.h }}>
-            {drawing}
-          </div>
-          {band(stage.bottom, "bottom")}
+          {stage.mode === "flank" ? (
+            <div className="ast-smw-flank-row">
+              {flank(stage.left, "left")}
+              <div className="ast-smw-drawing" style={{ width: stage.drawing.w, height: stage.drawing.h }}>
+                {drawing}
+              </div>
+              {flank(stage.right, "right")}
+            </div>
+          ) : (
+            <>
+              {band(stage.top, "top")}
+              <div className="ast-smw-drawing" style={{ width: stage.drawing.w, height: stage.drawing.h }}>
+                {drawing}
+              </div>
+              {band(stage.bottom, "bottom")}
+            </>
+          )}
         </>
       ) : (
         <>
-          <div className="ast-smw-drawing is-static">{drawing}</div>
+          <div
+            className="ast-smw-drawing is-static"
+            style={
+              fill && width > 0
+                ? { width: Math.min(width, Math.round(availH * aspect)), height: Math.round(Math.min(width, availH * aspect) / Math.max(aspect, 0.1)) }
+                : undefined
+            }
+          >
+            {drawing}
+          </div>
           <div className="ast-smw-flow">{clusters.map((c) => cluster(c))}</div>
         </>
       )}

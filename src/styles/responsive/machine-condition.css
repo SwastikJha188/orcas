@@ -12,9 +12,8 @@
              matter. No table scrolls sideways on a phone.
      tablet  low-priority columns drop out; the 980px Diagnosis minimum goes.
    Layout
-     wide    short sections pair up side by side (Diagnosis actions | log,
-             Health breakdown | trend + drivers, Trends signal | compare,
-             excursions | states).
+     wide    short sections pair up side by side (Health breakdown | trend
+             + drivers, Trends signal | compare, excursions | states).
 
    Column indices below are the <th> order of each table (see the TSX). */
 
@@ -24,21 +23,12 @@
 
   /* Alarms: Persist., Clear, In alarm */
   :root .pg-diag #dx-alarms .pg-diag-table :is(th, tr.dxo-row > td):is(:nth-child(5), :nth-child(6), :nth-child(7)),
-  /* Fault candidates: Symptoms, Onset */
-  :root .pg-diag #dx-diagnosis .pg-diag-table:not(.pg-diag-rules) > :is(thead, tbody) > tr:not(.dxo-drawer) > :is(th, td):is(:nth-child(4), :nth-child(5)),
-  /* Rule matrix: Persist. / clear, Inputs valid, Logic */
-  :root .pg-diag .pg-diag-rules :is(thead th, tr.dxo-row > td):is(:nth-child(3), :nth-child(4), :nth-child(7)),
   /* Sensor evidence: Model, Residual 1 h, Cited by */
   :root .pg-diag #dx-evidence .dxo-table-card:not(.pg-diag-sub) .pg-diag-table :is(th, tr.dxo-row > td):is(:nth-child(3), :nth-child(6), :nth-child(8)),
   /* Vibration: Model, Zone limits */
-  :root .pg-diag #dx-evidence .pg-diag-sub .pg-diag-table :is(th, tr.dxo-row > td):is(:nth-child(3), :nth-child(6)),
-  /* Actions: Triggered by, Owner */
-  :root .pg-diag #dx-actions .pg-diag-table :is(th, tr.dxo-row > td):is(:nth-child(3), :nth-child(5)) {
+  :root .pg-diag #dx-evidence .pg-diag-sub .pg-diag-table :is(th, tr.dxo-row > td):is(:nth-child(3), :nth-child(6)) {
     display: none;
   }
-
-  :root .pg-diag .pg-diag-act-text { min-width: 200px; }
-  :root .pg-diag .pg-diag-logic { max-width: 260px; }
 
   /* Tighter cells; secondary lines wrap instead of setting the column width. */
   :root .pg-diag .dxo-table :is(th, td) { padding-left: 10px; padding-right: 10px; }
@@ -83,10 +73,6 @@
     padding: 10px 8px;
   }
 
-  :root .pg-diag .dxo-table > tbody > tr.pg-diag-group > th {
-    padding: 16px 8px 8px;
-  }
-
   /* Stacked row: grid on the <tr>, capsule highlight on the whole row. */
   :root .pg-diag .dxo-table > tbody > tr.dxo-row {
     display: grid;
@@ -124,16 +110,12 @@
   }
 
   /* Small muted lead-in labels for values that lose their column header. */
-  :root .pg-diag #dx-alarms .pg-diag-table > tbody > tr.dxo-row > td:nth-child(8)::before,
-  :root .pg-diag #dx-diagnosis .pg-diag-table:not(.pg-diag-rules) > tbody > tr.dxo-row > td:nth-child(6)::before,
-  :root .pg-diag #dx-actions .pg-diag-table > tbody > tr.dxo-row > td:nth-child(4)::before {
+  :root .pg-diag #dx-alarms .pg-diag-table > tbody > tr.dxo-row > td:nth-child(8)::before {
     margin-right: 6px;
     font-size: var(--fs-xs);
     color: var(--text-muted);
   }
   :root .pg-diag #dx-alarms .pg-diag-table > tbody > tr.dxo-row > td:nth-child(8)::before { content: "Respond in"; }
-  :root .pg-diag #dx-diagnosis .pg-diag-table:not(.pg-diag-rules) > tbody > tr.dxo-row > td:nth-child(6)::before { content: "To limit"; }
-  :root .pg-diag #dx-actions .pg-diag-table > tbody > tr.dxo-row > td:nth-child(4)::before { content: "Due"; }
 
   /* -- Alarms: Pri | Alarm | State / Signal | Respond in / Actions */
   :root .pg-diag #dx-alarms .pg-diag-table > tbody > tr.dxo-row {
@@ -148,23 +130,6 @@
   :root .pg-diag #dx-alarms .pg-diag-table > tbody > tr.dxo-row > td:nth-child(9) .pg-diag-row-actions { justify-content: flex-start; flex-wrap: wrap; }
   :root .pg-diag #dx-alarms .pg-diag-table > tbody > tr.dxo-row > td:is(:nth-child(5), :nth-child(6), :nth-child(7)) { display: none; }
 
-  /* -- Fault candidates: name / status · strength / to limit · feedback */
-  :root .pg-diag #dx-diagnosis .pg-diag-table:not(.pg-diag-rules) > tbody > tr.dxo-row > td:nth-child(1) { grid-column: 1 / -1; }
-  :root .pg-diag #dx-diagnosis .pg-diag-table:not(.pg-diag-rules) > tbody > tr.dxo-row > td:nth-child(6) { justify-self: start; text-align: left; }
-  :root .pg-diag #dx-diagnosis .pg-diag-table:not(.pg-diag-rules) > tbody > tr.dxo-row > td:is(:nth-child(4), :nth-child(5)) { display: none; }
-
-  /* Expanded finding: one column; the input matrix scrolls inside itself. */
-  :root .pg-diag .pg-diag-detail { grid-template-columns: minmax(0, 1fr); gap: 16px; }
-  :root .pg-diag .pg-diag-dl { grid-template-columns: 80px minmax(0, 1fr); }
-  :root .pg-diag .pg-diag-matrix { display: block; max-width: 100%; overflow-x: auto; }
-
-  /* -- Rule matrix: rule | lane / logic */
-  :root .pg-diag .pg-diag-rules > tbody > tr.dxo-row > td:nth-child(7) {
-    grid-column: 1 / -1;
-    max-width: none;
-  }
-  :root .pg-diag .pg-diag-rules > tbody > tr.dxo-row > td:is(:nth-child(3), :nth-child(4), :nth-child(5), :nth-child(6)) { display: none; }
-
   /* -- Sensor evidence: sensor | value / zone bar | residual / validity | links */
   :root .pg-diag #dx-evidence .dxo-table-card:not(.pg-diag-sub) .pg-diag-table > tbody > tr.dxo-row > td:nth-child(4) { justify-self: start; }
   :root .pg-diag #dx-evidence .dxo-table-card:not(.pg-diag-sub) .pg-diag-table > tbody > tr.dxo-row > td:nth-child(7) { white-space: normal; line-height: 1.4; }
@@ -175,47 +140,12 @@
   :root .pg-diag #dx-evidence .pg-diag-sub .pg-diag-table > tbody > tr.dxo-row > td:is(:nth-child(3), :nth-child(4), :nth-child(6)) { display: none; }
   :root .pg-diag #dx-evidence .pg-diag-sub .pg-diag-table > tbody > tr.dxo-row > td:nth-child(5) { white-space: normal; }
 
-  /* -- Actions: Pri | action / status | work order / due */
-  :root .pg-diag #dx-actions .pg-diag-table > tbody > tr.dxo-row {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-  }
-  :root .pg-diag #dx-actions .pg-diag-table > tbody > tr.dxo-row > td:nth-child(1) { grid-area: 1 / 1; align-self: start; color: var(--dx-ink); }
-  :root .pg-diag #dx-actions .pg-diag-table > tbody > tr.dxo-row > td:nth-child(2) { grid-area: 1 / 2 / 2 / 4; }
-  :root .pg-diag #dx-actions .pg-diag-table > tbody > tr.dxo-row > td:nth-child(6) { grid-area: 2 / 2; }
-  :root .pg-diag #dx-actions .pg-diag-table > tbody > tr.dxo-row > td:nth-child(7) { grid-area: 2 / 3 / 4 / 4; align-self: center; }
-  :root .pg-diag #dx-actions .pg-diag-table > tbody > tr.dxo-row > td:nth-child(4) { grid-area: 3 / 2; }
-  :root .pg-diag #dx-actions .pg-diag-table > tbody > tr.dxo-row > td:is(:nth-child(3), :nth-child(5)) { display: none; }
-  :root .pg-diag .pg-diag-act-text { min-width: 0; max-width: none; }
-
-  /* -- Log: time | type / event (the event title already names the rule) */
-  :root .pg-diag #dx-log .pg-diag-table > tbody > tr.dxo-row > td:nth-child(1) { grid-area: 1 / 1; width: auto; }
-  :root .pg-diag #dx-log .pg-diag-table > tbody > tr.dxo-row > td:nth-child(2) { grid-area: 1 / 2; justify-self: end; }
-  :root .pg-diag #dx-log .pg-diag-table > tbody > tr.dxo-row > td:nth-child(3) { grid-area: 2 / 1 / 3 / 3; }
-  :root .pg-diag #dx-log .pg-diag-table > tbody > tr.dxo-row > td:nth-child(4) { display: none; }
-
   /* Shelving form + shelved list stack. */
   :root .pg-diag .pg-diag-shelf li {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 6px 12px;
   }
   :root .pg-diag .pg-diag-card-head .pg-diag-pipe { row-gap: 4px; }
-}
-
-/* ---- Wide: short sections pair up — actions beside the event log. */
-@media (min-width: 1920px) {
-  :root .ast-root.pg-frame.pg-diag {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    align-items: start;
-  }
-  :root .ast-root.pg-frame.pg-diag > * { grid-column: 1 / -1; }
-  :root .ast-root.pg-frame.pg-diag > #dx-actions { grid-column: 1; }
-  :root .ast-root.pg-frame.pg-diag > #dx-log { grid-column: 2; }
-  :root .pg-diag :is(#dx-actions, #dx-log) .dxo-table { min-width: 0; }
-  :root .pg-diag #dx-actions .pg-diag-act-text { min-width: 0; max-width: 360px; }
-  :root .pg-diag :is(#dx-actions, #dx-log) .dxo-table :is(th, td) { padding-left: 12px; padding-right: 12px; }
-  /* Logic text gets the room a 1900px row has. */
-  :root .pg-diag .pg-diag-logic { max-width: 560px; }
 }
 
 /* =====================================================================

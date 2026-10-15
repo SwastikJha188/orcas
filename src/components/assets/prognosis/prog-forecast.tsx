@@ -4,7 +4,7 @@ import React, { useMemo, useState } from "react";
 import { PillButton, PillNav } from "@/components/ui";
 import type { ForecastHorizon, ForecastSeries } from "@/server/services/insights-service";
 import { fmt, horizonText, limitIsHigh, roundHours, seriesFor, type LimitCrossing } from "./prognosis-derive";
-import { Card, DataTable, EvidenceChip, Note, WhyDisclosure, tagsForMode, type Col, type ProgSectionProps } from "./prog-ui";
+import { Card, DataTable, EvidenceChip, Note, tagsForMode, type Col, type ProgSectionProps } from "./prog-ui";
 
 interface Reach {
   level: "warning" | "alarm";
@@ -45,7 +45,7 @@ const reachText = (r: Reach) =>
       : `${r.level === "alarm" ? "Alarm" : "Warning"} in ${roundHours(r.early)}–${roundHours(r.late)}`;
 
 /** Small multiples only for signals whose forecast interval reaches a limit; the rest collapse to table rows. */
-export function ProgForecast({ data, analysis, mode, live }: ProgSectionProps) {
+export function ProgForecast({ data, analysis, mode }: ProgSectionProps) {
   const [allRows, setAllRows] = useState(false);
   const [hid, setHid] = useState(() => (data.horizons.some((h) => h.id === "24h") ? "24h" : (data.horizons[0]?.id ?? "")));
   const horizon = data.horizons.find((h) => h.id === hid) ?? data.horizons[0];
@@ -140,13 +140,6 @@ export function ProgForecast({ data, analysis, mode, live }: ProgSectionProps) {
         </div>
       )}
       {total > rows.length && <Note>{total - rows.length} stored series have no forecast.</Note>}
-      <WhyDisclosure summary="Method">
-        <p className="pg-analysis-prose">
-          {live
-            ? "Residual drift against the reference model, extrapolated 6 h and then held; comparable duty assumed. Time to limit runs from the interval edge (earliest) to the median forecast."
-            : "Stored snapshot: drift toward the stored limits by status, not a trained forecast."}
-        </p>
-      </WhyDisclosure>
     </Card>
   );
 }

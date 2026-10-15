@@ -18,21 +18,176 @@
   padding-bottom: 24px;
 }
 
-/* ------------------------------------------------------ top machine hero card & fullscreen */
+/* ------------------------------------------------------ top machine hero card */
 .pg-ov-machine-sec {
+  --ov-pad-t: 12px;
+  --ov-pad-x: 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 16px;
+  gap: 10px;
+  padding: var(--ov-pad-t) var(--ov-pad-x) 14px;
 }
 
+/* The whole card is the drawing canvas: header, sheet tabs, zoom and the drawing all sit on
+   its grid. (.ast-card's background shorthand would drop the grid, hence the (0,2,0) rule.) */
+.pg-ov-machine-sec.mx-canvas {
+  background-color: var(--mx-canvas);
+  background-image:
+    linear-gradient(var(--mx-grid-major) 1px, transparent 1px),
+    linear-gradient(90deg, var(--mx-grid-major) 1px, transparent 1px),
+    linear-gradient(var(--mx-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--mx-grid) 1px, transparent 1px);
+  background-size:
+    80px 80px,
+    80px 80px,
+    16px 16px,
+    16px 16px;
+  background-position:
+    -1px -1px,
+    -1px -1px,
+    -1px -1px,
+    -1px -1px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--corner-card);
+}
+
+/* One screen: the section ends at the bottom of the visible workspace (height set by
+   useFitHeight); everything inside flexes so the drawing gets the rest, whole. */
+.pg-ov-machine-sec[data-fit] {
+  height: calc(var(--ov-fit-h, calc(100dvh - 140px)) - var(--ov-trim, 0px));
+  min-height: 320px;
+}
+
+@media (max-width: 759px) {
+  .pg-ov-machine-sec {
+    --ov-pad-x: 14px;
+  }
+}
+
+/* Header bar: a solid strip across the top of the canvas card (the zoom bar's surface), so the
+   title and figures never sit on grid lines. Title · status | figures | channel counts … action. */
 .pg-ov-hero-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 8px 16px;
-  min-height: 28px;
+  min-height: 52px;
+  margin: calc(-1 * var(--ov-pad-t)) calc(-1 * var(--ov-pad-x)) 0;
+  padding: 8px var(--ov-pad-x);
+  background: var(--mx-hud-bg);
+  border-bottom: 1px solid var(--mx-hud-border);
+  border-radius: calc(var(--corner-card) - 1px) calc(var(--corner-card) - 1px) 0 0;
+}
+
+.pg-ov-hero-meta {
+  gap: 8px 16px;
+}
+
+.pg-ov-hero-head .pg-analysis-h2 {
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--dx-ink);
+  white-space: nowrap;
+}
+
+/* Groups after the status are set off by a hairline. */
+.pg-ov-hero-meta > .pg-frame-meta,
+.pg-ov-hero-meta > .pg-ov-counts {
+  padding-left: 16px;
+  border-left: 1px solid var(--mx-hud-border);
+}
+
+.pg-ov-hero-head .pg-frame-meta {
+  gap: 4px 18px;
+  font-size: var(--fs-sm);
+}
+
+.pg-ov-hero-head .pg-frame-meta dt {
+  color: var(--text-muted);
+}
+
+/* One typeface in the bar: Inter with tabular figures, values in ink. */
+.pg-ov-hero-head .ast-num {
+  font-family: inherit;
+}
+
+.pg-ov-hero-head .pg-frame-meta dd {
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+.pg-ov-hero-head .pg-ov-counts {
+  gap: 12px;
+  font-size: var(--fs-sm);
+}
+
+.pg-ov-hero-head .pg-ov-counts .pg-ov-state {
+  font-size: inherit;
+}
+
+/* Stacked (phones): figures wrap onto their own lines, no dividers. */
+@media (max-width: 759px) {
+  .pg-ov-hero-meta > .pg-frame-meta,
+  .pg-ov-hero-meta > .pg-ov-counts {
+    padding-left: 0;
+    border-left: 0;
+  }
+}
+
+/* One header row on a one-screen layout: lower-priority figures give way as the card narrows
+   (all of them are also in the key figures below). */
+.pg-ov-machine-sec {
+  container-type: inline-size;
+  container-name: ov-machine;
+}
+
+.pg-ov-machine-sec[data-fit] .pg-ov-hero-head {
+  flex-wrap: nowrap;
+}
+
+.pg-ov-machine-sec[data-fit] .pg-ov-hero-meta {
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.pg-ov-machine-sec[data-fit] .pg-ov-hero-meta > *,
+.pg-ov-machine-sec[data-fit] .pg-frame-meta,
+.pg-ov-machine-sec[data-fit] .pg-ov-counts {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.pg-ov-hero-actions {
+  flex-shrink: 0;
+}
+
+@container ov-machine (max-width: 1320px) {
+  .pg-ov-hero-head .pg-ov-counts > span:first-child {
+    display: none;
+  }
+}
+
+@container ov-machine (max-width: 1220px) {
+  .pg-ov-hero-head .pg-ov-counts {
+    display: none;
+  }
+}
+
+@container ov-machine (max-width: 980px) {
+  .pg-ov-hero-head .pg-frame-meta > div:nth-child(n + 3) {
+    display: none;
+  }
+}
+
+/* Narrow (tablet portrait): the actions take their own line rather than clipping the figures. */
+@container ov-machine (max-width: 860px) {
+  .pg-ov-machine-sec[data-fit] .pg-ov-hero-head {
+    flex-wrap: wrap;
+  }
 }
 
 .pg-ov-hero-meta {
@@ -55,34 +210,11 @@
   font-size: var(--fs-sm);
 }
 
-.pg-ov-machine-sec[data-fullscreen] {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  margin: 0;
-  border-radius: 0;
-  border: 0;
-  background: var(--bg-canvas);
-  padding: 16px 24px 20px;
+.pg-ov-machine-sec[data-fit] .pg-ov-machine,
+.pg-ov-machine-sec[data-fit] .pg-ov-drawing {
+  flex: 1 1 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  overflow-y: auto;
-}
-
-.pg-ov-machine-sec[data-fullscreen] .pg-ov-machine,
-.pg-ov-machine-sec[data-fullscreen] .pg-ov-drawing {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.pg-ov-machine-sec[data-fullscreen] .pg-ov-canvas {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
   min-height: 0;
 }
 
@@ -149,17 +281,9 @@
 .pg-ov-drawing {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
   padding-right: 0;
-}
-
-.pg-ov-drawing-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 6px 16px;
 }
 
 .pg-ov-counts {
@@ -171,57 +295,142 @@
   color: var(--text-muted);
 }
 
-/* The canvas fits inside one screen by default; in full screen mode it expands to the viewport. */
+/* Canvas row. */
+.pg-ov-stagebox {
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pg-ov-machine-sec[data-fit] .pg-ov-stagebox {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
 .pg-ov-canvas {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
   position: relative;
+  min-width: 0;
+  min-height: 0;
   border-radius: var(--corner-row);
-  padding: 6px 12px;
+  padding: 0;
   overflow: hidden;
 }
 
-/* Canvas chrome (scope badge + zoom bar on top, axis gizmo bottom-left) gets its own strips, never over the drawing or its cards. */
+/* Canvas top bar (sheet tabs or scope badge, zoom) gets its own strip, never over the drawing or its cards. */
 .pg-ov-canvas > .mx-vp {
-  padding: 28px 0 8px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 44px 0 6px;
 }
 
-.pg-ov-canvas[data-fullscreen] > .mx-vp {
-  padding: 36px 0 24px;
+.pg-ov-canvas .mx-vp-hud-top {
+  top: 0;
+  left: 0;
+  right: 0;
+  gap: 16px;
+}
+
+/* Phones: the sheet tabs get the whole bar (pinch zoom replaces the zoom buttons). */
+@media (max-width: 759px) {
+  .pg-ov-canvas .mx-vp-hud-start ~ .mx-vp-controls {
+    display: none;
+  }
+}
+
+.pg-ov-canvas .mx-vp-stage {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
+}
+
+/* One screen: each level takes exactly the height left to it. */
+.pg-ov-machine-sec[data-fit] .pg-ov-canvas,
+.pg-ov-machine-sec[data-fit] .pg-ov-canvas > .mx-vp,
+.pg-ov-machine-sec[data-fit] .pg-ov-canvas .mx-vp-stage {
+  flex: 1 1 0;
 }
 
 .pg-ov-canvas .mx-vp-gizmo {
-  bottom: 2px;
-  transform: scale(0.75);
+  left: 0;
+  bottom: 0;
+  transform: scale(0.7);
   transform-origin: left bottom;
 }
 
-/* Default single-screen height cap for whole-machine schematics (both LineSheet .mx-svg and MachineSchematic .ast-sch). */
-.pg-ov-canvas:not([data-fullscreen]) > .mx-vp > div > .mx-svg,
-.pg-ov-canvas:not([data-fullscreen]) .ast-sch {
+/* A plain drawing fills the canvas at its own proportions (contain): edge to edge on
+   the binding side, never cropped, at any screen size. */
+.pg-ov-machine-sec[data-fit] .mx-vp-stage > svg {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Stacked (phones): full width, natural height. */
+.pg-ov-machine-sec:not([data-fit]) .mx-vp-stage > svg {
   width: 100%;
   height: auto;
-  max-height: clamp(220px, calc(100vh - 360px), 360px);
 }
 
-.pg-ov-canvas[data-fullscreen] > .mx-vp > div > .mx-svg,
-.pg-ov-canvas[data-fullscreen] .ast-sch {
-  width: 100%;
-  height: auto;
-  max-height: calc(100vh - 200px);
+.pg-ov-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: var(--corner-sm, 6px);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-bg);
 }
 
-.pg-ov-drawing > .lsh-note {
-  padding: 8px 12px;
+.pg-ov-note > .lsh-note {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
 }
 
-.pg-ov-drawing > .lsh-note h4 {
-  display: inline;
-  margin-right: 6px;
+.pg-ov-note > .lsh-note h4 {
+  flex-shrink: 0;
+  margin: 0;
   font-size: var(--fs-xs);
 }
 
-.pg-ov-drawing > .lsh-note p {
-  display: inline;
+.pg-ov-note > .lsh-note p {
+  min-width: 0;
   font-size: var(--fs-xs);
+}
+
+.pg-ov-note[data-clamp] > .lsh-note p {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pg-ov-note-more {
+  flex-shrink: 0;
+  padding: 2px 10px;
+  border: 0;
+  border-radius: var(--corner-pill);
+  background: var(--hover-faint);
+  color: var(--page-fg);
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.pg-ov-note-more:hover {
+  background: var(--row-hover-bg);
 }
 
 .pg-ov-hint {

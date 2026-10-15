@@ -5,7 +5,7 @@ import { PillNav } from "@/components/ui";
 import type { FailureRisk, Severity } from "@/server/services/insights-service";
 import { toCondition } from "@/components/ui/status";
 import { formatRiskWindow, isBaselineRisk } from "./prognosis-derive";
-import { Card, DataTable, Note, WhyDisclosure, type Col, type ProgSectionProps } from "./prog-ui";
+import { Card, DataTable, Note, type Col, type ProgSectionProps } from "./prog-ui";
 
 const P_BANDS = [
   { label: "< 5", lo: 0, hi: 5 },
@@ -118,13 +118,6 @@ export function ProgRisk({ data, mode, setMode }: ProgSectionProps) {
         <DataTable columns={columns} data={listed} rowKey={(r) => r.id} selected={mode?.id} onRowClick={(r) => setMode(r.id)} label="Failure modes" />
       </div>
       {hidden > 0 && <Note>{hidden} sub-assemblies below 10 % not listed.</Note>}
-      <WhyDisclosure summary="Method">
-        <ul className="pg-prog-why-list">
-          <li>Probability is an estimate from rule severity, state and time to limit; it is not calibrated against verified failures.</li>
-          <li>Horizon is the time to limit plus 30 %, in plant time. Rows without a finding are health-index exposure estimates.</li>
-          <li>Consequence is the rule severity class. No FMECA consequence register (production loss, safety, cost) is connected.</li>
-        </ul>
-      </WhyDisclosure>
     </Card>
   );
 }

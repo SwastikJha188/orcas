@@ -37,10 +37,10 @@ import { simTimeMs } from "@/lib/kiln-sim/engine";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 
 /* ==========================================================================
-   Sensors › Sensor register.
-   The transducer allocation table (divider list, capsule rows): sensor ID,
-   measurement, instrument, location, range, rack slot, Modbus register,
-   sampling, live value, limit state and data quality — grouped by
+   Sensors › Sensors.
+   The transducer allocation (divider-list table or a grid of sensor cards):
+   sensor ID, measurement, instrument, location, range, rack slot, Modbus
+   register, sampling, live value, limit state and data quality — grouped by
    sub-assembly or by process / condition role, with a detail panel.
    ========================================================================== */
 
@@ -48,6 +48,8 @@ type StatusKey = "Normal" | "Advisory" | "Critical";
 const STATUS_KEYS: StatusKey[] = ["Normal", "Advisory", "Critical"];
 type QualityFilter = "all" | "valid" | "attention" | "nolive";
 type GroupBy = "sub" | "role" | "none";
+type ViewMode = "table" | "cards";
+const VIEW_KEY = "ultron.sensors.view";
 const needsAttention = (q: Quality) => q !== "Valid" && q !== "No live feed";
 
 function groupLine(list: SensorRow[], missing: string[], withSpec: boolean): string {
@@ -82,7 +84,25 @@ export function SensorsRegister({ ctx, scope, onClearScope }: { ctx: SensorsCtx;
   const [qualityFilter, setQualityFilter] = useState<QualityFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusKey | null>(null);
   const [groupBy, setGroupBy] = useState<GroupBy>("sub");
+  const [view, setView] = useState<ViewMode>("table");
   const [query, setQuery] = useState("");
+
+  // Table or cards, remembered per browser (read after mount: no hydration mismatch).
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(VIEW_KEY) === "cards") setView("cards");
+    } catch {
+      /* storage unavailable: table view */
+    }
+  }, []);
+  const changeView = (next: ViewMode) => {
+    setView(next);
+    try {
+      localStorage.setItem(VIEW_KEY, next);
+    } catch {
+      /* storage unavailable: choice kept for this view only */
+    }
+  };
   const [menuTag, setMenuTag] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 });
 
@@ -205,15 +225,55 @@ export function SensorsRegister({ ctx, scope, onClearScope }: { ctx: SensorsCtx;
             ]}
             activeId={groupBy}
             onChange={(id) => setGroupBy(id as GroupBy)}
+            ariaLabel="Group sensors"
+          />
+          <PillNav
+            items={[
+              { id: "table", label: "Table" },
+              { id: "cards", label: "Cards" },
+            ]}
+            activeId={view}
+            onChange={(id) => changeView(id as ViewMode)}
+            ariaLabel="Sensors view"
           />
           <SearchPill value={query} onChange={setQuery} placeholder="Search tag, instrument, slot" label="Search sensors" />
         </div>
       </div>
 
       <div className={`ast-sm ${selected ? "has-panel" : ""}`}>
-        <section className="ast-card ast-sm-table" aria-label="Sensor allocation register">
+        <section className="ast-card ast-sm-table" aria-label="Sensors">
           {filtered.length === 0 ? (
             <div className="ast-empty">No sensors match the current filters.</div>
+          ) : view === "cards" ? (
+            <div className="pg-sensors-tiles" aria-label="Transducer allocation">
+              {groups.map((g) => (
+                <div key={g.key} className="pg-sensors-tile-group" role="group" aria-label={g.label || "Sensors"}>
+                  {g.label && (
+                    <h4 className="pg-sensors-tile-head">
+                      <span className="pg-sensors-group-name">{g.label}</span>
+                      <span className="ast-caption ast-num">{groupLine(g.rows, g.missing, ctx.hasSpec && groupBy === "sub")}</span>
+                    </h4>
+                  )}
+                  {g.missing.length > 0 && (
+                    <p className="pg-sensors-tile-missing">
+                      <span className="ast-num">{g.missing.join(" · ")}</span>
+                      <span className="ast-muted"> · specified in D4, not in the DB catalog</span>
+                    </p>
+                  )}
+                  <div className="pg-sensors-tile-grid">
+                    {g.rows.map((s) => (
+                      <SensorTile
+                        key={tagOf(s)}
+                        s={s}
+                        ctx={ctx}
+                        selected={selectedTag === tagOf(s)}
+                        onSelect={() => select(selectedTag === tagOf(s) ? null : tagOf(s))}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : (
             <div className="ui-table-container ast-table pg-sensors-table">
               <table className="ui-table" aria-label="Transducer allocation">
@@ -321,6 +381,120 @@ function loadOf(s: SensorRow): { pct: number; title: string } | null {
   return pct === null ? null : { pct, title: `${pct} % of alarm limit ${s.alarmVal} ${s.unit}` };
 }
 
+/** Values shared by the table row and the sensor card. */
+function rowFacts(s: SensorRow, ctx: SensorsCtx) {
+  const tag = tagOf(s);
+  const calc = isCalculated(s);
+  const manual = !calc && isManual(s);
+  // Pyro CAL-KLN-03: map maximum of the scanner entry K-K33, not a gateway calculation.
+  const scanner = calc ? scannerEntryOf(ctx.defs, tag) : undefined;
+  const { slot, module } = slotOf(s.cardId);
+  return {
+    tag,
+    calc,
+    manual,
+    scanner,
+    slot,
+    module,
+    rate: parseSampleRate(s.sampleRate),
+    load: loadOf(s),
+    unit: unitText(s),
+    hold: ctx.defs?.plant === "pyro" && isHoldChannel(s.name, s.d4),
+    source: scanner ? `Scanner map maximum (${scanner.point})` : calc ? "Calculated on gateway" : manual ? "Manual record" : [s.role, s.accuracy].filter(Boolean).join(" · "),
+    place: [s.point, s.spec?.system ?? s.systemId, s.d4?.diagram].filter(Boolean).join(" · ") || "—",
+    reg: [calc || manual ? "" : module, s.modbusAddress && s.modbusAddress !== "—" ? `reg ${s.modbusAddress}` : ""].filter(Boolean).join(" · ") || "—",
+  };
+}
+
+function HoldFlag() {
+  return (
+    <span className="pg-sensors-flag" data-tone="idle" title="HOLD · channel design pending (D4 Table 3.1); advisory evidence only">
+      HOLD
+    </span>
+  );
+}
+
+function LiveReading({ s, unit, load }: { s: SensorRow; unit: string; load: ReturnType<typeof loadOf> }) {
+  return (
+    <span className="ast-sm-reading pg-sensors-reading">
+      <span className="ast-reading-val ast-num">
+        {s.value || "—"}
+        {unit && <span className="ast-unit">{unit}</span>}
+      </span>
+      {load !== null && (
+        <span className="ast-health-cell" title={load.title}>
+          <Ticks value={Math.min(load.pct, 100)} tone={s.status === "Normal" ? "idle" : severityTone(s.status)} ticks={12} />
+          <span className="ast-caption ast-num">{load.pct} %</span>
+        </span>
+      )}
+    </span>
+  );
+}
+
+function LimitState({ s }: { s: SensorRow }) {
+  return s.status === "Normal" ? <span className="ast-muted">Normal</span> : <StatusTag tone={severityTone(s.status)} label={s.status} />;
+}
+
+/** Card view: one sensor per tile, same facts as a table row; click selects like a row. */
+function SensorTile({ s, ctx, selected, onSelect }: { s: SensorRow; ctx: SensorsCtx; selected: boolean; onSelect: () => void }) {
+  const { tag, calc, manual, scanner, slot, rate, load, unit, hold, place, reg } = rowFacts(s, ctx);
+  const tone = s.status === "Normal" ? undefined : severityTone(s.status);
+  const rack = scanner ? "Scanner" : calc ? "Gateway" : manual ? "Manual" : slot;
+  return (
+    <button type="button" className="pg-sensors-tile" data-tone={tone} aria-pressed={selected} onClick={onSelect}>
+      <span className="pg-sensors-tile-top">
+        <span className="pg-sensors-id" data-sensor-tag={tag}>
+          <span className="ast-badge" data-tone={tone}>
+            <IconSensor size={15} />
+          </span>
+          <span className="ast-cell-stack">
+            <span className="ast-cell-title ast-num">
+              {tag}
+              {hold && <HoldFlag />}
+            </span>
+            <span className="ast-cell-sub pg-sensors-tile-clip" title={s.name}>
+              {s.name}
+            </span>
+          </span>
+        </span>
+        <LimitState s={s} />
+      </span>
+
+      <span className="pg-sensors-tile-value">
+        <LiveReading s={s} unit={unit} load={load} />
+        {s.outOfRange && (
+          <span className="pg-sensors-flag" data-tone="bad" title="Reading is outside the instrument range (calc.)">
+            out of range
+          </span>
+        )}
+      </span>
+
+      {s.q.quality !== "Valid" && <QualityMark row={s} prefix="Data " />}
+
+      <span className="pg-sensors-tile-facts">
+        <span className="pg-sensors-tile-k">Measurement</span>
+        <span className="pg-sensors-tile-v" title={s.sensorType}>
+          {s.sensorType || "—"}
+        </span>
+        <span className="pg-sensors-tile-k">Location</span>
+        <span className="pg-sensors-tile-v" title={`${s.subAssembly || s.component || "—"} · ${place}`}>
+          {s.subAssembly || s.component || "—"}
+          <span className="ast-muted ast-num"> · {place}</span>
+        </span>
+        <span className="pg-sensors-tile-k">{ctx.defs?.plant === "pyro" && !calc && !manual && !scanner ? "Rack slot (prop.)" : "Rack slot"}</span>
+        <span className="pg-sensors-tile-v ast-num" title={reg}>
+          {rack}
+          {reg !== "—" && <span className="ast-muted"> · {reg}</span>}
+        </span>
+        <span className="pg-sensors-tile-k">Sampling</span>
+        <span className={`pg-sensors-tile-v ${rate.sps === null ? "ast-muted" : "ast-num"}`} title={s.sampleRate}>
+          {rate.label}
+        </span>
+      </span>
+    </button>
+  );
+}
+
 function RegisterRow({
   s,
   ctx,
@@ -338,15 +512,7 @@ function RegisterRow({
   onMenu: (open: boolean, pos?: { top: number; right: number }) => void;
   onSelect: () => void;
 }) {
-  const tag = tagOf(s);
-  const calc = isCalculated(s);
-  const manual = !calc && isManual(s);
-  // Pyro CAL-KLN-03: map maximum of the scanner entry K-K33, not a gateway calculation.
-  const scanner = calc ? scannerEntryOf(ctx.defs, tag) : undefined;
-  const { slot, module } = slotOf(s.cardId);
-  const rate = parseSampleRate(s.sampleRate);
-  const load = loadOf(s);
-  const unit = unitText(s);
+  const { tag, calc, manual, scanner, slot, module, rate, load, unit, hold, source, place, reg } = rowFacts(s, ctx);
   return (
     <tr
       className={["is-clickable", selected ? "active" : ""].filter(Boolean).join(" ")}
@@ -360,11 +526,7 @@ function RegisterRow({
           <span className="ast-cell-stack">
             <span className="ast-cell-title ast-num">
               {tag}
-              {ctx.defs?.plant === "pyro" && isHoldChannel(s.name, s.d4) && (
-                <span className="pg-sensors-flag" data-tone="idle" title="HOLD · channel design pending (D4 Table 3.1); advisory evidence only">
-                  HOLD
-                </span>
-              )}
+              {hold && <HoldFlag />}
             </span>
             <span className="ast-cell-sub pg-sensors-clip" title={s.name}>
               {s.name}
@@ -377,9 +539,7 @@ function RegisterRow({
           <span className="ast-cell-text pg-sensors-clip" title={s.sensorType}>
             {s.sensorType || "—"}
           </span>
-          <span className="ast-cell-sub">
-            {scanner ? `Scanner map maximum (${scanner.point})` : calc ? "Calculated on gateway" : manual ? "Manual record" : [s.role, s.accuracy].filter(Boolean).join(" · ")}
-          </span>
+          <span className="ast-cell-sub">{source}</span>
         </span>
       </td>
       <td>
@@ -387,7 +547,7 @@ function RegisterRow({
           <span className="ast-cell-text pg-sensors-clip" title={s.subAssembly || s.component}>
             {s.subAssembly || s.component || "—"}
           </span>
-          <span className="ast-cell-sub ast-num">{[s.point, s.spec?.system ?? s.systemId, s.d4?.diagram].filter(Boolean).join(" · ") || "—"}</span>
+          <span className="ast-cell-sub ast-num">{place}</span>
         </span>
       </td>
       <td>
@@ -404,7 +564,7 @@ function RegisterRow({
         <span className="ast-cell-stack">
           {scanner ? <span className="ast-muted">Scanner</span> : calc ? <span className="ast-muted">Gateway</span> : manual ? <span className="ast-muted">Manual</span> : <span className="ast-num">{slot}</span>}
           <span className="ast-cell-sub ast-num pg-sensors-clip pg-sensors-clip--sm" title={[module, s.modbusAddress].filter(Boolean).join(" · ")}>
-            {[calc || manual ? "" : module, s.modbusAddress && s.modbusAddress !== "—" ? `reg ${s.modbusAddress}` : ""].filter(Boolean).join(" · ") || "—"}
+            {reg}
           </span>
         </span>
       </td>
@@ -414,21 +574,10 @@ function RegisterRow({
         </span>
       </td>
       <td className="pg-sensors-r">
-        <span className="ast-sm-reading pg-sensors-reading">
-          <span className="ast-reading-val ast-num">
-            {s.value || "—"}
-            {unit && <span className="ast-unit">{unit}</span>}
-          </span>
-          {load !== null && (
-            <span className="ast-health-cell" title={load.title}>
-              <Ticks value={Math.min(load.pct, 100)} tone={s.status === "Normal" ? "idle" : severityTone(s.status)} ticks={12} />
-              <span className="ast-caption ast-num">{load.pct} %</span>
-            </span>
-          )}
-        </span>
+        <LiveReading s={s} unit={unit} load={load} />
       </td>
       <td>
-        {s.status === "Normal" ? <span className="ast-muted">Normal</span> : <StatusTag tone={severityTone(s.status)} label={s.status} />}
+        <LimitState s={s} />
       </td>
       <td>
         <QualityMark row={s} />

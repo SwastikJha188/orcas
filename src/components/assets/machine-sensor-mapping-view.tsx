@@ -57,7 +57,7 @@ import { PYRO_MACHINE_BY_ID } from "@/lib/pyro-sim/signals";
      01 Summary      4 KPIs: valid data, flagged, outside limits, gateway links
      02 Map          machine-kit drawing, pads coloured by validity / limits
      03 Validity     flagged sensors + D5 Table 9.6 checks (hidden without live data)
-     04 Register     transducer allocation; D4 coverage gaps as group lines and
+     04 Sensors      transducer allocation (table or cards); D4 coverage gaps as group lines and
                      ghost rows; calculated values (Table 9.2) in the detail panel
      05 Acquisition  sensor → card / channel → rack slot → gateway → broker
    History lives on Trends, alarms on Diagnosis, chassis hardware on Rack and
@@ -447,7 +447,7 @@ export function MachineSensorMappingView({ machine, simulation: simProp }: Machi
   const index: SectionIndexItem[] = [
     ...(pyroSpec ? [{ id: "sensors-spec", label: "Specification" }] : []),
     ...(hasValidity ? [{ id: SENSORS_SECTIONS.validity, label: "Validity", tone: issue(validTone) }] : []),
-    { id: SENSORS_SECTIONS.register, label: "Register" },
+    { id: SENSORS_SECTIONS.register, label: "Sensors" },
     { id: SENSORS_SECTIONS.chain, label: "Acquisition", tone: counts.wired && counts.linked < counts.wired ? ("warn" as Tone) : undefined },
   ];
 
@@ -499,7 +499,7 @@ export function MachineSensorMappingView({ machine, simulation: simProp }: Machi
               </Section>
             )}
 
-            <Section id={SENSORS_SECTIONS.register} index={(hasValidity ? 2 : 1) + (pyroSpec ? 1 : 0)} title="Register">
+            <Section id={SENSORS_SECTIONS.register} index={(hasValidity ? 2 : 1) + (pyroSpec ? 1 : 0)} title="Sensors">
               <SensorsRegister ctx={ctx} scope={scope} onClearScope={() => setScope(null)} />
             </Section>
 

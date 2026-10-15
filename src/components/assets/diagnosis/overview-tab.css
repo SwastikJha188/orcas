@@ -126,123 +126,6 @@
 .dxo-gauge-tick.is-first { transform: none; }
 .dxo-gauge-tick.is-last { transform: translateX(-100%); }
 
-/* ----------------------- Tier 2: primary visuals ------------------------ */
-
-/* Ranked fault-mode bar chart */
-.dxo-modes {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.dxo-mode-row,
-.dxo-mode-axis {
-  display: grid;
-  grid-template-columns: 74px minmax(0, 1.1fr) minmax(110px, 1fr) 48px;
-  align-items: center;
-  gap: 12px;
-}
-
-.dxo-mode-row {
-  width: 100%;
-  padding: 6px 10px;
-  border: none;
-  border-radius: var(--corner-row);
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-  color: inherit;
-}
-
-.dxo-mode-row:hover {
-  background: var(--row-hover-bg);
-}
-
-.dxo-mode-row[aria-pressed="true"] {
-  background: var(--row-hover-bg);
-  box-shadow: inset 0 0 0 1px var(--signal-blue);
-}
-
-.dxo-mode-code {
-  font-size: var(--fs-sm);
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.dxo-mode-name {
-  font-size: var(--fs-md);
-  color: var(--dx-ink-2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.dxo-mode-row.is-active .dxo-mode-name {
-  color: var(--dx-ink);
-  font-weight: 500;
-}
-
-.dxo-bar-track {
-  position: relative;
-  height: 8px;
-  border-radius: 0 4px 4px 0;
-  background: var(--dx-track);
-}
-
-.dxo-bar-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  border-radius: 0 4px 4px 0;
-  transition: width 0.4s cubic-bezier(0.33, 1, 0.68, 1);
-}
-
-.dxo-mode-val {
-  font-size: var(--fs-sm);
-  text-align: right;
-  color: var(--dx-ink-2);
-  font-variant-numeric: tabular-nums;
-}
-
-.dxo-mode-val.is-zero {
-  color: var(--text-muted);
-}
-
-.dxo-mode-axis {
-  padding: 4px 10px 0;
-  border-top: 1px solid var(--separator);
-}
-
-.dxo-axis-scale {
-  grid-column: 3;
-  position: relative;
-  height: 14px;
-}
-
-.dxo-axis-scale span {
-  position: absolute;
-  top: 0;
-  transform: translateX(-50%);
-  font-size: var(--fs-2xs);
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.dxo-axis-scale span:first-child { transform: none; }
-.dxo-axis-scale span:last-child { transform: translateX(-100%); }
-
-.dxo-axis-unit {
-  grid-column: 4;
-  font-size: var(--fs-2xs);
-  color: var(--text-muted);
-  text-align: right;
-}
-
 /* ------------------------- Tier 3: register table ----------------------- */
 .dxo-table-card {
   padding: 16px 12px 10px;
@@ -426,14 +309,7 @@
 
 /* ------------------------------- Responsive ------------------------------ */
 
-@media (max-width: 760px) {
-  .dxo-mode-row,
-  .dxo-mode-axis { grid-template-columns: 0 minmax(0, 1fr) minmax(90px, 1fr) 44px; gap: 8px; }
-  .dxo-mode-code { visibility: hidden; }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .dxo-bar-fill,
   .dxo-icon-btn svg { transition: none; }
 }
 

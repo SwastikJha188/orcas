@@ -4,7 +4,7 @@ import React, { useMemo, useState } from "react";
 import { PillButton, PillNav, Table } from "@/components/ui";
 import { formatDuration } from "@/lib/kiln-sim/engine";
 import type { FaultClass, IssueSource } from "@/server/services/insights-service";
-import { Chevron, Panel, Section, WhyDisclosure, alertTone, splitCause } from "./an-ui";
+import { Chevron, Panel, Section, alertTone, splitCause } from "./an-ui";
 import { openDiagnosisAt } from "./an-actions";
 import { SECTION_IDS, deviationChain, episodes, machineFaults, machineSources, ruleById, sevToTone, sigma, type SectionProps } from "./an-derive";
 
@@ -164,14 +164,6 @@ export function AnFaults({ insights, frame, go }: SectionProps) {
           />
         </Panel>
       )}
-
-      <WhyDisclosure summary="Method">
-        <ul className="pg-analysis-why-list">
-          <li>The live candidate figure is a persistence score from the rule engine: it grows with matching samples and is not a probability. Contradicting evidence is not modelled.</li>
-          <li>Residual grid: a dot means the sensor is not an input of that rule. Expected direction per fault is not encoded in the rule library, so only the observed direction is shown.</li>
-          <li>Deviation along the process flow: time since each sub-assembly&apos;s earliest signal left the ±3σ band in the current run. Episodes come from the engine event log.</li>
-        </ul>
-      </WhyDisclosure>
     </Section>
   );
 }

@@ -26,7 +26,6 @@ import {
   summarizeLedger,
   type LedgerEventStat,
 } from "./use-prediction-ledger";
-import { WhyDisclosure } from "@/components/assets/analysis/an-ui";
 import "./assetiq-ai.css";
 
 /* ---------------------------------------------------------------- navigation */
@@ -790,15 +789,6 @@ export function AccuracyTab() {
       </section>
 
       <ReferenceFit systems={systems} />
-
-      <WhyDisclosure summary="Method">
-        <ul className="pg-analysis-why-list">
-          <li>Outcomes are checked against the simulated plant. A prediction resolves when its event occurs or its window expires.</li>
-          <li>Calibration: a trustworthy engine puts the tick at the top of each bar; a tick above the bar is over-confident. Brier score 0 = perfect.</li>
-          <li>Timing: a confirmed prediction is on time when its predicted time to event is within ±{LEAD_ALPHA * 100} % of the actual. Events with fewer than {MIN_N} outcomes are greyed.</li>
-          <li>Events nobody predicted are not tracked, so recall is unknown. RUL and failure risk cannot be backtested until verified failure records exist.</li>
-        </ul>
-      </WhyDisclosure>
 
       <CrossLinks
         links={[

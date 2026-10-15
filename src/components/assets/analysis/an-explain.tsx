@@ -3,7 +3,7 @@
 import React from "react";
 import { Table } from "@/components/ui";
 import { focusSensorOn } from "../sensor-focus";
-import { MissingNote, Panel, Section, WhyDisclosure } from "./an-ui";
+import { MissingNote, Panel, Section } from "./an-ui";
 import { SECTION_IDS, Z_ANOMALY, fmt, liveRules, machineFaults, sigma, type SectionProps } from "./an-derive";
 import { isConditionRule } from "@/lib/plant-defs";
 
@@ -100,16 +100,6 @@ export function AnExplain({ insights, frame, go }: SectionProps) {
           <MissingNote title={`Then ${4 - Math.min(4, topRule.clean)} more clean samples.`} />
         </Panel>
       )}
-
-      <WhyDisclosure summary="Method">
-        <p className="pg-analysis-prose">
-          {frame
-            ? `Each valid signal weighs max(0, |residual σ| − 1), plus 3 in alert, normalised to 100 %. Targets are the reference-model value ±3σ; a confirmed rule clears after 4 clean samples${frame.defs.plant === "kiln" ? " (D5 §9.2)" : ""}. `
-            : "Status-weighted attribution as reported by the snapshot, normalised to 100 %. "}
-          Shares are residual attribution computed on this page, not a probability decomposition; contribution is not cause. SHAP values are not
-          available for this model.
-        </p>
-      </WhyDisclosure>
     </Section>
   );
 }

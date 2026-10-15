@@ -5,7 +5,7 @@ import { PillButton, PillNav, Table } from "@/components/ui";
 import { formatDuration } from "@/lib/kiln-sim/engine";
 import { StatusTag } from "../assets-shell-ui";
 import { focusSensorOn } from "../sensor-focus";
-import { MissingNote, Panel, Section, WhyDisclosure, alertTone, useElementWidth } from "./an-ui";
+import { MissingNote, Panel, Section, alertTone, useElementWidth } from "./an-ui";
 import { AnSignals } from "./an-summary";
 import {
   SECTION_IDS,
@@ -162,12 +162,6 @@ export function AnDetection({ insights, frame, go }: SectionProps) {
           ]}
         />
         <MissingNote title="No reference model for this machine." />
-        <WhyDisclosure summary="Method">
-          <p className="pg-analysis-prose">
-            Stored snapshot: signals are scored against catalog alarm limits. Without a reference model, expected values, residuals and persistence
-            are unavailable.
-          </p>
-        </WhyDisclosure>
       </Section>
     );
   }
@@ -253,15 +247,6 @@ export function AnDetection({ insights, frame, go }: SectionProps) {
           </ul>
         </Panel>
       )}
-
-      <WhyDisclosure summary="Method">
-        <p className="pg-analysis-prose">
-          Residual = measured − reference model{frame.defs.plant === "kiln" ? " (D5 Table 9.5)" : ""}, in multiples of the signal&apos;s normal scatter σ. The combined residual is Σz²
-          (Hotelling T² with a diagonal covariance, computed on this page) against χ² 95 / 99 % limits with df {t2.df}; no PCA model exists, so SPE / Q is
-          not computed. Findings need 2–4 samples in a row (1 for critical) and clear after 4 clean samples. Signals beyond ±{Z_UNCLASSIFIED}σ with no
-          known pattern raise R-ANM-01. Signals flagged by sensor validation are excluded.
-        </p>
-      </WhyDisclosure>
     </Section>
   );
 }

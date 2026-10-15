@@ -52,18 +52,16 @@ import { StatusTag } from "@/components/ui/status-tag";
 import { focusSensorOn } from "./sensor-focus";
 import { TrendChart, TrendTimeZoneContext, type TrendSample } from "./sensor-trend-graph";
 import type { KilnSimulation } from "./kiln-seals-simulation";
-import { Empty, KpiStrip, PageHeader, Section, SectionIndex, WhyDisclosure, type KpiItem, type SectionIndexItem } from "./analysis/an-ui";
+import { Empty, KpiStrip, PageHeader, Section, SectionIndex, type KpiItem, type SectionIndexItem } from "./analysis/an-ui";
 import { DataTable, Num, PROG_SECTION_KEY, type Col } from "./prognosis/prog-ui";
 import { ANALYSIS_ANCHOR_KEY } from "./analysis/analysis-page";
 import { DIAGNOSIS_SECTION_KEY } from "./diagnosis-view";
 import { HeatScale, PolarChart, ProfileChart, ShellMapFigure, type LastGood } from "./thermal-map";
 import {
   COLD_BAND,
-  COVERAGE,
   HOT_DELTA,
   RATE_WARN,
   SEV_TONE,
-  SHIFT_MIN,
   ZONE_DELTA,
   coverageTone,
   findHotSpots,
@@ -223,7 +221,6 @@ function ThermalPage({ machine, simulation }: { machine: AssetMachine; simulatio
   // Thermal rules of this machine: the first is its hot-spot / refractory rule.
   const ruleIds = defs.thermalRules;
   const hotRuleId = ruleIds[0] ?? null;
-  const ringRuleId = ruleIds.find((id) => /ring|coating/i.test(defs.ruleById[id]?.name ?? "")) ?? null;
   // Handheld scan of the shell, recorded by hand (manual record), if the machine has one.
   const manualDef = defs.signals.find((d) => d.origin === "manual" && d.sub === defs.signalByTag["CAL-KLN-03"]?.sub) ?? null;
 
@@ -562,48 +559,6 @@ function ThermalPage({ machine, simulation }: { machine: AssetMachine; simulatio
         >
           <div className="thm-card" aria-label="Zones">
             <ZoneTable estimates={estimates} hotZone={hotZone} torqueZ={torque?.z ?? null} pyro={pyro} scanCmp={scanCmp} />
-            <div className="thm-foot">
-              <WhyDisclosure summary="Method">
-                {scanCmp && (
-                  <p>
-                    Δ scan: zone mean of the latest validated scanner map
-                    {scanCmp.latestAt !== null ? ` (${formatLocalTime(simTimeMs(scanCmp.latestAt), { seconds: false, timeZone })})` : ""} minus the previous
-                    validated map{scanCmp.prevAt !== null ? ` (${formatLocalTime(simTimeMs(scanCmp.prevAt), { seconds: false, timeZone })})` : ""}. Δ shift: minus
-                    the last validated map at least {SHIFT_MIN / 60} h earlier
-                    {scanCmp.shiftAt !== null
-                      ? ` (${formatLocalTime(simTimeMs(scanCmp.shiftAt), { seconds: false, timeZone })})`
-                      : `; not available yet — ${scanCmp.kept} maps kept over ${formatDuration(scanCmp.spanMin)}`}
-                    . A map counts as validated only with scanner coverage ≥ {COVERAGE.warn} % and valid data.
-                  </p>
-                )}
-                {pyro ? (
-                  <>
-                    <p>
-                      Shell-temperature deviation is the scanner reading against the expected profile. Do not treat the shell scanner as refractory thickness or
-                      graphite seal temperature (D4, engineering limitation 3).
-                    </p>
-                    <p>
-                      Hot spot finding{hotRuleId ? ` (${hotRuleId})` : ""}: local maximum ≥ model + {lim.hotDelta} K, or a rise &gt; {lim.rateWarn} K/h, with
-                      the hottest cell standing above its section mean (local around the circumference); time to the {SHELL_DANGER} °C danger limit with a range.
-                      Regions ≥ {HOT_DELTA} K above the profile are highlighted on the map only. Coating loss: the whole circumference &gt; 15 K above the model over
-                      ≥ 6 m of the burning zone. Cold band: every visible cell of ≥ 2 m of the transition zone &gt; 10 K below the model, band mean ≤ −15 K
-                      {ringRuleId ? ` (${ringRuleId} also needs the torque rise)` : " (the ring finding also needs the torque rise)"}. Hidden cells show their
-                      last good value for {SHELL_LAST_GOOD_MAX_AGE} min, faded over the hatch; diamonds are the latest handheld round. Limits are {lim.source}, not
-                      plant-approved.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p>Lining thickness is not measured; the lining column is estimated from shell temperature against the model.</p>
-                    <p>
-                      Hot spot: a region ≥ {HOT_DELTA} K above the profile ({hotRuleId ? `${hotRuleId}, ` : ""}refractory loss). Coating loss: zone mean &gt; +
-                      {ZONE_DELTA} K. Ring: cold band {COLD_BAND.from}–{COLD_BAND.to} m &lt; −{ZONE_DELTA} K
-                      {ringRuleId ? ` (${ringRuleId} confirms with a torque residual and normal drive vibration)` : ""}. Build-up: zone mean &lt; −{ZONE_DELTA} K.
-                    </p>
-                  </>
-                )}
-              </WhyDisclosure>
-            </div>
           </div>
         </Section>
 

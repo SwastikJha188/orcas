@@ -17,6 +17,7 @@ import {
   Motor as KitMotor,
   PAINT,
   kitStyle,
+  measureTightSvgBox,
   useKitId,
 } from "./machine-kit/machine-kit";
 import { pyroDrawingForType } from "./pyro/pyro-drawings";
@@ -96,48 +97,17 @@ export function MachineSchematic({
     if (!svgEl || !g) return;
 
     const updateBox = () => {
-      try {
-        const b = g.getBBox();
-        if (b.width > 20 && b.height > 20) {
-          const padX = Math.max(16, b.width * 0.025);
-          const padY = Math.max(14, b.height * 0.045);
-          const minX = b.x - padX;
-          const maxX = b.x + b.width + padX;
-          const minY = Math.min(0, b.y - padY);
-          const maxY = Math.max(h, b.y + b.height + padY);
-          const baseW = maxX - minX;
-          const baseH = maxY - minY;
-          const cx = (minX + maxX) / 2;
-          const cy = (minY + maxY) / 2;
-
-          let finalW = baseW;
-          const finalH = baseH;
-          if (svgEl.clientWidth > 0 && svgEl.clientHeight > 0) {
-            const svgAspect = svgEl.clientWidth / svgEl.clientHeight;
-            if (svgAspect > baseW / baseH + 0.04) {
-              finalW = baseH * svgAspect;
-            }
-          }
-
-          const next: [number, number, number, number] = [
-            +(cx - finalW / 2).toFixed(1),
-            +(cy - finalH / 2).toFixed(1),
-            +finalW.toFixed(1),
-            +finalH.toFixed(1),
-          ];
-          setTightBox((prev) =>
-            prev &&
-            Math.abs(prev[0] - next[0]) < 0.5 &&
-            Math.abs(prev[1] - next[1]) < 0.5 &&
-            Math.abs(prev[2] - next[2]) < 0.5 &&
-            Math.abs(prev[3] - next[3]) < 0.5
-              ? prev
-              : next
-          );
-        }
-      } catch {
-        // ignore if hidden
-      }
+      const next = measureTightSvgBox(g);
+      if (!next) return;
+      setTightBox((prev) =>
+        prev &&
+        Math.abs(prev[0] - next[0]) < 0.5 &&
+        Math.abs(prev[1] - next[1]) < 0.5 &&
+        Math.abs(prev[2] - next[2]) < 0.5 &&
+        Math.abs(prev[3] - next[3]) < 0.5
+          ? prev
+          : next
+      );
     };
 
     updateBox();

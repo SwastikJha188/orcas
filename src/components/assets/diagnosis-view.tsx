@@ -18,13 +18,8 @@ import { focusSensorOn } from "./sensor-focus";
 import { KpiStrip, PageHeader, SectionIndex, Section, scrollToSection, type PageMetaItem, type SectionIndexItem } from "./analysis/an-ui";
 import {
   ackedFromEvents,
-  buildActions,
   buildAlarms,
   buildFindings,
-  alarmKpis,
-  buildLog,
-  ruleFireStats,
-  type LogEntry,
   type Finding,
   dxSensorsFromFrame,
   faultModesFromCatalog,
@@ -35,12 +30,10 @@ import {
   type DxSensor,
 } from "./diagnosis-model";
 import { diagnosisKpis } from "./diagnosis-summary";
-import { AlarmLog, AlarmTable, type Shelf } from "./diagnosis-alarms";
-import { FaultModeChart, RuleBoard } from "./diagnosis-rule-board";
+import { AlarmTable, type Shelf } from "./diagnosis-alarms";
 import { FaultCandidates, type Feedback } from "./diagnosis-findings";
-import { EvidenceMethod, EvidenceTable } from "./diagnosis-evidence";
+import { EvidenceTable } from "./diagnosis-evidence";
 import { VibrationSeverity } from "./diagnosis-vibration";
-import { RecommendedActions } from "./diagnosis-actions";
 import "./diagnosis/overview-tab.css";
 import "./analysis/analysis-page.css";
 import "./diagnosis-page.css";
@@ -49,14 +42,14 @@ import "./diagnosis-page.css";
    Diagnosis — "What is wrong with this machine now, and what should be done
    now?" One scrolling page with a sticky section index:
 
-   Summary · Active alarms · Rule board · Fault patterns · Evidence & signal
-   validity · Vibration severity · Recommended actions · Alarm log
+   Alarms · Diagnosis (machine faults, then data-quality / service items)
+   · Evidence (signal validity, vibration severity)
 
    Live machines (kiln fleet, pyro line) read the live rule engine and the
    rule library in `frame.defs` (persistence 2–4 samples / 1 critical,
-   hysteresis 4 clean samples, sensor validation, event log). Other machines
-   read the stored AssetIQ record and the DB failure-mode library; what they
-   lack is named in each section. The work-order loop (KilnOps) runs on the
+   hysteresis 4 clean samples, sensor validation). Other machines read the
+   stored AssetIQ record and the DB failure-mode library; what they lack is
+   named in each section. The work-order loop (KilnOps) runs on the
    active plant's primary machine (KLN-01 / PYR-KLN-01); other live machines
    acknowledge through their engine. Why (root cause, XAI)
    lives on Analysis and what next (RUL, forecasts) on Prognosis — linked.
@@ -93,7 +86,6 @@ export function DiagnosisView({ machine, onNavigateToSensors, onNavigateToTrends
   /** Shelved alarms and fault feedback: kept in this browser only (no backend yet). */
   const [shelved, setShelved] = useState<Map<string, Shelf>>(new Map());
   const [feedback, setFeedback] = useState<Map<string, Feedback>>(new Map());
-  const [localLog, setLocalLog] = useState<LogEntry[]>([]);
   /** Rule requested by another page on arrival (read once, then cleared). */
   const [focusRuleId, setFocusRuleId] = useState<string | null>(null);
   useEffect(() => {
@@ -164,13 +156,6 @@ export function DiagnosisView({ machine, onNavigateToSensors, onNavigateToTrends
   }, [frame, opsAcks, localAcks]);
 
   const alarms = useMemo(() => (frame ? buildAlarms(frame, acked) : []), [frame, acked]);
-  const log = useMemo(
-    () => (frame ? [...localLog, ...buildLog(frame.events)].sort((a, b) => b.t - a.t) : []),
-    [frame, localLog],
-  );
-  const kpiAlarm = useMemo(() => (frame ? alarmKpis(frame, alarms) : null), [frame, alarms]);
-  const fires = useMemo(() => (frame ? ruleFireStats(frame) : new Map<string, { fires: number; last: number | null }>()), [frame]);
-  const validMap = useMemo(() => new Map(sensors.map((x) => [x.tag, x.validity !== "invalid" && x.validity !== "stale"])), [sensors]);
 
   // Shelves auto-return when their time is up or the alarm has cleared.
   const activeShelves = useMemo(() => {
@@ -180,12 +165,9 @@ export function DiagnosisView({ machine, onNavigateToSensors, onNavigateToTrends
     return m;
   }, [shelved, alarms]);
 
-  const note = (e: Omit<LogEntry, "key" | "t" | "auto" | "local">) =>
-    setLocalLog((l) => [{ ...e, key: `local-${Date.now()}-${l.length}`, t: frame?.t ?? 0, auto: false, local: true }, ...l].slice(0, 60));
   const shelve = (ruleId: string, ms: number, reason: string) => {
     const a = alarms.find((x) => x.ruleId === ruleId);
     setShelved((m) => new Map(m).set(ruleId, { until: Date.now() + ms, reason, since: a?.since ?? null }));
-    note({ kind: "shelve", severity: "Normal", title: `${ruleId} shelved for ${Math.round(ms / 3_600_000)} h`, detail: reason, ruleId });
   };
   const unshelve = (ruleId: string) => {
     setShelved((m) => {
@@ -193,12 +175,8 @@ export function DiagnosisView({ machine, onNavigateToSensors, onNavigateToTrends
       n.delete(ruleId);
       return n;
     });
-    note({ kind: "shelve", severity: "Normal", title: `${ruleId} unshelved`, detail: "Returned by operator", ruleId });
   };
-  const giveFeedback = (f: Finding, v: Feedback) => {
-    setFeedback((m) => new Map(m).set(f.key, v));
-    note({ kind: "feedback", severity: "Normal", title: `${f.ruleId ?? f.name} ${v === "confirmed" ? "confirmed" : "rejected"} as diagnosis`, detail: f.name, ruleId: f.ruleId });
-  };
+  const giveFeedback = (f: Finding, v: Feedback) => setFeedback((m) => new Map(m).set(f.key, v));
   const onsetOf = (f: Finding) => {
     if (!frame || !f.ruleId) return null;
     const a = alarms.find((x) => x.ruleId === f.ruleId);
@@ -206,7 +184,6 @@ export function DiagnosisView({ machine, onNavigateToSensors, onNavigateToTrends
     if (a.state === "confirming") return `${a.persistence} sample${a.persistence === 1 ? "" : "s"} ago`;
     return a.since !== null ? fmtT(a.since) : null;
   };
-  const actions = useMemo(() => buildActions(findings, sensors, diagnosis.record, frame !== null), [findings, sensors, diagnosis.record, frame]);
   const vibration = useMemo(() => sensors.filter((s) => s.isVibration), [sensors]);
 
   const acknowledge = useCallback(
@@ -248,10 +225,7 @@ export function DiagnosisView({ machine, onNavigateToSensors, onNavigateToTrends
     return list.sort((a, b) => flagged(a) - flagged(b) || SEV_RANK[a.severity] - SEV_RANK[b.severity]);
   }, [scopeTags, sensors, byTag, citedBy]);
 
-  const selectRule = (ruleId: string | null, scroll = false) => {
-    setSelectedRuleId(ruleId);
-    if (ruleId && scroll) scrollToSection("dx-evidence");
-  };
+  const selectRule = (ruleId: string | null) => setSelectedRuleId(ruleId);
 
   /* ------------------------------- Header -------------------------------- */
   const record = diagnosis.record;
@@ -275,15 +249,11 @@ export function DiagnosisView({ machine, onNavigateToSensors, onNavigateToTrends
     alarms: frame !== null,
     diagnosis: open.length > 0 || frame !== null || modes.length > 0,
     evidence: sensors.length > 0,
-    actions: actions.length > 0,
-    log: frame !== null && log.length > 0,
   };
   const indexItems: SectionIndexItem[] = [
     ...(show.alarms ? [{ id: "dx-alarms", label: "Alarms", tone: alarmTone }] : []),
     ...(show.diagnosis ? [{ id: "dx-diagnosis", label: "Diagnosis" }] : []),
     ...(show.evidence ? [{ id: "dx-evidence", label: "Evidence", tone: evidenceTone }] : []),
-    ...(show.actions ? [{ id: "dx-actions", label: "Actions" }] : []),
-    ...(show.log ? [{ id: "dx-log", label: "Log" }] : []),
   ];
 
   const scopeChip = selectedRuleId ? (
@@ -331,7 +301,7 @@ export function DiagnosisView({ machine, onNavigateToSensors, onNavigateToTrends
 
       {indexItems.length > 1 && <SectionIndex items={indexItems} label="Diagnosis sections" pendingKey={DIAGNOSIS_SECTION_KEY} right={scopeChip} />}
 
-      {show.alarms && frame && kpiAlarm && (
+      {show.alarms && frame && (
         <Section id="dx-alarms" title="Alarms">
           <AlarmTable
             alarms={alarms}
@@ -339,7 +309,6 @@ export function DiagnosisView({ machine, onNavigateToSensors, onNavigateToTrends
             t={frame.t}
             fmtT={fmtT}
             byTag={byTag}
-            kpis={kpiAlarm}
             selectedRuleId={selectedRuleId}
             onSelect={(id) => selectRule(id)}
             onAcknowledge={acknowledge}
@@ -368,12 +337,7 @@ export function DiagnosisView({ machine, onNavigateToSensors, onNavigateToTrends
               onPrognosis={() => go("prognosis")}
             />
           ) : (
-            <p className="pg-diag-missing">No fault candidates.</p>
-          )}
-          {frame ? (
-            <RuleBoard frame={frame} acked={acked} validity={validMap} fires={fires} fmtT={fmtT} selectedRuleId={selectedRuleId} onSelect={(id) => selectRule(id)} />
-          ) : (
-            modes.length > 0 && <FaultModeChart modes={modes} loading={catalog.isLoading} selectedRuleId={selectedRuleId} onSelect={(id) => selectRule(id)} />
+            <p className="pg-diag-missing">No machine fault present.</p>
           )}
         </Section>
       )}
@@ -392,24 +356,6 @@ export function DiagnosisView({ machine, onNavigateToSensors, onNavigateToTrends
             loading={catalog.isLoading}
           />
           {vibration.length > 0 && <VibrationSeverity sensors={vibration} onOpenTrend={openTrend} />}
-          <EvidenceMethod live={sensors.some((s) => s.live)} vibration={vibration.length > 0} pyro={frame?.defs.plant === "pyro"} />
-        </Section>
-      )}
-
-      {show.actions && (
-        <Section id="dx-actions" title="Actions">
-          <RecommendedActions
-            actions={actions}
-            workOrders={opsOn ? ops.workOrders : null}
-            onWorkOrder={opsOn ? (id) => void ops.createWorkOrder(id) : undefined}
-            onAnalysis={() => go("analysis")}
-          />
-        </Section>
-      )}
-
-      {show.log && (
-        <Section id="dx-log" title="Log">
-          <AlarmLog entries={log} fmtT={fmtT} onSelectRule={(id) => selectRule(id, true)} />
         </Section>
       )}
 

@@ -126,7 +126,7 @@ export function MachineAnalysisPage({ machine }: MachineAnalysisPageProps) {
             {show.diagnosis && <AnFaults {...props} />}
             {show.explanation && <AnExplain {...props} />}
             {show.actions && <AnActions {...props} feedback={feedback} />}
-            {show.quality && <AnQuality {...props} ledger={ledger} feedback={feedback} />}
+            {show.quality && <AnQuality {...props} ledger={ledger} />}
           </div>
         </>
       )}

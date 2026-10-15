@@ -9,7 +9,6 @@
 import React from "react";
 import { PillButton, PillNav, Table, type Column } from "@/components/ui";
 import { StatusTag } from "./assets-shell-ui";
-import { WhyDisclosure } from "./analysis/an-ui";
 import type { CabinetChannel, CabinetModule, MachineRackInfo } from "./rack-data";
 import { RackEnclosure } from "./rack-enclosure";
 import {
@@ -605,12 +604,6 @@ export function RackCabinetSync({
       <CardHead title="Cabinet & sync" />
       <Table columns={columns} data={lines} keyExtractor={(l) => `${l.group}-${l.item}`} className="pg-rack-table pg-rack-spec" />
       <p className="pg-rack-foot ast-caption">Not reported: {missing.join(", ")}.</p>
-      <WhyDisclosure summary="Method">
-        <p className="ast-caption">
-          Recorded values come from the cabinet record and the edge registry.
-          {set ? ` Specified values come from the system specification ${set.ref} §7 (Table 7.1${set.daqNodes.length ? ", DAQ allocation Table 7.2" : ""}).` : ""}
-        </p>
-      </WhyDisclosure>
     </section>
   );
 }

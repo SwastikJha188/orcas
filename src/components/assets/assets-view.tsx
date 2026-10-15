@@ -217,8 +217,11 @@ export function AssetsView({
 
       {/* MACHINE DETAIL WORKSPACE */}
       <main className="assets-machine-workspace" aria-label="Machine">
-        {/* Machine header: crumbs → title · id, single back action */}
+        {/* Machine header: back action · crumbs over title · id, page tabs on the right */}
         <header className="ast-head">
+          <PillButton variant="secondary" onClick={handleBackToAssets} icon={<IconBack />}>
+            All assets
+          </PillButton>
           <div className="ast-head-main">
             <ol className="ast-crumbs" aria-label="Location">
               <li>Assets</li>
@@ -227,37 +230,34 @@ export function AssetsView({
               <li>{selectedMachine.processCell}</li>
             </ol>
             <div className="ast-title-row">
-              <h1 className="ast-title">{selectedMachine.name}</h1>
+              <h1 className="ast-title" title={selectedMachine.name}>{selectedMachine.name}</h1>
               <span className="ast-id">{selectedMachine.id}</span>
             </div>
           </div>
-          <PillButton variant="secondary" onClick={handleBackToAssets} icon={<IconBack />}>
-            All assets
-          </PillButton>
-        </header>
 
-        {/* 1. HORIZONTAL PILL NAVIGATION (Tabs) */}
-        <div className="machine-tabs-bar" ref={tabsRef}>
-          <PillNav
-            items={tabs}
-            activeId={activeGroup.id}
-            onChange={(id) => {
-              const group = TAB_GROUPS.find((g) => g.id === id);
-              if (!group) return;
-              // Return to the view last opened in that tab.
-              const last = lastView[group.id];
-              setActiveSubPage(last && groupViews(group).some((v) => v.id === last) ? last : group.views[0].id);
-            }}
-          />
-          {activeViews.length > 1 && (
+          {/* Horizontal pill navigation (tabs) */}
+          <div className="machine-tabs-bar" ref={tabsRef}>
             <PillNav
-              className="machine-views-nav"
-              items={activeViews}
-              activeId={page}
-              onChange={(id) => setActiveSubPage(id as AssetsSubPage)}
+              items={tabs}
+              activeId={activeGroup.id}
+              onChange={(id) => {
+                const group = TAB_GROUPS.find((g) => g.id === id);
+                if (!group) return;
+                // Return to the view last opened in that tab.
+                const last = lastView[group.id];
+                setActiveSubPage(last && groupViews(group).some((v) => v.id === last) ? last : group.views[0].id);
+              }}
             />
-          )}
-        </div>
+            {activeViews.length > 1 && (
+              <PillNav
+                className="machine-views-nav"
+                items={activeViews}
+                activeId={page}
+                onChange={(id) => setActiveSubPage(id as AssetsSubPage)}
+              />
+            )}
+          </div>
+        </header>
 
         {/* ==============================================================
             PAGE 1: OVERVIEW PAGE (KILN SEALS LIVE SIMULATION & DIAGRAMS)

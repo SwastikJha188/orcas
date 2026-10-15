@@ -263,14 +263,69 @@
   }
 }
 
+/* Header: one row — back action, crumbs over title (truncates), page tabs on the right. */
+:root .assets-machine-workspace > .ast-head {
+  align-items: center;
+  justify-content: flex-start;
+  gap: 16px;
+}
+:root .assets-machine-workspace > .ast-head > .btn-pill {
+  flex: none;
+}
+:root .assets-machine-workspace > .ast-head .ast-head-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 2px;
+}
+:root .assets-machine-workspace > .ast-head .ast-crumbs {
+  flex-wrap: nowrap;
+  overflow: hidden;
+  white-space: nowrap;
+}
+:root .assets-machine-workspace > .ast-head .ast-title-row {
+  flex-wrap: nowrap;
+}
+:root .assets-machine-workspace > .ast-head .ast-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-3xl);
+}
+:root .assets-machine-workspace > .ast-head .ast-id {
+  flex: none;
+}
+/* Tabs keep their full width; the title truncates first. Very long tab rows scroll. */
+:root .assets-machine-workspace > .ast-head > .machine-tabs-bar {
+  flex: 0 0 auto;
+  max-width: 72%;
+  min-width: 0;
+  margin-inline-start: auto;
+}
+:root .assets-machine-workspace > .ast-head > .machine-tabs-bar > .machine-views-nav {
+  margin-inline-start: 0;
+}
+
 @media (max-width: 1023px) {
   :root .assets-machine-workspace {
     padding: 18px 20px 32px;
     gap: 16px;
   }
 
+  /* Header wraps: the tabs take their own line under the title. */
+  :root .assets-machine-workspace > .ast-head {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+  :root .assets-machine-workspace > .ast-head .ast-head-main {
+    flex: 1 1 0;
+  }
+
   /* Tab row: one line that scrolls sideways, faded at the trailing edge. */
-  :root .assets-machine-workspace > .machine-tabs-bar {
+  :root .assets-machine-workspace > .ast-head > .machine-tabs-bar {
+    /* Full bleed to the workspace edges (cancels its 20px side padding). */
+    flex: 1 0 calc(100% + 40px);
+    order: 3;
     max-width: none;
     margin-inline: -20px;
     padding-inline: 20px 0;
@@ -306,7 +361,8 @@
     padding: 12px 14px 24px;
     gap: 12px;
   }
-  :root .assets-machine-workspace > .machine-tabs-bar {
+  :root .assets-machine-workspace > .ast-head > .machine-tabs-bar {
+    flex-basis: calc(100% + 28px);
     margin-inline: -14px;
     padding-inline: 14px 0;
     -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 28px), transparent);

@@ -8,7 +8,7 @@ import { Chevron, Panel, PRIORITIES, Section, openActions } from "./an-ui";
 import { SECTION_IDS, liveRules, machineFaults, type SectionProps } from "./an-derive";
 import { isConditionRule } from "@/lib/plant-defs";
 
-/** Open Diagnosis scrolled to one of its sections ("dx-diagnosis", "dx-actions" …). */
+/** Open Diagnosis scrolled to one of its sections ("dx-alarms", "dx-diagnosis", "dx-evidence"). */
 export function openDiagnosisAt(section: string, go: (sub: AssetsSubPage) => void): void {
   try {
     sessionStorage.setItem(DIAGNOSIS_SECTION_KEY, section);
@@ -69,7 +69,7 @@ export function useFeedbackLabels(machineId: string): FeedbackStore {
   return { labels, set };
 }
 
-/** Feedback — operator labels on each open finding; the action list lives on Diagnosis (one linked summary line here). */
+/** Feedback — operator labels on each open finding; each fault's verify action and owner live on Diagnosis (one linked summary line here). */
 export function AnActions({ insights, frame, go, feedback }: SectionProps & { feedback: FeedbackStore }) {
   const a = insights.analysis;
   const actions = [...openActions(a)].sort((x, y) => PRIORITIES.indexOf(x.priority) - PRIORITIES.indexOf(y.priority));
@@ -90,8 +90,8 @@ export function AnActions({ insights, frame, go, feedback }: SectionProps & { fe
               .join("")}
             {` · first ${actions[0].title}`}
           </span>
-          <PillButton variant="secondary" className="pg-analysis-link" trailing={<Chevron />} onClick={() => openDiagnosisAt("dx-actions", go)}>
-            Actions in Diagnosis
+          <PillButton variant="secondary" className="pg-analysis-link" trailing={<Chevron />} onClick={() => openDiagnosisAt("dx-diagnosis", go)}>
+            Faults in Diagnosis
           </PillButton>
         </div>
       )}

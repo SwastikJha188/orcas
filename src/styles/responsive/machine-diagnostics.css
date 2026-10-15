@@ -13,6 +13,10 @@
   container: pg-frame / inline-size;
 }
 
+:root .ast-root.pg-frame:has([data-fullscreen]) {
+  container-type: normal;
+}
+
 /* KPI strip by available width: 4-up ≥ 720px, 2×2 below (never one column). */
 :root .pg-frame-kpis {
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -334,7 +338,7 @@
   :root #sensors-register .pg-sensors-id {
     gap: 8px;
   }
-  :root #sensors-register .ast-health-cell {
+  :root #sensors-register .ui-table .ast-health-cell {
     display: none;
   }
   :root #sensors-register .ast-toolbar {

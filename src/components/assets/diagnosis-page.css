@@ -213,66 +213,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-.pg-diag-act-text {
-  display: block;
-  min-width: 240px;
-  max-width: 520px;
-  white-space: normal;
-  line-height: 1.4;
-  color: var(--dx-ink);
-}
-
-.pg-diag-log-time {
-  width: 1%;
-  white-space: nowrap;
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
-}
-
 .pg-diag-evrow {
   cursor: default;
-}
-
-/* Expanded finding row */
-.pg-diag-detail {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 16px 32px;
-  padding: 8px 0 8px;
-}
-
-.pg-diag-dl {
-  display: grid;
-  grid-template-columns: 96px minmax(0, 1fr);
-  gap: 8px 16px;
-  margin: 0;
-  font-size: var(--fs-md);
-  line-height: 1.45;
-  align-content: start;
-}
-
-.pg-diag-dl dt {
-  color: var(--text-muted);
-}
-
-.pg-diag-dl dd {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0;
-  color: var(--page-fg);
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-.pg-diag-dl dd:has(> .pg-diag-inline-link) {
-  display: block;
-}
-
-.pg-diag-alts {
-  margin: 0;
-  padding-left: 16px;
 }
 
 /* ------------------------- Vibration zone bar --------------------------- */
@@ -309,13 +251,6 @@
 
 .pg-diag-zmark {
   fill: var(--dx-ink);
-}
-
-/* ------------------------------ Responsive ------------------------------ */
-@media (max-width: 900px) {
-  .pg-diag-detail {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 /* ---------------------- One card per section ---------------------------
@@ -360,82 +295,6 @@
   font-weight: 600;
   letter-spacing: 0;
   color: var(--text-muted);
-}
-
-/* Rule matrix */
-.pg-diag-group th {
-  padding: 16px 16px 8px;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  letter-spacing: 0;
-  text-align: left;
-  color: var(--dx-ink);
-  border-bottom: 1px solid var(--separator);
-}
-
-.pg-diag-rules tr.is-quiet .pg-diag-name {
-  font-weight: 400;
-  color: var(--dx-ink-2);
-}
-
-.pg-diag-logic {
-  max-width: 380px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: var(--fs-sm);
-  color: var(--text-muted);
-}
-
-/* Fault candidates */
-.pg-diag-prob {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  white-space: nowrap;
-}
-
-.pg-diag-bar {
-  position: relative;
-  width: 56px;
-  height: 3px;
-  background: var(--dx-track);
-}
-
-.pg-diag-bar i {
-  position: absolute;
-  inset: 0 auto 0 0;
-  background: var(--dx-ink-2);
-}
-
-.pg-diag-matrix {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--fs-sm);
-  align-self: start;
-}
-
-.pg-diag-matrix th {
-  padding: 4px 8px;
-  font-size: var(--fs-xs);
-  font-weight: 400;
-  text-align: left;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--separator);
-}
-
-.pg-diag-matrix td {
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--separator);
-  white-space: nowrap;
-}
-
-.pg-diag-matrix tr:last-child td {
-  border-bottom: 0;
-}
-
-.pg-diag-matrix .is-right {
-  text-align: right;
 }
 
 /* Shelving */
@@ -520,11 +379,6 @@
   box-shadow: inset 2px 0 0 var(--signal-blue);
 }
 
-.pg-diag-quiet-row > td {
-  padding: 6px 16px;
-  border-bottom: 1px solid var(--separator);
-}
-
 .pg-diag .pg-analysis-why {
   margin-top: 8px;
 }
@@ -535,4 +389,391 @@
   font-size: var(--fs-sm);
   line-height: 1.5;
   color: var(--text-muted);
+}
+
+/* ------------------------------------------------ Diagnosis findings
+   A divider list, not a table: each finding is one grid row (what · severity
+   · since · time to limit · feedback) with what to do under it. Columns come
+   from one template shared by the header and the rows (subgrid), and the
+   whole list restacks on its own width (container query), so it never
+   scrolls sideways. */
+.pg-diag-f {
+  --f-cols: minmax(0, 1fr) 156px 128px 128px 168px;
+  display: flex;
+  flex-direction: column;
+  container-type: inline-size;
+  margin: 0 -16px;
+}
+
+.pg-diag-f-head,
+.pg-diag-f-row,
+.pg-diag-f-toggle {
+  display: grid;
+  grid-template-columns: var(--f-cols);
+  column-gap: 16px;
+  align-items: start;
+}
+
+.pg-diag-f-head {
+  padding: 0 16px 10px;
+  border-bottom: 1px solid var(--separator);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.pg-diag-f-head .is-right {
+  text-align: right;
+}
+
+.pg-diag-f-group-title {
+  margin: 0;
+  padding: 16px 16px 8px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--dx-ink);
+}
+
+.pg-diag-f-group-title .ast-num {
+  margin-left: 4px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.pg-diag-f-none {
+  margin: 0;
+  padding: 0 16px 12px;
+  font-size: var(--fs-md);
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--separator);
+}
+
+.pg-diag-f-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Row: capsule highlight on hover / open, divider otherwise. */
+.pg-diag-f-item {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--separator);
+  border-radius: var(--corner-row);
+}
+
+.pg-diag-f-item:hover,
+.pg-diag-f-item.is-open {
+  background: var(--row-hover-bg);
+  border-bottom-color: transparent;
+}
+
+.pg-diag-f-item.is-focus {
+  box-shadow: inset 0 0 0 1px var(--signal-blue);
+}
+
+.pg-diag-f-toggle {
+  grid-column: 1 / 5;
+  grid-template-columns: subgrid;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--corner-sm);
+}
+
+.pg-diag-f-toggle:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 4px;
+}
+
+.pg-diag-f-what,
+.pg-diag-f-sev,
+.pg-diag-f-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: var(--fs-md);
+}
+
+.pg-diag-f-what .pg-diag-name {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 4px;
+}
+
+.pg-diag-f-chev {
+  flex-shrink: 0;
+  align-self: center;
+  margin-right: 2px;
+  color: var(--text-muted);
+  transition: transform 120ms ease;
+}
+
+.pg-diag-f-item.is-open .pg-diag-f-chev {
+  transform: rotate(90deg);
+}
+
+.pg-diag-f-what > .pg-diag-f-sub,
+.pg-diag-f-do {
+  padding-left: 20px;
+}
+
+.pg-diag-f-sub {
+  display: block;
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  color: var(--text-muted);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.pg-diag-f-fb {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* What to do and who owns it, always visible under the row. */
+.pg-diag-f-do {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 2px 12px;
+  margin: 8px 0 0;
+  font-size: var(--fs-md);
+  line-height: 1.45;
+}
+
+.pg-diag-f-do dt {
+  color: var(--text-muted);
+}
+
+.pg-diag-f-do dd {
+  margin: 0;
+  color: var(--dx-ink);
+  overflow-wrap: anywhere;
+}
+
+/* Expanded: inputs | cause, consequence, rule detail. */
+.pg-diag-f-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 16px 32px;
+  margin-top: 12px;
+  padding: 12px 0 4px 20px;
+  border-top: 1px solid var(--separator);
+}
+
+.pg-diag-f-caption,
+.pg-diag-f-note {
+  margin: 0 0 6px;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.pg-diag-f-note {
+  color: var(--page-fg);
+  line-height: 1.45;
+}
+
+.pg-diag-f-cmp {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-md);
+  table-layout: auto;
+}
+
+.pg-diag-f-cmp th,
+.pg-diag-f-cmp td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--separator);
+  text-align: left;
+  vertical-align: top;
+  font-weight: 400;
+}
+
+.pg-diag-f-cmp th:first-child {
+  padding-left: 0;
+}
+
+.pg-diag-f-cmp :is(th, td):last-child {
+  padding-right: 0;
+}
+
+.pg-diag-f-cmp thead th {
+  padding-top: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.pg-diag-f-cmp tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.pg-diag-f-cmp .is-right {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.pg-diag-f-cmp tr.is-quiet > :is(th, td) {
+  color: var(--text-muted);
+}
+
+.pg-diag-f-tag {
+  display: block;
+  color: var(--dx-ink);
+  overflow-wrap: anywhere;
+}
+
+.pg-diag-f-cmp tr.is-quiet .pg-diag-f-tag {
+  color: var(--dx-ink-2);
+}
+
+.pg-diag-f-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pg-diag-f-dl {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 6px 16px;
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: 1.45;
+}
+
+.pg-diag-f-dl dt {
+  color: var(--text-muted);
+}
+
+.pg-diag-f-dl dd {
+  margin: 0;
+  color: var(--page-fg);
+  overflow-wrap: anywhere;
+}
+
+.pg-diag-f-side .pg-analysis-why {
+  margin-top: 0;
+}
+
+.pg-diag-f-side .pg-analysis-why-body {
+  padding-left: 0;
+}
+
+.pg-diag-f-side .pg-analysis-why-body .pg-diag-f-dl {
+  font-size: var(--fs-sm);
+}
+
+.pg-diag-f-alts {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.pg-diag-f-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+/* Narrow list (phone, narrow pane): the row restacks — finding on top, then
+   severity · since · time to limit, feedback last; detail goes one column. */
+@container (max-width: 720px) {
+  .pg-diag-f-head {
+    display: none;
+  }
+
+  .pg-diag-f-row {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 8px;
+  }
+
+  .pg-diag-f-toggle {
+    grid-column: 1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    row-gap: 8px;
+    column-gap: 12px;
+  }
+
+  .pg-diag-f-what {
+    grid-column: 1 / -1;
+  }
+
+  .pg-diag-f-sev {
+    padding-left: 20px;
+  }
+
+  .pg-diag-f-cell::before {
+    content: attr(data-label);
+    font-size: var(--fs-xs);
+    color: var(--text-muted);
+  }
+
+  .pg-diag-f-fb {
+    justify-content: flex-start;
+    padding-left: 20px;
+  }
+
+  .pg-diag-f-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pg-diag-f-dl {
+    grid-template-columns: 96px minmax(0, 1fr);
+  }
+}
+
+@container (max-width: 420px) {
+  .pg-diag-f-item {
+    padding: 10px 8px;
+  }
+
+  .pg-diag-f-detail,
+  .pg-diag-f-what > .pg-diag-f-sub,
+  .pg-diag-f-do,
+  .pg-diag-f-sev,
+  .pg-diag-f-fb {
+    padding-left: 0;
+  }
+
+  .pg-diag-f-do,
+  .pg-diag-f-dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pg-diag-f-do dd + dt,
+  .pg-diag-f-dl dd + dt {
+    margin-top: 6px;
+  }
+
+  .pg-diag-f-cmp :is(th, td) {
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+}
+
+/* Phone: sections pad 14–16px; rows bleed 8px like the other Diagnosis lists. */
+@media (max-width: 599px) {
+  .pg-diag-f {
+    margin-left: -8px;
+    margin-right: -8px;
+  }
+
+  .pg-diag-f-item,
+  .pg-diag-f-group-title,
+  .pg-diag-f-none {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
 }

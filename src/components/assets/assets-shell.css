@@ -1130,6 +1130,17 @@
   min-height: 120px;
 }
 
+/* Fill mode: the stage takes its parent's height and centres the laid-out drawing and cards in it. */
+.ast-smw-stage[data-fill] {
+  flex: 1 1 0;
+  height: 100%;
+  min-height: 0;
+  justify-content: safe center;
+  /* Last resort (very short screens with many channels): scroll, never crop. */
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
 .ast-smw-leaders {
   position: absolute;
   inset: 0;
@@ -1180,6 +1191,25 @@
   gap: 12px;
 }
 
+.ast-smw-flank-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  width: 100%;
+  min-width: 0;
+}
+
+.ast-smw-flank {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  gap: 10px;
+  align-content: center;
+  flex-shrink: 0;
+}
+
 .ast-smw-row-stack {
   display: grid;
 }
@@ -1203,6 +1233,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-inline: auto;
 }
 
 .ast-smw-drawing > .dxh-schematic,

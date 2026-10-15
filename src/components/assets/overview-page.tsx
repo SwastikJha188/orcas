@@ -16,7 +16,7 @@
    Sections without data for the machine are hidden with their index entry.
    ========================================================================== */
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetMachine } from "./assets-data";
 import type { AssetsSubPage } from "./assets-view";
 import type { KilnSimulation } from "./kiln-seals-simulation";
@@ -66,28 +66,14 @@ export function OverviewPage({
 
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [focusGroup, setFocusGroup] = useState<string | null>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const machineRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!isFullscreen) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setIsFullscreen(false);
-    };
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [isFullscreen]);
+  const fit = useFitHeight(machineRef, machine.id);
 
   const select = (tag: string | null) => {
     setSelectedTag(tag);
     // Picking a point opens its component; clearing the pick keeps the component on screen.
     if (tag) setFocusGroup(d.groupOfTag.get(tag) ?? null);
-    if (tag && !isFullscreen) machineRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (tag) machineRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   };
 
   const selectGroupFromTable = (id: string | null) => {
@@ -173,8 +159,8 @@ export function OverviewPage({
       <section
         id={OV_SECTIONS.machine}
         ref={machineRef}
-        className="pg-analysis-section ast-card pg-ov-machine-sec"
-        data-fullscreen={isFullscreen || undefined}
+        className="pg-analysis-section ast-card mx-canvas pg-ov-machine-sec"
+        data-fit={fit || undefined}
         aria-label="Machine"
       >
         <div className="pg-ov-hero-head">
@@ -210,6 +196,14 @@ export function OverviewPage({
                 <dd className="ast-num" title={d.tz.label}>{d.updatedAt ?? "—"}</dd>
               </div>
             </dl>
+            {placedTags.size > 0 && (
+              <span className="pg-ov-counts ast-num">
+                <span>{placedTags.size} placed</span>
+                <StateCell tone="good" label={`${counts.Normal} normal`} />
+                <StateCell tone={counts.Advisory ? "warn" : "idle"} label={`${counts.Advisory} warning`} />
+                <StateCell tone={counts.Critical ? "bad" : "idle"} label={`${counts.Critical} alarm`} />
+              </span>
+            )}
           </div>
           <div className="pg-ov-hero-actions">
             {locateTag && (
@@ -217,23 +211,6 @@ export function OverviewPage({
                 Locate worst point
               </PillButton>
             )}
-            <PillButton
-              variant="secondary"
-              onClick={() => setIsFullscreen((f) => !f)}
-              icon={
-                isFullscreen ? (
-                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M6 2v4H2M10 2v4h4M6 14v-4H2M10 14v-4h4" />
-                  </svg>
-                ) : (
-                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" />
-                  </svg>
-                )
-              }
-            >
-              {isFullscreen ? "Exit full screen" : "Full screen"}
-            </PillButton>
           </div>
         </div>
 
@@ -247,8 +224,7 @@ export function OverviewPage({
             setComponent={setFocusGroup}
             onSelect={select}
             go={go}
-            isFullscreen={isFullscreen}
-            onToggleFullscreen={() => setIsFullscreen((f) => !f)}
+            fit={fit}
           />
         </div>
       </section>
@@ -271,6 +247,155 @@ export function OverviewPage({
   );
 }
 
+/**
+ * The sheet's note under the canvas. On a one-screen layout it takes one line
+ * (so the drawing keeps the height), with More / Less when it runs longer.
+ */
+function SheetNote({ sheetId, onOpenSheet, clamp }: { sheetId: string; onOpenSheet: (id: string) => void; clamp: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [long, setLong] = useState(false);
+  useEffect(() => setOpen(false), [sheetId]);
+  useLayoutEffect(() => {
+    const p = ref.current?.querySelector("p");
+    if (!clamp || open || !p) return;
+    const check = () => setLong(p.scrollWidth > p.clientWidth + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(p);
+    return () => ro.disconnect();
+  }, [clamp, open, sheetId]);
+  if (!LINE_SHEET_BY_ID[sheetId]?.note) return null;
+  return (
+    <div ref={ref} className="pg-ov-note" data-clamp={(clamp && !open) || undefined}>
+      <LineSheetNote sheetId={sheetId} onOpenSheet={onOpenSheet} />
+      {clamp && (long || open) && (
+        <button type="button" className="pg-ov-note-more" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+          {open ? "Less" : "More"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Nearest scrolling ancestor, or null for the window. */
+function scrollParent(el: HTMLElement): HTMLElement | null {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    if (/(auto|scroll)/.test(getComputedStyle(p).overflowY)) return p;
+  }
+  return null;
+}
+
+/**
+ * Full-screen height for the machine section: the whole visible height of its
+ * scroll container (less its top padding and a small margin), the size the
+ * drawing had in full screen. The page header sits above it; the rest of the
+ * page follows below. Off below 760 px wide (phones stack and scroll).
+ */
+function useFitHeight(ref: React.RefObject<HTMLElement | null>, key: string): boolean {
+  const [fit, setFit] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const scroller = scrollParent(el);
+    const mq = window.matchMedia("(min-width: 760px) and (min-height: 480px)");
+    const update = () => {
+      if (!mq.matches) {
+        el.style.removeProperty("--ov-fit-h");
+        setFit(false);
+        return;
+      }
+      const viewH = scroller ? scroller.clientHeight : window.innerHeight;
+      const padTop = scroller ? parseFloat(getComputedStyle(scroller).paddingTop) || 0 : 0;
+      el.style.setProperty("--ov-fit-h", `${Math.max(420, Math.floor(viewH - padTop - 12))}px`);
+      setFit(true);
+    };
+    update();
+    const raf = requestAnimationFrame(update);
+    const ro = new ResizeObserver(update);
+    if (scroller) ro.observe(scroller);
+    window.addEventListener("resize", update);
+    mq.addEventListener("change", update);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+      mq.removeEventListener("change", update);
+    };
+  }, [ref, key]);
+  return fit;
+}
+
+/**
+ * On a one-screen layout, shortens the machine section (`--ov-trim`) by the
+ * canvas height its content does not use: a plain drawing's height at the
+ * canvas width, or the card stage's laid-out height (`stageNeed`; a stage
+ * that needs more, lengthens it). Returns the
+ * untrimmed stage height, which the card stage plans against, so trimming
+ * never feeds back into its layout.
+ */
+function useCanvasTrim(ref: React.RefObject<HTMLDivElement | null>, enabled: boolean, stageNeed: number | null, key: string): number | null {
+  const trimRef = useRef(0);
+  const [avail, setAvail] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const row = ref.current;
+    const section = row?.closest<HTMLElement>(".pg-ov-machine-sec");
+    const canvas = row?.querySelector<HTMLElement>(".pg-ov-canvas");
+    const set = (px: number) => {
+      trimRef.current = px;
+      if (px !== 0) section?.style.setProperty("--ov-trim", `${px}px`);
+      else section?.style.removeProperty("--ov-trim");
+    };
+    if (!enabled || !row || !section || !canvas) {
+      set(0);
+      setAvail(null);
+      return;
+    }
+    const calc = () => {
+      const vp = canvas.querySelector<HTMLElement>(".mx-vp");
+      if (!vp) return;
+      const cs = getComputedStyle(vp);
+      const padV = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) + 2;
+      const untrimmed = canvas.clientHeight + trimRef.current;
+      const nextAvail = Math.floor(untrimmed - padV);
+      setAvail((prev) => (prev != null && Math.abs(prev - nextAvail) <= 2 ? prev : nextAvail));
+      let need: number;
+      let floor = 0;
+      if (stageNeed != null) {
+        if (stageNeed <= 0) {
+          if (trimRef.current !== 0) set(0);
+          return;
+        }
+        need = stageNeed + padV;
+        // Cards that cannot fit (narrow screens stack them under the drawing): the section grows to hold them.
+        floor = -Infinity;
+      } else {
+        const vb = canvas.querySelector<SVGSVGElement>(".mx-vp-stage > svg")?.viewBox.baseVal;
+        if (!vb || !vb.width || !vb.height) return;
+        const innerW = vp.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+        need = (innerW * vb.height) / vb.width + padV;
+      }
+      // Give back what is unused, less a small margin; take only what is missing.
+      const spare = Math.floor(untrimmed - need);
+      const next = Math.max(floor, spare > 8 ? spare - 8 : Math.min(0, spare));
+      if (Math.abs(next - trimRef.current) > 6) set(next);
+    };
+    calc();
+    const ro = new ResizeObserver(calc);
+    ro.observe(row);
+    const mo = new MutationObserver(calc);
+    mo.observe(canvas, { attributes: true, attributeFilter: ["viewBox"], childList: true, subtree: true });
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+    };
+  }, [ref, enabled, stageNeed, key]);
+  useEffect(() => () => {
+    ref.current?.closest<HTMLElement>(".pg-ov-machine-sec")?.style.removeProperty("--ov-trim");
+  }, [ref]);
+  return enabled ? avail : null;
+}
+
 /** A diagram-pack sheet whose drawing is in: equipment art drawn and every point keyed by its tag. */
 function sheetReady(id: string): boolean {
   const art = LINE_SHEET_ART[id];
@@ -290,8 +415,7 @@ function MachineDrawing({
   setComponent,
   onSelect,
   go,
-  isFullscreen,
-  onToggleFullscreen,
+  fit,
 }: {
   machine: AssetMachine;
   d: OverviewDigest;
@@ -302,10 +426,11 @@ function MachineDrawing({
   setComponent: (id: string | null) => void;
   onSelect: (tag: string | null) => void;
   go: (p: AssetsSubPage) => void;
-  isFullscreen: boolean;
-  onToggleFullscreen: () => void;
+  /** The section has a fixed, one-screen height: the drawing (and its cards) fill the canvas. */
+  fit: boolean;
+  /** Shown beside a drawing that leaves spare width (a tall machine): the component list. */
 }) {
-  const { sensors, counts, catalog, pageDots, placedTags } = d;
+  const { sensors, catalog, pageDots, placedTags } = d;
 
   // Pyro line: the diagram pack. The overview sheet is the machine drawing; a component opens its detail sheet(s).
   // A sheet counts once its drawing is in (art drawn, pads keyed by tag); until then the machine schematic stays.
@@ -352,7 +477,7 @@ function MachineDrawing({
 
   // The sheet's own content box: the canvas takes the drawing's proportions, edge to edge at any width.
   const detail = Boolean(sheet && LINE_SHEET_BY_ID[sheet]?.kind === "detail");
-  const { box, measure } = useSheetBox(sheet, false);
+  const { box, measure } = useSheetBox(sheet, !detail);
   const art = sheet ? LINE_SHEET_ART[sheet] : null;
   // Components (a detail sheet, or a kiln component drawing): one live card per sensor, joined to its pad.
   const cardTags = useMemo(() => (detail && sheet ? lineSheetTags(sheet) : part ? part.tags : []), [detail, sheet, part]);
@@ -387,143 +512,141 @@ function MachineDrawing({
     [drawableParts],
   );
   const partIdx = partItems.findIndex((it) => it.id === (part?.id ?? ""));
+
+  const boxRef = useRef<HTMLDivElement>(null);
+  const plain = !detail && !part?.pins;
+  // A width-bound drawing (portrait screens) gives the height it does not use back to the page.
+  const [stageNeed, setStageNeed] = useState(0);
+  const stageAvail = useCanvasTrim(boxRef, fit, plain ? null : stageNeed, `${sheet ?? ""}:${part?.id ?? ""}`);
   const stepPart = (delta: number) => {
     if (partItems.length < 2) return;
     const next = (Math.max(0, partIdx) + delta + partItems.length) % partItems.length;
     setComponent(partItems[next].id || null);
   };
 
+  // Sheet / sub-assembly tabs ride in the canvas's own top bar, beside the zoom controls.
+  const nav =
+    sheetPills.length > 1 ? (
+      <div className="pg-ov-nav-bar">
+        <div className="pg-ov-nav-scroll">
+          <PillNav
+            items={sheetPills.map((id) => ({ id, label: id === overviewSheet ? "Overview" : `${id} · ${LINE_SHEET_BY_ID[id]?.title.split(":")[0]}` }))}
+            activeId={sheet ?? ""}
+            onChange={openSheet}
+          />
+        </div>
+        <div className="pg-ov-stepper" role="group" aria-label="Step diagram sheets">
+          <span className="pg-ov-stepper-pos ast-num">
+            {Math.max(1, sheetIdx + 1)}/{sheetPills.length}
+          </span>
+          <button type="button" className="pg-ov-step-btn" onClick={() => stepSheet(-1)} aria-label="Previous sheet" title="Previous sheet">
+            ‹
+          </button>
+          <button type="button" className="pg-ov-step-btn" onClick={() => stepSheet(1)} aria-label="Next sheet" title="Next sheet">
+            ›
+          </button>
+        </div>
+      </div>
+    ) : partItems.length > 1 ? (
+      <div className="pg-ov-nav-bar">
+        <div className="pg-ov-nav-scroll">
+          <PillNav
+            items={partItems}
+            activeId={part?.id ?? ""}
+            onChange={(id) => setComponent(id || null)}
+          />
+        </div>
+        <div className="pg-ov-stepper" role="group" aria-label="Step sub-assembly drawings">
+          <span className="pg-ov-stepper-pos ast-num">
+            {Math.max(1, partIdx + 1)}/{partItems.length}
+          </span>
+          <button type="button" className="pg-ov-step-btn" onClick={() => stepPart(-1)} aria-label="Previous sub-assembly drawing" title="Previous sub-assembly">
+            ‹
+          </button>
+          <button type="button" className="pg-ov-step-btn" onClick={() => stepPart(1)} aria-label="Next sub-assembly drawing" title="Next sub-assembly">
+            ›
+          </button>
+        </div>
+      </div>
+    ) : null;
+
   return (
     <div className="pg-ov-drawing">
-      <div className="pg-ov-drawing-head">
-        {sheet ? (
-          <span className="pg-ov-label pg-ov-sheet-title" title={`${sheet} · ${LINE_SHEET_BY_ID[sheet]?.equipment} — ${LINE_SHEET_BY_ID[sheet]?.title}`}>
-            {sheet} · {LINE_SHEET_BY_ID[sheet]?.kind === "overview" ? `${LINE_SHEET_BY_ID[sheet]?.equipment} overview` : LINE_SHEET_BY_ID[sheet]?.title}
-          </span>
-        ) : (
-          <span className="pg-ov-label">{part ? part.name : "Measurement points"}</span>
-        )}
-        <span className="pg-ov-counts ast-num">
-          <span>{placedTags.size} placed</span>
-          <StateCell tone="good" label={`${counts.Normal} normal`} />
-          <StateCell tone={counts.Advisory ? "warn" : "idle"} label={`${counts.Advisory} warning`} />
-          <StateCell tone={counts.Critical ? "bad" : "idle"} label={`${counts.Critical} alarm`} />
-        </span>
-      </div>
-      {sheetPills.length > 1 && (
-        <div className="pg-ov-nav-bar">
-          <div className="pg-ov-nav-scroll">
-            <PillNav
-              items={sheetPills.map((id) => ({ id, label: id === overviewSheet ? "Overview" : `${id} · ${LINE_SHEET_BY_ID[id]?.title.split(":")[0]}` }))}
-              activeId={sheet ?? ""}
-              onChange={openSheet}
-            />
-          </div>
-          <div className="pg-ov-stepper" role="group" aria-label="Step diagram sheets">
-            <span className="pg-ov-stepper-pos ast-num">
-              {Math.max(1, sheetIdx + 1)}/{sheetPills.length}
-            </span>
-            <button type="button" className="pg-ov-step-btn" onClick={() => stepSheet(-1)} aria-label="Previous sheet" title="Previous sheet">
-              ‹
-            </button>
-            <button type="button" className="pg-ov-step-btn" onClick={() => stepSheet(1)} aria-label="Next sheet" title="Next sheet">
-              ›
-            </button>
-          </div>
-        </div>
-      )}
-      {partItems.length > 1 && (
-        <div className="pg-ov-nav-bar">
-          <div className="pg-ov-nav-scroll">
-            <PillNav
-              items={partItems}
-              activeId={part?.id ?? ""}
-              onChange={(id) => setComponent(id || null)}
-            />
-          </div>
-          <div className="pg-ov-stepper" role="group" aria-label="Step sub-assembly drawings">
-            <span className="pg-ov-stepper-pos ast-num">
-              {Math.max(1, partIdx + 1)}/{partItems.length}
-            </span>
-            <button type="button" className="pg-ov-step-btn" onClick={() => stepPart(-1)} aria-label="Previous sub-assembly drawing" title="Previous sub-assembly">
-              ‹
-            </button>
-            <button type="button" className="pg-ov-step-btn" onClick={() => stepPart(1)} aria-label="Next sub-assembly drawing" title="Next sub-assembly">
-              ›
-            </button>
-          </div>
-        </div>
-      )}
-      <div className="mx-canvas pg-ov-canvas" data-fullscreen={isFullscreen || undefined}>
-        {measure}
-        {partMeasure}
-        <BlenderViewport
-          scopeLabel={`${machine.id} · ${sheet ?? (part ? part.shortName.toUpperCase() : "OVERVIEW")}`}
-          isFullscreen={isFullscreen}
-          onToggleFullscreen={onToggleFullscreen}
-        >
-          {sheet ? (
-            !box || !art ? null : detail ? (
-              <SensorWidgetStage
-                key={sheet}
-                fitDrawing={isFullscreen}
-                compact={!isFullscreen}
-                maxDrawingHeight={isFullscreen ? 460 : 200}
-                sensors={cardSensors}
-                aspect={box[2] / box[3]}
-                positionOf={(s) => {
-                  const p = art.pads[tagOf(s)];
-                  return p ? { u: (p[0] - box[0]) / box[2], v: (p[1] - box[1]) / box[3] } : null;
-                }}
-                pointOf={(s) => tagOf(s)}
-                renderDrawing={(hot) => (
-                  <LineSheet sheetId={sheet} machineId={machine.id} frame={d.frame} selectedTag={hot} onSelectTag={onSelect} drawingOnly viewBox={box} chips={false} />
-                )}
-                selectedTag={selectedTag}
-                onToggle={toggle}
-                limitOf={limitOf}
-              />
+      <div ref={boxRef} className="pg-ov-stagebox">
+        <div className="pg-ov-canvas">
+          {measure}
+          {partMeasure}
+          <BlenderViewport
+            scopeLabel={`${machine.id} · ${sheet ?? (part ? part.shortName.toUpperCase() : "OVERVIEW")}`}
+            hudStart={nav}
+          >
+            {sheet ? (
+              !box || !art ? null : detail ? (
+                <SensorWidgetStage
+                  key={sheet}
+                  fitDrawing
+                  fill={fit}
+                  fillHeight={stageAvail ?? undefined}
+                  onLayout={setStageNeed}
+                  compact={false}
+                  sensors={cardSensors}
+                  aspect={box[2] / box[3]}
+                  positionOf={(s) => {
+                    const p = art.pads[tagOf(s)];
+                    return p ? { u: (p[0] - box[0]) / box[2], v: (p[1] - box[1]) / box[3] } : null;
+                  }}
+                  pointOf={(s) => tagOf(s)}
+                  renderDrawing={(hot) => (
+                    <LineSheet sheetId={sheet} machineId={machine.id} frame={d.frame} selectedTag={hot} onSelectTag={onSelect} drawingOnly viewBox={box} chips={false} />
+                  )}
+                  selectedTag={selectedTag}
+                  onToggle={toggle}
+                  limitOf={limitOf}
+                />
+              ) : (
+                <LineSheet sheetId={sheet} machineId={machine.id} frame={d.frame} selectedTag={selectedTag} onSelectTag={onSelect} drawingOnly viewBox={box} />
+              )
+            ) : part?.pins ? (
+              !partBox ? null : (
+                <SensorWidgetStage
+                  key={part.id}
+                  fitDrawing
+                  fill={fit}
+                  fillHeight={stageAvail ?? undefined}
+                  onLayout={setStageNeed}
+                  compact={false}
+                  sensors={cardSensors}
+                  aspect={partBox[2] / partBox[3]}
+                  positionOf={(s) => {
+                    const pin = part.pins?.find((p) => p.tag === tagOf(s));
+                    return pin ? { u: (pin.x - partBox[0]) / partBox[2], v: (pin.y - partBox[1]) / partBox[3] } : null;
+                  }}
+                  pointOf={(s) => part.pins?.find((p) => p.tag === tagOf(s))?.id ?? tagOf(s)}
+                  renderDrawing={(hot) => (
+                    <MachineSvg viewBox={partBox.map((v) => +v.toFixed(1)).join(" ")} autoFit={false} cadFrame={false} label={`${part.name} drawing with ${part.pins?.length ?? 0} measurement points`} interactive>
+                      <KilnSubAssemblyArt machineId={machine.id} subAssemblyId={part.id} />
+                      <DiagramPinLayer pins={part.pins ?? []} selectedPinId={hot} onSelectPin={(pin) => toggle(pin.tag)} />
+                    </MachineSvg>
+                  )}
+                  selectedTag={selectedTag}
+                  onToggle={toggle}
+                  limitOf={limitOf}
+                />
+              )
             ) : (
-              <LineSheet sheetId={sheet} machineId={machine.id} frame={d.frame} selectedTag={selectedTag} onSelectTag={onSelect} drawingOnly viewBox={box} />
-            )
-          ) : part?.pins ? (
-            !partBox ? null : (
-              <SensorWidgetStage
-                key={part.id}
-                fitDrawing={isFullscreen}
-                compact={!isFullscreen}
-                maxDrawingHeight={isFullscreen ? 460 : 200}
-                sensors={cardSensors}
-                aspect={partBox[2] / partBox[3]}
-                positionOf={(s) => {
-                  const pin = part.pins?.find((p) => p.tag === tagOf(s));
-                  return pin ? { u: (pin.x - partBox[0]) / partBox[2], v: (pin.y - partBox[1]) / partBox[3] } : null;
-                }}
-                pointOf={(s) => part.pins?.find((p) => p.tag === tagOf(s))?.id ?? tagOf(s)}
-                renderDrawing={(hot) => (
-                  <MachineSvg viewBox={partBox.map((v) => +v.toFixed(1)).join(" ")} autoFit={false} cadFrame={false} label={`${part.name} drawing with ${part.pins?.length ?? 0} measurement points`} interactive>
-                    <KilnSubAssemblyArt machineId={machine.id} subAssemblyId={part.id} />
-                    <DiagramPinLayer pins={part.pins ?? []} selectedPinId={hot} onSelectPin={(pin) => toggle(pin.tag)} />
-                  </MachineSvg>
-                )}
+              <MachineSchematic
+                diagramType={machine.diagramType}
+                dots={pageDots}
                 selectedTag={selectedTag}
-                onToggle={toggle}
-                limitOf={limitOf}
+                onSelect={onSelect}
+                focusSystemId={focusGroup}
+                label={`${machine.name} schematic with ${placedTags.size} measurement points`}
               />
-            )
-          ) : (
-            <MachineSchematic
-              diagramType={machine.diagramType}
-              dots={pageDots}
-              selectedTag={selectedTag}
-              onSelect={onSelect}
-              focusSystemId={focusGroup}
-              label={`${machine.name} schematic with ${placedTags.size} measurement points`}
-            />
-          )}
-        </BlenderViewport>
+            )}
+          </BlenderViewport>
+        </div>
       </div>
-      {sheet && <LineSheetNote sheetId={sheet} onOpenSheet={openSheet} />}
+      {sheet && <SheetNote sheetId={sheet} onOpenSheet={openSheet} clamp={fit} />}
 
       {selected ? (
         <div className="pg-ov-callout" data-tone={selected.status === "Normal" ? undefined : severityTone(selected.status)}>

@@ -145,6 +145,146 @@
   min-width: 0;
 }
 
+/* ---------------------------------------------------------------- card view
+   Sensor tiles sit on the Sensors card: plain surface (no second layer of
+   frosted glass), same treatment as the Map channel tiles. */
+.pg-sensors-tiles {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 8px;
+}
+
+.pg-sensors-tile-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pg-sensors-tile-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 0;
+  margin: 0;
+  padding-bottom: 6px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  border-bottom: 1px solid var(--separator);
+}
+
+.pg-sensors-tile-head .ast-caption {
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.pg-sensors-tile-missing {
+  margin: 0;
+  font-size: var(--fs-md);
+  color: var(--page-fg);
+}
+
+.pg-sensors-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr));
+  gap: 8px;
+}
+
+.pg-sensors-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 14px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: var(--hover-faint);
+  border: 1px solid var(--separator);
+  border-radius: var(--corner-card);
+  cursor: pointer;
+}
+
+.pg-sensors-tile:hover {
+  background: var(--row-hover-bg);
+}
+
+.pg-sensors-tile:is([data-tone="warn"], [data-tone="bad"]) {
+  border-color: color-mix(in srgb, var(--tone) 45%, transparent);
+}
+
+.pg-sensors-tile[aria-pressed="true"] {
+  border-color: var(--dx-ink);
+  background: var(--row-hover-bg);
+}
+
+.pg-sensors-tile:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 1px;
+}
+
+.pg-sensors-tile-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pg-sensors-tile-top .pg-sensors-id {
+  flex: 1 1 auto;
+}
+
+.pg-sensors-tile-top .ast-cell-stack {
+  min-width: 0;
+}
+
+.pg-sensors-tile-clip,
+.pg-sensors-tile-v {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pg-sensors-tile-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 4px 10px;
+}
+
+.pg-sensors-tile-value .pg-sensors-flag {
+  margin-left: 0;
+}
+
+.pg-sensors-tile-facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--separator);
+  font-size: var(--fs-sm);
+}
+
+.pg-sensors-tile-k {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.pg-sensors-tile-v {
+  color: var(--page-fg);
+}
+
+@media (max-width: 599px) {
+  .pg-sensors-tiles {
+    padding: 6px 10px;
+  }
+}
+
 /* ---------------------------------------------------------------- detail panel */
 .pg-sensors-validity {
   display: flex;

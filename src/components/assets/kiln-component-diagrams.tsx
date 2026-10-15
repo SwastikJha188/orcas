@@ -83,7 +83,7 @@ export function Ground({ x1, x2, y }: { x1: number; x2: number; y: number }) {
     hatches.push(<line key={x} x1={x} y1={y} x2={x - 7} y2={y + 7} {...P.hair} />);
   }
   return (
-    <g aria-hidden="true">
+    <g aria-hidden="true" data-ground-line="true">
       <line x1={x1} y1={y} x2={x2} y2={y} stroke={D.detail} strokeWidth={D.w} />
       {hatches}
     </g>

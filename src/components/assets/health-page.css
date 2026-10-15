@@ -191,18 +191,6 @@ tr.is-excluded td {
   vertical-align: middle;
 }
 
-.pg-health-method {
-  padding: 0 20px 14px;
-}
-
-.pg-health-method .pg-analysis-why-body,
-.pg-health-method p {
-  margin: 0;
-  font-size: var(--fs-sm);
-  line-height: 1.5;
-  color: var(--text-muted);
-}
-
 .pg-health-tag:hover,
 .pg-health-link:hover {
   background: var(--hover-faint);

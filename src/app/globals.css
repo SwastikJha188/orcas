@@ -416,6 +416,10 @@ html[data-theme="light"] .brand-logo-dark { display: none; }
   max-height: 100%;
 }
 
+.workspace:has([data-fullscreen]) {
+  z-index: 300;
+}
+
 /* Home stays mounted behind the other tabs; the wrapper is layout-neutral while shown. */
 .workspace-keepalive:not([hidden]) {
   display: contents;
@@ -1042,6 +1046,12 @@ html[data-theme="light"] {
   justify-content: space-between;
   gap: 8px;
   pointer-events: none;
+}
+
+.mx-vp-hud-start {
+  flex: 1 1 auto;
+  min-width: 0;
+  pointer-events: auto;
 }
 
 .mx-vp-badge {

@@ -16,7 +16,6 @@ import type { AssetsSubPage } from "./assets-view";
 import type { Tone } from "./assets-shell-ui";
 import { focusSensorOn } from "./sensor-focus";
 import { PYRO_DEMO_LIMIT } from "./sensors-model";
-import { WhyDisclosure } from "./analysis/an-ui";
 import { conditionTone, validityTone, type Condition } from "@/components/ui/status";
 import {
   BAND_ADVISORY,
@@ -75,7 +74,6 @@ export function HSection({
   note,
   right,
   flush = false,
-  method,
   children,
 }: {
   id: string;
@@ -84,8 +82,6 @@ export function HSection({
   note?: React.ReactNode;
   right?: React.ReactNode;
   flush?: boolean;
-  /** Method, caveats and formulae: one "Method" disclosure at the bottom of the section. */
-  method?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -98,11 +94,6 @@ export function HSection({
         {right && <div className="pg-health-card-right">{right}</div>}
       </header>
       <div className={`pg-analysis-section-body${flush ? " pg-health-flush" : ""}`}>{children}</div>
-      {method && (
-        <div className="pg-health-method">
-          <WhyDisclosure summary="Method">{method}</WhyDisclosure>
-        </div>
-      )}
     </section>
   );
 }
@@ -197,18 +188,6 @@ export function HealthBreakdown(p: HealthSectionProps) {
       title="Breakdown"
       note={live ? (p.windowMin > 0 ? `Δ over ${formatDuration(p.windowMin)}` : undefined) : "Stored scores"}
       flush
-      method={
-        live ? (
-          <>
-            <p>
-              Machine and system health are ½ mean + ½ minimum of the scores below them
-              {model.rollup ? ` (machine: mean ${model.rollup.mean.toFixed(1)}, minimum ${model.rollup.min})` : ""}. Δ is the change while this page has been
-              open; Lost is the points deducted now.
-            </p>
-            <p>Process context is not scored; its rows show the signal&apos;s limit state.</p>
-          </>
-        ) : undefined
-      }
       right={
         <PillNav
           items={[
@@ -363,7 +342,6 @@ export function HealthTrend(p: HealthSectionProps) {
       title="Trend"
       note="● rule confirmed ○ cleared"
       right={<PillNav items={items} activeId={focus} onChange={setFocus} arrows />}
-      method={<p>One sample per simulated plant minute. Horizontal lines mark the {BAND_ADVISORY} and {BAND_CRITICAL} health limits.</p>}
     >
       <HealthTrendChart frame={frame} focus={focus} timeZone={p.timeZone} />
     </HSection>
@@ -510,16 +488,6 @@ export function ConditionIndicators(p: HealthSectionProps) {
       title="Indicators"
       note={live ? "vs reference model" : "Stored readings"}
       flush
-      method={
-        live ? (
-          <>
-            <p>Residual is measured minus the reference model. The deviation strip spans ±6σ with a ±3σ band. Excluded readings failed sensor validation.</p>
-            {pyro && <p>Warning and alarm limits on the pyro line are demo values; none is plant-approved (D4 §7.2).</p>}
-          </>
-        ) : (
-          <p>No reference model on this machine, so there is no model value or residual.</p>
-        )
-      }
       right={items.length > 1 ? <PillNav items={items} activeId={active} onChange={setFilter} arrows /> : undefined}
     >
       <div className="ui-table-container ast-table">
@@ -665,12 +633,6 @@ export function HealthDeductions(p: HealthSectionProps) {
       title="Deductions"
       note="pts"
       flush
-      method={
-        <p>
-          Points are taken off each sub-assembly&apos;s 99 ceiling before smoothing. A residual deducts once it is beyond 3.0σ; a limit deducts in warning or
-          alarm; a rule deducts while pending or confirmed. Inputs that fail validation are excluded and deduct nothing.
-        </p>
-      }
     >
       <div className="ui-table-container ast-table">
         <table className="ui-table pg-health-table">

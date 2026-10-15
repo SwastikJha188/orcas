@@ -2,7 +2,6 @@
 
 import React, { useState } from "react";
 import { formatDuration, type SimFrame } from "@/lib/kiln-sim/engine";
-import { WhyDisclosure } from "./analysis/an-ui";
 import { KindIcon, sensorKind } from "./diagnostics-overview-tab";
 import { VALIDITY_LABEL, VALIDITY_TONE, type DxSensor, type Validity } from "./diagnosis-model";
 import { PYRO_DEMO_LIMIT } from "./sensors-model";
@@ -282,23 +281,5 @@ export function EvidenceTable({
         </div>
       )}
     </div>
-  );
-}
-
-/** One "Method" disclosure for the Evidence section (evidence table + vibration severity). */
-export function EvidenceMethod({ live, vibration, pyro = false }: { live: boolean; vibration: boolean; pyro?: boolean }) {
-  return (
-    <WhyDisclosure summary="Method">
-      {live ? (
-        <p>
-          Model is the reference model&apos;s healthy-machine expectation (hollow mark). Residual is the measured value minus the model, in σ; the trend shows the
-          last hour with a ±2σ band and ±3σ lines. Validity comes from sensor validation.
-        </p>
-      ) : (
-        <p>No live reference model on this machine, so there is no validity flag, model value or residual.</p>
-      )}
-      {vibration && <p>Vibration is overall velocity RMS. Zone boundaries B/C and C/D are the point&apos;s warning and alarm limits.</p>}
-      {pyro && <p>Warning and alarm limits on the pyro line are demo values; none is plant-approved (D4 §7.2).</p>}
-    </WhyDisclosure>
   );
 }

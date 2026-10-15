@@ -221,6 +221,55 @@ function parseViewBox(vb: string): [number, number, number, number] {
  * Automatically fits its viewBox tightly around the rendered geometry (`autoFit`)
  * so there is never wasted empty margin on any screen size.
  */
+/**
+ * Measures the tight bounding box of an SVG group `<g>`, ignoring excessive
+ * horizontal overhang from `<GroundLine>` (`[data-ground-line]`) while preserving
+ * full vertical extent and safe stroke/pad/label breathing room so nothing is ever cropped.
+ */
+export function measureTightSvgBox(g: SVGGElement): [number, number, number, number] | null {
+  try {
+    const fullBox = g.getBBox();
+    if (!(fullBox.width > 10 && fullBox.height > 10)) return null;
+
+    const grounds = Array.from(g.querySelectorAll<SVGElement>("[data-ground-line]"));
+    const prevDisplay = grounds.map((el) => el.getAttribute("display"));
+    let equipBox = fullBox;
+    if (grounds.length > 0) {
+      try {
+        grounds.forEach((el) => el.setAttribute("display", "none"));
+        const eb = g.getBBox();
+        if (eb.width > 16 && eb.height > 16) equipBox = eb;
+      } finally {
+        grounds.forEach((el, i) => {
+          const prev = prevDisplay[i];
+          if (prev === null) el.removeAttribute("display");
+          else el.setAttribute("display", prev);
+        });
+      }
+    }
+
+    // Clamp horizontal ground-line overhang to at most 14 units past actual equipment/labels.
+    const x0 = Math.max(fullBox.x, equipBox.x - 14);
+    const x1 = Math.min(fullBox.x + fullBox.width, equipBox.x + equipBox.width + 14);
+    const y0 = Math.min(fullBox.y, equipBox.y);
+    const y1 = Math.max(fullBox.y + fullBox.height, equipBox.y + equipBox.height);
+
+    const rawW = Math.max(20, x1 - x0);
+    const rawH = Math.max(20, y1 - y0);
+    const padX = Math.max(18, rawW * 0.03);
+    const padY = Math.max(20, rawH * 0.045);
+
+    return [
+      +(x0 - padX).toFixed(1),
+      +(y0 - padY).toFixed(1),
+      +(rawW + padX * 2).toFixed(1),
+      +(rawH + padY * 2).toFixed(1),
+    ];
+  } catch {
+    return null;
+  }
+}
+
 export function MachineSvg({
   viewBox,
   label,
@@ -257,50 +306,17 @@ export function MachineSvg({
     if (!svgEl || !g) return;
 
     const updateBox = () => {
-      try {
-        const orig = parseViewBox(viewBox);
-        const b = g.getBBox();
-        if (b.width > 20 && b.height > 20) {
-          const padX = Math.max(16, b.width * 0.032);
-          const padY = Math.max(14, b.height * 0.05);
-          const minX = b.x - padX;
-          const maxX = b.x + b.width + padX;
-          // Union with authored vertical bounds so top/bottom elements are never clipped.
-          const minY = Math.min(orig[1], b.y - padY);
-          const maxY = Math.max(orig[1] + orig[3], b.y + b.height + padY);
-          const baseW = maxX - minX;
-          const baseH = maxY - minY;
-          const cx = (minX + maxX) / 2;
-          const cy = (minY + maxY) / 2;
-
-          let finalW = baseW;
-          const finalH = baseH;
-          if (svgEl.clientWidth > 0 && svgEl.clientHeight > 0) {
-            const svgAspect = svgEl.clientWidth / svgEl.clientHeight;
-            if (svgAspect > baseW / baseH + 0.04) {
-              finalW = baseH * svgAspect;
-            }
-          }
-
-          const next: [number, number, number, number] = [
-            +(cx - finalW / 2).toFixed(1),
-            +(cy - finalH / 2).toFixed(1),
-            +finalW.toFixed(1),
-            +finalH.toFixed(1),
-          ];
-          setTightBox((prev) =>
-            prev &&
-            Math.abs(prev[0] - next[0]) < 0.5 &&
-            Math.abs(prev[1] - next[1]) < 0.5 &&
-            Math.abs(prev[2] - next[2]) < 0.5 &&
-            Math.abs(prev[3] - next[3]) < 0.5
-              ? prev
-              : next
-          );
-        }
-      } catch {
-        // SVG not yet in DOM or hidden
-      }
+      const next = measureTightSvgBox(g);
+      if (!next) return;
+      setTightBox((prev) =>
+        prev &&
+        Math.abs(prev[0] - next[0]) < 0.5 &&
+        Math.abs(prev[1] - next[1]) < 0.5 &&
+        Math.abs(prev[2] - next[2]) < 0.5 &&
+        Math.abs(prev[3] - next[3]) < 0.5
+          ? prev
+          : next
+      );
     };
 
     updateBox();
@@ -340,8 +356,11 @@ export function BlenderViewport({
   className,
   isFullscreen = false,
   onToggleFullscreen,
+  hudStart,
 }: {
   scopeLabel?: string;
+  /** Replaces the scope badge at the start of the top bar (e.g. sheet tabs), beside the zoom controls. */
+  hudStart?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
   isFullscreen?: boolean;
@@ -405,10 +424,14 @@ export function BlenderViewport({
       onDoubleClick={resetView}
     >
       <div className="mx-vp-hud-top">
-        <span className="mx-vp-badge">
-          <i aria-hidden="true" />
-          <span>{scopeLabel ? `2D ORTHO · ${scopeLabel}` : "2D ORTHO · CAD SCHEMATIC"}</span>
-        </span>
+        {hudStart ? (
+          <div className="mx-vp-hud-start">{hudStart}</div>
+        ) : (
+          <span className="mx-vp-badge">
+            <i aria-hidden="true" />
+            <span>{scopeLabel ? `2D ORTHO · ${scopeLabel}` : "2D ORTHO · CAD SCHEMATIC"}</span>
+          </span>
+        )}
         <div className="mx-vp-controls" role="toolbar" aria-label="Viewport zoom controls">
           <button type="button" className="mx-vp-btn" onClick={zoomOut} aria-label="Zoom out" title="Zoom out">
             −
@@ -453,6 +476,7 @@ export function BlenderViewport({
       </div>
 
       <div
+        className="mx-vp-stage"
         style={{
           transform: zoom !== 1 || pan.x !== 0 || pan.y !== 0 ? `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` : undefined,
           transformOrigin: "center center",
@@ -643,7 +667,7 @@ export function GroundLine({ x1, x2, y }: { x1: number; x2: number; y: number })
   const hatches: React.ReactNode[] = [];
   for (let x = x1 + 6; x <= x2; x += 14) hatches.push(<line key={x} x1={x} y1={y} x2={x - 7} y2={y + 7} {...PAINT.hair} />);
   return (
-    <g aria-hidden="true">
+    <g aria-hidden="true" data-ground-line="true">
       <line x1={x1} y1={y} x2={x2} y2={y} stroke={MX.fine} strokeWidth={MX.w} />
       {hatches}
     </g>

@@ -7,8 +7,7 @@ import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useAiEngine } from "@/providers/ai-engine-context";
 import { summarizeLedger } from "@/components/assetiq/use-prediction-ledger";
 import { openAssetIqAccuracy } from "@/components/assetiq/model-accuracy-view";
-import { EvidenceChip, MissingNote, Panel, PointerCard, Section, WhyDisclosure } from "./an-ui";
-import { FEEDBACK, type FeedbackStore } from "./an-actions";
+import { EvidenceChip, MissingNote, Panel, PointerCard, Section } from "./an-ui";
 import { SECTION_IDS, detectionRows, type SectionProps } from "./an-derive";
 
 export interface Ledger {
@@ -74,23 +73,10 @@ export function LedgerPointer({ ledger }: { ledger: Ledger }) {
   );
 }
 
-/** Model quality — accuracy summary (home: AssetIQ), input health and the model card under Method. */
-export function AnQuality({ insights, frame, ledger, feedback }: SectionProps & { ledger: Ledger; feedback: FeedbackStore }) {
+/** Model quality — accuracy summary (home: AssetIQ) and input health. */
+export function AnQuality({ insights, frame, ledger }: SectionProps & { ledger: Ledger }) {
   const rows = useMemo(() => (frame ? detectionRows(frame) : []), [frame]);
   const flagged = rows.filter((r) => r.quality !== "Good");
-  const labelCounts = FEEDBACK.map((f) => ({ ...f, n: Object.values(feedback.labels).filter((l) => l.label === f.id).length }));
-  const defs = frame?.defs ?? null;
-  const kiln = defs?.plant === "kiln";
-  // Operating envelope of the process drivers this machine carries (feed / fuel / speed meters).
-  const envelope = defs
-    ? (["feed", "fuel", "speed"] as const)
-        .map((k) => {
-          const tag = defs.driverTags[k];
-          const sig = tag ? defs.signalByTag[tag] : undefined;
-          return sig ? `${k} ${sig.normalBand} ${sig.unit}` : null;
-        })
-        .filter((x): x is string => x !== null)
-    : [];
 
   return (
     <Section id={SECTION_IDS.quality} title="Model quality">
@@ -118,41 +104,6 @@ export function AnQuality({ insights, frame, ledger, feedback }: SectionProps & 
           </Panel>
         )
       )}
-
-      <WhyDisclosure summary="Method">
-        <dl className="pg-analysis-dl">
-          <dt>Method</dt>
-          <dd>{insights.analysis.model.engine}</dd>
-          <dt>Version</dt>
-          <dd className="ast-muted">Not reported</dd>
-          <dt>Reference</dt>
-          <dd>
-            {!frame
-              ? "Catalog alarm limits"
-              : kiln
-                ? "Healthy-kiln reference model (D5 Table 9.5), σ per signal"
-                : "Operating-state reference model (D4-OSW-PE-PYR), σ per signal"}
-          </dd>
-          {envelope.length > 0 && (
-            <>
-              <dt>Envelope</dt>
-              <dd className="ast-num">{envelope.join(" · ")}</dd>
-            </>
-          )}
-          {kiln && (
-            <>
-              <dt>Validation</dt>
-              <dd>27-scenario suite (D5 Table 9.8)</dd>
-            </>
-          )}
-          <dt>Caveats</dt>
-          <dd>
-            Rule strength is not a calibrated probability. No input-drift (PSI) monitor. Recall is unknown: events nobody predicted are not recorded.
-          </dd>
-          <dt>Labels</dt>
-          <dd className="ast-num">{labelCounts.map((l) => `${l.label} ${l.n}`).join(" · ")}</dd>
-        </dl>
-      </WhyDisclosure>
     </Section>
   );
 }

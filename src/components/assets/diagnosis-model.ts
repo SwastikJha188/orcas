@@ -16,7 +16,7 @@
 import { useApi } from "@/lib/api-cache";
 import type { DiagnosisRecord } from "./assets-data";
 import type { CatalogSensorView } from "./use-machine-catalog";
-import type { RuleState, SimEvent, SimFrame } from "@/lib/kiln-sim/engine";
+import type { RuleState, SimFrame } from "@/lib/kiln-sim/engine";
 import { formatDuration } from "@/lib/kiln-sim/engine";
 import { isRelativeLimit, limitPair, type SignalDef } from "@/lib/kiln-sim/signals";
 import type { PlantDefs } from "@/lib/plant-defs";
@@ -285,9 +285,6 @@ const PRIO_RANK: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
 function subNames(subs: string[], defs: PlantDefs): string {
   return subs.map((x) => defs.subassemblies.find((sa) => sa.id === x)?.name ?? x).join(", ");
 }
-
-/** Rule ids as the engines write them in event titles: R-XXX-nn (both plants), SW-XXX-nn (pyro line). */
-export const RULE_ID_RE = /^((?:R|SW)-[A-Z]+-\d+)/;
 
 const usefulTtl = (v: string | null | undefined) => (v && v !== "—" ? v : null);
 
@@ -587,135 +584,7 @@ export function alternativesFor(f: Finding, open: Finding[], byTag: Map<string, 
 }
 
 /* ------------------------------------------------------------------ */
-/* Recommended actions                                                  */
-/* ------------------------------------------------------------------ */
-
-/** Response windows per priority (as used by the kiln work-order loop). */
-export const PRIORITY_DUE: Record<string, string> = {
-  P1: "Within 4 h",
-  P2: "Within 24 h",
-  P3: "Within 7 days",
-  P4: "Next planned outage",
-};
-
-export interface DxAction {
-  key: string;
-  ruleId: string | null;
-  priority: string;
-  due: string | null;
-  text: string;
-  /** What triggered the action. */
-  source: string;
-  where: string;
-  tone: Tone;
-  /** Inspection / measurement that confirms the diagnosis. */
-  verify: string | null;
-  tags: string[];
-  /** Live rule the action belongs to (work orders can be raised). */
-  live: boolean;
-  /** Default owner (role) from the rule library. */
-  owner?: string | null;
-}
-
-const RECORD_PRIORITY: Record<DiagnosisRecord["maintenancePriority"], string> = { Immediate: "P1", High: "P2", Medium: "P3", Low: "P4" };
-
-export function buildActions(findings: Finding[], sensors: DxSensor[], record: DiagnosisRecord | null, live: boolean): DxAction[] {
-  const out: DxAction[] = [];
-  for (const f of findings) {
-    if (!isOpenFinding(f) || !f.action) continue;
-    const priority = f.priority ?? (f.severity === "Critical" ? "P1" : "P2");
-    out.push({
-      key: `a-${f.key}`,
-      ruleId: f.ruleId,
-      priority,
-      due: f.state === "confirming" ? "If it confirms" : (PRIORITY_DUE[priority] ?? null),
-      text: f.action,
-      source: `${f.ruleId ? `${f.ruleId} · ` : ""}${f.name}${f.state === "confirming" ? " (confirming)" : ""}`,
-      where: f.where,
-      tone: f.state === "confirming" ? "info" : toneOf(f.severity),
-      verify: f.evidence || null,
-      tags: f.tags,
-      live: live && f.basis === "Rule engine" && f.state !== "confirming",
-      owner: f.owner ?? null,
-    });
-  }
-  // Instrument checks for sensors that sensor validation does not trust.
-  for (const s of sensors) {
-    if (s.validity !== "suspect" && s.validity !== "invalid" && s.validity !== "stale") continue;
-    if (out.some((a) => a.ruleId?.startsWith("R-DQ") && a.tags.includes(s.tag))) continue;
-    out.push({
-      key: `dq-${s.tag}`,
-      ruleId: null,
-      priority: "P3",
-      due: PRIORITY_DUE.P3,
-      text: `Check instrument ${s.tag} (${s.name}): ${s.qualityNote ?? VALIDITY_LABEL[s.validity].toLowerCase()}. Its reading is excluded from health until restored.`,
-      source: `Sensor validation · ${VALIDITY_LABEL[s.validity]}`,
-      where: s.subAssembly,
-      tone: "warn",
-      verify: "Four clean samples restore the reading",
-      tags: [s.tag],
-      live: false,
-    });
-  }
-  if (!live && record && record.overallCondition !== "Nominal" && record.prescriptiveAction) {
-    const p = RECORD_PRIORITY[record.maintenancePriority] ?? "P3";
-    out.push({
-      key: "record",
-      ruleId: null,
-      priority: p,
-      due: PRIORITY_DUE[p] ?? null,
-      text: record.prescriptiveAction,
-      source: `Stored AssetIQ record · ${record.engineVersion}`,
-      where: "Machine",
-      tone: record.overallCondition === "Critical" ? "bad" : "warn",
-      verify: null,
-      tags: [],
-      live: false,
-    });
-  }
-  return out.sort((a, b) => (PRIO_RANK[a.priority] ?? 3) - (PRIO_RANK[b.priority] ?? 3));
-}
-
-/* ------------------------------------------------------------------ */
-/* Event log                                                            */
-/* ------------------------------------------------------------------ */
-
-export type LogKind = "confirm" | "clear" | "ack" | "action" | "quality" | "limit" | "state" | "scenario" | "shelve" | "feedback";
-
-export interface LogEntry {
-  key: string;
-  t: number;
-  kind: LogKind;
-  severity: Severity;
-  title: string;
-  detail: string;
-  ruleId: string | null;
-  auto: boolean;
-  /** Recorded in this browser only (shelving, fault feedback). */
-  local?: boolean;
-}
-
-export function buildLog(events: SimEvent[]): LogEntry[] {
-  return events.map((e, i) => {
-    let kind: LogKind;
-    if (e.kind === "rule") kind = / cleared$/.test(e.title) ? "clear" : "confirm";
-    else if (e.kind === "action") kind = e.action?.kind === "acknowledge" ? "ack" : "action";
-    else kind = e.kind;
-    return {
-      key: `${e.t}-${i}-${e.title}`,
-      t: e.t,
-      kind,
-      severity: e.severity,
-      title: e.title,
-      detail: e.detail,
-      ruleId: e.action?.ruleId ?? e.title.match(RULE_ID_RE)?.[1] ?? null,
-      auto: e.action?.auto ?? false,
-    };
-  });
-}
-
-/* ------------------------------------------------------------------ */
-/* Alarm performance (ISA-18.2 / IEC 62682 KPIs over the event log)     */
+/* Alarm response window                                                */
 /* ------------------------------------------------------------------ */
 
 /** Time-to-respond per priority, sim minutes (P1 4 h · P2 24 h · P3 7 d). */
@@ -727,59 +596,6 @@ export function responseLeft(a: DxAlarm, t: number): string | null {
   if (!due || a.since === null || a.state === "confirming") return null;
   const left = due - (t - a.since);
   return left <= 0 ? "overdue" : formatDuration(left);
-}
-
-export interface AlarmKpis {
-  /** Sim minutes covered by the retained event log. */
-  spanMin: number;
-  /** Confirmed alarms per 10 min (ISA-18.2 target ≤ 1–2). */
-  ratePer10: number;
-  /** Share of 10-min windows with more than 10 alarms (target < 1 %). */
-  floodPct: number;
-  /** Rules confirmed ≥ 3 times in the last 60 min. */
-  chattering: string[];
-  /** Raised alarms standing for more than 24 h. */
-  stale: number;
-}
-
-export function alarmKpis(frame: SimFrame, alarms: DxAlarm[]): AlarmKpis {
-  const confirms = frame.events.filter((e) => e.kind === "rule" && !/ cleared$/.test(e.title));
-  const oldest = frame.events.length ? Math.min(...frame.events.map((e) => e.t)) : frame.t;
-  const spanMin = Math.max(10, frame.t - oldest);
-  const windows = Math.max(1, Math.ceil(spanMin / 10));
-  const perWindow = new Map<number, number>();
-  for (const e of confirms) {
-    const w = Math.floor((frame.t - e.t) / 10);
-    perWindow.set(w, (perWindow.get(w) ?? 0) + 1);
-  }
-  const recent = new Map<string, number>();
-  for (const e of confirms) {
-    if (frame.t - e.t > 60) continue;
-    const id = e.title.match(RULE_ID_RE)?.[1];
-    if (id) recent.set(id, (recent.get(id) ?? 0) + 1);
-  }
-  return {
-    spanMin,
-    ratePer10: confirms.length / windows,
-    floodPct: (Array.from(perWindow.values()).filter((n) => n > 10).length / windows) * 100,
-    chattering: Array.from(recent.entries()).filter(([, n]) => n >= 3).map(([id]) => id),
-    stale: alarms.filter((a) => a.state !== "confirming" && a.since !== null && frame.t - a.since > 1440).length,
-  };
-}
-
-/** Confirmed / cleared transitions of one rule in the retained log. */
-export function ruleFireStats(frame: SimFrame): Map<string, { fires: number; last: number | null }> {
-  const m = new Map<string, { fires: number; last: number | null }>();
-  for (const e of frame.events) {
-    if (e.kind !== "rule" || / cleared$/.test(e.title)) continue;
-    const id = e.title.match(RULE_ID_RE)?.[1];
-    if (!id) continue;
-    const cur = m.get(id) ?? { fires: 0, last: null };
-    cur.fires += 1;
-    cur.last = cur.last === null ? e.t : Math.max(cur.last, e.t);
-    m.set(id, cur);
-  }
-  return m;
 }
 
 /* ------------------------------------------------------------------ */

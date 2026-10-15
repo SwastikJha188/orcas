@@ -3,13 +3,12 @@
 import React, { useMemo } from "react";
 import { logPos, rangeText, roundHours, type RulRow } from "./prognosis-derive";
 import { buildRecs, type Rec } from "./prog-maintenance";
-import { Card, DataTable, TimeTicks, WhyDisclosure, toneFor, type Col, type ProgSectionProps } from "./prog-ui";
+import { Card, DataTable, TimeTicks, toneFor, type Col, type ProgSectionProps } from "./prog-ui";
 
 const MAX_H = 8760 * 1.1;
 
 /** Remaining life and window plan: RUL range bars on one shared log-time axis. */
-export function ProgRul({ data, analysis, rows, live, frame }: ProgSectionProps) {
-  const d5 = frame?.defs.plant !== "pyro";
+export function ProgRul({ data, analysis, rows }: ProgSectionProps) {
   const sorted = rows;
   const recs = useMemo(() => buildRecs(data, analysis, rows), [data, analysis, rows]);
   const recFor = (r: RulRow): Rec | undefined => recs.find((x) => x.component.toLowerCase().includes(r.name.toLowerCase()));
@@ -64,14 +63,6 @@ export function ProgRul({ data, analysis, rows, live, frame }: ProgSectionProps)
   return (
     <Card label="Remaining life">
       <DataTable columns={columns} data={sorted} rowKey={(r) => r.id} label="Remaining useful life per sub-assembly" />
-      <WhyDisclosure summary="Method">
-        <ul className="pg-prog-why-list">
-          <li>With an active {d5 ? "D5 " : ""}rule finding: time for its trending signal to reach the alarm limit (residual vs reference model{d5 ? ", D5 Table 9.5" : ""}).</li>
-          <li>Without a finding: extrapolation of the sub-assembly health index; no run-to-failure history backs it.</li>
-          <li>Interval = estimate ± (100 − confidence) %; bar = interval, tick = estimate. Duty assumed comparable to now{live ? " (simulated plant)" : ""}.</li>
-          <li>Planned stops, production campaign and spare-part lead times are not connected, so no deferral comparison is possible yet.</li>
-        </ul>
-      </WhyDisclosure>
     </Card>
   );
 }

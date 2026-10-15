@@ -3,7 +3,7 @@
 import React, { useMemo } from "react";
 import type { CorrelationPair } from "@/server/services/insights-service";
 import { fmt, healthStatus, isBaselineRisk, rangeText, roundHours, type RulRow } from "./prognosis-derive";
-import { Card, DataTable, EvidenceChip, WhyDisclosure, tagsForMode, toneFor, type Col, type ProgSectionProps } from "./prog-ui";
+import { Card, DataTable, EvidenceChip, tagsForMode, toneFor, type Col, type ProgSectionProps } from "./prog-ui";
 
 type Points = ProgSectionProps["data"]["condition"]["points"];
 
@@ -124,13 +124,6 @@ export function ProgDegradation({ data, analysis, rows, frame, mode }: ProgSecti
           <DataTable columns={pairCols} data={changing} rowKey={(p) => `${p.a}|${p.b}`} label="Signal couplings changing" />
         </div>
       )}
-      <WhyDisclosure summary="Method">
-        <ul className="pg-prog-why-list">
-          <li>Detection-to-failure bracket (P-F): detected = first persistent detection of the rule; failure = the lower bound of the remaining-life interval.</li>
-          <li>Required lead time (planning and parts) is not set, so the bracket cannot say whether the window suffices.</li>
-          <li>Health projection: per-system health index, warning below 85 %, alarm below 70 %. Couplings: correlation r over the last hour against earlier.</li>
-        </ul>
-      </WhyDisclosure>
     </Card>
   );
 }

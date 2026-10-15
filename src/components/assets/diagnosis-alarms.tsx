@@ -1,32 +1,38 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { rowActivate } from "@/components/ui/row-activate";
 import { PillButton, PillNav } from "@/components/ui";
 import type { OpsWorkOrder } from "@/providers/kiln-ops-context";
 import { formatDuration } from "@/lib/kiln-sim/engine";
 import type { Tone } from "./assets-shell-ui";
 import { ACTION } from "@/components/ui/status";
-import { WhyDisclosure } from "./analysis/an-ui";
-import { Samples } from "./diagnosis-rule-board";
 import {
   HYSTERESIS_SAMPLES,
   responseLeft,
   toneOf,
-  type AlarmKpis,
   type DxAlarm,
   type DxSensor,
-  type LogEntry,
-  type LogKind,
 } from "./diagnosis-model";
 
 /* ==========================================================================
    Alarms (ISA-18.2 lifecycle): pending (persistence n/k) → unacknowledged →
    acknowledged → clearing (hysteresis n/4) → cleared. Per-row acknowledge
    and shelve (time-limited, reason required, auto-unshelve; kept in this
-   browser only — there is no shelving backend). Alarm performance KPIs
-   over the engine's event log. Alarm log: every transition and action.
+   browser only — there is no shelving backend).
    ========================================================================== */
+
+/** Segmented sample counter: filled = samples counted toward the transition. */
+export function Samples({ n, of, label }: { n: number; of: number; label: string }) {
+  const filled = Math.max(0, Math.min(of, n));
+  return (
+    <span className="pg-diag-samples" role="img" aria-label={label}>
+      {Array.from({ length: of }, (_, i) => (
+        <i key={i} className={i < filled ? "is-on" : ""} />
+      ))}
+    </span>
+  );
+}
 
 export interface Shelf {
   until: number;
@@ -75,7 +81,6 @@ export function AlarmTable({
   t,
   fmtT,
   byTag,
-  kpis,
   selectedRuleId,
   onSelect,
   onAcknowledge,
@@ -89,7 +94,6 @@ export function AlarmTable({
   t: number;
   fmtT: (t: number) => string;
   byTag: Map<string, DxSensor>;
-  kpis: AlarmKpis;
   selectedRuleId: string | null;
   onSelect: (ruleId: string | null) => void;
   onAcknowledge: (ruleId: string) => void;
@@ -294,128 +298,6 @@ export function AlarmTable({
           )}
         </div>
       )}
-
-      <WhyDisclosure summary="Method">
-        <span className="ast-num pg-diag-pipe" aria-label="Alarm performance">
-          <span>
-            <b className={kpis.ratePer10 > 2 ? "pg-diag-warn" : ""}>{kpis.ratePer10.toFixed(1)}</b> / 10 min
-          </span>
-          <span>
-            flood <b className={kpis.floodPct >= 1 ? "pg-diag-warn" : ""}>{Math.round(kpis.floodPct)} %</b>
-          </span>
-          <span>
-            chattering <b className={kpis.chattering.length ? "pg-diag-warn" : ""}>{kpis.chattering.length}</b>
-          </span>
-          <span>
-            stale &gt; 24 h <b>{kpis.stale}</b>
-          </span>
-          <span>
-            shelved <b>{onShelf.length}</b>
-          </span>
-          <span>last {formatDuration(kpis.spanMin)} of log</span>
-        </span>
-        <p>Pending alarms count matching samples until they confirm; raised alarms clear after {HYSTERESIS_SAMPLES} clean samples. Shelving returns automatically and is kept in this browser only.</p>
-      </WhyDisclosure>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Log                                                                  */
-/* ------------------------------------------------------------------ */
-
-type LogFilter = "all" | "alarms" | "operator" | "quality" | "limit" | "process";
-
-const FILTERS: { id: LogFilter; label: string; kinds: LogKind[] | null }[] = [
-  { id: "all", label: "All", kinds: null },
-  { id: "alarms", label: "Alarms", kinds: ["confirm", "clear"] },
-  { id: "operator", label: "Operator", kinds: ["ack", "shelve", "feedback", "action"] },
-  { id: "quality", label: "Data quality", kinds: ["quality"] },
-  { id: "limit", label: "Limits", kinds: ["limit", "state"] },
-  { id: "process", label: "Process", kinds: ["scenario"] },
-];
-
-const KIND_LABEL: Record<LogKind, string> = {
-  confirm: "Raised",
-  clear: "Cleared",
-  ack: "Acknowledged",
-  action: "Action",
-  quality: "Data quality",
-  limit: "Limit",
-  state: "State",
-  scenario: "Process",
-  shelve: "Shelving",
-  feedback: "Feedback",
-};
-
-function kindTone(e: LogEntry): Tone {
-  if (e.kind === "confirm" || e.kind === "limit" || e.kind === "state" || e.kind === "quality") return e.severity === "Normal" ? "idle" : toneOf(e.severity);
-  return "idle";
-}
-
-export function AlarmLog({ entries, fmtT, onSelectRule }: { entries: LogEntry[]; fmtT: (t: number) => string; onSelectRule: (ruleId: string) => void }) {
-  const [filter, setFilter] = useState<LogFilter>("all");
-  const kinds = FILTERS.find((f) => f.id === filter)?.kinds ?? null;
-  const rows = useMemo(() => (kinds ? entries.filter((e) => kinds.includes(e.kind)) : entries), [entries, kinds]);
-
-  return (
-    <div className="dxo-card dxo-table-card">
-      <div className="dxo-card-head pg-diag-card-head">
-        <PillNav items={FILTERS.map(({ id, label }) => ({ id, label }))} activeId={filter} onChange={(id) => setFilter(id as LogFilter)} wrap />
-        <span className="ast-caption ast-num">
-          {rows.length} / {entries.length}
-        </span>
-      </div>
-      {rows.length === 0 ? (
-        <div className="dxo-empty">No events of this kind.</div>
-      ) : (
-        <div className="dxo-table-wrap">
-          <table className="dxo-table pg-diag-table">
-            <thead>
-              <tr>
-                <th scope="col">Time</th>
-                <th scope="col">Type</th>
-                <th scope="col">Event</th>
-                <th scope="col">Source</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((e) => (
-                <tr key={e.key} className="dxo-row">
-                  <td className="ast-num pg-diag-log-time">{fmtT(e.t)}</td>
-                  <td className="pg-diag-nowrap">
-                    <span className="pg-diag-state" data-tone={kindTone(e)}>
-                      <span className="ast-chip-dot" aria-hidden="true" />
-                      {KIND_LABEL[e.kind]}
-                    </span>
-                  </td>
-                  <td>
-                    <span className="ast-cell-stack">
-                      <span className="pg-diag-name">{e.title}</span>
-                      {e.detail && <span className="dxo-secondary-text pg-diag-wrap">{e.detail}</span>}
-                    </span>
-                  </td>
-                  <td className="pg-diag-nowrap">
-                    <span className="ast-cell-stack">
-                      {e.ruleId ? (
-                        <button type="button" className="pg-diag-inline-link ast-num" onClick={() => onSelectRule(e.ruleId as string)}>
-                          {e.ruleId}
-                        </button>
-                      ) : (
-                        <span className="dxo-none">—</span>
-                      )}
-                      <span className="dxo-secondary-text">{e.local ? "operator · this browser" : e.auto ? "sim. crew" : e.kind === "ack" || e.kind === "action" ? "operator" : "engine"}</span>
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <WhyDisclosure summary="Method">
-        <p>The engine keeps the latest 60 events. Shelving and fault feedback are stored in this browser only.</p>
-      </WhyDisclosure>
     </div>
   );
 }

@@ -34,7 +34,7 @@ import type {
   MaintenanceRecord,
   RemovedChecklistItem,
 } from "@/types/maintenance";
-import { Chevron, Empty, KpiStrip, PageHeader, Section, WhyDisclosure } from "../analysis/an-ui";
+import { Chevron, Empty, KpiStrip, PageHeader, Section } from "../analysis/an-ui";
 import { SearchPill } from "../assets-shell-ui";
 import { SENSORS_FOCUS_KEY } from "../machine-sensor-mapping-view";
 import "../assets-shell.css";
@@ -638,32 +638,6 @@ export function MaintenanceView({ machine, kind }: { machine: AssetMachine; kind
                 defaultSection={groups[0] ? groups[0].key : `${data.units[0]?.code}|${data.units[0]?.groups[0]?.num}`}
                 onAdd={add}
               />
-
-              <WhyDisclosure summary="Method">
-                <p>
-                  Tasks are verbatim from {data.document.number} {data.document.revision} ({data.document.status.toLowerCase()}). Rounds are the
-                  document&apos;s starting inspection routes, not plant-approved intervals; a task is due when it has never been recorded or its last
-                  result is older than its round. Planned-stop, event, OEM and site-survey tasks have no calendar due date.
-                </p>
-                {kind === "equipment" ? (
-                  <p>
-                    General hardware checks (GEN) apply to every machine and are recorded per machine. VERIFY tasks assume nothing: confirm the item on
-                    the approved P&amp;ID, OEM BOM and field survey before using the task. Tasks marked with a lock are done only under verified isolation (LOTO).
-                    {data.units.some((u) => u.code === "EXH-IF") && " The main exhaust gas treatment (EXH-IF) is listed with the preheater ID fan it serves; its arrangement is subject to P&ID verification."}
-                  </p>
-                ) : (
-                  <p>
-                    Live checks (AUTO) run continuously as ULTRON data-quality and sensor-validation checks; the row shows the tag&apos;s validity now and
-                    the shift reviews exceptions only. Planned tests follow the OEM / plant calibration interval.
-                    {data.units.some((u) => u.conditional) && " EXH-IF entries are site-survey candidates, not part of the 161 approved D5 signals."}
-                  </p>
-                )}
-                <p>
-                  Tick an item when it meets its pass condition; untick to take the result back. Problems are reported from the item&apos;s details:
-                  a follow-up (hold) and a defect need the as-found observation, and a defect opens a repair work order. Not applicable needs
-                  documented proof of absence. Items added on site belong to this machine only; removed items keep their results and can be restored.
-                </p>
-              </WhyDisclosure>
             </Section>
           </div>
         </>

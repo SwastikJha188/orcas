@@ -4,14 +4,13 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { PillButton, PillNav, Table, type Column } from "@/components/ui";
 import { ACTION, conditionTone, type Tone } from "@/components/ui/status";
 import { StatusTag } from "@/components/ui/status-tag";
-import { WhyDisclosure } from "./analysis/an-ui";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useLivePlantStarting } from "@/providers/kiln-simulation-context";
 import type { KilnScenario } from "@/lib/kiln-sim/scenarios";
 import type { RuleState, SimEvent, StoryProfile } from "@/lib/kiln-sim/engine";
 import type { Severity } from "@/lib/kiln-sim/signals";
 import { fmtMin, suiteCases, summariseSuite, type SuiteCase, type TestResult } from "@/lib/kiln-sim/test-lab";
-import { pyroSuiteCases, RUN_MIN as PYRO_RUN_MIN, type PyroScenarioRun } from "@/lib/pyro-sim/suite";
+import { pyroSuiteCases, type PyroScenarioRun } from "@/lib/pyro-sim/suite";
 import { SIM_SPEEDS, type KilnSimulation } from "./kiln-seals-simulation";
 import { SimulationResponseChart, type ResponseMarker } from "./simulation-response-chart";
 import { SimulationControl } from "./simulation-control";
@@ -422,21 +421,6 @@ function SimulationModule({ simulation, suiteKey }: { simulation: KilnSimulation
               keyExtractor={(s) => s.id}
               selectedId={scenario.id}
             />
-            <WhyDisclosure summary="Method">
-              {isKilnPlant ? (
-                <p className="ast-caption">
-                  Scenarios, expected rules and documented detection times follow the kiln system specification D5, Table 9.8. A headless run plays every
-                  scenario on its own engine; the live plant is untouched.
-                </p>
-              ) : (
-                <p className="ast-caption">
-                  Scenarios and expected rules follow the pyro line specification D4-OSW-PE-PYR Rev. 02. Documented detection times were measured on this
-                  simulation and show scripted demo behaviour, not a field detection rate. A headless run plays every scenario on its own line for{" "}
-                  {fmtMin(PYRO_RUN_MIN)}: it matches when the expected rule confirms on {machineId} and no other rule confirms anywhere on the line. Detection
-                  is counted from the scenario start. The live plant is untouched.
-                </p>
-              )}
-            </WhyDisclosure>
           </section>
 
           {/* ---------------- findings ---------------- */}
