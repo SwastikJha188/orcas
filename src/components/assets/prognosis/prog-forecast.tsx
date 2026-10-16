@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
-import { PillButton, PillNav } from "@/components/ui";
+import React, { useMemo, useRef, useState } from "react";
+import { PillButton, PillNav, balancedProps, useBalancedColumns } from "@/components/ui";
+import { useElementWidth } from "../analysis/an-ui";
 import type { ForecastHorizon, ForecastSeries } from "@/server/services/insights-service";
 import { fmt, horizonText, limitIsHigh, roundHours, seriesFor, type LimitCrossing } from "./prognosis-derive";
 import { Card, DataTable, EvidenceChip, Note, tagsForMode, type Col, type ProgSectionProps } from "./prog-ui";
@@ -44,9 +45,14 @@ const reachText = (r: Reach) =>
       ? `${r.level === "alarm" ? "Alarm" : "Warning"} in ≥ ${roundHours(r.early)}`
       : `${r.level === "alarm" ? "Alarm" : "Warning"} in ${roundHours(r.early)}–${roundHours(r.late)}`;
 
-/** Small multiples only for signals whose forecast interval reaches a limit; the rest collapse to table rows. */
+/**
+ * Every forecast signal is drawn as a full chart (no paging) in a fixed
+ * order; signals whose interval reaches a limit are highlighted in place. The table below
+ * lists the signals inside limits with their numbers.
+ */
 export function ProgForecast({ data, analysis, mode }: ProgSectionProps) {
   const [allRows, setAllRows] = useState(false);
+  const gridRef = useRef<HTMLDivElement | null>(null);
   const [hid, setHid] = useState(() => (data.horizons.some((h) => h.id === "24h") ? "24h" : (data.horizons[0]?.id ?? "")));
   const horizon = data.horizons.find((h) => h.id === hid) ?? data.horizons[0];
   const focus = useMemo(() => tagsForMode(mode, analysis, data), [mode, analysis, data]);
@@ -56,19 +62,17 @@ export function ProgForecast({ data, analysis, mode }: ProgSectionProps) {
     return seriesFor(data, horizon.id)
       .filter((s) => s.confidence > 0)
       .map((s) => ({ s, r: reach(s, horizon) }))
-      .sort((a, b) => {
-        const ra = a.r ? (a.r.level === "alarm" ? 0 : 1) : 2;
-        const rb = b.r ? (b.r.level === "alarm" ? 0 : 1) : 2;
-        const fa = focus.includes(a.s.tag) ? 0 : 1;
-        const fb = focus.includes(b.s.tag) ? 0 : 1;
-        return ra - rb || fa - fb;
-      });
-  }, [data, horizon, focus]);
+      // Fixed order (catalog order): a chart never moves when its alert state changes.
+      .map((x, i) => ({ ...x, i }))
+      .sort((a, b) => a.s.tag.localeCompare(b.s.tag) || a.i - b.i);
+  }, [data, horizon]);
   const total = horizon ? seriesFor(data, horizon.id).length : 0;
+  // Up to three charts a row, rows evened out; a short last row widens to the full width.
+  const cols = useBalancedColumns(gridRef, rows.length, { min: 380, max: 3, phoneCols: 1 });
+  const bal = balancedProps(cols);
   if (!horizon || !rows.length) return null;
 
-  const panels = rows.filter((r) => r.r).slice(0, 6);
-  const rest = rows.filter((r) => !panels.includes(r));
+  const rest = rows.filter((r) => !r.r);
 
   const columns: Col<Row>[] = [
     { key: "tag", header: "Tag", render: ({ s }) => <EvidenceChip tag={s.tag} /> },
@@ -104,25 +108,30 @@ export function ProgForecast({ data, analysis, mode }: ProgSectionProps) {
 
   return (
     <Card label="Signal forecasts" toolbar={<PillNav items={data.horizons.map((h) => ({ id: h.id, label: horizonText(h.id) }))} activeId={horizon.id} onChange={setHid} arrows />}>
-      {panels.length > 0 && (
-        <div className="pg-prog-multiples">
-          {panels.map(({ s, r }) => (
-            <figure key={s.tag} className={`pg-prog-multiple ${focus.includes(s.tag) ? "is-focus" : ""}`}>
+      <div ref={gridRef} className={`pg-prog-forecasts ${bal.className}`.trim()} style={bal.style} role="list" aria-label="Signal forecasts">
+        {rows.map(({ s, r }) => {
+          const tone = r ? (r.level === "alarm" ? "bad" : "warn") : undefined;
+          return (
+            <figure key={s.tag} role="listitem" data-tone={tone} className={`pg-prog-multiple ${focus.includes(s.tag) ? "is-focus" : ""}`}>
               <figcaption>
                 <EvidenceChip tag={s.tag} />
                 <span className="ast-muted pg-prog-clip">{s.name}</span>
-                <span className="pg-prog-dot ast-num" data-tone={r!.level === "alarm" ? "bad" : "warn"}>
-                  <span className="ast-chip-dot" aria-hidden="true" />
-                  {reachText(r!)}
-                </span>
+                {r ? (
+                  <span className="pg-prog-dot ast-num" data-tone={tone}>
+                    <span className="ast-chip-dot" aria-hidden="true" />
+                    {reachText(r)}
+                  </span>
+                ) : (
+                  <span className="pg-prog-dot ast-num ast-muted">&gt; {horizonText(horizon.id)}</span>
+                )}
               </figcaption>
               <div className="pg-prog-chart-scroll">
                 <ForecastChart s={s} h={horizon} c={r ? { level: r.level, hours: r.early } : null} />
               </div>
             </figure>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
       {rest.length > 0 && (
         <DataTable
           columns={columns}
@@ -159,7 +168,17 @@ const W = 560;
 const H = 170;
 const PAD = { l: 44, r: 72, t: 10, b: 20 };
 
-function ForecastChart({ s, h, c }: { s: ForecastSeries; h: ForecastHorizon; c: LimitCrossing | null }) {
+/** Drawn at its rendered width (text keeps one size however wide the chart is). */
+function ForecastChart(props: { s: ForecastSeries; h: ForecastHorizon; c: LimitCrossing | null }) {
+  const [ref, width] = useElementWidth<HTMLDivElement>(W);
+  return (
+    <div ref={ref} className="pg-prog-chart-box">
+      <ForecastSvg {...props} W={Math.max(320, Math.round(width))} />
+    </div>
+  );
+}
+
+function ForecastSvg({ s, h, c, W }: { s: ForecastSeries; h: ForecastHorizon; c: LimitCrossing | null; W: number }) {
   const hist = s.history.length ? s.history : [s.current];
   const fc = s.forecast;
   const values = [...hist, ...fc, ...s.lower, ...s.upper];

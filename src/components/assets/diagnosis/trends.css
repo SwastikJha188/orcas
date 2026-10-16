@@ -80,7 +80,6 @@
 .pg-trends-icon-btn:active:not(:disabled) { transform: scale(0.97); }
 .pg-trends-icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .pg-trends-flip { transform: scaleX(-1); }
-.pg-trends-tag { display: inline-block; margin-right: 8px; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-muted); }
 .pg-trends-link {
   padding: 0; border: 0; background: none; font: inherit; color: var(--dx-ink); cursor: pointer;
   text-decoration: underline; text-decoration-color: var(--separator); text-underline-offset: 3px;
@@ -189,16 +188,50 @@
 .pg-trends-ov--3 { stroke: var(--text-muted); stroke-dasharray: 10 3 2 3; }
 .pg-trends-ov-dot { fill: var(--card-bg); stroke-dasharray: none; }
 .pg-trends-ov-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.pg-trends-ov-chip {
-  display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 4px 0 10px; border-radius: var(--radius-sm);
-  border: 1px solid var(--border-subtle); background: var(--bg-canvas); font-size: var(--fs-sm); color: var(--dx-ink);
-}
 .pg-trends-ov-x {
   display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0;
   border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font: 500 14px/1 var(--font-ui); cursor: pointer;
 }
 .pg-trends-ov-x:hover { background: var(--hover-faint); color: var(--dx-ink); }
 .pg-trends-add { flex: 0 1 220px; }
+
+/* compare legend: one flush cell per compared signal, under the chart */
+.pg-trends-legend {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0;
+  margin: 0 -8px; padding-top: 8px; border-top: 1px solid var(--separator);
+}
+.pg-trends-legend-item {
+  display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 8px; border-radius: var(--corner-row); cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+.pg-trends-legend-item:hover { background: var(--hover-faint); }
+.pg-trends-legend-item:focus-visible { outline: 2px solid var(--signal-blue); outline-offset: -2px; }
+.pg-trends-legend-head { display: flex; align-items: center; gap: 8px; min-width: 0; height: 20px; }
+.pg-trends-legend-head svg { flex-shrink: 0; }
+.pg-trends-legend-head .pg-trends-ov-x { margin-left: auto; }
+.pg-trends-legend-tag { font-family: var(--font-mono); font-size: var(--fs-md); font-weight: 600; color: var(--dx-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pg-trends-legend-name { font-size: var(--fs-sm); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pg-trends-legend-value { display: flex; align-items: baseline; gap: 4px; min-width: 0; font-family: var(--font-mono); font-size: var(--fs-3xl); font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; color: var(--dx-ink); white-space: nowrap; }
+.pg-trends-legend-unit { font-family: var(--font-ui); font-size: var(--fs-sm); font-weight: 400; letter-spacing: 0; color: var(--text-muted); }
+.pg-trends-legend-at { margin-left: auto; font-family: var(--font-ui); font-size: var(--fs-xs); font-weight: 400; letter-spacing: 0; color: var(--text-muted); }
+.pg-trends-legend-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.pg-trends-legend-facts > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pg-trends-legend-facts dt { font-size: var(--fs-xs); color: var(--text-muted); }
+.pg-trends-legend-facts dd { margin: 0; font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--dx-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------------------------------------------------------------- tiles (signals, excursions) */
+.pg-trends-sigtile .ui-tile-value, .pg-trends-extile .ui-tile-value { font-size: var(--fs-3xl); }
+/* Facts on a fixed grid so Ref / Dev / Min / Max line up across every card. */
+.pg-trends-sigtile .ui-tile-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.pg-trends-extile .ui-tile-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+:is(.pg-trends-sigtile, .pg-trends-extile) .ui-tile-fact dd { font-size: var(--fs-sm); }
+.pg-trends-tile-spark { display: flex; align-items: center; height: 32px; min-width: 0; font-size: var(--fs-sm); }
+.pg-trends-tile-spark > .pg-trends-chart { flex: 1 1 auto; }
+.pg-trends-tile-dq { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.pg-trends-tile-dq > .pg-trends-muted { overflow: hidden; text-overflow: ellipsis; }
+.pg-trends-extile .ui-tile-actions { flex-shrink: 1; min-width: 0; margin-left: 0; }
+.pg-trends-tile-rule { min-width: 0; font-size: var(--fs-sm); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pg-trends-none { font-size: var(--fs-sm); color: var(--text-muted); }
 .pg-trends-stack { display: flex; flex-direction: column; gap: 0; }
 .pg-trends-stack .pg-trends-chart + .pg-trends-chart { border-top: 1px solid var(--dx-line); }
 
@@ -213,15 +246,7 @@
 .pg-trends-sig svg { align-self: center; flex-shrink: 0; }
 .pg-trends-tagcol { min-width: 88px; font-family: var(--font-mono); color: var(--dx-ink); font-weight: 500; }
 .pg-trends-name { color: var(--text-muted); max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
-.pg-trends-table .ui-table tbody td.pg-trends-offval { color: var(--status-warning); }
-.pg-trends-table .ui-table tr.pg-trends-grouprow th {
-  padding: 16px 16px 6px; font-size: var(--fs-sm); font-weight: 600; letter-spacing: 0;
-  color: var(--dx-ink); text-align: left; border-bottom: 1px solid var(--separator);
-}
-.pg-trends-table .ui-table tr.pg-trends-grouprow th .pg-trends-muted { font-weight: 400; letter-spacing: 0; }
-.pg-trends-table .ui-table td.pg-trends-spark-col, .pg-trends-table .ui-table th.pg-trends-spark-col { width: 160px; min-width: 120px; padding-top: 4px; padding-bottom: 4px; }
 .pg-trends-table .ui-table td.pg-trends-strip-col, .pg-trends-table .ui-table th.pg-trends-strip-col { width: 40%; min-width: 220px; }
-.pg-trends-empty-row { text-align: center; padding: 24px 16px !important; }
 .pg-trends-more { display: flex; justify-content: center; padding: 8px 0; }
 
 /* ---------------------------------------------------------------- state strips */
@@ -235,7 +260,17 @@
 
 /* ---------------------------------------------------------------- responsive */
 
+@media (max-width: 1023px) {
+  .pg-trends-legend { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Phone: signals two-up (shared .ui-tiles.is-compact), facts 2 × 2. */
 @media (max-width: 640px) {
+  .pg-trends-signal-grid .pg-trends-sigtile .ui-tile-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; }
+}
+
+@media (max-width: 640px) {
+  .pg-trends-legend { grid-template-columns: minmax(0, 1fr); }
   .pg-trends-stats > div { padding: 0 12px; }
   .pg-trends-picker { width: 100%; }
 }

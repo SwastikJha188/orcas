@@ -9,8 +9,8 @@
  *   KPI strip    outside limits now · excursions · max deviation · events
  *   Signal       one signal vs reference model ±3σ, limits, residual
  *   Compare      2–4 signals normalised on one axis, synced crosshair
- *   Signals      every analog signal by system (D4 §4), with window stats and sparkline
- *   Excursions   periods outside limits or the model band
+ *   Signals      every analog signal by system (D4 §4): card with value, sparkline, window stats
+ *   Excursions   periods outside limits or the model band: cards, most severe first
  *   Events       engine + stored operating events, plant time
  *   States       on/off timelines
  * Sections with no data for the machine are not rendered.

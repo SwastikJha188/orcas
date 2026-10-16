@@ -23,6 +23,8 @@ const FRESH_MS = 10_000;
 
 const entries = new Map<string, Entry>();
 const inflight = new Map<string, Promise<void>>();
+/** Invalidated while a request was in flight: its response may predate the write, so fetch once more. */
+const stale = new Set<string>();
 const listeners = new Map<string, Set<() => void>>();
 
 function set(url: string, next: Entry) {
@@ -46,6 +48,7 @@ export function revalidateApi(url: string): Promise<void> {
       set(url, { has: prev?.has ?? false, data: prev?.data, error, at: Date.now() });
     } finally {
       inflight.delete(url);
+      if (stale.delete(url) && listeners.get(url)?.size) void revalidateApi(url);
     }
   })();
   inflight.set(url, p);
@@ -57,6 +60,7 @@ export function invalidateApi(prefix: string) {
   for (const [url, e] of entries) {
     if (!url.startsWith(prefix)) continue;
     entries.set(url, { ...e, at: 0 });
+    if (inflight.has(url)) stale.add(url);
     if (listeners.get(url)?.size) void revalidateApi(url);
   }
 }

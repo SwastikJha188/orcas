@@ -1,11 +1,10 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { PillButton, PillNav, Table } from "@/components/ui";
+import { PillButton, PillNav, Tile, TileGrid } from "@/components/ui";
 import { formatDuration } from "@/lib/kiln-sim/engine";
-import { StatusTag } from "../assets-shell-ui";
 import { focusSensorOn } from "../sensor-focus";
-import { MissingNote, Panel, Section, alertTone, useElementWidth } from "./an-ui";
+import { MissingNote, Panel, Section, useElementWidth } from "./an-ui";
 import { AnSignals } from "./an-summary";
 import {
   SECTION_IDS,
@@ -139,6 +138,8 @@ const openTrends = (go: SectionProps["go"], tag: string) => {
   go("trends");
 };
 
+const withUnit = (v: string, unit: string) => (unit ? `${v} ${unit}` : v);
+
 /** Detection — expected behaviour (residual vs reference model) and anomalies, split into condition and process monitoring. */
 export function AnDetection({ insights, frame, go }: SectionProps) {
   const [lens, setLens] = useState<Lens>("all");
@@ -147,21 +148,34 @@ export function AnDetection({ insights, frame, go }: SectionProps) {
 
   if (!frame) {
     return (
-      <Section id={SECTION_IDS.detection} title="Detection">
-        <AnSignals insights={insights} frame={frame} />
-        <Table
-          className="ast-table pg-analysis-num-last2"
-          data={p.anomalies}
-          keyExtractor={(x) => x.tag}
-          onRowClick={(x) => openTrends(go, x.tag)}
-          columns={[
-            { key: "s", header: "Signal", render: (x) => <span className="ast-cell-stack"><span className="ast-cell-title">{x.name}</span><span className="ast-cell-sub">{x.tag} · {x.component}</span></span> },
-            { key: "st", header: "Status", render: (x) => <StatusTag tone={alertTone(sevToTone(x.severity)) ?? "idle"} label={x.severity} /> },
-            { key: "sc", header: "Score", render: (x) => <span className="ast-num">{x.score.toFixed(2)}</span> },
-            { key: "d", header: "Deviation", render: (x) => <span className="ast-num">{x.deviation}</span> },
-          ]}
-        />
-        <MissingNote title="No reference model for this machine." />
+      <Section id={SECTION_IDS.detection} title="Detection" bare>
+        <section className="ast-card pg-an-card">
+          <AnSignals insights={insights} frame={frame} />
+          <MissingNote title="No reference model for this machine." />
+        </section>
+        {p.anomalies.length > 0 && (
+          <>
+            <h4 className="ui-tiles-head">
+              <span>
+                Anomalies <b>{p.anomalies.length}</b>
+              </span>
+            </h4>
+            <TileGrid label="Anomalies" min={260}>
+              {p.anomalies.map((x) => (
+                <Tile
+                  key={x.tag}
+                  title={x.tag}
+                  sub={`${x.name} · ${x.component}`}
+                  status={{ label: x.severity, tone: sevToTone(x.severity) }}
+                  tone={sevToTone(x.severity)}
+                  value={x.deviation}
+                  facts={[{ label: "Score", value: x.score.toFixed(2) }]}
+                  onSelect={() => openTrends(go, x.tag)}
+                />
+              ))}
+            </TileGrid>
+          </>
+        )}
       </Section>
     );
   }
@@ -180,16 +194,9 @@ export function AnDetection({ insights, frame, go }: SectionProps) {
     <Section
       id={SECTION_IDS.detection}
       title="Detection"
+      bare
       right={
-        <PillButton variant="secondary" onClick={() => go("diagnosis")}>
-          Live rules
-        </PillButton>
-      }
-    >
-      <AnSignals insights={insights} frame={frame} />
-      <Panel
-        title={`Residual per signal, mean per ${formatDuration(matrix.minutes)}`}
-        right={
+        <>
           <PillNav
             items={[
               { id: "all", label: "All" },
@@ -198,54 +205,78 @@ export function AnDetection({ insights, frame, go }: SectionProps) {
             ]}
             activeId={lens}
             onChange={(id) => setLens(id as Lens)}
-            arrows
           />
-        }
-      >
-        <ResidualHeatmap rows={matrix.rows} minutes={matrix.minutes} lens={lens} />
-      </Panel>
+          <PillButton variant="secondary" onClick={() => go("diagnosis")}>
+            Live rules
+          </PillButton>
+        </>
+      }
+    >
+      <section className="ast-card pg-an-card">
+        <AnSignals insights={insights} frame={frame} />
+        <Panel title={`Residual per signal, mean per ${formatDuration(matrix.minutes)}`}>
+          <ResidualHeatmap rows={matrix.rows} minutes={matrix.minutes} lens={lens} />
+        </Panel>
+        <Panel title="Combined residual vs 95 / 99 % limits">
+          <T2Chart values={t2.values} l95={t2.l95} l99={t2.l99} />
+        </Panel>
+      </section>
 
-      <Panel title="Combined residual vs 95 / 99 % limits">
-        <T2Chart values={t2.values} l95={t2.l95} l99={t2.l99} />
-      </Panel>
-
-      <Panel title={`Off model · ${anomalous.length} of ${rows.length}`} table>
-        {shown.length === 0 ? (
+      <h4 className="ui-tiles-head">
+        <span>
+          Off model <b>{anomalous.length}</b> of {rows.length}
+        </span>
+        <span>beyond ±{Z_ANOMALY}σ of the reference model</span>
+      </h4>
+      {shown.length === 0 ? (
+        <section className="ast-card pg-an-card" role="status">
           <p className="pg-analysis-empty">All signals within ±{Z_ANOMALY}σ of the reference model.</p>
-        ) : (
-          <Table
-            className="ast-table pg-analysis-numcols"
-            data={shown}
-            keyExtractor={(r) => r.tag}
-            onRowClick={(r) => openTrends(go, r.tag)}
-            columns={[
-              { key: "sig", header: "Signal", render: (r) => <span className="ast-cell-stack"><span className="ast-cell-title">{r.name}</span><span className="ast-cell-sub">{r.tag} · {r.sub}</span></span> },
-              { key: "exp", header: "Expected", render: (r) => <span className="ast-num">{fmt(r.expected)}<span className="ast-unit">{r.unit}</span></span> },
-              { key: "act", header: "Actual", render: (r) => <span className="ast-num">{fmt(r.actual)}<span className="ast-unit">{r.unit}</span></span> },
-              { key: "dev", header: "Residual", render: (r) => <span className="pg-analysis-r" data-tone={alertTone(Math.abs(r.z!) > Z_UNCLASSIFIED ? "bad" : "warn")}>{sigma(r.z!)}</span> },
-              { key: "band", header: "±3σ band", render: (r) => <span className="ast-num ast-muted">±{fmt(r.sigma * Z_ANOMALY)}<span className="ast-unit">{r.unit}</span></span> },
-              { key: "pers", header: "Samples", render: (r) => <span className="ast-num">{r.persistence}</span> },
-              { key: "match", header: "Pattern", render: (r) => (r.rules.length ? <span className="ast-num">{r.rules.join(", ")}</span> : <span className="pg-analysis-r" data-tone="warn">Unclassified</span>) },
-            ]}
-          />
-        )}
-      </Panel>
+        </section>
+      ) : (
+        <TileGrid label="Signals off the reference model" min={280}>
+          {shown.map((r) => {
+            const tone = Math.abs(r.z!) > Z_UNCLASSIFIED ? "bad" : "warn";
+            return (
+              <Tile
+                key={r.tag}
+                title={r.tag}
+                sub={`${r.name} · ${r.sub}`}
+                status={r.rules.length ? { label: r.rules.join(", ") } : { label: "Unclassified", tone: "warn" }}
+                tone={tone}
+                value={sigma(r.z!)}
+                unit="residual"
+                facts={[
+                  { label: "Expected", value: withUnit(fmt(r.expected), r.unit) },
+                  { label: "Actual", value: withUnit(fmt(r.actual), r.unit) },
+                  { label: `±${Z_ANOMALY}σ band`, value: withUnit(`±${fmt(r.sigma * Z_ANOMALY)}`, r.unit) },
+                  { label: "Samples", value: String(r.persistence) },
+                ]}
+                onSelect={() => openTrends(go, r.tag)}
+              />
+            );
+          })}
+        </TileGrid>
+      )}
 
       {broken.length > 0 && (
-        <Panel title="Coupling changed · last hour">
-          <ul className="pg-analysis-pairs">
+        <>
+          <h4 className="ui-tiles-head">
+            <span>
+              Coupling changed <b>{broken.length}</b>
+            </span>
+            <span>last hour, correlation r</span>
+          </h4>
+          <TileGrid label="Coupling changed in the last hour" min={220} compact >
             {broken.map((c) => (
-              <li key={`${c.a}-${c.b}`}>
-                <span>
-                  {c.a} ↔ {c.b}
-                </span>
-                <span className="ast-muted">
-                  r {c.baseline!.toFixed(2)} → {c.recent!.toFixed(2)}
-                </span>
-              </li>
+              <Tile
+                key={`${c.a}-${c.b}`}
+                title={`${c.a} ↔ ${c.b}`}
+                value={`${c.baseline!.toFixed(2)} → ${c.recent!.toFixed(2)}`}
+                facts={[{ label: "Change", value: `${c.recent! - c.baseline! >= 0 ? "+" : "−"}${Math.abs(c.recent! - c.baseline!).toFixed(2)}` }]}
+              />
             ))}
-          </ul>
-        </Panel>
+          </TileGrid>
+        </>
       )}
     </Section>
   );

@@ -18,6 +18,7 @@ import { homeActive } from "@/components/home/home-active";
 // Home is the landing tab; the other workspaces load on first visit.
 const AssetsView = dynamic(() => import("@/components/assets/assets-view").then((m) => m.AssetsView));
 const IndustrialDevicesView = dynamic(() => import("@/components/devices/devices-view").then((m) => m.IndustrialDevicesView));
+const MaintenanceWorkspace = dynamic(() => import("@/components/maintenance/maintenance-workspace").then((m) => m.MaintenanceWorkspace));
 const AssetIqHubView = dynamic(() => import("@/components/assetiq/assetiq-hub-view").then((m) => m.AssetIqHubView));
 const ConfigureView = dynamic(() => import("@/components/configure/configure-view").then((m) => m.ConfigureView));
 
@@ -74,6 +75,7 @@ function UltronWorkspaceContent() {
             </div>
           )}
           {activeTab === "assets" && <AssetsView />}
+          {activeTab === "maintenance" && <MaintenanceWorkspace />}
           {activeTab === "devices" && <IndustrialDevicesView />}
           {activeTab === "assetiq" && <AssetIqHubView />}
           {activeTab === "configure" && <ConfigureView />}

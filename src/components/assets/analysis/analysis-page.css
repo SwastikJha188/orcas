@@ -354,7 +354,7 @@
 }
 
 /* Never nest cards: a card placed inside a section renders flush. */
-.pg-analysis-section :is(.ast-card, .ui-card) {
+.pg-analysis-section:not(.is-bare) :is(.ast-card, .ui-card) {
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -796,29 +796,6 @@
 }
 
 /* ---------------------------------------------------------------- lists */
-.pg-analysis-pairs {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.pg-analysis-pairs li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px 16px;
-  padding: 8px 0;
-  border-top: 1px solid var(--separator);
-  font-size: var(--fs-md);
-  font-variant-numeric: tabular-nums;
-}
-
-.pg-analysis-pairs li:first-child {
-  border-top: 0;
-}
-
 .pg-analysis-dl {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
@@ -895,11 +872,6 @@
   background: var(--dx-ink);
 }
 
-.pg-analysis-bar-cell {
-  display: block;
-  min-width: 96px;
-}
-
 /* ---------------------------------------------------------------- responsive */
 @media (max-width: 1100px) {
   .pg-analysis-chain {
@@ -949,9 +921,7 @@
 }
 
 /* ---------------------------------------------------------------- numeric table columns (right-aligned, tabular) */
-:is(.pg-analysis-numcols) :is(th, td):not(:first-child),
-:is(.pg-analysis-num-last2) :is(th, td):nth-last-child(-n + 2),
-:is(.pg-analysis-num-last4) :is(th, td):nth-last-child(-n + 4) {
+:is(.pg-analysis-num-last2) :is(th, td):nth-last-child(-n + 2) {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -1107,4 +1077,525 @@
   top: 0;
   bottom: 0;
   background: var(--text-muted);
+}
+
+/* ================================================================ bare section + tiles
+   `Section bare`: heading on the workspace, body is a grid of real cards
+   (TileGrid > Tile, src/components/ui/tile.tsx) — never cards inside a card. */
+.pg-analysis-section.is-bare {
+  padding: 0;
+  gap: 12px;
+}
+
+.pg-analysis-section.is-bare > .pg-analysis-section-head {
+  padding: 0 4px;
+  min-height: 28px;
+}
+
+.pg-analysis-section.is-bare > .pg-analysis-section-body {
+  gap: 12px;
+}
+
+.pg-analysis-section.is-bare > .pg-analysis-section-body > .ast-card:not(.ui-tile) {
+  padding: 16px 20px;
+}
+
+/* Sub-heading inside a bare section (group of tiles). */
+.ui-tiles-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+  margin: 4px 4px -4px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.ui-tiles-head b {
+  font-weight: 500;
+  color: var(--dx-ink, var(--page-fg));
+}
+
+.ui-tiles {
+  --tile-gap: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--tile-min, 240px)), 1fr));
+  gap: var(--tile-gap);
+  min-width: 0;
+}
+
+/* A short row stretches to the full width: empty columns collapse. */
+.ui-tiles.is-fill {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--tile-min, 240px)), 1fr));
+}
+
+/* Balanced (column count measured by TileGrid / useBalancedColumns): rows hold
+   about the same number of tiles and a short last row stretches to the width. */
+.is-balanced {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.is-balanced > * {
+  flex: 1 1 calc((100% - (var(--tile-cols) - 1) * var(--tile-gap, 12px)) / var(--tile-cols));
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .ui-tiles.is-compact {
+    --tile-gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ui-tiles.is-compact .ui-tile {
+    padding: 12px;
+  }
+
+  .ui-tiles.is-compact .ui-tile-value {
+    font-size: var(--fs-3xl);
+  }
+
+  .ui-tiles.is-compact .ui-tile-facts {
+    gap: 6px 12px;
+  }
+
+  /* Narrow tiles: the name gets the full width; status sits above it, and only when off-normal. */
+  .ui-tiles.is-compact .ui-tile-head {
+    flex-direction: column-reverse;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .ui-tiles.is-compact .ui-tile-status:not([data-tone]) {
+    display: none;
+  }
+}
+
+.ui-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 14px 16px;
+  container: ui-tile / inline-size;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+
+/* Narrow (default): one column — head, sub, value, meter, body, facts, foot. */
+.ui-tile-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ui-tile-lead {
+  display: contents;
+}
+
+.ui-tile-head { order: 1; }
+.ui-tile-sub { order: 2; }
+.ui-tile-value { order: 3; }
+.ui-tile-meter,
+.ui-tile-bar { order: 4; }
+
+.ui-tile-bar {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ui-tile-content { order: 5; }
+.ui-tile-facts { order: 6; }
+.ui-tile-foot { order: 7; }
+
+.ui-tile-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Wide (a short row stretched to the page width): summary left, body right. */
+@container ui-tile (min-width: 560px) {
+  .ui-tile-body:has(> .ui-tile-content) {
+    display: grid;
+    grid-template-columns: minmax(240px, 2fr) minmax(0, 3fr);
+    grid-template-rows: auto 1fr;
+    align-items: start;
+    gap: 12px 32px;
+  }
+
+  .ui-tile-body:has(> .ui-tile-content) > .ui-tile-lead {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+  }
+
+  .ui-tile-body:has(> .ui-tile-content) > .ui-tile-content {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  .ui-tile-body:has(> .ui-tile-content) > .ui-tile-foot {
+    grid-column: 1;
+    grid-row: 2;
+    align-self: end;
+  }
+
+  /* No body: name and value on the left, facts on the right. */
+  .ui-tile-body:not(:has(> .ui-tile-content)) > .ui-tile-lead:has(> .ui-tile-facts) {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    grid-auto-flow: dense;
+    align-items: start;
+    gap: 8px 32px;
+  }
+
+  .ui-tile-lead:has(> .ui-tile-facts) > :not(.ui-tile-facts) {
+    grid-column: 1;
+  }
+
+  .ui-tile-body:not(:has(> .ui-tile-content)) > .ui-tile-lead > .ui-tile-facts {
+    grid-column: 2;
+    grid-row: 1 / span 4;
+    align-self: center;
+    padding: 0 0 0 32px;
+    border-top: 0;
+    border-left: 1px solid var(--separator);
+  }
+}
+
+.ui-tile[data-tone] {
+  border-color: color-mix(in srgb, var(--tone) 45%, var(--card-border));
+}
+
+.ui-tile.is-clickable {
+  cursor: pointer;
+}
+
+.ui-tile.is-clickable:hover {
+  border-color: color-mix(in srgb, var(--text-muted) 45%, var(--card-border));
+}
+
+.ui-tile.is-selected,
+.ui-tile.is-selected:hover {
+  border-color: var(--signal-blue);
+}
+
+.ui-tile:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 2px;
+}
+
+.ui-tile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ui-tile-title {
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--dx-ink, var(--page-fg));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-tile-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.ui-tile-status[data-tone] {
+  color: var(--tone);
+}
+
+.ui-tile-sub {
+  margin-top: -6px;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-tile-value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-5xl);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--dx-ink, var(--page-fg));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-tile[data-tone] .ui-tile-value {
+  color: var(--tone);
+}
+
+.ui-tile-unit {
+  margin-left: 4px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--text-muted);
+}
+
+.ui-tile-meter {
+  display: block;
+  height: 2px;
+  background: var(--separator);
+  overflow: hidden;
+}
+
+.ui-tile-meter i {
+  display: block;
+  height: 100%;
+  background: var(--text-muted);
+}
+
+.ui-tile[data-tone] .ui-tile-meter i {
+  background: var(--tone);
+}
+
+.ui-tile-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--separator);
+}
+
+.ui-tile-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ui-tile-fact dt {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-tile-fact dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-md);
+  color: var(--dx-ink, var(--page-fg));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-tile-fact[data-tone] dd {
+  color: var(--tone);
+}
+
+.ui-tile-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  min-width: 0;
+}
+
+.ui-tile-foot-text {
+  min-width: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-tile-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* Stacked status bar: live / stale / no data shares of a total. */
+.ui-tile-stack {
+  display: flex;
+  height: 4px;
+  gap: 2px;
+  overflow: hidden;
+  border-radius: 2px;
+}
+
+.ui-tile-stack i {
+  display: block;
+  height: 100%;
+  background: var(--tone, var(--text-muted));
+  border-radius: 1px;
+}
+
+.ui-tile-stack i:not([data-tone]) {
+  background: color-mix(in srgb, var(--text-muted) 55%, transparent);
+}
+
+.ui-tile-stack i.is-empty {
+  background: var(--separator);
+}
+
+/* ================================================================ Analysis page (pg-an-*)
+   Page-local rules for the Analysis sub-page only. Sections that hold tiles are
+   bare; charts, matrices and kept tables sit in their own card (.pg-an-card). */
+.pg-an-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.pg-an-card > * + .pg-analysis-block {
+  padding-top: 16px;
+  border-top: 1px solid var(--separator);
+}
+
+/* Contribution: a flush bar list (input · waterfall · share · residual), not a table. */
+.pg-an-contrib {
+  display: flex;
+  flex-direction: column;
+  margin: 0 -12px;
+  padding: 0;
+  list-style: none;
+}
+
+.pg-an-contrib li + li {
+  border-top: 1px solid var(--separator);
+}
+
+.pg-an-contrib-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.2fr) minmax(120px, 3fr) 56px 80px;
+  align-items: center;
+  gap: 4px 20px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--corner-row);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pg-an-contrib-row:hover {
+  background: var(--row-hover-bg);
+}
+
+.pg-an-contrib-row:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: -2px;
+}
+
+.pg-an-contrib-num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-md);
+}
+
+.pg-an-contrib-num.is-muted {
+  color: var(--text-muted);
+}
+
+@media (max-width: 640px) {
+  .pg-an-contrib-row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 6px 12px;
+  }
+
+  .pg-an-contrib-row > .pg-analysis-bar {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+/* Rule trace tiles: condition and observed value as a two-line definition list. */
+.pg-an-trace {
+  font-size: var(--fs-sm);
+  gap: 4px 16px;
+}
+
+.pg-an-trace dt {
+  color: var(--text-muted);
+}
+
+.pg-an-trace dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Feedback tiles: three label buttons wrap on narrow tiles. */
+.pg-an-labels .ui-tile-actions {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.pg-an-labels .pg-analysis-feedback {
+  justify-content: flex-end;
+}
+
+/* Two-sided headline (now → target, before → after) stays readable in narrow tiles. */
+.pg-an-pair .ui-tile-value {
+  font-size: var(--fs-3xl);
+}
+
+/* Analysis › Mechanism: the rule-input matrix is narrow, so from desktop width
+   it sits left with the process-flow chain and cause / consequence on the right
+   (same layout machine-insights.css applies from 1920 px). */
+@media (min-width: 1100px) {
+  #an-diagnosis .pg-analysis-section-body:has(> .pg-analysis-block > .pg-analysis-chart-scroll) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-auto-flow: row dense;
+    column-gap: 40px;
+    align-items: start;
+  }
+
+  #an-diagnosis .pg-analysis-section-body:has(> .pg-analysis-block > .pg-analysis-chart-scroll) > * {
+    grid-column: 1 / -1;
+  }
+
+  #an-diagnosis .pg-analysis-section-body > .pg-analysis-block:has(> .pg-analysis-chart-scroll) {
+    grid-column: 1;
+    grid-row: span 2;
+  }
+
+  #an-diagnosis .pg-analysis-section-body > .pg-analysis-block:is(:has(> .pg-analysis-flow), :has(> .pg-analysis-dl)) {
+    grid-column: 2;
+  }
 }

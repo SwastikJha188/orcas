@@ -27,7 +27,8 @@ import type { AssetMachine } from "../assets-data";
 import type { AssetsSubPage } from "../assets-view";
 import { useMachineInsights } from "../use-machine-insights";
 import { Empty, KpiStrip, PageHeader, SectionIndex, openActions, type AnalysisModuleId, type SectionIndexItem } from "./an-ui";
-import { SECTION_IDS, detectionRows, isAnomalous, machineFaults, machineSources, type SectionProps } from "./an-derive";
+import { SECTION_IDS, detectionRows, isAnomalous, liveRules, machineFaults, machineSources, type SectionProps } from "./an-derive";
+import { isConditionRule } from "@/lib/plant-defs";
 import { useAnalysisKpis } from "./an-summary";
 import { AnDetection } from "./an-detection";
 import { AnFaults } from "./an-faults";
@@ -79,7 +80,8 @@ export function MachineAnalysisPage({ machine }: MachineAnalysisPageProps) {
     detection: Boolean(a) && (frame !== null || anomalies > 0),
     diagnosis: hyps > 0,
     explanation: Boolean(a?.features.length),
-    actions: actions.length > 0 || faults.length > 0 || (frame !== null && frame.rules.some((r) => r.status !== "QUIET")),
+    // Same inputs AnActions renders: the open-actions line and one label card per finding.
+    actions: actions.length > 0 || (frame ? liveRules(frame).some((r) => isConditionRule(r)) : faults.length > 0),
     quality: frame !== null || (ledger.stats?.made ?? 0) > 0,
   };
   const index: (SectionIndexItem & { on: boolean })[] = [

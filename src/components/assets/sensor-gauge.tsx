@@ -149,7 +149,7 @@ export function formatScale(v: number): string {
 }
 
 /** Zones as [from, to, tone] on the scale, ordered bottom → top. */
-function zones(g: GaugeScale): Array<[number, number, "warn" | "bad"]> {
+export function zones(g: GaugeScale): Array<[number, number, "warn" | "bad"]> {
   const b = g.band;
   if (b) {
     const out: Array<[number, number, "warn" | "bad"]> = [];

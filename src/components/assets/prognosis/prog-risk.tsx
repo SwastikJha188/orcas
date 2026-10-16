@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { PillNav } from "@/components/ui";
+import { PillNav, Tile, TileGrid } from "@/components/ui";
 import type { FailureRisk, Severity } from "@/server/services/insights-service";
 import { toCondition } from "@/components/ui/status";
 import { formatRiskWindow, isBaselineRisk } from "./prognosis-derive";
-import { Card, DataTable, Note, type Col, type ProgSectionProps } from "./prog-ui";
+import { Note, type ProgSectionProps } from "./prog-ui";
 
 const P_BANDS = [
   { label: "< 5", lo: 0, hi: 5 },
@@ -23,7 +23,7 @@ const CONSEQUENCE: { sev: Severity; label: string; rank: number }[] = [
 
 const shortId = (r: FailureRisk) => (isBaselineRisk(r) ? r.component.split(/[ ,&]/)[0] : r.id);
 
-/** Probability (stated window) × consequence matrix and the failure-mode table; a row selects the mode for the sections below. */
+/** Probability (stated window) × consequence matrix and one card per failure mode (render in a bare section); a card selects the mode for the sections below. */
 export function ProgRisk({ data, mode, setMode }: ProgSectionProps) {
   const all = useMemo(
     () =>
@@ -38,43 +38,14 @@ export function ProgRisk({ data, mode, setMode }: ProgSectionProps) {
   const listed = all.filter((r) => !isBaselineRisk(r) || r.probability >= 10);
   const hidden = all.length - listed.length;
 
-  const columns: Col<FailureRisk>[] = [
-    {
-      key: "mode",
-      header: "Failure mode",
-      render: (r) => <span className={isBaselineRisk(r) ? "ast-cell-text" : "ast-cell-title"}>{r.fault}</span>,
-    },
-    { key: "sub", header: "Sub-assembly", render: (r) => <span className="ast-muted pg-prog-clip">{r.component}</span> },
-    {
-      key: "p",
-      header: "P est. %",
-      align: "right",
-      render: (r) => (
-        <span className="ast-num pg-prog-strong pg-prog-tone" data-tone={!isBaselineRisk(r) && r.probability >= 50 ? (r.severity === "Critical" ? "bad" : "warn") : undefined}>
-          {r.probability.toFixed(0)}
-        </span>
-      ),
-    },
-    { key: "w", header: "Horizon", align: "right", render: (r) => <span className="ast-num">{formatRiskWindow(r.window)}</span> },
-    { key: "c", header: "Consequence", render: (r) => <span className="ast-muted">{toCondition(r.severity)}</span> },
-    { key: "rule", header: "Source", render: (r) => <span className="ast-num ast-muted">{isBaselineRisk(r) ? "Health index" : r.id}</span> },
-  ];
-
   return (
-    <Card
-      label="Failure-mode risk"
-      toolbar={
-        listed.length > 1 ? (
-          <PillNav
-            items={listed.map((r) => ({ id: r.id, label: shortId(r) }))}
-            activeId={mode?.id ?? listed[0]?.id ?? ""}
-            onChange={setMode}
-            arrows
-          />
-        ) : undefined
-      }
-    >
-      <div className="pg-prog-riskgrid">
+    <>
+      <section className="ast-card pg-prog-card" aria-label="Risk matrix">
+        {listed.length > 1 && (
+          <div className="pg-prog-toolbar">
+            <PillNav items={listed.map((r) => ({ id: r.id, label: shortId(r) }))} activeId={mode?.id ?? listed[0]?.id ?? ""} onChange={setMode} arrows />
+          </div>
+        )}
         <div className="pg-prog-matrix" role="table" aria-label="Failure modes by probability and consequence">
           {CONSEQUENCE.map((c) => (
             <div key={c.sev} role="row" className="pg-prog-matrix-row">
@@ -115,9 +86,35 @@ export function ProgRisk({ data, mode, setMode }: ProgSectionProps) {
             ))}
           </div>
         </div>
-        <DataTable columns={columns} data={listed} rowKey={(r) => r.id} selected={mode?.id} onRowClick={(r) => setMode(r.id)} label="Failure modes" />
-      </div>
+      </section>
+      {listed.length > 0 && (
+        <TileGrid label="Failure modes" min={300}>
+          {listed.map((r) => {
+            const base = isBaselineRisk(r);
+            const hot = !base && r.probability >= 50 ? (r.severity === "Critical" ? "bad" : "warn") : undefined;
+            return (
+              <Tile
+                key={r.id}
+                className="pg-prog-ftile"
+                title={r.fault}
+                sub={r.component}
+                status={{ label: toCondition(r.severity), tone: base ? undefined : r.severity === "Critical" ? "bad" : r.severity === "Advisory" ? "warn" : undefined }}
+                value={r.probability.toFixed(0)}
+                unit="% probability"
+                tone={hot}
+                meter={r.probability}
+                facts={[
+                  { label: "Horizon", value: formatRiskWindow(r.window) },
+                  { label: "Source", value: base ? "Health index" : r.id },
+                ]}
+                selected={mode?.id === r.id}
+                onSelect={() => setMode(r.id)}
+              />
+            );
+          })}
+        </TileGrid>
+      )}
       {hidden > 0 && <Note>{hidden} sub-assemblies below 10 % not listed.</Note>}
-    </Card>
+    </>
   );
 }

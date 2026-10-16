@@ -56,7 +56,7 @@ import { Empty, KpiStrip, PageHeader, Section, SectionIndex, type KpiItem, type 
 import { DataTable, Num, PROG_SECTION_KEY, type Col } from "./prognosis/prog-ui";
 import { ANALYSIS_ANCHOR_KEY } from "./analysis/analysis-page";
 import { DIAGNOSIS_SECTION_KEY } from "./diagnosis-view";
-import { HeatScale, PolarChart, ProfileChart, ShellMapFigure, type LastGood } from "./thermal-map";
+import { HeatScale, PolarChart, ProfileChart, ShellMapFigure, heatRange, type LastGood } from "./thermal-map";
 import {
   COLD_BAND,
   HOT_DELTA,
@@ -231,6 +231,8 @@ function ThermalPage({ machine, simulation }: { machine: AssetMachine; simulatio
         : buildShellMap(frame.shellProfile, frame.shellModel, coverageSig?.value ?? SHELL_NORMAL_COVERAGE, frame.t, th?.local ?? null),
     [snapMap, frame.shellProfile, frame.shellModel, coverageSig?.value, frame.t, th?.local],
   );
+  // Map colours span the coolest to hottest visible cell; the legend shows the same range.
+  const range = useMemo(() => heatRange(map), [map]);
   const bandFrom = live && th?.coldBand ? th.coldBand.from : lim.coldBand.from;
   const bandTo = live && th?.coldBand ? th.coldBand.to : lim.coldBand.to;
   const coldSpan = useMemo(() => ({ from: bandFrom, to: bandTo }), [bandFrom, bandTo]);
@@ -505,6 +507,7 @@ function ThermalPage({ machine, simulation }: { machine: AssetMachine; simulatio
             </div>
             <ShellMapFigure
               map={map}
+              range={range}
               status={status}
               spots={realSpots}
               selI={selI}
@@ -518,7 +521,7 @@ function ThermalPage({ machine, simulation }: { machine: AssetMachine; simulatio
               handheld={live ? (th?.handheld?.points ?? null) : null}
             />
             <div className="thm-axis-pad">
-              <HeatScale />
+              <HeatScale range={range} />
             </div>
             <div className="thm-divider" />
             <div className="thm-card-head">

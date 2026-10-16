@@ -5,11 +5,11 @@
  * kiln elevation, the unrolled scanner map (one bitmap, repainted per tick),
  * the axial profile and the circumferential (polar) plot of one section.
  *
- * Heat scale: sober and perceptually ordered — a neutral graphite ramp up to
- * the top of the normal band, then the status colours (warning at the 380 °C
- * alert, danger at the 420 °C alarm). Colour therefore appears only where the
- * shell is in alert. All stops are `--thm-heat-*` tokens (thermal-view.css),
- * built from the semantic globals and resolved for the active theme.
+ * Heat scale: an ironbow thermal-camera ramp (black → purple → magenta →
+ * orange → yellow → white), auto-ranged like a camera: the map's colours span
+ * its coolest to its hottest visible cell (`heatRange`), and the legend prints
+ * that range with the 380 °C alert / 420 °C alarm marked when they fall in it.
+ * The ramp's evenly spaced stops are `--thm-heat-<n>` tokens (thermal-view.css).
  */
 
 import React, { memo, useEffect, useId, useMemo, useRef, useState } from "react";
@@ -45,10 +45,36 @@ const SHELL_Y = 92;
 const SHELL_H = SHELL_DIA * PX_PER_M;
 const GROUND = 160;
 
-/** Heat scale stops (°C → `--thm-heat-<v>` token). */
-export const HEAT_STOPS = [150, 250, 330, 360, 380, 420, 480] as const;
-export const HEAT_LO = HEAT_STOPS[0];
-export const HEAT_HI = HEAT_STOPS[HEAT_STOPS.length - 1];
+/** Ironbow ramp: evenly spaced stops, `--thm-heat-0` (coolest) to `--thm-heat-7` (hottest). */
+const HEAT_STEPS = 8;
+const HEAT_POS = Array.from({ length: HEAT_STEPS }, (_, n) => n / (HEAT_STEPS - 1));
+/** Absolute temperature axis of the polar plot, °C. */
+export const HEAT_LO = 150;
+export const HEAT_HI = 480;
+
+/** Auto range never narrower than this (K), so scanner noise is not blown up into colour. */
+const MIN_SPAN = 40;
+
+/** The map's colour range: coolest to hottest visible cell, rounded out to 10 °C so it holds still between ticks. */
+export function heatRange(map: ShellMap): { lo: number; hi: number } {
+  let min = Infinity;
+  let max = -Infinity;
+  for (let j = 0; j < map.temp.length; j++) {
+    if (map.mask[j]) continue;
+    const v = map.temp[j];
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  if (!Number.isFinite(min)) return { lo: HEAT_LO, hi: HEAT_HI };
+  let lo = Math.floor(min / 10) * 10;
+  let hi = Math.ceil(max / 10) * 10;
+  if (hi - lo < MIN_SPAN) {
+    const mid = (lo + hi) / 2;
+    lo = Math.floor((mid - MIN_SPAN / 2) / 10) * 10;
+    hi = lo + MIN_SPAN;
+  }
+  return { lo, hi };
+}
 
 type Rgb = [number, number, number];
 
@@ -62,6 +88,7 @@ function toRgb(ctx: CanvasRenderingContext2D, css: string): Rgb {
   return [d[0], d[1], d[2]];
 }
 
+/** Colour of `v` on the ramp, `v` in [0, 1]. */
 function heatAt(stops: Array<[number, Rgb]>, v: number): Rgb {
   if (v <= stops[0][0]) return stops[0][1];
   for (let i = 1; i < stops.length; i++) {
@@ -95,8 +122,9 @@ function useThemeKey(): string {
 }
 
 /**
- * Paints the map into an nz × 72 bitmap (one pixel per 0.5 m × 5° cell) and
- * returns a data URL. One `<image>` per tick instead of ~10 k SVG nodes.
+ * Paints the map one cell per 0.5 m × 5° (nz × 72), then blows each cell up to
+ * a CELL_PX block without smoothing, so cells stay crisp however the browser
+ * scales the `<image>`. Returns a data URL. One `<image>` per tick instead of ~10 k SVG nodes.
  * Colours are read from the probe element's `--thm-heat-*` tokens.
  */
 /** Last good value of every cell and its age limit (D5 Table 9.5: hidden cells keep the last-good value with age). */
@@ -115,8 +143,17 @@ const lastGoodOf = (lg: LastGood | null | undefined, j: number): { v: number; ag
   return age > 0 && age <= lg.maxAge ? { v: lg.v[j], age } : null;
 };
 
-function useHeatImage(map: ShellMap, probe: React.RefObject<HTMLSpanElement | null>, lastGood?: LastGood | null): string {
+/** Bitmap pixels per map cell: near display size, so browser upscaling cannot blur the cell edges. */
+const CELL_PX = 8;
+
+function useHeatImage(
+  map: ShellMap,
+  range: { lo: number; hi: number },
+  probe: React.RefObject<HTMLSpanElement | null>,
+  lastGood?: LastGood | null,
+): string {
   const canvas = useRef<HTMLCanvasElement | null>(null);
+  const big = useRef<HTMLCanvasElement | null>(null);
   const swatch = useRef<CanvasRenderingContext2D | null>(null);
   const ramp = useRef<{ key: string; stops: Array<[number, Rgb]> } | null>(null);
   const [url, setUrl] = useState("");
@@ -136,10 +173,12 @@ function useHeatImage(map: ShellMap, probe: React.RefObject<HTMLSpanElement | nu
       const css = getComputedStyle(el);
       ramp.current = {
         key: theme,
-        stops: HEAT_STOPS.map((v) => [v, toRgb(sw, css.getPropertyValue(`--thm-heat-${v}`).trim() || "#808080")]),
+        stops: HEAT_POS.map((u, n) => [u, toRgb(sw, css.getPropertyValue(`--thm-heat-${n}`).trim() || "#808080")]),
       };
     }
     const { stops } = ramp.current;
+    const { lo, hi } = range;
+    const unit = (v: number) => (v - lo) / (hi - lo);
     const nz = map.colMax.length;
     if (!canvas.current) canvas.current = document.createElement("canvas");
     const cv = canvas.current;
@@ -159,14 +198,14 @@ function useHeatImage(map: ShellMap, probe: React.RefObject<HTMLSpanElement | nu
             img.data[o + 3] = 0;
             continue;
           }
-          const c = heatAt(stops, lg.v);
+          const c = heatAt(stops, unit(lg.v));
           img.data[o] = c[0];
           img.data[o + 1] = c[1];
           img.data[o + 2] = c[2];
           img.data[o + 3] = 120;
           continue;
         }
-        const c = heatAt(stops, map.temp[j]);
+        const c = heatAt(stops, unit(map.temp[j]));
         img.data[o] = c[0];
         img.data[o + 1] = c[1];
         img.data[o + 2] = c[2];
@@ -174,8 +213,16 @@ function useHeatImage(map: ShellMap, probe: React.RefObject<HTMLSpanElement | nu
       }
     }
     ctx.putImageData(img, 0, 0);
-    setUrl(cv.toDataURL());
-  }, [map, theme, probe, lastGood]);
+    if (!big.current) big.current = document.createElement("canvas");
+    const out = big.current;
+    out.width = nz * CELL_PX;
+    out.height = SHELL_NA * CELL_PX;
+    const octx = out.getContext("2d");
+    if (!octx) return;
+    octx.imageSmoothingEnabled = false;
+    octx.drawImage(cv, 0, 0, out.width, out.height);
+    setUrl(out.toDataURL());
+  }, [map, range, theme, probe, lastGood]);
   return url;
 }
 
@@ -227,6 +274,7 @@ interface Tip {
 
 export function ShellMapFigure({
   map,
+  range,
   status,
   spots,
   selI,
@@ -237,6 +285,8 @@ export function ShellMapFigure({
   handheld = null,
 }: {
   map: ShellMap;
+  /** Colour range (`heatRange`), shared with the legend. */
+  range: { lo: number; hi: number };
   status: Severity;
   spots: HotSpot[];
   /** Selected section index (polar plot / trend). */
@@ -255,7 +305,7 @@ export function ShellMapFigure({
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const clipId = `thm-clip${uid}`;
   const hatchId = `thm-hatch${uid}`;
-  const heatUrl = useHeatImage(map, probe, lastGood);
+  const heatUrl = useHeatImage(map, range, probe, lastGood);
   const hidden = useMemo(() => maskPath(map), [map]);
   const [tip, setTip] = useState<Tip | null>(null);
   const nz = map.colMax.length;
@@ -527,34 +577,44 @@ const KilnElevation = memo(function KilnElevation({ status, maxZ }: { status: Se
 /* Heat scale legend                                                   */
 /* ------------------------------------------------------------------ */
 
-export function HeatScale() {
+export function HeatScale({ range }: { range: { lo: number; hi: number } }) {
   const W = 420;
-  const X = (v: number) => ((v - HEAT_LO) / (HEAT_HI - HEAT_LO)) * W;
+  const { lo, hi } = range;
+  const X = (v: number) => ((v - lo) / (hi - lo)) * W;
   const gradId = `thm-scale${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const limits = [
+    { v: SHELL_ALERT, tone: "warn" },
+    { v: SHELL_DANGER, tone: "bad" },
+  ].filter((l) => l.v > lo && l.v < hi);
+  // Range ends plus a midpoint; drop a label that would collide with a limit's.
+  const ticks = [lo, Math.round((lo + hi) / 20) * 10, hi].filter((v) => limits.every((l) => Math.abs(X(v) - X(l.v)) > 28));
+  const label =
+    `Heat scale ${lo} to ${hi} °C (auto range, ironbow)` +
+    limits.map((l) => `; ${l.tone === "warn" ? "warning" : "danger"} from ${l.v} °C`).join("");
   return (
-    <svg viewBox={`-6 0 ${W + 34} 30`} className="thm-scale" role="img" aria-label={`Heat scale ${HEAT_LO} to ${HEAT_HI} °C; neutral up to the normal band, warning from ${SHELL_ALERT} °C, danger from ${SHELL_DANGER} °C`}>
+    <svg viewBox={`-14 0 ${W + 48} 30`} className="thm-scale" role="img" aria-label={label}>
       <defs>
         <linearGradient id={gradId}>
-          {HEAT_STOPS.map((v) => (
-            <stop key={v} offset={`${((v - HEAT_LO) / (HEAT_HI - HEAT_LO)) * 100}%`} style={{ stopColor: `var(--thm-heat-${v})` }} />
+          {HEAT_POS.map((u, n) => (
+            <stop key={n} offset={`${u * 100}%`} style={{ stopColor: `var(--thm-heat-${n})` }} />
           ))}
         </linearGradient>
       </defs>
       <rect x={0} y={4} width={W} height={6} rx={3} fill={`url(#${gradId})`} />
-      <rect x={X(SHELL_ALERT) - 1} y={0} width={2} height={14} rx={1} className="thm-limit" data-tone="warn" />
-      <rect x={X(SHELL_DANGER) - 1} y={0} width={2} height={14} rx={1} className="thm-limit" data-tone="bad" />
-      {[150, 250, 330].map((v) => (
+      {limits.map((l) => (
+        <React.Fragment key={l.v}>
+          <rect x={X(l.v) - 1} y={0} width={2} height={14} rx={1} className="thm-limit" data-tone={l.tone} />
+          <text x={X(l.v)} y={26} textAnchor="middle" className="thm-tick thm-tick-tone" data-tone={l.tone}>
+            {l.v}
+          </text>
+        </React.Fragment>
+      ))}
+      {ticks.map((v) => (
         <text key={v} x={X(v)} y={26} textAnchor="middle" className="thm-tick">
           {v}
         </text>
       ))}
-      <text x={X(SHELL_ALERT)} y={26} textAnchor="middle" className="thm-tick thm-tick-tone" data-tone="warn">
-        {SHELL_ALERT}
-      </text>
-      <text x={X(SHELL_DANGER)} y={26} textAnchor="middle" className="thm-tick thm-tick-tone" data-tone="bad">
-        {SHELL_DANGER}
-      </text>
-      <text x={W + 8} y={11} className="thm-tick">
+      <text x={W + 16} y={11} className="thm-tick">
         °C
       </text>
     </svg>

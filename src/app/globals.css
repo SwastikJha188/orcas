@@ -87,6 +87,16 @@
   --active-faint: rgba(255, 255, 255, 0.07);
   --diagram-stroke: #8b949e;
   --chart-fill: rgb(16 185 129 / 10%);
+  /* Ironbow thermal-camera ramp for the shell scanner map, coolest (0) to
+     hottest (7), evenly spaced. Shared by both themes. */
+  --heat-0: #07051a;
+  --heat-1: #2a0b62;
+  --heat-2: #6c1293;
+  --heat-3: #b8237a;
+  --heat-4: #e8512a;
+  --heat-5: #f99a1c;
+  --heat-6: #fde14a;
+  --heat-7: #fffdf2;
   background: var(--page-bg);
   color-scheme: dark;
 }
@@ -266,6 +276,14 @@ html[data-theme="light"] .brand-logo-dark { display: none; }
   border-radius: 50%;
   background: currentColor;
   flex-shrink: 0;
+}
+
+.navbar-gw-label { white-space: nowrap; }
+
+/* Phone top bar: the gateway pill shrinks to its status dot (title keeps the meaning). */
+@media (max-width: 600px) {
+  .navbar-gw-status { padding: 0; inline-size: 32px; block-size: 32px; justify-content: center; }
+  .navbar-gw-label { display: none; }
 }
 
 /* NAVIGATION RAIL (PRIMARY SIDEBAR) */

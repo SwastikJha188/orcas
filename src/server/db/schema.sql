@@ -620,6 +620,49 @@ CREATE TABLE IF NOT EXISTS maintenance_removed_tasks (
   PRIMARY KEY (machine_id, kind, task_id)
 );
 
+-- Planned maintenance (OSW-SW-PMS-PYR-01): plan state per checklist plan (unit × route).
+CREATE TABLE IF NOT EXISTS maintenance_plan_states (
+  plan_id VARCHAR(48) PRIMARY KEY,
+  machine_id VARCHAR(64) NOT NULL REFERENCES machines(id) ON DELETE CASCADE,
+  state VARCHAR(16) NOT NULL CHECK (state IN ('Provisional', 'Approved', 'Site verify', 'Retired')),
+  activated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  approved_by_user_id VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
+  approved_at TIMESTAMP WITH TIME ZONE,
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_maintenance_plan_states_machine ON maintenance_plan_states(machine_id);
+
+-- PMS layer on a work order: lifecycle stage, readiness, as-found / as-left.
+CREATE TABLE IF NOT EXISTS maintenance_wo_stages (
+  work_order_id INTEGER PRIMARY KEY REFERENCES work_orders(id) ON DELETE CASCADE,
+  stage VARCHAR(24) NOT NULL,
+  resume_stage VARCHAR(24),
+  work_mode VARCHAR(8) CHECK (work_mode IN ('Run', 'Isolate')),
+  planned_start TIMESTAMP WITH TIME ZONE,
+  estimate_hours DOUBLE PRECISION,
+  as_found TEXT,
+  as_left TEXT,
+  readiness JSONB,
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+-- Planned-maintenance audit trail (plans and work orders).
+CREATE TABLE IF NOT EXISTS maintenance_events (
+  id SERIAL PRIMARY KEY,
+  machine_id VARCHAR(64) NOT NULL REFERENCES machines(id) ON DELETE CASCADE,
+  work_order_id INTEGER REFERENCES work_orders(id) ON DELETE SET NULL,
+  plan_id VARCHAR(48),
+  action VARCHAR(24) NOT NULL,
+  from_state VARCHAR(32),
+  to_state VARCHAR(32),
+  reason TEXT,
+  actor_user_id VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
+  at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_maintenance_events_machine ON maintenance_events(machine_id, at DESC);
+
 CREATE TABLE IF NOT EXISTS alert_acks (
   rule_id VARCHAR(64) NOT NULL,
   machine_id VARCHAR(64) NOT NULL REFERENCES machines(id) ON DELETE CASCADE,

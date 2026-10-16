@@ -7,7 +7,8 @@
  * maintenance window and prediction confidence; accuracy is a summary that
  * links to AssetIQ · Accuracy (its home).
  *
- * Header → four KPIs → sticky scroll-spy pill index → one card per section.
+ * Header → four KPIs → sticky scroll-spy pill index → sections (charts and long
+ * tables in a card; short lists as cards in a bare section).
  * Sections without data for this machine are hidden with their index entry.
  * Sibling of Analysis (shared primitives from ../analysis/an-ui).
  */
@@ -149,6 +150,7 @@ export function MachinePrognosisPage({ machine }: MachinePrognosisPageProps) {
                 key={s.id}
                 id={s.id}
                 title={titles[s.id]}
+                bare={BARE.has(s.id)}
               >
                 {s.id === "prog-life" && <ProgRul {...props} />}
                 {s.id === "prog-risk" && <ProgRisk {...props} />}
@@ -165,5 +167,8 @@ export function MachinePrognosisPage({ machine }: MachinePrognosisPageProps) {
 }
 
 const quiet = (t: Tone): Tone | undefined => (t === "good" ? undefined : t);
+
+/** Sections whose body is cards (heading on the workspace, no section card). */
+const BARE = new Set(["prog-life", "prog-risk", "prog-degradation"]);
 
 export default MachinePrognosisPage;

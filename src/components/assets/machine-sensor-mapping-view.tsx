@@ -21,6 +21,7 @@ import { Empty, PageHeader, Section, SectionIndex, scrollToSection, type Section
 import { SensorsRegister } from "./sensors-register";
 import {
   SENSORS_SECTIONS,
+  SensorsAssemblies,
   SensorsChain,
   SensorsSummary,
   SensorsValidity,
@@ -444,7 +445,9 @@ export function MachineSensorMappingView({ machine, simulation: simProp }: Machi
     : `${counts.total} · ${counts.wired} wired + ${counts.calculated} calc.${counts.manual ? ` + ${counts.manual} manual` : ""}`;
 
   const hasValidity = counts.q.nolive < counts.total;
+  const asmTone: Tone | undefined = counts.status.Critical ? "bad" : counts.status.Advisory ? "warn" : undefined;
   const index: SectionIndexItem[] = [
+    { id: SENSORS_SECTIONS.assemblies, label: "Sub-assemblies", tone: asmTone },
     ...(pyroSpec ? [{ id: "sensors-spec", label: "Specification" }] : []),
     ...(hasValidity ? [{ id: SENSORS_SECTIONS.validity, label: "Validity", tone: issue(validTone) }] : []),
     { id: SENSORS_SECTIONS.register, label: "Sensors" },
@@ -485,6 +488,16 @@ export function MachineSensorMappingView({ machine, simulation: simProp }: Machi
           <SensorsSummary ctx={ctx} />
           <SectionIndex items={index} label="Sensors sections" pendingKey={SENSORS_SECTION_KEY} />
           <div className="pg-frame-body pg-sensors-body">
+            <Section id={SENSORS_SECTIONS.assemblies} title="Sub-assemblies" bare>
+              <SensorsAssemblies
+                ctx={ctx}
+                activeId={scope?.id ?? null}
+                onPick={(id, label, tags) => {
+                  setScope(scope?.id === id ? null : { id, label, tags });
+                  if (scope?.id !== id) scrollToSection(SENSORS_SECTIONS.register);
+                }}
+              />
+            </Section>
 
             {pyroSpec && (
               <Section id="sensors-spec" index={1} title="Specification">
@@ -494,7 +507,7 @@ export function MachineSensorMappingView({ machine, simulation: simProp }: Machi
             )}
 
             {hasValidity && (
-              <Section id={SENSORS_SECTIONS.validity} index={pyroSpec ? 2 : 1} title="Validity">
+              <Section id={SENSORS_SECTIONS.validity} index={pyroSpec ? 2 : 1} title="Validity" bare>
                 <SensorsValidity ctx={ctx} />
               </Section>
             )}
@@ -503,7 +516,7 @@ export function MachineSensorMappingView({ machine, simulation: simProp }: Machi
               <SensorsRegister ctx={ctx} scope={scope} onClearScope={() => setScope(null)} />
             </Section>
 
-            <Section id={SENSORS_SECTIONS.chain} index={(hasValidity ? 3 : 2) + (pyroSpec ? 1 : 0)} title="Acquisition">
+            <Section id={SENSORS_SECTIONS.chain} index={(hasValidity ? 3 : 2) + (pyroSpec ? 1 : 0)} title="Acquisition" bare>
               <SensorsChain ctx={ctx} />
             </Section>
           </div>

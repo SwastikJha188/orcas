@@ -105,10 +105,10 @@ interface IndustrialDataContextType {
   deleteMachine: (id: string) => Promise<void>;
 }
 
-const WORKSPACE_TABS: readonly WorkspaceTab[] = ["home", "assets", "devices", "assetiq", "configure"];
+const WORKSPACE_TABS: readonly WorkspaceTab[] = ["home", "assets", "maintenance", "devices", "assetiq", "configure"];
 const SUB_PAGES: readonly AssetsSubPage[] = [
   "overview", "sensors", "diagnosis", "thermal", "prognosis",
-  "analysis", "health", "trends", "rack", "simulation", "maintenance", "maintenance-sensors",
+  "analysis", "health", "trends", "rack", "simulation",
 ];
 const isWorkspaceTab = (v: string | null): v is WorkspaceTab => WORKSPACE_TABS.includes(v as WorkspaceTab);
 const isSubPage = (v: string | null): v is AssetsSubPage => SUB_PAGES.includes(v as AssetsSubPage);

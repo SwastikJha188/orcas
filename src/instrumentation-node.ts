@@ -15,3 +15,11 @@ setTimeout(() => {
     .then((m) => m.warmReadCache())
     .catch((err) => console.error("[cache] warm-up failed", err instanceof Error ? err.message : err));
 }, 500);
+
+// Run the live plant around the clock (one server per database holds the
+// lease), so its health is recorded while no page is open.
+setTimeout(() => {
+  void import("@/server/plant/runner")
+    .then((m) => m.startPlantRunner())
+    .catch((err) => console.error("[plant] runner failed to start", err instanceof Error ? err.message : err));
+}, 1_000);

@@ -1,6 +1,7 @@
 /* ==========================================================================
    ULTRON · Machine Prognosis page (prefix pg-prog-).
-   One card per section, tables flush, monochrome by default; status colour
+   Card sections hold charts and long tables (flush); short lists are cards in
+   bare sections (TileGrid). Monochrome by default; status colour
    only on a dot / value that is actually in warning or alarm.
    Shared primitives (pg-analysis-*) come from ../analysis/analysis-page.css.
    Semantic tokens only.
@@ -69,11 +70,6 @@
   color: var(--text-muted);
 }
 
-.pg-prog-subtable {
-  padding-top: 8px;
-  border-top: 1px solid var(--separator);
-}
-
 /* ---------------------------------------------------------------- text bits */
 .pg-prog-strong {
   font-weight: 500;
@@ -114,17 +110,6 @@
   gap: 6px;
 }
 
-.pg-prog-why-list {
-  margin: 0;
-  padding-left: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: var(--fs-sm);
-  line-height: 1.5;
-  color: var(--text-muted);
-}
-
 /* ---------------------------------------------------------------- log time track */
 .pg-prog-tick {
   position: absolute;
@@ -133,16 +118,6 @@
   width: 0;
   border-left: 1px solid var(--separator);
   opacity: 0.6;
-}
-
-.pg-prog-tick-label {
-  position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
 }
 
 .pg-prog-cell-track {
@@ -161,14 +136,6 @@
   --tone: var(--status-danger);
 }
 
-.pg-prog-cell-track.is-head {
-  height: 14px;
-}
-
-.pg-prog-cell-track.is-head .pg-prog-tick-label:first-child {
-  transform: translate(0, -50%);
-}
-
 .pg-prog-rul-band {
   position: absolute;
   top: 50%;
@@ -184,6 +151,68 @@
   height: 12px;
   margin: -6px 0 0 -1px;
   background: var(--tone);
+}
+
+/* Remaining-life card: the same fixed 1 h – 1 y log scale in every card. */
+.pg-prog-hbar {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pg-prog-hbar-track.pg-prog-cell-track {
+  min-width: 0;
+  height: 14px;
+}
+
+/* Quiet rail so the scale reads even when the band is narrow. */
+.pg-prog-hbar-track::before {
+  content: "";
+  position: absolute;
+  inset: 50% 0 auto;
+  height: 4px;
+  margin-top: -2px;
+  background: var(--separator);
+}
+
+/* The recommended action may need two lines. */
+.pg-prog-rtile .ui-tile-foot-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
+  line-height: 1.4;
+}
+
+.pg-prog-hbar-scale {
+  position: relative;
+  display: block;
+  height: 14px;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pg-prog-hbar-scale span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.pg-prog-hbar-scale span:first-child {
+  transform: none;
+}
+
+.pg-prog-hbar-scale span:last-child {
+  transform: translateX(-100%);
+}
+
+/* Bare sections: a note sits on the workspace, aligned with the heading. */
+.pg-analysis-section.is-bare .pg-prog-note {
+  padding: 0 4px;
 }
 
 /* ---------------------------------------------------------------- charts */
@@ -281,13 +310,6 @@
 }
 
 /* ---------------------------------------------------------------- risk matrix */
-.pg-prog-riskgrid {
-  display: grid;
-  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.4fr);
-  gap: 32px;
-  align-items: start;
-}
-
 .pg-prog-matrix {
   display: grid;
   gap: 2px;
@@ -361,12 +383,6 @@
 }
 
 /* ---------------------------------------------------------------- forecast multiples */
-.pg-prog-multiples {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px 32px;
-}
-
 .pg-prog-multiple {
   margin: 0;
   display: flex;
@@ -391,6 +407,49 @@
 
 .pg-prog-multiple.is-focus {
   border-top-color: var(--dx-ink);
+}
+
+/* Compact forecasts: every signal inside limits, measured | forecast with its band. */
+/* Every forecast as a full chart; a signal heading for a warning / alarm
+   comes first and is marked by a status rule and a faint status wash. */
+.pg-prog-forecasts {
+  --tile-gap: 24px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px var(--tile-gap);
+}
+
+/* Measured: rows evened out, a short last row widens (see useBalancedColumns). */
+.pg-prog-forecasts.is-balanced {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.pg-prog-chart-box {
+  min-width: 0;
+}
+
+.pg-prog-chart-box > .pg-prog-chart {
+  max-height: none;
+}
+
+@media (max-width: 1200px) {
+  .pg-prog-forecasts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .pg-prog-forecasts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.pg-prog-multiple[data-tone] {
+  padding: 10px 10px 8px;
+  border-top: 2px solid var(--tone);
+  background: color-mix(in srgb, var(--tone) 6%, transparent);
+  border-radius: 0 0 var(--corner-sm) var(--corner-sm);
 }
 
 /* ---------------------------------------------------------------- P-F bracket */
@@ -502,16 +561,30 @@
 }
 
 /* ---------------------------------------------------------------- responsive */
-@media (max-width: 1100px) {
-  .pg-prog-riskgrid,
-  .pg-prog-multiples {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 16px;
-  }
-}
-
 @media (max-width: 680px) {
   .pg-prog-pf-legend {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* Coupling cards: the tag pair wraps rather than overflowing narrow cards. */
+.pg-prog-ctile .ui-tile-title {
+  overflow: visible;
+  white-space: normal;
+}
+
+.pg-prog-ctile .pg-prog-driver {
+  flex-wrap: wrap;
+  row-gap: 4px;
+  max-width: 100%;
+}
+
+/* Failure-mode cards: long mode names take two lines instead of an ellipsis. */
+.pg-prog-ftile .ui-tile-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
+  line-height: 1.3;
 }

@@ -1,9 +1,9 @@
 /* =========================================================================
    Diagnosis page (prefix: pg-diag-). One scrolling page: header → KPI strip
-   → sticky section index → up to six sections, one card each. Shares the
-   index / section primitives of analysis/analysis-page.css and the divider
-   tables of diagnosis/overview-tab.css (dxo-*). Monochrome by default;
-   status colour only on things in warning / alarm. 8px spacing grid.
+   → sticky section index → Alarms · Diagnosis · Evidence, each a bare
+   section holding a grid of cards (TileGrid / Tile, analysis-page.css).
+   Small helpers come from diagnosis/overview-tab.css (dxo-*). Monochrome by
+   default; status colour only on things in warning / alarm. 8px grid.
    ========================================================================= */
 
 .pg-diag {
@@ -83,57 +83,8 @@
   color: var(--text-muted);
 }
 
-.pg-diag-wrap {
-  white-space: normal;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-
-.pg-diag-nowrap {
-  white-space: nowrap;
-}
-
 .pg-diag-muted {
   color: var(--text-muted);
-}
-
-.pg-diag-name {
-  color: var(--dx-ink);
-  font-weight: 500;
-  white-space: normal;
-  line-height: 1.35;
-}
-
-.pg-diag-code {
-  margin-left: 4px;
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  font-weight: 400;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-/* Status: dot + text. Colour only for warn / bad; everything else is muted. */
-.pg-diag-state {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--fs-md);
-  color: var(--page-fg);
-  white-space: nowrap;
-}
-
-.pg-diag-state .ast-chip-dot {
-  background: var(--text-muted);
-}
-
-.pg-diag-state:is([data-tone="warn"], [data-tone="bad"]) {
-  color: var(--tone);
-}
-
-.pg-diag-state:is([data-tone="warn"], [data-tone="bad"]) .ast-chip-dot {
-  background: var(--tone);
 }
 
 .pg-diag-val:is([data-tone="warn"], [data-tone="bad"]) {
@@ -167,22 +118,7 @@
   gap: 4px;
 }
 
-/* ------------------------------ Tables ---------------------------------- */
-.pg-diag-table td {
-  vertical-align: middle;
-}
-
-.pg-diag-table tr.is-focus td {
-  background: var(--row-hover-bg);
-}
-
-.pg-diag-row-actions {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
+/* Segmented sample counter (persistence / hysteresis). */
 .pg-diag-progress {
   display: inline-flex;
   align-items: center;
@@ -206,98 +142,11 @@
   background: var(--dx-ink-2);
 }
 
-.pg-diag-cited {
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  color: var(--dx-ink-2);
-  font-variant-numeric: tabular-nums;
-}
-
-.pg-diag-evrow {
-  cursor: default;
-}
-
-/* ------------------------- Vibration zone bar --------------------------- */
-.pg-diag-zonebar {
-  display: block;
-  width: 200px;
-  height: 22px;
-  overflow: visible;
-}
-
-.pg-diag-zseg {
-  fill: var(--dx-track);
-}
-
-.pg-diag-zseg.is-warn {
-  fill: color-mix(in srgb, var(--status-warning) 35%, var(--dx-track));
-}
-
-.pg-diag-zseg.is-bad {
-  fill: color-mix(in srgb, var(--status-danger) 35%, var(--dx-track));
-}
-
-.pg-diag-ztick {
-  font-family: var(--font-mono);
-  font-size: var(--fs-3xs);
-  fill: var(--text-muted);
-}
-
-.pg-diag-zmodel {
-  fill: none;
-  stroke: var(--text-muted);
-  stroke-width: 1.2;
-}
-
-.pg-diag-zmark {
-  fill: var(--dx-ink);
-}
-
-/* ---------------------- One card per section ---------------------------
-   The section shell (pg-analysis-section) is the card; inner blocks sit
-   flush inside it. */
-.pg-diag .pg-analysis-section .dxo-card {
-  padding: 0;
-  gap: 8px;
-  border: 0;
-  border-radius: 0;
-  background: none;
-  box-shadow: none;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-}
-
-.pg-diag .pg-analysis-section .dxo-table-card > .dxo-card-head {
-  padding: 0;
-}
-
-.pg-diag .pg-analysis-section .dxo-table-wrap {
-  margin: 0 -16px;
-  width: calc(100% + 32px);
-}
-
 .pg-diag .pg-diag-missing {
   padding: 0;
 }
 
-/* ------------------------- Section internals ---------------------------- */
-.pg-diag-warn {
-  color: var(--status-warning);
-}
-
-.pg-diag-sub {
-  margin-top: 16px;
-}
-
-.pg-diag-subhead {
-  margin: 0;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  letter-spacing: 0;
-  color: var(--text-muted);
-}
-
-/* Shelving */
+/* Shelving (inside an alarm card) */
 .pg-diag-shelve {
   display: flex;
   flex-wrap: wrap;
@@ -317,27 +166,6 @@
   font-family: var(--font-ui);
   font-size: var(--fs-sm);
   cursor: pointer;
-}
-
-.pg-diag-shelf {
-  display: flex;
-  flex-direction: column;
-  margin: 8px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.pg-diag-shelf li {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) auto auto;
-  align-items: center;
-  gap: 16px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--separator);
-}
-
-.pg-diag-shelf li:last-child {
-  border-bottom: 0;
 }
 
 /* Residual sparkline */
@@ -365,20 +193,6 @@
   vector-effect: non-scaling-stroke;
 }
 
-.pg-diag .ast-cell-stack > .pg-diag-inline-link {
-  align-self: flex-start;
-}
-
-/* ------------------------------------------------ keyboard rows, quiet fold, method */
-.pg-diag .dxo-row.is-clickable {
-  cursor: pointer;
-  outline: none;
-}
-
-.pg-diag .dxo-row.is-clickable:focus-visible > td:first-child {
-  box-shadow: inset 2px 0 0 var(--signal-blue);
-}
-
 .pg-diag .pg-analysis-why {
   margin-top: 8px;
 }
@@ -391,162 +205,130 @@
   color: var(--text-muted);
 }
 
-/* ------------------------------------------------ Diagnosis findings
-   A divider list, not a table: each finding is one grid row (what · severity
-   · since · time to limit · feedback) with what to do under it. Columns come
-   from one template shared by the header and the rows (subgrid), and the
-   whole list restacks on its own width (container query), so it never
-   scrolls sideways. */
-.pg-diag-f {
-  --f-cols: minmax(0, 1fr) 156px 128px 128px 168px;
+/* ================================================================ cards
+   Every section is a `Section bare` holding TileGrid > Tile cards
+   (ui/tile.tsx, styles in analysis-page.css). Page-local tuning only. */
+.pg-diag .pg-analysis-section.is-bare > .pg-analysis-section-body > .ui-tiles-head {
+  margin-bottom: -4px;
+}
+
+.pg-diag-fgroups {
   display: flex;
   flex-direction: column;
-  container-type: inline-size;
-  margin: 0 -16px;
+  gap: 12px;
 }
 
-.pg-diag-f-head,
-.pg-diag-f-row,
-.pg-diag-f-toggle {
-  display: grid;
-  grid-template-columns: var(--f-cols);
-  column-gap: 16px;
-  align-items: start;
-}
-
-.pg-diag-f-head {
-  padding: 0 16px 10px;
-  border-bottom: 1px solid var(--separator);
-  font-size: var(--fs-sm);
-  color: var(--text-muted);
-}
-
-.pg-diag-f-head .is-right {
-  text-align: right;
-}
-
-.pg-diag-f-group-title {
-  margin: 0;
-  padding: 16px 16px 8px;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  color: var(--dx-ink);
-}
-
-.pg-diag-f-group-title .ast-num {
-  margin-left: 4px;
-  font-weight: 400;
-  color: var(--text-muted);
-}
-
-.pg-diag-f-none {
-  margin: 0;
-  padding: 0 16px 12px;
-  font-size: var(--fs-md);
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--separator);
-}
-
-.pg-diag-f-list {
+.pg-diag-fgroup {
   display: flex;
   flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+  gap: 12px;
 }
 
-/* Row: capsule highlight on hover / open, divider otherwise. */
-.pg-diag-f-item {
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--separator);
-  border-radius: var(--corner-row);
+.pg-diag-fgroup > .ui-tiles-head {
+  margin: 4px 4px -4px;
 }
 
-.pg-diag-f-item:hover,
-.pg-diag-f-item.is-open {
-  background: var(--row-hover-bg);
-  border-bottom-color: transparent;
+.pg-diag-fgroup > .pg-diag-missing,
+.pg-diag-tiles + .ui-tiles-head {
+  margin-top: 4px;
 }
 
-.pg-diag-f-item.is-focus {
-  box-shadow: inset 0 0 0 1px var(--signal-blue);
-}
-
-.pg-diag-f-toggle {
-  grid-column: 1 / 5;
-  grid-template-columns: subgrid;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  border-radius: var(--corner-sm);
-}
-
-.pg-diag-f-toggle:focus-visible {
-  outline: 2px solid var(--signal-blue);
-  outline-offset: 4px;
-}
-
-.pg-diag-f-what,
-.pg-diag-f-sev,
-.pg-diag-f-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  font-size: var(--fs-md);
-}
-
-.pg-diag-f-what .pg-diag-name {
-  display: inline-flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0 4px;
-}
-
-.pg-diag-f-chev {
-  flex-shrink: 0;
-  align-self: center;
-  margin-right: 2px;
-  color: var(--text-muted);
-  transition: transform 120ms ease;
-}
-
-.pg-diag-f-item.is-open .pg-diag-f-chev {
-  transform: rotate(90deg);
-}
-
-.pg-diag-f-what > .pg-diag-f-sub,
-.pg-diag-f-do {
-  padding-left: 20px;
-}
-
-.pg-diag-f-sub {
-  display: block;
-  font-size: var(--fs-sm);
-  font-weight: 400;
-  color: var(--text-muted);
+/* Name line: wraps (names matter more than a uniform card height). */
+.pg-diag-tile .ui-tile-sub {
   white-space: normal;
+  line-height: 1.4;
   overflow-wrap: anywhere;
 }
 
-.pg-diag-f-fb {
-  display: inline-flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
+.pg-diag-tile-name {
+  color: var(--dx-ink);
+  font-weight: 500;
 }
 
-/* What to do and who owns it, always visible under the row. */
+.pg-diag-tile-meta {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pg-diag-tile .ui-tile-actions .pg-diag-inline-link,
+.pg-diag-tile .pg-diag-f-links {
+  font-size: var(--fs-sm);
+}
+
+.pg-diag-tile .ui-tile-facts {
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+}
+
+.pg-diag-tile .ui-tile-foot {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.pg-diag-tile .ui-tile-foot-text {
+  white-space: normal;
+  line-height: 1.4;
+}
+
+.pg-diag-tile .pg-diag-progress {
+  font-size: inherit;
+}
+
+.pg-diag-tile .pg-diag-shelve {
+  gap: 8px;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--separator);
+}
+
+/* Evidence: icon badge in the title, full-width limit bar and residual. */
+.pg-diag-ev-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pg-diag-ev-title .ast-badge {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.pg-diag-ev-bar {
+  display: block;
+}
+
+.pg-diag-ev-bar .dxo-limit-bar {
+  width: 100%;
+  height: 16px;
+}
+
+.pg-diag-evtile .pg-diag-spark {
+  width: 100%;
+  height: 24px;
+}
+
+/* The residual spark stretches with the card; keep its strokes hairline. */
+.pg-diag-evtile .pg-diag-spark :is(path, line) {
+  vector-effect: non-scaling-stroke;
+}
+
+.pg-diag-evtile .ui-tile-actions {
+  gap: 0;
+  margin-right: -6px;
+}
+
+/* ------------------------------------------------ finding cards */
 .pg-diag-f-do {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
-  gap: 2px 12px;
-  margin: 8px 0 0;
-  font-size: var(--fs-md);
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 4px 10px;
+  margin: 0;
+  font-size: var(--fs-sm);
   line-height: 1.45;
 }
 
@@ -560,95 +342,107 @@
   overflow-wrap: anywhere;
 }
 
-/* Expanded: inputs | cause, consequence, rule detail. */
-.pg-diag-f-detail {
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-  gap: 16px 32px;
-  margin-top: 12px;
-  padding: 12px 0 4px 20px;
+.pg-diag-f-note {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  color: var(--page-fg);
+}
+
+/* Inputs: one compact line per signal — tag / name · observed · expected · deviation (σ under). */
+.pg-diag-in {
+  --in-cols: minmax(0, 1fr) 72px 48px 78px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 8px;
   border-top: 1px solid var(--separator);
 }
 
-.pg-diag-f-caption,
-.pg-diag-f-note {
-  margin: 0 0 6px;
-  font-size: var(--fs-sm);
+.pg-diag-in-head {
+  display: grid;
+  grid-template-columns: var(--in-cols);
+  column-gap: 8px;
+  font-size: var(--fs-xs);
   color: var(--text-muted);
 }
 
-.pg-diag-f-note {
-  color: var(--page-fg);
-  line-height: 1.45;
-}
-
-.pg-diag-f-cmp {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--fs-md);
-  table-layout: auto;
-}
-
-.pg-diag-f-cmp th,
-.pg-diag-f-cmp td {
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--separator);
-  text-align: left;
-  vertical-align: top;
-  font-weight: 400;
-}
-
-.pg-diag-f-cmp th:first-child {
-  padding-left: 0;
-}
-
-.pg-diag-f-cmp :is(th, td):last-child {
-  padding-right: 0;
-}
-
-.pg-diag-f-cmp thead th {
-  padding-top: 0;
-  font-size: var(--fs-sm);
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-.pg-diag-f-cmp tbody tr:last-child > * {
-  border-bottom: 0;
-}
-
-.pg-diag-f-cmp .is-right {
+.pg-diag-in-head > span + span {
   text-align: right;
-  white-space: nowrap;
 }
 
-.pg-diag-f-cmp tr.is-quiet > :is(th, td) {
+.pg-diag-in-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pg-diag-in-list > li {
+  display: grid;
+  grid-template-columns: var(--in-cols);
+  column-gap: 8px;
+  align-items: start;
+  padding: 4px 0;
+  font-size: var(--fs-sm);
+}
+
+.pg-diag-in-list > li + li {
+  border-top: 1px solid var(--separator);
+}
+
+.pg-diag-in-list > li.is-quiet {
   color: var(--text-muted);
 }
 
-.pg-diag-f-tag {
-  display: block;
+.pg-diag-in-sig {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pg-diag-in-tag {
   color: var(--dx-ink);
   overflow-wrap: anywhere;
 }
 
-.pg-diag-f-cmp tr.is-quiet .pg-diag-f-tag {
+li.is-quiet .pg-diag-in-tag {
   color: var(--dx-ink-2);
 }
 
-.pg-diag-f-side {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
+.pg-diag-in-sub {
+  display: block;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pg-diag-in-num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.pg-diag-in-num .pg-diag-unit {
+  font-size: var(--fs-xs);
+}
+
+.pg-diag-f-rule .pg-analysis-why {
+  margin-top: 0;
+}
+
+.pg-diag-f-rule .pg-analysis-why-body {
+  padding-left: 0;
 }
 
 .pg-diag-f-dl {
   display: grid;
-  grid-template-columns: 112px minmax(0, 1fr);
-  gap: 6px 16px;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 6px 12px;
   margin: 0;
-  font-size: var(--fs-md);
+  font-size: var(--fs-sm);
   line-height: 1.45;
 }
 
@@ -662,118 +456,29 @@
   overflow-wrap: anywhere;
 }
 
-.pg-diag-f-side .pg-analysis-why {
-  margin-top: 0;
-}
-
-.pg-diag-f-side .pg-analysis-why-body {
-  padding-left: 0;
-}
-
-.pg-diag-f-side .pg-analysis-why-body .pg-diag-f-dl {
-  font-size: var(--fs-sm);
-}
-
 .pg-diag-f-alts {
   margin: 0;
   padding-left: 16px;
 }
 
 .pg-diag-f-links {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
-  gap: 4px 16px;
-  margin: 0;
-  font-size: var(--fs-sm);
+  gap: 4px 12px;
 }
 
-/* Narrow list (phone, narrow pane): the row restacks — finding on top, then
-   severity · since · time to limit, feedback last; detail goes one column. */
-@container (max-width: 720px) {
-  .pg-diag-f-head {
+@media (max-width: 599px) {
+  .pg-diag-in {
+    --in-cols: minmax(0, 1fr) 72px 78px;
+  }
+
+  /* Phone: expected value drops; observed and deviation stay. */
+  .pg-diag-in-list > li > :nth-child(3),
+  .pg-diag-in-head > :nth-child(3) {
     display: none;
   }
 
-  .pg-diag-f-row {
-    grid-template-columns: minmax(0, 1fr);
-    row-gap: 8px;
-  }
-
-  .pg-diag-f-toggle {
-    grid-column: 1;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    row-gap: 8px;
-    column-gap: 12px;
-  }
-
-  .pg-diag-f-what {
-    grid-column: 1 / -1;
-  }
-
-  .pg-diag-f-sev {
-    padding-left: 20px;
-  }
-
-  .pg-diag-f-cell::before {
-    content: attr(data-label);
-    font-size: var(--fs-xs);
-    color: var(--text-muted);
-  }
-
-  .pg-diag-f-fb {
-    justify-content: flex-start;
-    padding-left: 20px;
-  }
-
-  .pg-diag-f-detail {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .pg-diag-f-dl {
-    grid-template-columns: 96px minmax(0, 1fr);
-  }
-}
-
-@container (max-width: 420px) {
-  .pg-diag-f-item {
-    padding: 10px 8px;
-  }
-
-  .pg-diag-f-detail,
-  .pg-diag-f-what > .pg-diag-f-sub,
-  .pg-diag-f-do,
-  .pg-diag-f-sev,
-  .pg-diag-f-fb {
-    padding-left: 0;
-  }
-
-  .pg-diag-f-do,
   .pg-diag-f-dl {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .pg-diag-f-do dd + dt,
-  .pg-diag-f-dl dd + dt {
-    margin-top: 6px;
-  }
-
-  .pg-diag-f-cmp :is(th, td) {
-    padding-left: 4px;
-    padding-right: 4px;
-  }
-}
-
-/* Phone: sections pad 14–16px; rows bleed 8px like the other Diagnosis lists. */
-@media (max-width: 599px) {
-  .pg-diag-f {
-    margin-left: -8px;
-    margin-right: -8px;
-  }
-
-  .pg-diag-f-item,
-  .pg-diag-f-group-title,
-  .pg-diag-f-none {
-    padding-left: 8px;
-    padding-right: 8px;
   }
 }

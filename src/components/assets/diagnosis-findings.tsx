@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { PillButton } from "@/components/ui";
+import React, { useEffect, useRef } from "react";
+import { PillButton, Tile, TileGrid } from "@/components/ui";
 import { isConditionRule } from "@/lib/plant-defs";
 import type { Tone } from "./assets-shell-ui";
 import { WhyDisclosure } from "./analysis/an-ui";
@@ -10,14 +10,13 @@ import { zText } from "./diagnosis-summary";
 
 /* ==========================================================================
    Diagnosis findings. Machine faults first, then the items that are not
-   machine condition (data quality, anomaly, service life), each in its own
-   group. A row answers: what (fault, where), how bad (severity, priority,
-   lifecycle), since when, time to limit; under it what to do (verify) and
-   who owns it. Expanding a row shows the inputs as observed vs expected
-   with units and % deviation (σ secondary), cause → consequence, and one
-   "Rule detail" disclosure with logic, alternatives, what is not yet
-   proven, HOLD and the score basis. Confirm / reject feedback is kept in
-   this browser and written to the log.
+   machine condition (data quality, anomaly, service life), each group a
+   grid of cards. A card answers: what (rule, fault, where), how bad
+   (severity), time to limit (headline), lifecycle and since when; what to
+   do (verify), cause → effect; the inputs as observed vs expected with
+   % deviation and σ; one "Rule detail" disclosure with logic,
+   alternatives, what is not yet proven, HOLD and the score basis. Confirm /
+   reject feedback is kept in this browser.
    ========================================================================== */
 
 export type Feedback = "confirmed" | "rejected";
@@ -78,87 +77,65 @@ function limitTone(s: DxSensor | undefined): Tone | undefined {
   return s.severity === "Critical" ? "bad" : s.severity === "Advisory" ? "warn" : undefined;
 }
 
-/** Inputs as observed vs expected: units on both, % deviation first, σ secondary. */
-function InputCompare({ f, byTag }: { f: Finding; byTag: Map<string, DxSensor> }) {
+/** Inputs as observed vs expected, one compact line per signal: fired first, units on both, % deviation then σ. */
+function InputList({ f, byTag }: { f: Finding; byTag: Map<string, DxSensor> }) {
   const { rows, present, valid } = symptomsOf(f, byTag);
   if (!rows.length) return <p className="pg-diag-f-note">{f.evidence || "No sensor inputs recorded for this pattern."}</p>;
   const sorted = [...rows].sort((a, b) => Number(b.state === "present") - Number(a.state === "present"));
   return (
-    <div className="pg-diag-f-inputs">
-      <p className="pg-diag-f-caption ast-num">
-        {valid > 0 ? `Inputs fired · ${present} of ${valid}` : "Inputs"}
-        {valid < rows.length ? ` · ${rows.length - valid} not valid` : ""}
-      </p>
-      <table className="pg-diag-f-cmp">
-        <thead>
-          <tr>
-            <th scope="col">Signal</th>
-            <th scope="col" className="is-right">
-              Observed
-            </th>
-            <th scope="col" className="is-right">
-              Expected
-            </th>
-            <th scope="col" className="is-right">
-              Deviation
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map(({ tag, s, state }) => {
-            const dev = deviationText(s);
-            const z = zText(s?.z ?? null);
-            const note = state === "present" ? null : state === "absent" ? "not fired" : `${f.tags.includes(tag) ? "fired · " : ""}${s ? VALIDITY_LABEL[s.validity] : "not valid"}`;
-            return (
-              <tr key={tag} className={state === "present" ? "" : "is-quiet"}>
-                <th scope="row">
-                  <span className="pg-diag-f-tag ast-num">{tag}</span>
-                  <span className="pg-diag-f-sub">{[s?.name, note].filter(Boolean).join(" · ")}</span>
-                </th>
-                <td className="is-right ast-num">
-                  <span className="pg-diag-val" data-tone={state === "n/a" ? undefined : limitTone(s)}>
-                    {s ? (s.value !== null ? fmt(s.value) : s.display) : "—"}
-                  </span>
-                  {s?.value !== null && s?.unit ? <span className="pg-diag-unit"> {s.unit}</span> : null}
-                </td>
-                <td className="is-right ast-num pg-diag-muted">
-                  {s?.model != null ? (
-                    <>
-                      {fmt(s.model)}
-                      {s.unit ? <span className="pg-diag-unit"> {s.unit}</span> : null}
-                    </>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                <td className="is-right ast-num">
-                  {dev ?? "—"}
-                  {z && <span className="pg-diag-f-sub">{z}</span>}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <div className="pg-diag-in">
+      <span className="pg-diag-in-head">
+        <span>
+          {valid > 0 ? `Inputs fired ${present}/${valid}` : "Inputs"}
+          {valid < rows.length ? ` · ${rows.length - valid} not valid` : ""}
+        </span>
+        <span aria-hidden="true">Obs.</span>
+        <span aria-hidden="true">Exp.</span>
+        <span aria-hidden="true">Dev.</span>
+      </span>
+      <ul className="pg-diag-in-list">
+        {sorted.map(({ tag, s, state }) => {
+          const dev = deviationText(s);
+          const z = zText(s?.z ?? null);
+          const note = state === "present" ? null : state === "absent" ? "not fired" : `${f.tags.includes(tag) ? "fired · " : ""}${s ? VALIDITY_LABEL[s.validity] : "not valid"}`;
+          const unit = s?.unit ? ` ${s.unit}` : "";
+          return (
+            <li key={tag} className={state === "present" ? "" : "is-quiet"}>
+              <span className="pg-diag-in-sig">
+                <span className="pg-diag-in-tag ast-num">{tag}</span>
+                <span className="pg-diag-in-sub">{[s?.name, note].filter(Boolean).join(" · ")}</span>
+              </span>
+              <span className="pg-diag-in-num ast-num">
+                <span className="pg-diag-val" data-tone={state === "n/a" ? undefined : limitTone(s)}>
+                  {s ? (s.value !== null ? fmt(s.value) : s.display) : "—"}
+                </span>
+                {s?.value !== null && <span className="pg-diag-unit">{unit}</span>}
+              </span>
+              <span className="pg-diag-in-num ast-num pg-diag-muted">{s?.model != null ? fmt(s.model) : "—"}</span>
+              <span className="pg-diag-in-num ast-num">
+                {dev ?? "—"}
+                {z && <span className="pg-diag-in-sub">{z}</span>}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
 
-function Chevron() {
-  return (
-    <svg className="pg-diag-f-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="m9 6 6 6-6 6" />
-    </svg>
-  );
-}
+/** Stops clicks / keys inside a card body from selecting the card. */
+const keepInside = {
+  onClick: (e: React.SyntheticEvent) => e.stopPropagation(),
+  onKeyDown: (e: React.SyntheticEvent) => e.stopPropagation(),
+};
 
-function FindingItem({
+function FindingCard({
   f,
   all,
   live,
   byTag,
   onset,
-  open,
   selected,
   onToggle,
   feedback,
@@ -171,7 +148,6 @@ function FindingItem({
   live: boolean;
   byTag: Map<string, DxSensor>;
   onset: string | null;
-  open: boolean;
   selected: boolean;
   onToggle: () => void;
   feedback: Feedback | null;
@@ -182,59 +158,82 @@ function FindingItem({
   const raised = f.state === "active" || f.state === "clearing" || f.state === "recorded";
   const tone: Tone = raised ? toneOf(f.severity) : "idle";
   const [ttl, ttlRange] = (f.timeToLimit ?? "").split(/\s+(?=\()/);
-  const alts = open ? alternativesFor(f, all, byTag) : [];
-  const detailId = `pg-diag-f-${f.key}`;
+  const numericTtl = /\d/.test(ttl ?? "");
+  const alts = alternativesFor(f, all, byTag);
   const score = f.probability;
+  const where = f.where && f.where !== "DQ" ? f.where : f.tags.join(", ") || f.category;
 
   return (
-    <li className={`pg-diag-f-item ${open ? "is-open" : ""} ${selected ? "is-focus" : ""}`}>
-      <div className="pg-diag-f-row">
-        <button type="button" className="pg-diag-f-toggle" aria-expanded={open} aria-controls={detailId} onClick={onToggle}>
-          <span className="pg-diag-f-what">
-            <span className="pg-diag-name">
-              <Chevron />
-              {f.name} {f.ruleId && <span className="pg-diag-code">{f.ruleId}</span>}
-            </span>
-            <span className="pg-diag-f-sub">{f.where && f.where !== "DQ" ? f.where : f.tags.join(", ") || f.category}</span>
-          </span>
-          <span className="pg-diag-f-sev">
-            <span className="pg-diag-state" data-tone={tone}>
-              <span className="ast-chip-dot" aria-hidden="true" />
-              {f.severity}
-            </span>
-            <span className="pg-diag-f-sub ast-num">{[f.priority, stateText(f)].filter(Boolean).join(" · ")}</span>
-          </span>
-          <span className="pg-diag-f-cell" data-label="Since">
-            <span className="ast-num">{onset ?? "—"}</span>
-            {f.activeFor && <span className="pg-diag-f-sub ast-num">for {f.activeFor}</span>}
-          </span>
-          <span className="pg-diag-f-cell" data-label="To limit">
-            <span className="ast-num">{ttl || "—"}</span>
-            {ttlRange && <span className="pg-diag-f-sub ast-num">{ttlRange.replace(/^\(|\)$/g, "")}</span>}
-          </span>
-        </button>
-        <span className="pg-diag-f-fb">
-          {feedback ? (
-            <span className="pg-diag-f-sub">{feedback === "confirmed" ? "Confirmed by you" : "Rejected by you"}</span>
-          ) : (
-            <>
-              <PillButton variant="secondary" className="pg-diag-sm" onClick={() => onFeedback("confirmed")} aria-label={`Confirm ${f.ruleId ?? f.name}`}>
-                Confirm
-              </PillButton>
-              <PillButton variant="secondary" className="pg-diag-sm" onClick={() => onFeedback("rejected")} aria-label={`Reject ${f.ruleId ?? f.name}`}>
-                Reject
-              </PillButton>
-            </>
-          )}
+    <Tile
+      className="pg-diag-tile pg-diag-ftile"
+      title={f.ruleId ?? f.category}
+      sub={
+        <>
+          <span className="pg-diag-tile-name">{f.name}</span>
+          {where ? ` · ${where}` : ""}
+        </>
+      }
+      status={{ label: f.severity, tone }}
+      tone={raised ? tone : undefined}
+      value={ttl ? (numericTtl ? ttl : ttl.charAt(0).toUpperCase() + ttl.slice(1)) : undefined}
+      unit={!ttl ? undefined : !numericTtl ? (ttl === "stable" ? "trend" : undefined) : ttlRange ? `to limit · ${ttlRange.replace(/^\(|\)$/g, "")}` : "to limit"}
+      selected={selected}
+      onSelect={f.ruleId ? onToggle : undefined}
+      attrs={f.ruleId ? { "data-rule": f.ruleId } : undefined}
+      facts={[
+        { label: "State", value: [f.priority, stateText(f)].filter(Boolean).join(" · ") },
+        { label: "Since", value: onset ?? "—" },
+        { label: "For", value: f.activeFor ?? "—" },
+      ]}
+      foot={
+        <span className="pg-diag-f-links">
+          <button type="button" className="pg-diag-inline-link" onClick={(e) => {
+              e.stopPropagation();
+              onAnalysis();
+            }}>
+            Root cause
+          </button>
+          <button type="button" className="pg-diag-inline-link" onClick={(e) => {
+              e.stopPropagation();
+              onPrognosis();
+            }}>
+            Prognosis
+          </button>
         </span>
-      </div>
-
-      {(f.action || f.owner) && (
+      }
+      actions={
+        feedback ? (
+          <span className="pg-diag-tile-meta">{feedback === "confirmed" ? "Confirmed by you" : "Rejected by you"}</span>
+        ) : (
+          <>
+            <PillButton variant="secondary" className="pg-diag-sm" onClick={() => onFeedback("confirmed")} aria-label={`Confirm ${f.ruleId ?? f.name}`}>
+              Confirm
+            </PillButton>
+            <PillButton variant="secondary" className="pg-diag-sm" onClick={() => onFeedback("rejected")} aria-label={`Reject ${f.ruleId ?? f.name}`}>
+              Reject
+            </PillButton>
+          </>
+        )
+      }
+    >
+      {(f.action || f.owner || f.cause || f.consequence) && (
         <dl className="pg-diag-f-do">
           {f.action && (
             <>
               <dt>Verify</dt>
               <dd>{f.action}</dd>
+            </>
+          )}
+          {f.cause && (
+            <>
+              <dt>Cause</dt>
+              <dd>{f.cause}</dd>
+            </>
+          )}
+          {f.consequence && (
+            <>
+              <dt>Effect</dt>
+              <dd>{f.consequence}</dd>
             </>
           )}
           {f.owner && (
@@ -245,65 +244,46 @@ function FindingItem({
           )}
         </dl>
       )}
-
-      {open && (
-        <div className="pg-diag-f-detail" id={detailId}>
-          <InputCompare f={f} byTag={byTag} />
-          <div className="pg-diag-f-side">
-            <dl className="pg-diag-f-dl">
-              <dt>Cause</dt>
-              <dd>{f.cause ?? "—"}</dd>
-              <dt>Consequence</dt>
-              <dd>{f.consequence ?? "—"}</dd>
-            </dl>
-            <WhyDisclosure summary="Rule detail">
-              <dl className="pg-diag-f-dl">
-                <dt>Rule logic</dt>
-                <dd>{f.logic ?? "—"}</dd>
-                <dt>Distinguish</dt>
-                <dd>
-                  {alts.length ? (
-                    <ul className="pg-diag-f-alts">
-                      {alts.map((a) => (
-                        <li key={a}>{a}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    "No competing candidate."
-                  )}
-                </dd>
-                {f.unproven && (
-                  <>
-                    <dt>Not yet proven</dt>
-                    <dd>{f.unproven}</dd>
-                  </>
-                )}
-                {f.hold && (
-                  <>
-                    <dt>HOLD</dt>
-                    <dd>{f.hold}</dd>
-                  </>
-                )}
-                <dt>{live ? "Persistence score" : f.basis === "Signature match" ? "Match" : "Probability"}</dt>
-                <dd>
-                  <span className="ast-num">{score === null ? "—" : `${score < 10 ? score.toFixed(1) : Math.round(score)}${f.basis === "Rule engine" ? "" : " %"}`}</span>
-                  {" · "}
-                  {BASIS_TEXT[f.basis]}
-                </dd>
-              </dl>
-            </WhyDisclosure>
-            <p className="pg-diag-f-links">
-              <button type="button" className="pg-diag-inline-link" onClick={onAnalysis}>
-                Root cause
-              </button>
-              <button type="button" className="pg-diag-inline-link" onClick={onPrognosis}>
-                Time to limit
-              </button>
-            </p>
-          </div>
-        </div>
-      )}
-    </li>
+      <InputList f={f} byTag={byTag} />
+      <div className="pg-diag-f-rule" {...keepInside}>
+        <WhyDisclosure summary="Rule detail">
+          <dl className="pg-diag-f-dl">
+            <dt>Rule logic</dt>
+            <dd>{f.logic ?? "—"}</dd>
+            <dt>Distinguish</dt>
+            <dd>
+              {alts.length ? (
+                <ul className="pg-diag-f-alts">
+                  {alts.map((a) => (
+                    <li key={a}>{a}</li>
+                  ))}
+                </ul>
+              ) : (
+                "No competing candidate."
+              )}
+            </dd>
+            {f.unproven && (
+              <>
+                <dt>Not yet proven</dt>
+                <dd>{f.unproven}</dd>
+              </>
+            )}
+            {f.hold && (
+              <>
+                <dt>HOLD</dt>
+                <dd>{f.hold}</dd>
+              </>
+            )}
+            <dt>{live ? "Persistence score" : f.basis === "Signature match" ? "Match" : "Probability"}</dt>
+            <dd>
+              <span className="ast-num">{score === null ? "—" : `${score < 10 ? score.toFixed(1) : Math.round(score)}${f.basis === "Rule engine" ? "" : " %"}`}</span>
+              {" · "}
+              {BASIS_TEXT[f.basis]}
+            </dd>
+          </dl>
+        </WhyDisclosure>
+      </div>
+    </Tile>
   );
 }
 
@@ -323,7 +303,7 @@ export function FaultCandidates({
   onPrognosis,
   focusRuleId = null,
 }: {
-  /** Rule opened from another page: its row is expanded. */
+  /** Rule opened from another page: its card is selected and scrolled into view. */
   focusRuleId?: string | null;
   findings: Finding[];
   live: boolean;
@@ -344,48 +324,38 @@ export function FaultCandidates({
     .filter((g) => g.items.length > 0);
   const groups = [{ title: "Machine faults", items: faults }, ...otherGroups];
 
-  const focusKey = focusRuleId ? (findings.find((f) => f.ruleId === focusRuleId)?.key ?? null) : null;
-  // Until the operator opens or closes a row, the lead machine fault is open; other items stay closed.
-  const [picked, setExpanded] = useState<string | null | undefined>(focusKey ?? undefined);
-  const expanded = picked === undefined ? (faults[0]?.key ?? null) : picked;
-  const [seenFocus, setSeenFocus] = useState<string | null>(focusKey);
-  if (focusKey !== seenFocus) {
-    setSeenFocus(focusKey);
-    if (focusKey) setExpanded(focusKey);
-  }
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!focusRuleId) return;
+    const el = rootRef.current?.querySelector<HTMLElement>(`[data-rule="${CSS.escape(focusRuleId)}"]`);
+    el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    el?.focus({ preventScroll: true });
+  }, [focusRuleId]);
 
   return (
-    <div className="pg-diag-f">
-      <div className="pg-diag-f-head" aria-hidden="true">
-        <span>Finding</span>
-        <span>Severity</span>
-        <span>Since</span>
-        <span>Time to limit</span>
-        <span className="is-right">Feedback</span>
-      </div>
+    <div className="pg-diag-fgroups" ref={rootRef}>
       {groups.map((g) => (
-        <section key={g.title} className="pg-diag-f-group" aria-label={g.title}>
-          <h4 className="pg-diag-f-group-title">
-            {g.title} <span className="ast-num">{g.items.length}</span>
+        <section key={g.title} className="pg-diag-fgroup" aria-label={g.title}>
+          <h4 className="ui-tiles-head">
+            <span>
+              <b>{g.title}</b> <span className="ast-num">{g.items.length}</span>
+            </span>
           </h4>
           {g.items.length === 0 ? (
-            <p className="pg-diag-f-none">No machine fault present.</p>
+            <p className="pg-diag-missing">No machine fault present.</p>
           ) : (
-            <ul className="pg-diag-f-list">
+            <TileGrid label={g.title} min={340} className="pg-diag-tiles">
               {g.items.map((f) => (
-                <FindingItem
+                <FindingCard
                   key={f.key}
                   f={f}
                   all={findings}
                   live={live}
                   byTag={byTag}
                   onset={onsetOf(f)}
-                  open={expanded === f.key}
                   selected={!!f.ruleId && f.ruleId === selectedRuleId}
                   onToggle={() => {
-                    const opening = expanded !== f.key;
-                    setExpanded(opening ? f.key : null);
-                    if (f.ruleId) onSelect(opening ? f.ruleId : f.ruleId === selectedRuleId ? null : selectedRuleId);
+                    if (f.ruleId) onSelect(f.ruleId === selectedRuleId ? null : f.ruleId);
                   }}
                   feedback={feedback.get(f.key) ?? null}
                   onFeedback={(v) => onFeedback(f, v)}
@@ -393,7 +363,7 @@ export function FaultCandidates({
                   onPrognosis={onPrognosis}
                 />
               ))}
-            </ul>
+            </TileGrid>
           )}
         </section>
       ))}

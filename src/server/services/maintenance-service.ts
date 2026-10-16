@@ -23,7 +23,7 @@ import {
 
 export class MaintenanceInputError extends Error {}
 
-const DOCUMENTS: Record<ChecklistKind, ChecklistDocument> = {
+export const DOCUMENTS: Record<ChecklistKind, ChecklistDocument> = {
   equipment: {
     kind: "equipment",
     number: "OSW-PE-MNT-PYR-01",
@@ -52,6 +52,9 @@ const MACHINE_UNITS: Record<string, { equipment: string[]; sensor: string[] }> =
 };
 
 export const hasMaintenanceChecklist = (machineId: string) => machineId in MACHINE_UNITS;
+
+/** Machines with maintenance checklists, in process order. */
+export const MAINTENANCE_MACHINE_IDS = Object.keys(MACHINE_UNITS);
 
 const isKind = (v: unknown): v is ChecklistKind => v === "equipment" || v === "sensor";
 
@@ -114,7 +117,7 @@ const TABLES: Record<string, string[]> = {
   ],
 };
 
-function ensureTables(): Promise<void> {
+export function ensureTables(): Promise<void> {
   if (!g.__ultronMaintenanceReady) {
     g.__ultronMaintenanceReady = (async () => {
       // DDL retires the whole read cache, so only run it for tables that are missing.
@@ -135,7 +138,7 @@ function ensureTables(): Promise<void> {
 
 type Row = Record<string, unknown>;
 
-function mapRecord(r: Row): MaintenanceRecord {
+export function mapRecord(r: Row): MaintenanceRecord {
   return {
     id: Number(r.id),
     machineId: String(r.machine_id),
@@ -149,7 +152,7 @@ function mapRecord(r: Row): MaintenanceRecord {
   };
 }
 
-const SELECT = `SELECT mr.*, u.full_name AS inspector_name
+export const RECORD_SELECT = `SELECT mr.*, u.full_name AS inspector_name
                   FROM maintenance_records mr
                   LEFT JOIN users u ON u.id = mr.inspector_user_id`;
 
@@ -159,7 +162,7 @@ const customId = (id: unknown) => `U-${Number(id)}`;
  * The machine's checklist as it stands: the document's sections, plus the
  * items added on site for this machine, minus the items taken off it.
  */
-async function machineChecklist(machineId: string, kind: ChecklistKind): Promise<{ units: ChecklistUnit[]; removed: RemovedChecklistItem[] }> {
+export async function machineChecklist(machineId: string, kind: ChecklistKind): Promise<{ units: ChecklistUnit[]; removed: RemovedChecklistItem[] }> {
   const base = documentUnits(machineId, kind);
   await ensureTables();
   const [custom, removedRows] = await Promise.all([
@@ -223,7 +226,7 @@ async function machineChecklist(machineId: string, kind: ChecklistKind): Promise
 export async function getChecklist(machineId: string, kind: unknown): Promise<MaintenanceChecklist> {
   const k: ChecklistKind = isKind(kind) ? kind : "equipment";
   const { units, removed } = await machineChecklist(machineId, k);
-  const res = await query(`${SELECT} WHERE mr.machine_id = $1 AND mr.kind = $2 ORDER BY mr.recorded_at DESC, mr.id DESC`, [machineId, k]);
+  const res = await query(`${RECORD_SELECT} WHERE mr.machine_id = $1 AND mr.kind = $2 ORDER BY mr.recorded_at DESC, mr.id DESC`, [machineId, k]);
   return { machineId, document: DOCUMENTS[k], units, records: res.rows.map(mapRecord), removed };
 }
 
@@ -261,7 +264,7 @@ export async function recordInspection(input: Record<string, unknown>, userId: s
      VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
     [machineId, kind, task.id, result, note, userId, workOrderId],
   );
-  const res = await query(`${SELECT} WHERE mr.id = $1`, [ins.rows[0].id]);
+  const res = await query(`${RECORD_SELECT} WHERE mr.id = $1`, [ins.rows[0].id]);
   return mapRecord(res.rows[0]);
 }
 

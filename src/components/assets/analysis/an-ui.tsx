@@ -511,6 +511,7 @@ export function Section({
   id,
   title,
   right,
+  bare = false,
   children,
 }: {
   id: string;
@@ -519,10 +520,12 @@ export function Section({
   question?: React.ReactNode;
   ai?: string;
   right?: React.ReactNode;
+  /** Heading on the workspace and no card surface: the body holds its own cards (TileGrid). */
+  bare?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <section id={id} className="ast-card pg-analysis-section" aria-labelledby={`${id}-title`}>
+    <section id={id} className={bare ? "pg-analysis-section is-bare" : "ast-card pg-analysis-section"} aria-labelledby={`${id}-title`}>
       <header className="pg-analysis-section-head">
         <h3 id={`${id}-title`} className="pg-analysis-section-title">
           {title}

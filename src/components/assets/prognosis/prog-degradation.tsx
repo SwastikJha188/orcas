@@ -3,7 +3,8 @@
 import React, { useMemo } from "react";
 import type { CorrelationPair } from "@/server/services/insights-service";
 import { fmt, healthStatus, isBaselineRisk, rangeText, roundHours, type RulRow } from "./prognosis-derive";
-import { Card, DataTable, EvidenceChip, tagsForMode, toneFor, type Col, type ProgSectionProps } from "./prog-ui";
+import { Tile, TileGrid } from "@/components/ui";
+import { EvidenceChip, tagsForMode, toneFor, type ProgSectionProps } from "./prog-ui";
 
 type Points = ProgSectionProps["data"]["condition"]["points"];
 
@@ -15,7 +16,7 @@ interface Evidence {
   quality: string;
 }
 
-/** Degradation & evidence for the selected failure mode: P-F bracket, health projection, contributing signals. */
+/** Degradation & evidence for the selected failure mode (render in a bare section): P-F bracket and health projection card, then contributing signals and changing couplings as cards. */
 export function ProgDegradation({ data, analysis, rows, frame, mode }: ProgSectionProps) {
   const governing = useMemo(() => {
     const k = mode ?? data.risks.find((r) => !isBaselineRisk(r)) ?? null;
@@ -67,65 +68,87 @@ export function ProgDegradation({ data, analysis, rows, frame, mode }: ProgSecti
 
   if (data.condition.points.length < 2 || !row) return null;
 
-  const evCols: Col<Evidence>[] = [
-    { key: "tag", header: "Contributing signal", render: (e) => <EvidenceChip tag={e.tag} /> },
-    { key: "l", header: "", render: (e) => <span className="ast-cell-text pg-prog-clip">{e.label}</span> },
-    { key: "v", header: "Reading", render: (e) => <span className="ast-num">{e.value}</span> },
-    {
-      key: "z",
-      header: "σ vs model",
-      align: "right",
-      render: (e) => (
-        <span className="ast-num pg-prog-tone" data-tone={e.z !== null && Math.abs(e.z) >= 3 ? "warn" : undefined}>
-          {e.z === null ? "—" : `${e.z >= 0 ? "+" : "−"}${Math.abs(e.z).toFixed(1)}`}
-        </span>
-      ),
-    },
-    { key: "q", header: "Validation", render: (e) => <span className={e.quality === "Good" ? "ast-muted" : "ast-cell-text"}>{e.quality === "Good" ? "Valid" : e.quality === "—" ? "No data" : e.quality}</span> },
-  ];
-  type Pair = (typeof changing)[number];
-  const pairCols: Col<Pair>[] = [
-    {
-      key: "pair",
-      header: "Changing coupling",
-      render: (p) => (
-        <span className="pg-prog-driver">
-          <EvidenceChip tag={p.a} />
-          <span className="ast-muted" aria-hidden="true">
-            ↔
-          </span>
-          <EvidenceChip tag={p.b} />
-        </span>
-      ),
-    },
-    { key: "b", header: "Earlier r", align: "right", render: (p) => <span className="ast-num ast-muted">{p.baseline.toFixed(2)}</span> },
-    { key: "r", header: "Last hour r", align: "right", render: (p) => <span className="ast-num pg-prog-strong">{p.recent.toFixed(2)}</span> },
-    { key: "d", header: "Δr", align: "right", render: (p) => <span className="ast-num">{(p.delta >= 0 ? "+" : "−") + Math.abs(p.delta).toFixed(2)}</span> },
-  ];
+  const sigma = (z: number | null) => (z === null ? "—" : `${z >= 0 ? "+" : "−"}${Math.abs(z).toFixed(1)}`);
+  const validity = (q: string) => (q === "Good" ? "Valid" : q === "—" ? "No data" : q);
 
   return (
-    <Card label="Degradation and evidence">
-      <div className="pg-prog-pfhead">
-        <span className="ast-cell-title">{row.name}</span>
-        <span className="ast-muted">{k && !isBaselineRisk(k) ? `${k.fault} · ${k.id}` : "Health-index trend"}</span>
-        {rule && (
-          <span className="ast-muted ast-num">
-            {rule.persistence} of {rule.threshold} samples · {rule.status === "ACTIVE" ? "confirmed" : "pending"}
-          </span>
-        )}
-      </div>
-      <PfBracket elapsedH={elapsedH} row={row} />
-      <div className="pg-prog-chart-scroll">
-        <HealthChart data={data} focus={systemId} />
-      </div>
-      {evidence.length > 0 && <DataTable columns={evCols} data={evidence} rowKey={(e) => e.tag} label="Contributing signals" />}
-      {changing.length > 0 && (
-        <div className="pg-prog-subtable">
-          <DataTable columns={pairCols} data={changing} rowKey={(p) => `${p.a}|${p.b}`} label="Signal couplings changing" />
+    <>
+      <section className="ast-card pg-prog-card" aria-label="Degradation and health projection">
+        <div className="pg-prog-pfhead">
+          <span className="ast-cell-title">{row.name}</span>
+          <span className="ast-muted">{k && !isBaselineRisk(k) ? `${k.fault} · ${k.id}` : "Health-index trend"}</span>
+          {rule && (
+            <span className="ast-muted ast-num">
+              {rule.persistence} of {rule.threshold} samples · {rule.status === "ACTIVE" ? "confirmed" : "pending"}
+            </span>
+          )}
         </div>
+        <PfBracket elapsedH={elapsedH} row={row} />
+        <div className="pg-prog-chart-scroll">
+          <HealthChart data={data} focus={systemId} />
+        </div>
+      </section>
+      {evidence.length > 0 && (
+        <>
+          <h4 className="ui-tiles-head">Contributing signals</h4>
+          <TileGrid label="Contributing signals" min={240} compact>
+            {evidence.map((e) => {
+              const r = readingParts(e.value);
+              return (
+                <Tile
+                  key={e.tag}
+                  title={<EvidenceChip tag={e.tag} />}
+                  sub={<span title={e.label}>{e.label}</span>}
+                  value={r.value}
+                  unit={r.unit}
+                  facts={[
+                    { label: "σ vs model", value: sigma(e.z), tone: e.z !== null && Math.abs(e.z) >= 3 ? "warn" : undefined },
+                    { label: "Validation", value: validity(e.quality), tone: e.quality !== "Good" && e.quality !== "—" ? "warn" : undefined },
+                  ]}
+                />
+              );
+            })}
+          </TileGrid>
+        </>
       )}
-    </Card>
+      {changing.length > 0 && (
+        <>
+          <h4 className="ui-tiles-head">Changing coupling</h4>
+          <TileGrid label="Signal couplings changing" min={240} compact>
+            {changing.map((p) => (
+              <Tile
+                key={`${p.a}|${p.b}`}
+                className="pg-prog-ctile"
+                title={
+                  <span className="pg-prog-driver">
+                    <EvidenceChip tag={p.a} />
+                    <span className="ast-muted" aria-hidden="true">
+                      ↔
+                    </span>
+                    <EvidenceChip tag={p.b} />
+                  </span>
+                }
+                value={(p.delta >= 0 ? "+" : "−") + Math.abs(p.delta).toFixed(2)}
+                unit="Δr"
+                facts={[
+                  { label: "Earlier r", value: p.baseline.toFixed(2) },
+                  { label: "Last hour r", value: p.recent.toFixed(2) },
+                ]}
+              />
+            ))}
+          </TileGrid>
+        </>
+      )}
+    </>
   );
+}
+
+/** "1,039 °C · −9.7σ vs model" → value "1,039", unit "°C" (σ has its own fact); free text stays whole. */
+function readingParts(text: string): { value?: string; unit?: string } {
+  const head = text.split(" · ")[0].trim();
+  if (!head || head === "—") return {};
+  const m = /^([+\-−]?[\d.,]+)\s*(.*)$/.exec(head);
+  return m ? { value: m[1], unit: m[2] || undefined } : { value: head };
 }
 
 /* ------------------------------------------------------------------ */

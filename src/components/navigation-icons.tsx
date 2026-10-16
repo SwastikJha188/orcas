@@ -105,3 +105,23 @@ export function ConfigureIcon({ className }: { className?: string }) {
     </svg>
   );
 }
+
+export function MaintenanceIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      {/* Planned maintenance / wrench over a calendar tick */}
+      <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3.6 17.4a1.8 1.8 0 0 0 2.6 2.6l5.7-5.7a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.3-.5-.5-2.3z" />
+      <path d="M16 18h5M18.5 15.5V21" />
+    </svg>
+  );
+}

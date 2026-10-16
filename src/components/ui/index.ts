@@ -9,3 +9,4 @@ export * from "./status";
 export * from "./status-tag";
 export * from "./kpi";
 export * from "./sparkline";
+export * from "./tile";

@@ -14,6 +14,7 @@ import { KILN_FLEET } from "./kiln-sim/fleet";
 import { LIVE_SIM_SETTINGS, createLine, freezeLine, setAutopilot as lineSetAutopilot, setLineSettings, setProfile as lineSetProfile, stepLine, thawLine, type FrozenLine, type LineState } from "./pyro-sim/engine";
 import { PYRO_FLEET, PYRO_LINE_SEED } from "./pyro-sim/fleet";
 import { exportReportTotals, importReportTotals, recordFrames, type ReportTotals } from "./condition-report";
+import { decodePlant } from "./plant-codec";
 
 /** Simulated minutes run before the first frame, so each kiln opens already in its condition. */
 export const PRE_ROLL_MIN = 90;
@@ -53,15 +54,17 @@ const isStartupEvent = (e: { kind: string; title: string }) => e.kind === "scena
 /**
  * Step every engine's first frame. `anchor(tEnd)` pins the display clock so
  * simulated minute `tEnd` reads as now (the caller owns the wall clock).
+ * A freshly pre-rolled fleet drops its start-up events; a resumed one keeps
+ * its log (`fresh` false).
  */
-export function finishFleet(snap: FleetSnapshot, anchor: (tEnd: number) => void): FleetEngines {
+export function finishFleet(snap: FleetSnapshot, anchor: (tEnd: number) => void, fresh = true): FleetEngines {
   importReportTotals(snap.report);
   const sims: Record<string, SimState> = {};
   for (const [id, frozen] of Object.entries(snap.sims)) {
     const sim = thawSim(frozen);
     anchor(sim.t + 1);
     stepSim(sim, true);
-    sim.events = sim.events.filter((e) => !isStartupEvent(e));
+    if (fresh) sim.events = sim.events.filter((e) => !isStartupEvent(e));
     sim.frame = { ...sim.frame!, events: sim.events.slice() };
     sims[id] = sim;
   }
@@ -69,8 +72,76 @@ export function finishFleet(snap: FleetSnapshot, anchor: (tEnd: number) => void)
   anchor(line.t + 1);
   recordFrames(stepLine(line, true));
   for (const ms of Object.values(line.machines)) {
-    ms.events = ms.events.filter((e) => !isStartupEvent(e));
+    if (fresh) ms.events = ms.events.filter((e) => !isStartupEvent(e));
     if (ms.frame) ms.frame = { ...ms.frame, events: ms.events.slice() };
   }
   return { sims, line };
+}
+
+/* --------------------------------------------------------------------------
+   The always-on plant.
+   A server process (src/server/plant) runs the same engines around the clock
+   and saves them every minute; pages resume that plant instead of pre-rolling
+   their own, so every browser shows one continuous plant and the health the
+   server recorded while no page was open belongs to it.
+   -------------------------------------------------------------------------- */
+
+/** Every engine as cloneable data, frames dropped (the next step rebuilds them). */
+export function freezeFleet(e: FleetEngines): FleetSnapshot {
+  const sims = Object.fromEntries(Object.entries(e.sims).map(([id, sim]) => [id, { ...freezeSim(sim), frame: null }])) as Record<string, FrozenSim>;
+  const line = freezeLine(e.line);
+  const machines = Object.fromEntries(Object.entries(line.machines).map(([id, ms]) => [id, { ...ms, frame: null }]));
+  return { sims, line: { ...line, machines } as FrozenLine, report: exportReportTotals() };
+}
+
+/** Step a frozen fleet `minutes` simulated minutes without frames (catching a saved plant up to now). */
+export function advanceFrozenFleet(snap: FleetSnapshot, minutes: number): FleetSnapshot {
+  if (minutes < 1) return snap;
+  importReportTotals(snap.report);
+  const sims: Record<string, FrozenSim> = {};
+  for (const [id, frozen] of Object.entries(snap.sims)) {
+    const sim = thawSim(frozen);
+    for (let i = 0; i < minutes; i++) stepSim(sim, false);
+    sims[id] = { ...freezeSim(sim), frame: null } as FrozenSim;
+  }
+  const line = thawLine(snap.line);
+  for (let i = 0; i < minutes; i++) recordFrames(stepLine(line, false));
+  const frozen = freezeLine(line);
+  const machines = Object.fromEntries(Object.entries(frozen.machines).map(([id, ms]) => [id, { ...ms, frame: null }]));
+  return { sims, line: { ...frozen, machines } as FrozenLine, report: exportReportTotals() };
+}
+
+/** What `/api/plant/state` serves: the server's fleet after its last step, taken at `wallMs`. */
+export type PlantState = { wallMs: number; msPerMin: number; fleet: FleetSnapshot };
+
+/** A saved plant older than this means no server is running it: pre-roll a fresh one instead. */
+export const PLANT_RESUME_MAX_MS = 10 * 60_000;
+
+/**
+ * The fleet a page starts from, one minute short of its first frame: the
+ * server's plant caught up to `nowMs` when one is running, otherwise a fresh
+ * pre-roll.
+ */
+export async function loadFleet(
+  nowMs: number,
+  msPerMin: number,
+  origin: string,
+): Promise<{ snap: FleetSnapshot; resumed: boolean }> {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 6_000);
+    const res = await fetch(new URL("/api/plant/state", origin), { cache: "no-cache", signal: ctrl.signal }).finally(() => clearTimeout(timer));
+    if (res.ok) {
+      const { data } = decodePlant<{ data: PlantState }>(await res.text());
+      const age = Date.now() - data.wallMs;
+      if (data.msPerMin === msPerMin && age >= 0 && age <= PLANT_RESUME_MAX_MS) {
+        // The server stepped its last minute at wallMs; catch up to one minute short of now.
+        const due = Math.round(age / msPerMin);
+        return { snap: advanceFrozenFleet(data.fleet, due - 1), resumed: true };
+      }
+    }
+  } catch {
+    /* no server plant (offline, disabled, or not saved yet): pre-roll locally */
+  }
+  return { snap: prerollFleet(nowMs, msPerMin), resumed: false };
 }

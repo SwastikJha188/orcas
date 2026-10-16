@@ -434,3 +434,240 @@
 .pg-sensors .ast-smw-card[aria-pressed="true"] {
   border-color: var(--dx-ink);
 }
+
+/* ---------------------------------------------------------------- card sections (Section bare + TileGrid) */
+/* Sub-assembly / method names are prose, not tags: UI face, two lines max. */
+.pg-sensors-asm-name {
+  font-family: var(--font-ui);
+  font-weight: 500;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pg-sensors-body .ui-tile-head {
+  align-items: flex-start;
+}
+
+/* ---------------------------------------------------------------- card charts
+   One graph per measurement type (sensor-tile-chart.tsx). Neutral ink while
+   the reading is inside its limits; limit zones and off-normal spans in tone. */
+.stc {
+  --stc-ink: var(--dx-ink);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  width: 100%;
+}
+
+.stc[data-tone] {
+  --stc-ink: var(--tone);
+}
+
+.stc svg {
+  display: block;
+  overflow: visible;
+}
+
+.stc-caption {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stc-line,
+.stc-model {
+  fill: none;
+  stroke: var(--stc-ink);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.stc-model {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.stc-area {
+  fill: var(--stc-ink);
+  opacity: 0.07;
+}
+
+.stc-dot {
+  fill: var(--stc-ink);
+  stroke: var(--card-bg);
+  stroke-width: 1.5;
+}
+
+.stc-zone,
+.stc-arc,
+.stc-iso,
+.stc-run--off,
+.stc-col[data-z],
+.stc-limit--mark {
+  --z: var(--status-warning);
+}
+
+:is(.stc-zone, .stc-arc, .stc-iso, .stc-run, .stc-col, .stc-limit--mark)[data-z="bad"] {
+  --z: var(--status-danger);
+}
+
+.stc-zone {
+  fill: var(--z);
+  opacity: 0.1;
+}
+
+.stc-zone--track {
+  opacity: 0.22;
+}
+
+.stc-limit {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  opacity: 0.7;
+}
+
+.stc-limit--mark {
+  stroke: var(--z);
+  stroke-dasharray: none;
+  stroke-width: 1.5;
+  opacity: 1;
+}
+
+.stc-base,
+.stc-grid {
+  stroke: var(--separator);
+  stroke-width: 1;
+}
+
+.stc-col {
+  fill: var(--stc-ink);
+  opacity: 0.32;
+}
+
+.stc-col[data-now] {
+  opacity: 1;
+}
+
+.stc-col[data-z] {
+  fill: var(--z);
+  opacity: 0.85;
+}
+
+.stc-track,
+.stc-arc,
+.stc-fill {
+  fill: none;
+  stroke-width: 5;
+  stroke-linecap: butt;
+}
+
+.stc-track {
+  stroke: var(--dx-track);
+}
+
+.stc-arc {
+  stroke: var(--z);
+  opacity: 0.55;
+}
+
+.stc-fill {
+  stroke: var(--stc-ink);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.stc-tick {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+}
+
+.stc-needle {
+  stroke: var(--stc-ink);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.stc-hub,
+.stc-pointer {
+  fill: var(--stc-ink);
+}
+
+.stc-ref {
+  stroke: var(--text-muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.stc-label {
+  fill: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stc-label--zone {
+  font-weight: 600;
+}
+
+.stc-tube {
+  fill: var(--dx-track);
+}
+
+.stc-fill-solid {
+  fill: var(--stc-ink);
+}
+
+.stc-fill-soft {
+  fill: var(--stc-ink);
+  opacity: 0.28;
+}
+
+.stc-surface {
+  stroke: var(--stc-ink);
+  stroke-width: 1.5;
+}
+
+.stc-vessel {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+
+.stc-dwell {
+  stroke: var(--stc-ink);
+  stroke-width: 1;
+  opacity: 0.12;
+}
+
+.stc-iso {
+  fill: var(--dx-ink);
+  opacity: 0.03;
+}
+
+.stc-iso[data-z="b"] {
+  opacity: 0.07;
+}
+
+.stc-iso:is([data-z="warn"], [data-z="bad"]) {
+  fill: var(--z);
+  opacity: 0.12;
+}
+
+.stc-run {
+  fill: var(--dx-ink);
+  opacity: 0.22;
+}
+
+.stc-run--off {
+  fill: var(--z);
+  opacity: 0.9;
+}

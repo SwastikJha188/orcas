@@ -7,13 +7,16 @@ import {
   DevicesIcon,
   AssetIQIcon,
   ConfigureIcon,
+  MaintenanceIcon,
 } from "./navigation-icons";
 import { ThemeToggle } from "./theme-toggle";
 import { CopilotLauncher } from "./copilot/copilot";
 import { ContextSwitchers } from "./context-switchers";
 import { useEdge } from "@/providers/edge-context";
+import { usePrimaryMachineId } from "@/providers/kiln-simulation-context";
+import { isPyroMachineId } from "@/lib/live-defs";
 
-export type WorkspaceTab = "home" | "assets" | "devices" | "assetiq" | "configure";
+export type WorkspaceTab = "home" | "assets" | "maintenance" | "devices" | "assetiq" | "configure";
 
 interface LiquidGlassShellProps {
   activeTab?: WorkspaceTab;
@@ -23,6 +26,8 @@ interface LiquidGlassShellProps {
 const PRIMARY: Array<{ id: WorkspaceTab; label: string; Icon: ComponentType<{ className?: string }> }> = [
   { id: "home", label: "Home", Icon: HomeIcon },
   { id: "assets", label: "Assets", Icon: AssetsIcon },
+  // Planned maintenance: the pyro line's machines carry the OSWARteck checklists and plans.
+  { id: "maintenance", label: "Maintenance", Icon: MaintenanceIcon },
   { id: "devices", label: "Devices", Icon: DevicesIcon },
   { id: "assetiq", label: "AssetIQ", Icon: AssetIQIcon },
 ];
@@ -78,12 +83,13 @@ function GatewayNavbarStatus({ onSelectTab }: { onSelectTab?: (tab: WorkspaceTab
       title={allActive ? "All edge gateways are active — click to open Devices" : "One or more gateways are inactive — click to open Devices"}
     >
       <span className="navbar-gw-dot" aria-hidden="true" />
-      <span>All Gateways active</span>
+      <span className="navbar-gw-label">All Gateways active</span>
     </button>
   );
 }
 
 export function LiquidGlassShell({ activeTab = "home", onSelectTab }: LiquidGlassShellProps) {
+  const hasPms = isPyroMachineId(usePrimaryMachineId());
   return (
     <>
       <header className="navbar liquid-glass" aria-label="Top navigation">
@@ -94,13 +100,15 @@ export function LiquidGlassShell({ activeTab = "home", onSelectTab }: LiquidGlas
           <img src="/brand/wordmark-light.png" alt="" className="brand-logo brand-logo-light" />
         </button>
         <div className="cp-topbar-actions">
+          <ContextSwitchers />
           <GatewayNavbarStatus onSelectTab={onSelectTab} />
+          <ThemeToggle />
         </div>
       </header>
 
       <nav className="nav-rail liquid-glass" aria-label="Primary navigation">
         <div className="nav-rail-group">
-          {PRIMARY.map((item) => (
+          {PRIMARY.filter((item) => item.id !== "maintenance" || hasPms).map((item) => (
             <RailButton key={item.id} {...item} active={activeTab === item.id} onSelect={onSelectTab} />
           ))}
         </div>
@@ -110,10 +118,7 @@ export function LiquidGlassShell({ activeTab = "home", onSelectTab }: LiquidGlas
         </div>
 
         <div className="nav-rail-footer">
-          <ContextSwitchers />
-          <div className="rail-divider" />
           <CopilotLauncher />
-          <ThemeToggle />
         </div>
       </nav>
 

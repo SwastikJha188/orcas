@@ -1,68 +1,83 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { logPos, rangeText, roundHours, type RulRow } from "./prognosis-derive";
+import { Tile, TileGrid } from "@/components/ui";
+import { toCondition } from "@/components/ui/status";
+import { formatRulHours, logPos, rangeText, roundHours, SEVERITY_RANK, type RulRow } from "./prognosis-derive";
 import { buildRecs, type Rec } from "./prog-maintenance";
-import { Card, DataTable, TimeTicks, toneFor, type Col, type ProgSectionProps } from "./prog-ui";
+import { TimeTicks, toneFor, type ProgSectionProps } from "./prog-ui";
 
 const MAX_H = 8760 * 1.1;
+/** Labelled ticks on the small per-card horizon bar (all ticks are drawn). */
+const LABELS = [
+  { h: 1, label: "1 h" },
+  { h: 24, label: "24 h" },
+  { h: 720, label: "30 d" },
+  { h: 8760, label: "1 y" },
+];
 
-/** Remaining life and window plan: RUL range bars on one shared log-time axis. */
+const quiet = (t: ReturnType<typeof toneFor>) => (t === "warn" || t === "bad" ? t : undefined);
+
+/** "23–25 h" → value "23–25", unit "h"; mixed units stay one value ("5 h – 2 d"). */
+function intervalParts(lo: number, hi: number): { value: string; unit?: string } {
+  const [va, ua] = formatRulHours(lo).split(" ");
+  const [vb, ub] = formatRulHours(hi).split(" ");
+  return ua && ua === ub ? { value: `${va}–${vb}`, unit: ua } : { value: rangeText(lo, hi) };
+}
+
+/** Remaining life: one card per sub-assembly, governing (worst, soonest) first, each with the same fixed 1 h – 1 y horizon bar. */
 export function ProgRul({ data, analysis, rows }: ProgSectionProps) {
-  const sorted = rows;
+  const sorted = useMemo(() => [...rows].sort((a, b) => SEVERITY_RANK[b.status] - SEVERITY_RANK[a.status] || a.band.lo - b.band.lo), [rows]);
   const recs = useMemo(() => buildRecs(data, analysis, rows), [data, analysis, rows]);
   const recFor = (r: RulRow): Rec | undefined => recs.find((x) => x.component.toLowerCase().includes(r.name.toLowerCase()));
-  const quiet = (t: ReturnType<typeof toneFor>) => (t === "warn" || t === "bad" ? t : undefined);
-
-  const columns: Col<RulRow>[] = [
-    { key: "name", header: "Sub-assembly", render: (r) => <span className="ast-cell-title">{r.name}</span> },
-    {
-      key: "range",
-      header: "Interval est.",
-      align: "right",
-      render: (r) => (
-        <span className="ast-num pg-prog-strong pg-prog-tone" data-tone={quiet(toneFor(r.status))}>
-          {rangeText(r.band.lo, r.band.hi)}
-        </span>
-      ),
-    },
-    {
-      key: "track",
-      header: (
-        <span className="pg-prog-cell-track is-head" aria-label="Log time from now">
-          <TimeTicks maxH={MAX_H} labels />
-        </span>
-      ),
-      width: "34%",
-      render: (r) => (
-        <span className="pg-prog-cell-track" data-tone={quiet(toneFor(r.status))} title={`${rangeText(r.band.lo, r.band.hi)} · estimate ${roundHours(r.hours)}`}>
-          <TimeTicks maxH={MAX_H} />
-          <span className="pg-prog-rul-band" style={{ left: `${logPos(r.band.lo, MAX_H)}%`, width: `${Math.max(0.8, logPos(r.band.hi, MAX_H) - logPos(r.band.lo, MAX_H))}%` }} />
-          <span className="pg-prog-rul-mark" style={{ left: `${logPos(r.hours, MAX_H)}%` }} />
-        </span>
-      ),
-    },
-    { key: "health", header: "Health %", align: "right", render: (r) => <span className="ast-num ast-muted">{r.health.toFixed(0)}</span> },
-    { key: "basis", header: "Basis", render: (r) => <span className="ast-muted">{r.basis === "finding" ? "Rule time-to-limit" : "Health-index trend"}</span> },
-    {
-      key: "act",
-      header: "Recommended action",
-      render: (r) => {
-        const rec = recFor(r);
-        return rec ? (
-          <span className="ast-cell-text pg-prog-clip" title={`${rec.title} · ${rec.priority} · ${rec.window}`}>
-            {rec.title}
-          </span>
-        ) : (
-          <span className="ast-muted">Monitor</span>
-        );
-      },
-    },
-  ];
 
   return (
-    <Card label="Remaining life">
-      <DataTable columns={columns} data={sorted} rowKey={(r) => r.id} label="Remaining useful life per sub-assembly" />
-    </Card>
+    <TileGrid label="Remaining useful life per sub-assembly" min={280} compact>
+      {sorted.map((r) => {
+        const tone = quiet(toneFor(r.status));
+        const rec = recFor(r);
+        const iv = intervalParts(r.band.lo, r.band.hi);
+        return (
+          <Tile
+            key={r.id}
+            className="pg-prog-rtile"
+            title={r.name}
+            status={{ label: toCondition(r.status), tone }}
+            value={iv.value}
+            unit={iv.unit}
+            tone={tone}
+            meter={<HorizonBar row={r} tone={tone} />}
+            facts={[
+              { label: "Health", value: `${r.health.toFixed(0)} %` },
+              { label: "Estimate", value: roundHours(r.hours) },
+              { label: "Basis", value: r.basis === "finding" ? "Rule time-to-limit" : "Health trend" },
+            ]}
+            foot={rec ? <span title={`${rec.title} · ${rec.priority} · ${rec.window}`}>{rec.title}</span> : undefined}
+          />
+        );
+      })}
+    </TileGrid>
+  );
+}
+
+/** Interval band + point estimate on the fixed log scale shared by every card. */
+function HorizonBar({ row, tone }: { row: RulRow; tone?: "warn" | "bad" }) {
+  const lo = logPos(row.band.lo, MAX_H);
+  const hi = logPos(row.band.hi, MAX_H);
+  return (
+    <div className="pg-prog-hbar" role="img" aria-label={`Remaining life ${rangeText(row.band.lo, row.band.hi)} on a 1 hour to 1 year scale`}>
+      <span className="pg-prog-cell-track pg-prog-hbar-track" data-tone={tone}>
+        <TimeTicks maxH={MAX_H} />
+        <span className="pg-prog-rul-band" style={{ left: `${lo}%`, width: `${Math.max(0.8, hi - lo)}%` }} />
+        <span className="pg-prog-rul-mark" style={{ left: `${logPos(row.hours, MAX_H)}%` }} />
+      </span>
+      <span className="pg-prog-hbar-scale" aria-hidden="true">
+        {LABELS.map((t) => (
+          <span key={t.h} style={{ left: `${logPos(t.h, MAX_H)}%` }}>
+            {t.label}
+          </span>
+        ))}
+      </span>
+    </div>
   );
 }

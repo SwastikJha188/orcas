@@ -95,18 +95,12 @@ export function Dot({ tone, children }: { tone?: Tone; children: React.ReactNode
 }
 
 /** Log time ticks for a horizontal track (1 h → maxH). */
-export function TimeTicks({ maxH, labels = false }: { maxH: number; labels?: boolean }) {
+export function TimeTicks({ maxH }: { maxH: number }) {
   return (
     <>
-      {TIME_TICKS.filter((t) => t.h <= maxH).map((t) =>
-        labels ? (
-          <span key={t.h} className="pg-prog-tick-label" style={{ left: `${logPos(t.h, maxH)}%` }}>
-            {t.label}
-          </span>
-        ) : (
-          <span key={t.h} className="pg-prog-tick" style={{ left: `${logPos(t.h, maxH)}%` }} aria-hidden="true" />
-        ),
-      )}
+      {TIME_TICKS.filter((t) => t.h <= maxH).map((t) => (
+        <span key={t.h} className="pg-prog-tick" style={{ left: `${logPos(t.h, maxH)}%` }} aria-hidden="true" />
+      ))}
     </>
   );
 }

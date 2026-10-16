@@ -432,19 +432,27 @@ const GAP_MS = 3 * HEALTH_STEP_MS;
 const clockOf = (ms: number, seconds = false) =>
   new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", ...(seconds ? { second: "2-digit" } : {}) });
 
-/** Average runs of `k` buckets so the line keeps at most MAX_POINTS points; gaps stay gaps. */
-function thin(points: HealthPoint[]): Array<{ t: number; v: number }> {
+/** A drawn point; `gap` marks the first point after a stretch nothing was recorded. */
+type TrendPoint = { t: number; v: number; gap: boolean };
+
+/**
+ * Average runs of `k` buckets so the line keeps at most MAX_POINTS points.
+ * Gaps are found on the raw buckets, before averaging, so thinned points
+ * further apart than GAP_MS still join up.
+ */
+function thin(points: HealthPoint[]): TrendPoint[] {
   const valid = points.filter((p): p is { t: number; v: number } => p.v !== null);
-  const k = Math.ceil(valid.length / MAX_POINTS);
-  if (k <= 1) return valid;
-  const out: Array<{ t: number; v: number }> = [];
-  for (let i = 0; i < valid.length; i += k) {
-    const run = valid.slice(i, i + k);
+  const marked = valid.map((p, i) => ({ t: p.t, v: p.v, gap: i > 0 && p.t - valid[i - 1].t > GAP_MS }));
+  const k = Math.ceil(marked.length / MAX_POINTS);
+  if (k <= 1) return marked;
+  const out: TrendPoint[] = [];
+  for (let i = 0; i < marked.length; i += k) {
+    const run = marked.slice(i, i + k);
     // Never average across a gap: cut the run where it breaks.
-    const cut = run.findIndex((p, j) => j > 0 && p.t - run[j - 1].t > GAP_MS);
+    const cut = run.findIndex((p, j) => j > 0 && p.gap);
     const part = cut > 0 ? run.slice(0, cut) : run;
-    out.push({ t: part[part.length - 1].t, v: part.reduce((n, p) => n + p.v, 0) / part.length });
-    if (cut > 0) out.push(...run.slice(cut).map((p) => ({ t: p.t, v: p.v })));
+    out.push({ t: part[part.length - 1].t, v: part.reduce((n, p) => n + p.v, 0) / part.length, gap: part[0].gap });
+    if (cut > 0) out.push(...run.slice(cut));
   }
   return out;
 }
@@ -480,16 +488,18 @@ export function HealthTrendCard({
   const windowMs = Number(period) * 60_000;
   const now = Date.now();
   const from = now - windowMs;
-  const points = thin(track(from));
+  const raw = track(from);
+  const points = thin(raw);
   const spanLabel = formatSpan(Number(period));
-  const first = points[0] ?? null;
+  // When recording starts: the first raw bucket, not the first (averaged) drawn point.
+  const firstAt = raw.find((p) => p.v !== null)?.t ?? null;
   const latest = points.length ? points[points.length - 1].v : null;
   const delta = points.length >= 2 ? Math.round(points[points.length - 1].v - points[0].v) : null;
   const tone: Tone = latest === null ? "idle" : levelTone(latest);
   // The window reaches back before the recording started (page opened recently, or closed for a while).
-  const partial = first !== null && first.t - from > GAP_MS;
+  const partial = firstAt !== null && firstAt - from > GAP_MS;
   // The change is measured over what was recorded, not the whole window.
-  const deltaSpan = partial && first ? formatSpan((points[points.length - 1].t - first.t) / 60_000) : spanLabel;
+  const deltaSpan = partial && firstAt !== null ? formatSpan((points[points.length - 1].t - firstAt) / 60_000) : spanLabel;
 
   const [ref, size] = useSize<HTMLDivElement>(320, height ?? 120);
   const gradId = useSvgId("ph-trend-area");
@@ -507,7 +517,7 @@ export function HealthTrendCard({
   // One path per recorded stretch: a gap in the recording is a gap in the line.
   const segments: Array<Array<{ x: number; y: number }>> = [];
   points.forEach((p, i) => {
-    if (i === 0 || p.t - points[i - 1].t > GAP_MS) segments.push([]);
+    if (i === 0 || p.gap) segments.push([]);
     segments[segments.length - 1].push(pts[i]);
   });
   const lines = segments.map((seg) => (seg.length >= 2 ? smoothPath(seg) : `M ${seg[0].x} ${seg[0].y} l 0.01 0`));
@@ -522,7 +532,7 @@ export function HealthTrendCard({
         <div className="ph-head-text">
           <h2 className="ast-card-title">Health over time</h2>
           <span className="ph-sub">
-            {partial && first ? `Condition score · last ${spanLabel} · recorded since ${clockOf(first.t)}` : `Condition score · last ${spanLabel}`}
+            {partial && firstAt !== null ? `Condition score · last ${spanLabel} · recorded since ${clockOf(firstAt)}` : `Condition score · last ${spanLabel}`}
           </span>
         </div>
         <div className="ph-head-stack">

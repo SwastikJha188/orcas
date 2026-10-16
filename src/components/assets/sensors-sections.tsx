@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { rowActivate } from "@/components/ui/row-activate";
+import { Tile, TileGrid } from "@/components/ui/tile";
+import { validityTone } from "@/components/ui/status";
 import type { MachineAcquisition, MachineLivePoint } from "@/types/edge";
 import { formatDuration, simTimeMs, type SimFrame } from "@/lib/kiln-sim/engine";
 import { formatLocalTime } from "@/lib/time";
@@ -9,7 +10,6 @@ import type { PlantDefs } from "@/lib/plant-defs";
 import type { AssetMachine } from "./assets-data";
 import type { Tone } from "./assets-shell-ui";
 import { CausalChain, KpiStrip, type ChainStep, type KpiItem } from "./analysis/an-ui";
-import { QualityMark } from "./sensors-register";
 
 import {
   CHECK_LABEL,
@@ -26,6 +26,7 @@ import {
   scannerEntryOf,
   slotOf,
   tagOf,
+  unitText,
   validationMethods,
   type SensorRow,
 } from "./sensors-model";
@@ -82,6 +83,7 @@ export interface SensorsCtx {
 
 export const SENSORS_SECTIONS = {
   summary: "sensors-summary",
+  assemblies: "sensors-assemblies",
   validity: "sensors-validity",
   register: "sensors-register",
   chain: "sensors-chain",
@@ -142,14 +144,76 @@ export function SensorsSummary({ ctx }: { ctx: SensorsCtx }) {
   return <KpiStrip page items={items} label="Sensor summary" />;
 }
 
+/* ================================================================== Sub-assemblies */
+
+/** Sub-assembly key, the same one the register groups by. */
+export const assemblyOf = (r: SensorRow) => r.subAssembly || r.component || "Unassigned";
+
+/**
+ * One card per sub-assembly: sensor count, data validity split, readings
+ * outside limits and the most loaded reading. Click scopes the register.
+ */
+export function SensorsAssemblies({ ctx, activeId, onPick }: { ctx: SensorsCtx; activeId: string | null; onPick: (id: string, label: string, tags: string[]) => void }) {
+  const groups = useMemo(() => {
+    const map = new Map<string, SensorRow[]>();
+    for (const r of ctx.rows) {
+      const k = assemblyOf(r);
+      map.set(k, [...(map.get(k) ?? []), r]);
+    }
+    const rank = (list: SensorRow[]) =>
+      list.some((r) => r.status === "Critical") ? 0 : list.some((r) => r.status === "Advisory") ? 1 : list.some((r) => r.q.tone === "bad" || r.q.tone === "warn") ? 2 : 3;
+    return [...map.entries()].sort((a, b) => rank(a[1]) - rank(b[1]) || a[0].localeCompare(b[0]));
+  }, [ctx.rows]);
+
+  return (
+    <TileGrid label="Sub-assemblies" min={232} compact fill={false}>
+      {groups.map(([name, list]) => {
+        const alarm = list.filter((r) => r.status === "Critical").length;
+        const warn = list.filter((r) => r.status === "Advisory").length;
+        const valid = list.filter((r) => r.q.quality === "Valid").length;
+        const nolive = list.filter((r) => r.q.quality === "No live feed").length;
+        const flagged = list.length - valid - nolive;
+        const tone: Tone | undefined = alarm ? "bad" : warn ? "warn" : undefined;
+        const worst = list.filter((r) => r.status !== "Normal").sort((a, b) => (a.status === "Critical" ? -1 : b.status === "Critical" ? 1 : 0))[0];
+        const pct = (n: number) => `${(n / list.length) * 100}%`;
+        return (
+          <Tile
+            key={name}
+            title={<span className="pg-sensors-asm-name">{name}</span>}
+            status={alarm || warn ? { label: `${alarm + warn} outside`, tone } : { label: "Normal" }}
+            value={list.length}
+            unit={list.length === 1 ? "sensor" : "sensors"}
+            tone={tone}
+            meter={
+              <span className="ui-tile-stack" role="img" aria-label={`${valid} valid, ${flagged} flagged, ${nolive} no live feed`}>
+                {valid > 0 && <i style={{ width: pct(valid) }} />}
+                {flagged > 0 && <i data-tone="warn" style={{ width: pct(flagged) }} />}
+                {nolive > 0 && <i className="is-empty" style={{ width: pct(nolive) }} />}
+              </span>
+            }
+            facts={[
+              { label: "Valid", value: `${valid} / ${list.length}`, tone: flagged ? "warn" : undefined },
+              { label: "Warning", value: warn, tone: warn ? "warn" : undefined },
+              { label: "Alarm", value: alarm, tone: alarm ? "bad" : undefined },
+            ]}
+            foot={worst ? `${tagOf(worst)} ${worst.value}${unitText(worst) ? ` ${unitText(worst)}` : ""}` : undefined}
+            selected={activeId === name}
+            onSelect={() => onPick(name, name, list.map(tagOf))}
+          />
+        );
+      })}
+    </TileGrid>
+  );
+}
+
 /* ================================================================== Signal validity */
 
 /**
- * Per-shift validity list (D5 Table 9.3 sensor health; Table 12.1 "every
- * shift: review suspect / invalid signals"): every sensor of this machine
- * flagged in the current shift, with minutes suspect / invalid / flagged only.
+ * Per-shift validity (D5 Table 9.3 sensor health; Table 12.1 "every shift:
+ * review suspect / invalid signals"): every sensor of this machine flagged in
+ * the current shift, with minutes suspect / invalid / flagged only.
  */
-function ShiftValidityTable({ ctx }: { ctx: SensorsCtx }) {
+function ShiftValidity({ ctx }: { ctx: SensorsCtx }) {
   const sv = ctx.frame?.shiftValidity;
   const sh = sv?.current;
   if (!sh) return null;
@@ -161,213 +225,148 @@ function ShiftValidityTable({ ctx }: { ctx: SensorsCtx }) {
   const flagOnly = rows.length - invalid - suspect;
   const prev = sv?.previous;
   const prevN = prev ? Object.values(prev.tags).filter((e) => e.suspect + e.invalid > 0).length : null;
+  const dur = (m: number) => (m ? formatDuration(m) : "—");
   return (
     <>
-      <h4 className="pg-sensors-sub">This shift</h4>
-      <p className="ast-caption">
-        {sh.label} · {formatDuration(sh.minutes)} evaluated · {total - invalid - suspect} valid throughout · {suspect} suspect · {invalid} invalid
-        {flagOnly ? ` · ${flagOnly} flagged only` : ""}
-        {prevN !== null ? ` · previous shift: ${prevN} flagged` : ""}
-      </p>
+      <h4 className="ui-tiles-head">
+        <span>
+          <b>This shift</b> · {sh.label} · {formatDuration(sh.minutes)} evaluated
+        </span>
+        <span className="ast-num">
+          {total - invalid - suspect} valid throughout · {suspect} suspect · {invalid} invalid
+          {flagOnly ? ` · ${flagOnly} flagged only` : ""}
+          {prevN !== null ? ` · previous shift ${prevN} flagged` : ""}
+        </span>
+      </h4>
       {rows.length > 0 && (
-        <div className="ui-table-container ast-table pg-sensors-table">
-          <table className="ui-table" aria-label="Validity this shift">
-            <thead>
-              <tr>
-                <th scope="col">Sensor</th>
-                <th scope="col" className="pg-sensors-r">
-                  Invalid
-                </th>
-                <th scope="col" className="pg-sensors-r">
-                  Suspect
-                </th>
-                <th scope="col" className="pg-sensors-r">
-                  Flag only
-                </th>
-                <th scope="col">First / last</th>
-                <th scope="col">Latest note</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(([tag, e]) => (
-                <tr key={tag} className={`is-clickable ${ctx.selectedTag === tag ? "active" : ""}`} {...rowActivate(() => ctx.select(ctx.selectedTag === tag ? null : tag), ctx.selectedTag === tag)}>
-                  <td className="ast-cell-title ast-num">{tag}</td>
-                  <td className="pg-sensors-r ast-num">{e.invalid ? formatDuration(e.invalid) : <span className="ast-muted">—</span>}</td>
-                  <td className="pg-sensors-r ast-num">{e.suspect ? formatDuration(e.suspect) : <span className="ast-muted">—</span>}</td>
-                  <td className="pg-sensors-r ast-num">{e.flagOnly ? formatDuration(e.flagOnly) : <span className="ast-muted">—</span>}</td>
-                  <td className="ast-num">
-                    {at(e.first)} – {at(e.last)}
-                  </td>
-                  <td>
-                    <span className="pg-sensors-wrap ast-muted">{e.note}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <TileGrid label="Validity this shift" min={220}>
+          {rows.map(([tag, e]) => (
+            <Tile
+              key={tag}
+              title={tag}
+              status={{ label: e.invalid ? "Invalid" : e.suspect ? "Suspect" : "Flagged", tone: e.invalid ? "bad" : e.suspect ? "warn" : undefined }}
+              facts={[
+                { label: "Invalid", value: dur(e.invalid), tone: e.invalid ? "bad" : undefined },
+                { label: "Suspect", value: dur(e.suspect), tone: e.suspect ? "warn" : undefined },
+                { label: "Flag only", value: dur(e.flagOnly) },
+              ]}
+              foot={
+                <span title={e.note}>
+                  {at(e.first)} – {at(e.last)}
+                  {e.note ? ` · ${e.note}` : ""}
+                </span>
+              }
+              selected={ctx.selectedTag === tag}
+              onSelect={() => ctx.select(ctx.selectedTag === tag ? null : tag)}
+            />
+          ))}
+        </TileGrid>
       )}
     </>
   );
 }
 
+/** Flagged sensors, this shift and the validation checks — as cards (render in a bare section). */
 export function SensorsValidity({ ctx }: { ctx: SensorsCtx }) {
   const { rows, frame } = ctx;
   const flagged = rows.filter((r) => r.q.quality !== "Valid" && r.q.quality !== "No live feed");
   const dbTags = useMemo(() => new Set(rows.map(tagOf)), [rows]);
   const methods = validationMethods(ctx.defs);
+  const ranged = rows.filter((r) => r.range && r.unit !== "state").length;
 
   return (
-    <section className="ast-card pg-table-card pg-sensors-card" aria-label="Signal validity">
+    <>
       {flagged.length > 0 && (
         <>
-          <h4 className="pg-sensors-sub">Flagged</h4>
-          <div className="ui-table-container ast-table pg-sensors-table">
-            <table className="ui-table" aria-label="Flagged sensors">
-              <thead>
-                <tr>
-                  <th scope="col">Sensor</th>
-                  <th scope="col">Data</th>
-                  <th scope="col">Check</th>
-                  <th scope="col">Rule</th>
-                  <th scope="col">Since</th>
-                  <th scope="col" className="pg-sensors-r">
-                    Rules held
-                  </th>
-                  <th scope="col">Health input</th>
-                  <th scope="col">Finding</th>
-                </tr>
-              </thead>
-              <tbody>
-                {flagged.map((r) => {
-                  const tag = tagOf(r);
-                  const since = frame ? flaggedSince(frame.events, tag) : null;
-                  const impact = impactOf(tag, ctx.defs);
-                  return (
-                    <tr key={tag} className={`is-clickable ${ctx.selectedTag === tag ? "active" : ""}`} {...rowActivate(() => ctx.select(ctx.selectedTag === tag ? null : tag), ctx.selectedTag === tag)}>
-                      <td>
-                        <span className="ast-cell-stack">
-                          <span className="ast-cell-title ast-num">{tag}</span>
-                          <span className="ast-cell-sub pg-sensors-clip">{r.name}</span>
-                        </span>
-                      </td>
-                      <td>
-                        <QualityMark row={r} />
-                      </td>
-                      <td>{r.q.check ? CHECK_LABEL[r.q.check] : "—"}</td>
-                      <td className="ast-num">{r.q.rule ?? "—"}</td>
-                      <td className="ast-num">
-                        {since !== null && frame ? (
-                          <span className="ast-cell-stack">
-                            <span>{formatLocalTime(simTimeMs(since), { seconds: false, timeZone: ctx.timeZone })}</span>
-                            <span className="ast-cell-sub">{formatDuration(frame.t - since)}</span>
-                          </span>
-                        ) : r.livePoint?.live.updatedAt ? (
-                          formatLocalTime(r.livePoint.live.updatedAt, { seconds: false, timeZone: ctx.timeZone })
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td className="pg-sensors-r ast-num" title={impact.rules.map((x) => `${x.id} ${x.name}`).join("\n")}>
-                        {impact.rules.length}
-                      </td>
-                      <td>{impact.health ? impact.health.sub : "—"}</td>
-                      <td>
-                        <span className="pg-sensors-wrap ast-muted">{r.q.note}</span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <h4 className="ui-tiles-head">
+            <b>Flagged</b>
+            <span className="ast-num">{flagged.length} of {rows.length}</span>
+          </h4>
+          <TileGrid label="Flagged sensors" min={260}>
+            {flagged.map((r) => {
+              const tag = tagOf(r);
+              const since = frame ? flaggedSince(frame.events, tag) : null;
+              const impact = impactOf(tag, ctx.defs);
+              const sinceText =
+                since !== null && frame
+                  ? `${formatLocalTime(simTimeMs(since), { seconds: false, timeZone: ctx.timeZone })} · ${formatDuration(frame.t - since)}`
+                  : r.livePoint?.live.updatedAt
+                    ? formatLocalTime(r.livePoint.live.updatedAt, { seconds: false, timeZone: ctx.timeZone })
+                    : "—";
+              return (
+                <Tile
+                  key={tag}
+                  title={tag}
+                  sub={r.name}
+                  status={{ label: r.q.quality, tone: validityTone(r.q.quality) }}
+                  tone={validityTone(r.q.quality)}
+                  value={r.value || "—"}
+                  unit={unitText(r)}
+                  facts={[
+                    { label: "Check", value: r.q.check ? CHECK_LABEL[r.q.check] : "—" },
+                    { label: "Rule", value: r.q.rule ?? "—" },
+                    { label: "Since", value: sinceText },
+                    { label: "Rules held", value: <span title={impact.rules.map((x) => `${x.id} ${x.name}`).join("\n")}>{impact.rules.length}</span> },
+                  ]}
+                  foot={<span title={r.q.note ?? undefined}>{[impact.health?.sub, r.q.note].filter(Boolean).join(" · ") || "—"}</span>}
+                  selected={ctx.selectedTag === tag}
+                  onSelect={() => ctx.select(ctx.selectedTag === tag ? null : tag)}
+                />
+              );
+            })}
+          </TileGrid>
         </>
       )}
 
-      {frame?.shiftValidity?.current && <ShiftValidityTable ctx={ctx} />}
+      {frame?.shiftValidity?.current && <ShiftValidity ctx={ctx} />}
 
       {ctx.hasSpec && frame && (
         <>
-          <h4 className="pg-sensors-sub">Checks</h4>
-          <div className="ui-table-container ast-table pg-sensors-table">
-            <table className="ui-table" aria-label="Validation checks">
-              <thead>
-                <tr>
-                  <th scope="col">Method</th>
-                  <th scope="col">Check</th>
-                  <th scope="col">Rule</th>
-                  <th scope="col">Criterion</th>
-                  <th scope="col" className="pg-sensors-r">
-                    Covers
-                  </th>
-                  <th scope="col" className="pg-sensors-r">
-                    Flagged
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {methods.map((m) => {
-                  const covered = m.tags.filter((t) => dbTags.has(t)).length;
-                  const now = flagged.filter((r) => methodFlagging(r, methods)?.id === m.id);
-                  return (
-                    <tr key={m.id}>
-                      <td>
-                        <span className="ast-cell-stack">
-                          <span className="ast-cell-title">{m.method}</span>
-                          <span className="ast-cell-sub">{m.appliesTo}</span>
-                        </span>
-                      </td>
-                      <td>{CHECK_LABEL[m.check]}</td>
-                      <td className="ast-num">{m.rule}</td>
-                      <td>
-                        <span className="pg-sensors-wrap ast-muted">{m.flagsWhen}</span>
-                      </td>
-                      <td className="pg-sensors-r ast-num">{covered}</td>
-                      <td className="pg-sensors-r ast-num">
-                        {!m.evaluated ? (
-                          <span className="ast-muted">not evaluated</span>
-                        ) : now.length ? (
-                          <span className="pg-sensors-quality" data-tone="warn" title={now.map(tagOf).join(", ")}>
-                            <span className="ast-chip-dot" aria-hidden="true" />
-                            {now.length}
-                          </span>
-                        ) : (
-                          <span className="ast-muted">0</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-                <tr>
-                  <td>
-                    <span className="ast-cell-stack">
-                      <span className="ast-cell-title">Instrument range</span>
-                      <span className="ast-cell-sub">Analog sensors with a recorded range</span>
-                    </span>
-                  </td>
-                  <td>{CHECK_LABEL.range}</td>
-                  <td className="ast-muted">page</td>
-                  <td>
-                    <span className="pg-sensors-wrap ast-muted">Reading outside the instrument range</span>
-                  </td>
-                  <td className="pg-sensors-r ast-num">{rows.filter((r) => r.range && r.unit !== "state").length}</td>
-                  <td className="pg-sensors-r ast-num">
-                    {ctx.counts.outOfRange ? (
-                      <span className="pg-sensors-quality" data-tone="bad">
-                        <span className="ast-chip-dot" aria-hidden="true" />
-                        {ctx.counts.outOfRange}
-                      </span>
-                    ) : (
-                      <span className="ast-muted">0</span>
-                    )}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <h4 className="ui-tiles-head">
+            <b>Checks</b>
+            <span className="ast-num">{methods.filter((m) => m.evaluated).length + 1} evaluated · {methods.length + 1} methods</span>
+          </h4>
+          <TileGrid label="Validation checks" min={232} compact>
+            {methods.map((m) => {
+              const covered = m.tags.filter((t) => dbTags.has(t)).length;
+              const now = flagged.filter((r) => methodFlagging(r, methods)?.id === m.id);
+              return (
+                <Tile
+                  key={m.id}
+                  title={<span className="pg-sensors-asm-name">{m.method}</span>}
+                  sub={m.appliesTo}
+                  status={m.evaluated ? null : { label: "Not evaluated" }}
+                  tone={m.evaluated && now.length ? "warn" : undefined}
+                  value={m.evaluated ? now.length : "—"}
+                  unit={`flagged / ${covered}`}
+                  facts={[
+                    { label: "Check", value: CHECK_LABEL[m.check] },
+                    { label: "Rule", value: m.rule },
+                  ]}
+                  foot={<span title={m.flagsWhen}>{now.length ? now.map(tagOf).join(", ") : m.flagsWhen}</span>}
+                />
+              );
+            })}
+            <Tile
+              title={<span className="pg-sensors-asm-name">Instrument range</span>}
+              sub="Analog sensors with a recorded range"
+              tone={ctx.counts.outOfRange ? "bad" : undefined}
+              value={ctx.counts.outOfRange}
+              unit={`flagged / ${ranged}`}
+              facts={[
+                { label: "Check", value: CHECK_LABEL.range },
+                { label: "Rule", value: "page" },
+              ]}
+              foot={
+                ctx.counts.outOfRange
+                  ? rows.filter((r) => r.outOfRange).map(tagOf).join(", ")
+                  : "Reading outside the instrument range"
+              }
+            />
+          </TileGrid>
         </>
       )}
-    </section>
+    </>
   );
 }
 
@@ -448,129 +447,100 @@ export function SensorsChain({ ctx }: { ctx: SensorsCtx }) {
   }, [acquisition]);
 
   const wiredUnlinked = rows.filter((r) => isWired(r) && !r.livePoint);
-  const dash = <span className="ast-muted">—</span>;
-  const n = (v: number) => (v ? v : <span className="ast-muted">0</span>);
+  const calcLive = rows.filter((r) => isCalculated(r) && r.live).length;
+  const manualLive = rows.filter((r) => !isCalculated(r) && isManual(r) && r.live).length;
+  const pct = (n: number, of: number) => `${of ? (n / of) * 100 : 0}%`;
 
   return (
-    <section className="ast-card pg-table-card pg-sensors-card" aria-label="Acquisition chain">
+    <>
       {subject && (
-        <div className="pg-sensors-chain">
-          <span className="pg-sensors-sub">{selected ? "Selected sensor" : "Signal path"}</span>
+        <>
+          <h4 className="ui-tiles-head">
+            <b>Signal path</b>
+            <span className="ast-num">{selected ? `selected · ${tagOf(subject)}` : tagOf(subject)}</span>
+          </h4>
           <CausalChain steps={steps} label="Acquisition chain" />
-        </div>
+        </>
       )}
-      <h4 className="pg-sensors-sub">Sources</h4>
-      <div className="ui-table-container ast-table pg-sensors-table">
-        <table className="ui-table" aria-label="Acquisition sources">
-          <thead>
-            <tr>
-              <th scope="col">Source</th>
-              <th scope="col">Kind · protocol</th>
-              <th scope="col">Gateway</th>
-              <th scope="col" className="pg-sensors-r">
-                Cards
-              </th>
-              <th scope="col" className="pg-sensors-r">
-                Sensors
-              </th>
-              <th scope="col" className="pg-sensors-r">
-                Live
-              </th>
-              <th scope="col" className="pg-sensors-r">
-                Stale
-              </th>
-              <th scope="col" className="pg-sensors-r">
-                No data
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {sources.map((s) => {
-              const live = s.points.filter((p) => p.live.state === "normal" || p.live.state === "alert" || p.live.state === "danger").length;
-              const stale = s.points.filter((p) => p.live.state === "stale").length;
-              const nodata = s.points.filter((p) => p.live.state === "nodata").length;
-              return (
-                <tr key={s.code}>
-                  <td>
-                    <span className="ast-cell-stack">
-                      <span className="ast-cell-title ast-num">{s.code}</span>
-                      <span className="ast-cell-sub">{s.name}</span>
-                    </span>
-                  </td>
-                  <td>
-                    {s.kind} · {s.protocol}
-                  </td>
-                  <td className="ast-num">{s.gateway}</td>
-                  <td className="pg-sensors-r ast-num">{s.cards.size}</td>
-                  <td className="pg-sensors-r ast-num">{s.points.length}</td>
-                  <td className="pg-sensors-r ast-num">{n(live)}</td>
-                  <td className="pg-sensors-r ast-num">{n(stale)}</td>
-                  <td className="pg-sensors-r ast-num">{n(nodata)}</td>
-                </tr>
-              );
-            })}
-            {ctx.counts.calculated > 0 && (
-              <tr>
-                <td>
-                  <span className="ast-cell-stack">
-                    <span className="ast-cell-title">Gateway analytics</span>
-                    <span className="ast-cell-sub">Calculated values</span>
-                  </span>
-                </td>
-                <td>calculated</td>
-                <td className="ast-num">{gateways[0]?.code ?? "—"}</td>
-                <td className="pg-sensors-r">{dash}</td>
-                <td className="pg-sensors-r ast-num">{ctx.counts.calculated}</td>
-                <td className="pg-sensors-r ast-num">{n(rows.filter((r) => isCalculated(r) && r.live).length)}</td>
-                <td className="pg-sensors-r">{dash}</td>
-                <td className="pg-sensors-r">{dash}</td>
-              </tr>
-            )}
-            {ctx.counts.manual > 0 && (
-              <tr>
-                <td>
-                  <span className="ast-cell-stack">
-                    <span className="ast-cell-title">Manual entry</span>
-                    <span className="ast-cell-sub">Manual records</span>
-                  </span>
-                </td>
-                <td>manual</td>
-                <td>{dash}</td>
-                <td className="pg-sensors-r">{dash}</td>
-                <td className="pg-sensors-r ast-num">{ctx.counts.manual}</td>
-                <td className="pg-sensors-r ast-num">{n(rows.filter((r) => !isCalculated(r) && isManual(r) && r.live).length)}</td>
-                <td className="pg-sensors-r">{dash}</td>
-                <td className="pg-sensors-r">{dash}</td>
-              </tr>
-            )}
-            {wiredUnlinked.length > 0 && (
-              <tr>
-                <td>
-                  <span className="ast-cell-stack">
-                    <span className="ast-cell-title">Not on a gateway point</span>
-                    <span className="ast-cell-sub pg-sensors-clip" title={wiredUnlinked.map(tagOf).join(", ")}>
-                      {wiredUnlinked.slice(0, 3).map(tagOf).join(", ")}
-                      {wiredUnlinked.length > 3 ? ` +${wiredUnlinked.length - 3}` : ""}
-                    </span>
-                  </span>
-                </td>
-                <td>{dash}</td>
-                <td>{dash}</td>
-                <td className="pg-sensors-r">{dash}</td>
-                <td className="pg-sensors-r">
-                  <span className="pg-sensors-quality" data-tone="warn">
-                    <span className="ast-chip-dot" aria-hidden="true" />
-                    <span className="ast-num">{wiredUnlinked.length}</span>
-                  </span>
-                </td>
-                <td className="pg-sensors-r">{dash}</td>
-                <td className="pg-sensors-r">{dash}</td>
-                <td className="pg-sensors-r">{dash}</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
+      <h4 className="ui-tiles-head">
+        <b>Sources</b>
+        <span className="ast-num">
+          {sources.length} on gateway · {ctx.counts.linked} / {ctx.counts.wired} wired linked
+        </span>
+      </h4>
+      <TileGrid label="Acquisition sources" min={232}>
+        {sources.map((s) => {
+          const live = s.points.filter((p) => p.live.state === "normal" || p.live.state === "alert" || p.live.state === "danger").length;
+          const stale = s.points.filter((p) => p.live.state === "stale").length;
+          const nodata = s.points.filter((p) => p.live.state === "nodata").length;
+          const idle = s.points.length - live - stale - nodata;
+          const tone: Tone | undefined = nodata ? "bad" : stale ? "warn" : undefined;
+          return (
+            <Tile
+              key={s.code}
+              title={s.code}
+              sub={s.name}
+              status={{ label: `${s.kind} · ${s.protocol}` }}
+              tone={tone}
+              value={s.points.length}
+              unit={s.points.length === 1 ? "sensor" : "sensors"}
+              meter={
+                <span className="ui-tile-stack" role="img" aria-label={`${live} live, ${stale} stale, ${nodata} no data`}>
+                  {live > 0 && <i style={{ width: pct(live, s.points.length) }} />}
+                  {stale > 0 && <i data-tone="warn" style={{ width: pct(stale, s.points.length) }} />}
+                  {nodata > 0 && <i data-tone="bad" style={{ width: pct(nodata, s.points.length) }} />}
+                  {idle > 0 && <i className="is-empty" style={{ width: pct(idle, s.points.length) }} />}
+                </span>
+              }
+              facts={[
+                { label: "Live", value: live },
+                { label: "Stale", value: stale, tone: stale ? "warn" : undefined },
+                { label: "No data", value: nodata, tone: nodata ? "bad" : undefined },
+                { label: "Cards", value: s.cards.size },
+              ]}
+              foot={`Gateway ${s.gateway}`}
+              onSelect={() => ctx.goDevices(s.points[0])}
+            />
+          );
+        })}
+        {ctx.counts.calculated > 0 && (
+          <Tile
+            title="Gateway analytics"
+            sub="Calculated values"
+            status={{ label: "calculated" }}
+            value={ctx.counts.calculated}
+            unit="values"
+            meter={calcLive / ctx.counts.calculated * 100}
+            facts={[
+              { label: "Live", value: calcLive },
+              { label: "Gateway", value: gateways[0]?.code ?? "—" },
+            ]}
+          />
+        )}
+        {ctx.counts.manual > 0 && (
+          <Tile
+            title="Manual entry"
+            sub="Manual records"
+            status={{ label: "manual" }}
+            value={ctx.counts.manual}
+            unit="records"
+            meter={manualLive / ctx.counts.manual * 100}
+            facts={[{ label: "Live", value: manualLive }]}
+          />
+        )}
+        {wiredUnlinked.length > 0 && (
+          <Tile
+            title="Not on a gateway point"
+            sub="Wired, no edge-registry point"
+            status={{ label: "Unlinked", tone: "warn" }}
+            tone="warn"
+            value={wiredUnlinked.length}
+            unit={`/ ${ctx.counts.wired} wired`}
+            foot={<span title={wiredUnlinked.map(tagOf).join(", ")}>{wiredUnlinked.slice(0, 4).map(tagOf).join(", ")}{wiredUnlinked.length > 4 ? ` +${wiredUnlinked.length - 4}` : ""}</span>}
+            onSelect={() => ctx.goDevices()}
+          />
+        )}
+      </TileGrid>
+    </>
   );
 }

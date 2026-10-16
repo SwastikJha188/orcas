@@ -5,16 +5,16 @@
    ========================================================================== */
 
 .thm-root {
-  /* Sober heat scale: neutral graphite ramp up to the top of the normal band
-     (330 °C), status colour only from the 380 °C alert. Built from semantic
-     tokens, so both themes resolve on their own (hotter = more contrast). */
-  --thm-heat-150: color-mix(in srgb, var(--dx-ink) 7%, var(--card-bg));
-  --thm-heat-250: color-mix(in srgb, var(--dx-ink) 20%, var(--card-bg));
-  --thm-heat-330: color-mix(in srgb, var(--dx-ink) 46%, var(--card-bg));
-  --thm-heat-360: color-mix(in srgb, var(--status-warning) 45%, color-mix(in srgb, var(--dx-ink) 55%, var(--card-bg)));
-  --thm-heat-380: var(--status-warning);
-  --thm-heat-420: var(--status-danger);
-  --thm-heat-480: color-mix(in srgb, var(--status-danger) 70%, var(--dx-ink));
+  /* Ironbow heat scale (black → purple → magenta → orange → yellow → white),
+     evenly spaced; the map auto-ranges its colours across it (heatRange). */
+  --thm-heat-0: var(--heat-0);
+  --thm-heat-1: var(--heat-1);
+  --thm-heat-2: var(--heat-2);
+  --thm-heat-3: var(--heat-3);
+  --thm-heat-4: var(--heat-4);
+  --thm-heat-5: var(--heat-5);
+  --thm-heat-6: var(--heat-6);
+  --thm-heat-7: var(--heat-7);
   --thm-hatch: color-mix(in srgb, var(--dx-ink) 22%, transparent);
   font-variant-numeric: tabular-nums;
 }

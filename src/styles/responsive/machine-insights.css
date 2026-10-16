@@ -34,9 +34,6 @@
   :root #prog-degradation .pg-prog-chart-scroll .pg-prog-chart {
     min-inline-size: 900px;
   }
-  /* Multiples run one per row here: only the model's key sensors get a
-     chart; the forecast table below lists every signal. */
-  :root .pg-prog .pg-prog-multiples:has(> .pg-prog-multiple.is-focus) > .pg-prog-multiple:not(.is-focus) { display: none; }
 }
 
 /* ==========================================================================
@@ -44,27 +41,16 @@
    the card without sideways scrolling; long text cells wrap.
    ========================================================================== */
 @media (min-width: 600px) and (max-width: 1023px) {
-  /* Analysis */
-  :root #an-detection .ast-table :is(th, td):is([data-col="band"], [data-col="pers"]),
-  :root #an-explanation .ast-table:has(th[data-col="k"]) :is(th, td):is([data-col="k"], [data-col="n"]),
-  /* Prognosis */
-  :root #prog-life .pg-prog-table :is(th, td):is([data-col="basis"], [data-col="track"]),
-  :root #prog-risk .pg-prog-table :is(th, td)[data-col="rule"],
-  :root #prog-forecast .pg-prog-table :is(th, td):is([data-col="warn"], [data-col="conf"]),
-  :root #prog-degradation .pg-prog-table :is(th, td)[data-col="q"],
-  :root #prog-accuracy .pg-prog-table :is(th, td):is([data-col="b"], [data-col="c"]) {
+  :root #prog-forecast .pg-prog-table :is(th, td):is([data-col="warn"], [data-col="conf"]) {
     display: none;
   }
 
-  :root .pg-frame:is(.pg-analysis, .pg-prog) .ast-table .ui-table tbody td :is(.ast-cell-text, .ast-cell-title, .pg-prog-wrap) {
+  :root .pg-frame:is(.pg-analysis, .pg-prog) .ast-table .ui-table tbody td :is(.ast-cell-text, .ast-cell-title) {
     white-space: normal;
   }
-  :root #an-actions .ast-table .ui-table tbody td[data-col="t"],
-  :root #an-detection .ast-table .ui-table tbody td[data-col="sig"],
   :root #prog-forecast .pg-prog-table .ui-table tbody td[data-col="name"] {
     white-space: normal;
   }
-  :root .pg-prog .pg-prog-wrap { max-inline-size: 260px; }
   :root .pg-prog .pg-prog-clip { max-inline-size: 180px; }
 }
 
@@ -73,24 +59,15 @@
    ========================================================================== */
 @media (max-width: 599px) {
   /* ---- Charts ---------------------------------------------------------- */
-  /* Forecast multiples one per row at native size (560×170, 11 px labels). */
-  :root .pg-prog .pg-prog-multiples {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 12px;
-  }
+  /* Forecast charts at native size (560×170, 11 px labels). */
   :root .pg-prog .pg-prog-multiple .pg-prog-chart { min-inline-size: 520px; }
   :root .pg-prog .pg-prog-multiple figcaption { flex-wrap: wrap; row-gap: 4px; }
-  /* Predicted-vs-actual scatter: ≈10 px labels. */
-  /* Square scatter fits the width; axis text is set larger in viewBox units
-     so it renders at ≈10 px instead of 8. */
-  :root #prog-accuracy .pg-prog-chart-scroll { overflow: visible; }
-  :root #prog-accuracy .pg-prog-chart .pg-prog-axis { font-size: var(--fs-md); }
 
   /* Risk matrix: narrower probability gutter leaves room for the dots. */
   :root .pg-prog .pg-prog-matrix-row { grid-template-columns: 44px repeat(5, minmax(0, 1fr)); }
   :root .pg-prog .pg-prog-matrix-cell { min-block-size: 52px; padding: 4px; }
   /* Cells are ~45 px wide: dots only (names stay as the button's accessible
-     text, and the selected mode is spelled out in the table below). */
+     text, and the selected mode is spelled out in the tiles below). */
   :root .pg-prog .pg-prog-matrix-cell { flex-direction: row; flex-wrap: wrap; align-content: flex-start; gap: 2px; }
   :root .pg-prog .pg-prog-mdot {
     inline-size: 18px;
@@ -184,7 +161,7 @@
   }
 
   /* Widths meant for a wide table relax inside the stack. */
-  :root .pg-frame:is(.pg-analysis, .pg-prog) .ast-table :is(.pg-prog-clip, .pg-prog-wrap) {
+  :root .pg-frame:is(.pg-analysis, .pg-prog) .ast-table .pg-prog-clip {
     max-inline-size: 100%;
     white-space: normal;
   }
@@ -192,162 +169,32 @@
     white-space: normal;
     overflow-wrap: anywhere;
   }
-  :root .pg-frame.pg-analysis .ast-table .pg-analysis-bar-cell { inline-size: 100%; min-inline-size: 0; }
 
-  /* Long text values that read better on a full line. */
-  :root #an-explanation .ast-table .ui-table tbody td:is([data-col="c"], [data-col="v"], [data-col="w"]),
-  :root #prog-risk .pg-prog-table .ui-table tbody td[data-col="sub"],
-  :root #prog-forecast .pg-prog-table .ui-table tbody td[data-col="name"],
-  :root #prog-degradation .pg-prog-table .ui-table tbody td[data-col="l"] {
+  /* Forecasts: the signal name takes a full line right under its tag,
+     without a label; the values run three per line. */
+  :root #prog-forecast .pg-prog-table { --stack-cols: repeat(3, minmax(0, 1fr)); }
+  :root #prog-forecast .pg-prog-table .ui-table tbody td[data-col="name"] {
     grid-column: 1 / -1;
-  }
-  /* Evidence: reading (already quotes σ vs model) beside validation. */
-  :root #prog-degradation .pg-prog-card > .pg-prog-table { --stack-cols: minmax(0, 2fr) minmax(0, 1fr); }
-  :root #prog-degradation .pg-prog-card > .pg-prog-table .ui-table tbody td[data-col="z"] { display: none; }
-  /* The contribution bar explains itself; no "Waterfall" label. */
-  :root #an-explanation .ast-table .ui-table tbody td[data-col="w"]::before { content: none; }
-  :root #an-explanation .ast-table .ui-table tbody td[data-col="w"] { padding-block: 2px; }
-  /* Signal name sits right under its tag, without a label. */
-  :root #prog-forecast .pg-prog-table .ui-table tbody td[data-col="name"]::before { content: none; }
-  :root :is(#prog-degradation .pg-prog-table .ui-table tbody td[data-col="l"], #prog-forecast .pg-prog-table .ui-table tbody td[data-col="name"]) {
     margin-block-start: -4px;
     color: var(--text-muted);
   }
-
-  /* Value-dense tables: three (or four) short values per line. */
-  :root #an-detection .ast-table:has(th[data-col="band"]),
-  :root #an-quality .ast-table:has(th[data-col="ok"]),
-  :root #prog-risk .pg-prog-table,
-  :root #prog-forecast .pg-prog-table,
-  :root #prog-degradation .pg-prog-subtable .pg-prog-table,
-  :root #prog-accuracy .pg-prog-table {
-    --stack-cols: repeat(3, minmax(0, 1fr));
-  }
-  :root #an-explanation .ast-table:has(th[data-col="k"]) {
-    --stack-cols: repeat(4, minmax(0, 1fr));
-  }
-  :root #an-actions .ast-table:has(th[data-col="l"]) { --stack-cols: minmax(0, 1fr); }
-  /* Remaining life: interval · health · action on one line under the name. */
-  :root #prog-life .pg-prog-table { --stack-cols: max-content max-content minmax(0, 1fr); }
-
-  /* Actions: the action text leads; priority becomes a labelled value. */
-  :root #an-actions .ast-table .ui-table tbody td[data-col="t"] {
-    grid-column: 1 / -1;
-    order: -1;
-    font-weight: 500;
-  }
-  :root #an-actions .ast-table .ui-table tbody td[data-col="t"]::before { content: none; }
-  :root #an-actions .ast-table:has(th[data-col="t"]) .ui-table tbody td[data-col="p"] { grid-column: auto; }
-  :root #an-actions .ast-table:has(th[data-col="t"]) .ui-table tbody td[data-col="p"]::before { content: attr(data-label); }
-
-  /* Columns that add little on a phone (still on tablet and up). */
-  :root #prog-life .pg-prog-table .ui-table tbody td:is([data-col="basis"], [data-col="track"]),
-  :root #prog-risk .pg-prog-table .ui-table tbody td[data-col="rule"] {
-    display: none;
-  }
+  :root #prog-forecast .pg-prog-table .ui-table tbody td[data-col="name"]::before { content: none; }
 }
 
 /* ==========================================================================
-   LAPTOP (1024–1439) — the risk matrix beside its table leaves ~57 px per
-   cell, clipping labels such as "R-SHL-03"; stack it above the table (as
-   the component already does ≤1100) so every cell has room for its labels.
-   ========================================================================== */
-@media (min-width: 1024px) and (max-width: 1439px) {
-  :root .pg-prog .pg-prog-riskgrid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 16px;
-  }
-}
-
-/* ==========================================================================
-   DESKTOP (≥1440) — pair blocks that were stacked full width.
+   DESKTOP (≥1440)
    ========================================================================== */
 @media (min-width: 1440px) {
-  /* Detection: residual table beside the paired-signal list. */
-  :root #an-detection .pg-analysis-section-body:has(> .pg-analysis-block.is-table + .pg-analysis-block .pg-analysis-pairs) {
-    display: grid;
-    grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
-    column-gap: 32px;
-    align-items: start;
-  }
-  :root #an-detection .pg-analysis-section-body:has(> .pg-analysis-block.is-table + .pg-analysis-block .pg-analysis-pairs) > * {
-    grid-column: 1 / -1;
-  }
-  :root #an-detection .pg-analysis-section-body > .pg-analysis-block.is-table:has(+ .pg-analysis-block .pg-analysis-pairs) {
-    grid-column: 1;
-  }
-  :root #an-detection .pg-analysis-section-body > .pg-analysis-block.is-table + .pg-analysis-block:has(.pg-analysis-pairs) {
-    grid-column: 2;
-  }
-
-  /* Paired tables are narrower: their long text cells wrap. */
-  :root #an-actions .ast-table .ui-table tbody td[data-col="t"],
-  :root #an-detection .ast-table .ui-table tbody td[data-col="sig"],
-  :root :is(#an-actions, #an-detection) .ast-table .ui-table tbody td :is(.ast-cell-text, .ast-cell-title) {
-    white-space: normal;
-  }
-
-  /* Actions: work list beside the feedback labels. */
-  :root #an-actions .pg-analysis-section-body:has(> .pg-analysis-block.is-table) {
-    display: grid;
-    grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
-    grid-auto-flow: row dense;
-    column-gap: 32px;
-    align-items: start;
-  }
-  :root #an-actions .pg-analysis-section-body:has(> .pg-analysis-block.is-table) > * { grid-column: 1; }
-  :root #an-actions .pg-analysis-section-body > .pg-analysis-block.is-table {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-  }
-
-  /* Risk matrix beside its table: cells start at ~75 px, so trim the inline
-     padding to keep rule labels ("R-SHL-03") unclipped. */
+  /* Risk matrix: trim the inline cell padding to keep rule labels
+     ("R-SHL-03") unclipped. */
   :root .pg-prog .pg-prog-matrix-cell { padding-inline: 4px; }
   :root .pg-prog .pg-prog-mdot { padding-inline: 2px; }
-
-  /* Prognosis degradation: evidence table beside the coupling table. */
-  :root #prog-degradation .pg-prog-card:has(> .pg-prog-subtable) {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    column-gap: 40px;
-    row-gap: 16px;
-    align-items: start;
-  }
-  :root #prog-degradation .pg-prog-card:has(> .pg-prog-subtable) > * { grid-column: 1 / -1; }
-  :root #prog-degradation .pg-prog-card:has(> .pg-prog-subtable) > .pg-prog-table { grid-column: 1; }
-  :root #prog-degradation .pg-prog-card:has(> .pg-prog-subtable) > .pg-prog-subtable {
-    grid-column: 2;
-    padding-block-start: 0;
-    border-block-start: 0;
-  }
 }
 
 /* ==========================================================================
    WIDE (≥1920) — more side-by-side.
    ========================================================================== */
 @media (min-width: 1920px) {
-  /* Forecast multiples 3-up, each near its native 560 px drawing width. */
-  :root .pg-prog .pg-prog-multiples {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 16px 28px;
-  }
-
-  /* Explanation: contribution table left; rule trace + counterfactual right. */
-  :root #an-explanation .pg-analysis-section-body:has(> .pg-analysis-block.is-table ~ .pg-analysis-block.is-table) {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
-    grid-auto-flow: row dense;
-    column-gap: 40px;
-    align-items: start;
-  }
-  :root #an-explanation .pg-analysis-section-body > * { grid-column: 1 / -1; }
-  :root #an-explanation .pg-analysis-section-body > .pg-analysis-block.is-table:first-of-type {
-    grid-column: 1;
-    grid-row: span 2;
-  }
-  :root #an-explanation .pg-analysis-section-body > .pg-analysis-block.is-table ~ .pg-analysis-block.is-table { grid-column: 2; }
-
   /* Diagnosis: evidence matrix left; propagation flow + facts right. */
   :root #an-diagnosis .pg-analysis-section-body:has(> .pg-analysis-block > .pg-analysis-chart-scroll) {
     display: grid;

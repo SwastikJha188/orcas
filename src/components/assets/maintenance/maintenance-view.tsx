@@ -192,12 +192,13 @@ async function call<T = unknown>(url: string, method: "POST" | "DELETE", body: u
   }
 }
 
+/** One machine's equipment or instrument checklist, hosted by Maintenance › Work orders & checklists. */
 export function MaintenanceView({ machine, kind }: { machine: AssetMachine; kind: ChecklistKind }) {
   const url = `/api/maintenance?machineId=${encodeURIComponent(machine.id)}&kind=${kind}`;
   const api = useApi<MaintenanceChecklist>(url);
   const sim = useKilnSimulationFor(machine.id);
   const tz = useSiteTimeZone({ machineId: machine.id });
-  const { setActiveSubPage } = useIndustrialData();
+  const { navigateToMachine } = useIndustrialData();
 
   const [roundId, setRoundId] = useState<RoundId | null>(null);
   const [unitCode, setUnitCode] = useState<string>("all");
@@ -393,9 +394,9 @@ export function MaintenanceView({ machine, kind }: { machine: AssetMachine; kind
       } catch {
         /* storage unavailable */
       }
-      setActiveSubPage("sensors");
+      navigateToMachine(machine.id, "sensors");
     },
-    [setActiveSubPage],
+    [navigateToMachine, machine.id],
   );
 
   const lastRecord = data?.records[0] ?? null;

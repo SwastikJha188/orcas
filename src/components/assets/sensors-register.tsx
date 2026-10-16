@@ -7,6 +7,7 @@ import { PillButton, PillNav } from "@/components/ui";
 import { IconClose, IconMore, IconSensor, SearchPill, StatusTag, Ticks, severityTone } from "./assets-shell-ui";
 import { Sparkline } from "@/components/ui/sparkline";
 import { LimitBar, gaugeScale, twoSided, twoSidedLoad } from "./sensor-gauge";
+import { SensorTileChart } from "./sensor-tile-chart";
 import { isRelativeLimit, limitNum, limitSummary, resolveLimit } from "@/lib/kiln-sim/signals";
 import { PYRO_D5_LIMITS } from "@/lib/pyro-sim/limits";
 import { sensorAlarmLoad, type SensorScope } from "./sensor-mapping-diagram";
@@ -440,6 +441,8 @@ function SensorTile({ s, ctx, selected, onSelect }: { s: SensorRow; ctx: Sensors
   const { tag, calc, manual, scanner, slot, rate, load, unit, hold, place, reg } = rowFacts(s, ctx);
   const tone = s.status === "Normal" ? undefined : severityTone(s.status);
   const rack = scanner ? "Scanner" : calc ? "Gateway" : manual ? "Manual" : slot;
+  const history = s.live ? ctx.frame?.history[tag] : s.livePoint ? ctx.history[s.livePoint.pointId] : undefined;
+  const model = s.live ? ctx.frame?.modelHistory[tag] : undefined;
   return (
     <button type="button" className="pg-sensors-tile" data-tone={tone} aria-pressed={selected} onClick={onSelect}>
       <span className="pg-sensors-tile-top">
@@ -461,13 +464,25 @@ function SensorTile({ s, ctx, selected, onSelect }: { s: SensorRow; ctx: Sensors
       </span>
 
       <span className="pg-sensors-tile-value">
-        <LiveReading s={s} unit={unit} load={load} />
+        <span className="ast-sm-reading pg-sensors-reading">
+          <span className="ast-reading-val ast-num">
+            {s.value || "—"}
+            {unit && <span className="ast-unit">{unit}</span>}
+          </span>
+        </span>
+        {load !== null && (
+          <span className="ast-caption ast-num" title={load.title}>
+            {load.pct} % of limit
+          </span>
+        )}
         {s.outOfRange && (
           <span className="pg-sensors-flag" data-tone="bad" title="Reading is outside the instrument range (calc.)">
             out of range
           </span>
         )}
       </span>
+
+      <SensorTileChart s={s} history={history} model={model} span={s.live ? "min" : "reading"} />
 
       {s.q.quality !== "Valid" && <QualityMark row={s} prefix="Data " />}
 

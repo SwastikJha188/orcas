@@ -7,9 +7,10 @@
  * tick the fleet hands it each live machine's health and the wall-clock time,
  * averaged into fixed HEALTH_STEP_MS buckets and kept for HEALTH_KEEP_MS.
  *
- * The history survives a reload (localStorage, per browser); minutes when the
- * page was closed or hidden stay empty and draw as gaps. Pure TypeScript; the
- * storage calls are guarded so it also runs headless.
+ * The history survives a reload (localStorage, per browser), and the server's
+ * always-on plant (src/server/plant) records the same buckets while no page
+ * is open; `mergeHealth` folds those in. Minutes nobody recorded draw as gaps.
+ * Pure TypeScript; the storage calls are guarded so it also runs headless.
  */
 
 export const HEALTH_STEP_MS = 10_000;
@@ -100,6 +101,38 @@ export function recordHealth(values: Record<string, number>, now = Date.now()): 
     tr.cur.n += 1;
   }
   if (now - lastSave >= SAVE_EVERY_MS) save(now);
+}
+
+/**
+ * Merge buckets recorded elsewhere (the server's always-on plant) into the
+ * tracks: where both hold a bucket the server's wins, since it recorded the
+ * same plant without the page's pauses; this page's running bucket is kept.
+ */
+export function mergeHealth(series: Record<string, { t0: number; v: Array<number | null> }>, step: number): void {
+  if (step !== HEALTH_STEP_MS) return;
+  load();
+  for (const [id, s] of Object.entries(series)) {
+    if (!s.v.length || s.t0 % HEALTH_STEP_MS !== 0) continue;
+    const tr = tracks.get(id);
+    const t0 = tr ? Math.min(tr.t0, s.t0) : s.t0;
+    const end = Math.max(tr ? tr.t0 + tr.v.length * HEALTH_STEP_MS : 0, s.t0 + s.v.length * HEALTH_STEP_MS);
+    // Never past this page's running bucket: it folds in when its bucket closes.
+    const stop = tr?.cur ? Math.min(end, tr.cur.start) : end;
+    const v: Array<number | null> = new Array(Math.max(0, (stop - t0) / HEALTH_STEP_MS)).fill(null);
+    if (tr) tr.v.forEach((x, i) => (v[(tr.t0 - t0) / HEALTH_STEP_MS + i] = x));
+    s.v.forEach((x, i) => {
+      const k = (s.t0 - t0) / HEALTH_STEP_MS + i;
+      if (x !== null && k < v.length) v[k] = x;
+    });
+    const merged: Track = { t0, v, cur: tr?.cur ?? null };
+    const extra = merged.v.length - KEEP_STEPS;
+    if (extra > 0) {
+      merged.v.splice(0, extra);
+      merged.t0 += extra * HEALTH_STEP_MS;
+    }
+    tracks.set(id, merged);
+  }
+  save(Date.now());
 }
 
 /** Persist now (e.g. on `pagehide`). */

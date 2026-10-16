@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { Tile, TileGrid } from "@/components/ui";
 import { formatDuration, type SimFrame } from "@/lib/kiln-sim/engine";
 import { KindIcon, sensorKind } from "./diagnostics-overview-tab";
 import { VALIDITY_LABEL, VALIDITY_TONE, type DxSensor, type Validity } from "./diagnosis-model";
@@ -11,7 +12,8 @@ import { twoSided, twoSidedText, twoSidedValues, type TwoSided } from "./sensor-
    Evidence & signal validity: the sensors behind the findings — value
    against alert / alarm limits, expected value and residual (σ) against the
    reference model (D5 Table 9.5), validation state (D5 Table 9.6) and the
-   rules that cite them. The full register lives on Sensors.
+   rules that cite them, one card per sensor (residual of the last hour as
+   a band sparkline). The full register lives on Sensors.
    ========================================================================== */
 
 export function evidenceRowId(tag: string): string {
@@ -23,6 +25,9 @@ function fmt(v: number): string {
   return v.toFixed(a >= 1000 ? 0 : a >= 100 ? 1 : 2);
 }
 
+/** Horizontal position on a limit bar as a percentage (3 %–97 %), so the bar scales with its card. */
+const pctX = (n: number, d0: number, d1: number) => `${(3 + ((n - d0) / (d1 - d0)) * 94).toFixed(2)}%`;
+
 /** Two-sided (band / |x|) limit: both sides on one scale, warning ticks inside the alarm ticks. */
 function BandLimitBar({ s, v, band }: { s: DxSensor; v: number; band: TwoSided }) {
   const pts = [v, ...twoSidedValues(band), ...(s.model !== null ? [s.model] : [])];
@@ -31,8 +36,7 @@ function BandLimitBar({ s, v, band }: { s: DxSensor; v: number; band: TwoSided }
   const pad = (hi - lo) * 0.12 || 1;
   const d0 = lo - pad;
   const d1 = hi + pad;
-  const W = 120;
-  const x = (n: number) => 4 + ((n - d0) / (d1 - d0)) * (W - 8);
+  const x = (n: number) => pctX(n, d0, d1);
   const dot = s.severity === "Critical" ? "var(--status-danger)" : s.severity === "Advisory" ? "var(--status-warning)" : "var(--dx-ink-2)";
   const warn = twoSidedText(band.warnLo, band.warnHi);
   const alarm = twoSidedText(band.alarmLo, band.alarmHi);
@@ -43,10 +47,10 @@ function BandLimitBar({ s, v, band }: { s: DxSensor; v: number; band: TwoSided }
     [band.alarmHi, "var(--status-danger)"],
   ];
   return (
-    <svg className="dxo-limit-bar" viewBox={`0 0 ${W} 14`} role="img" aria-label={`${fmt(v)} ${s.unit}; warning ${warn}; alarm ${alarm} ${s.unit}${s.model !== null ? `; model ${fmt(s.model)}` : ""}`}>
+    <svg className="dxo-limit-bar" width="100%" height="14" role="img" aria-label={`${fmt(v)} ${s.unit}; warning ${warn}; alarm ${alarm} ${s.unit}${s.model !== null ? `; model ${fmt(s.model)}` : ""}`}>
       <title>{`Value ${fmt(v)} ${s.unit} · Warning ${warn} · Alarm ${alarm}${s.model !== null ? ` · Model ${fmt(s.model)}` : ""} ${s.unit}`}</title>
-      <rect x="4" y="6" width={W - 8} height="2" rx="1" fill="var(--dx-track)" />
-      {ticks.map(([t, fill], i) => (t === undefined ? null : <rect key={i} x={x(t) - 1} y="2" width="2" height="10" rx="1" fill={fill} />))}
+      <rect x="0" y="6" width="100%" height="2" rx="1" fill="var(--dx-track)" />
+      {ticks.map(([t, fill], i) => (t === undefined ? null : <rect key={i} x={x(t)} y="2" width="2" height="10" rx="1" fill={fill} transform="translate(-1 0)" />))}
       {s.model !== null && <circle cx={x(s.model)} cy="7" r="3.5" fill="none" stroke="var(--dx-ink-2)" strokeWidth="1.2" />}
       <circle cx={x(v)} cy="7" r="4" fill={dot} stroke="var(--card-bg)" strokeWidth="2" />
     </svg>
@@ -66,15 +70,14 @@ function ModelLimitBar({ s, band }: { s: DxSensor; band: TwoSided | null }) {
   const pad = (hi - lo) * 0.12 || 1;
   const d0 = lo < 0 ? lo - pad : 0;
   const d1 = hi + pad;
-  const W = 120;
-  const x = (n: number) => 4 + ((n - d0) / (d1 - d0)) * (W - 8);
+  const x = (n: number) => pctX(n, d0, d1);
   const dot = s.severity === "Critical" ? "var(--status-danger)" : s.severity === "Advisory" ? "var(--status-warning)" : "var(--dx-ink-2)";
   return (
-    <svg className="dxo-limit-bar" viewBox={`0 0 ${W} 14`} role="img" aria-label={`${fmt(v)} ${s.unit}; warning ${w}; alarm ${a} ${s.unit}${s.model !== null ? `; model ${fmt(s.model)}` : ""}`}>
+    <svg className="dxo-limit-bar" width="100%" height="14" role="img" aria-label={`${fmt(v)} ${s.unit}; warning ${w}; alarm ${a} ${s.unit}${s.model !== null ? `; model ${fmt(s.model)}` : ""}`}>
       <title>{`Value ${fmt(v)} ${s.unit} · Warning ${w} · Alarm ${a}${s.model !== null ? ` · Model ${fmt(s.model)}` : ""} ${s.unit}`}</title>
-      <rect x="4" y="6" width={W - 8} height="2" rx="1" fill="var(--dx-track)" />
-      <rect x={x(w) - 1} y="2" width="2" height="10" rx="1" fill="var(--status-warning)" />
-      <rect x={x(a) - 1} y="2" width="2" height="10" rx="1" fill="var(--status-danger)" />
+      <rect x="0" y="6" width="100%" height="2" rx="1" fill="var(--dx-track)" />
+      <rect x={x(w)} y="2" width="2" height="10" rx="1" fill="var(--status-warning)" transform="translate(-1 0)" />
+      <rect x={x(a)} y="2" width="2" height="10" rx="1" fill="var(--status-danger)" transform="translate(-1 0)" />
       {s.model !== null && <circle cx={x(s.model)} cy="7" r="3.5" fill="none" stroke="var(--dx-ink-2)" strokeWidth="1.2" />}
       <circle cx={x(v)} cy="7" r="4" fill={dot} stroke="var(--card-bg)" strokeWidth="2" />
     </svg>
@@ -104,17 +107,17 @@ function ResidualBandSpark({ frame, tag }: { frame: SimFrame | null; tag: string
   const h = frame?.history[tag];
   const m = frame?.modelHistory[tag];
   const sigma = frame?.defs.signalByTag[tag]?.sigma;
-  if (!h || !m || !sigma || h.length < 2) return <span className="dxo-none">—</span>;
+  if (!h || !m || !sigma || h.length < 2) return null;
   const n = Math.min(60, h.length, m.length);
   const r = Array.from({ length: n }, (_, i) => (h[h.length - n + i] - m[m.length - n + i]) / sigma);
-  const W = 96;
-  const H = 22;
+  const W = 240;
+  const H = 24;
   const lim = Math.max(4, ...r.map((v) => Math.abs(v)));
   const y = (v: number) => H / 2 - (v / lim) * (H / 2 - 1);
   const x = (i: number) => (i / (n - 1)) * W;
   const d = r.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
   return (
-    <svg className="pg-diag-spark" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${tag} residual, last ${formatDuration(n)}, now ${r[n - 1].toFixed(1)} sigma`}>
+    <svg className="pg-diag-spark" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={`${tag} residual, last ${formatDuration(n)}, now ${r[n - 1].toFixed(1)} sigma`}>
       <rect x="0" y={y(2)} width={W} height={y(-2) - y(2)} className="pg-diag-spark-band" />
       <line x1="0" x2={W} y1={y(3)} y2={y(3)} className="pg-diag-spark-lim" />
       <line x1="0" x2={W} y1={y(-3)} y2={y(-3)} className="pg-diag-spark-lim" />
@@ -125,7 +128,7 @@ function ResidualBandSpark({ frame, tag }: { frame: SimFrame | null; tag: string
 
 const VALIDITY_ORDER: Validity[] = ["valid", "suspect", "invalid", "stale", "unvalidated"];
 
-export function EvidenceTable({
+export function EvidenceCards({
   sensors,
   allSensors,
   frame,
@@ -139,7 +142,7 @@ export function EvidenceTable({
   sensors: DxSensor[];
   allSensors: DxSensor[];
   frame: SimFrame | null;
-  /** Selected rule the table is scoped to, if any. */
+  /** Selected rule the cards are scoped to, if any. */
   scopeLabel: string | null;
   citedBy: Map<string, string[]>;
   onClearScope: () => void;
@@ -150,20 +153,21 @@ export function EvidenceTable({
   const [showAll, setShowAll] = useState(false);
   const rows = showAll && !scopeLabel ? allSensors : sensors;
   const counts = VALIDITY_ORDER.map((v) => ({ v, n: allSensors.filter((s) => s.validity === v).length })).filter((c) => c.n > 0);
+  const pyro = frame?.defs.plant === "pyro";
 
   return (
-    <div className="dxo-card dxo-table-card">
-      <div className="dxo-card-head pg-diag-card-head">
-        <span className="ast-caption ast-num pg-diag-pipe" aria-label="Sensor validity across the machine">
+    <>
+      <div className="ui-tiles-head pg-diag-card-head">
+        <span className="ast-num pg-diag-pipe" aria-label="Sensor validity across the machine">
           {counts.map((c) => (
             <span key={c.v}>
               {c.n} {VALIDITY_LABEL[c.v].toLowerCase()}
             </span>
           ))}
           {frame && frame.pipeline.held > 0 && <span>{frame.pipeline.held} held</span>}
-          {frame?.defs.plant === "pyro" && <span title="D4 §7.2: no pyro-line limit is plant-approved">demo limits · not plant-approved (D4 §7.2)</span>}
+          {pyro && <span title={PYRO_DEMO_LIMIT}>demo limits · not plant-approved (D4 §7.2)</span>}
         </span>
-        <div className="dxo-toolbar-group">
+        <span className="dxo-toolbar-group">
           {scopeLabel ? (
             <button type="button" className="dxo-filter-chip" onClick={onClearScope} aria-label={`Clear rule filter ${scopeLabel}`}>
               Read by {scopeLabel}
@@ -179,11 +183,11 @@ export function EvidenceTable({
           <button type="button" className="dxo-link" onClick={() => onOpenSensor()}>
             Sensor mapping
           </button>
-        </div>
+        </span>
       </div>
 
       {rows.length === 0 ? (
-        <div className="dxo-empty">
+        <p className="pg-diag-missing">
           {loading
             ? "Loading sensor catalog…"
             : allSensors.length === 0
@@ -191,95 +195,61 @@ export function EvidenceTable({
               : scopeLabel
                 ? "This rule reads no mapped sensor."
                 : "No sensor in excursion, flagged or cited."}
-        </div>
+        </p>
       ) : (
-        <div className="dxo-table-wrap">
-          <table className="dxo-table pg-diag-table">
-            <thead>
-              <tr>
-                <th scope="col">Sensor</th>
-                <th scope="col" className="is-right">Value</th>
-                <th scope="col" className="is-right">Model</th>
-                <th scope="col" title={frame?.defs.plant === "pyro" ? PYRO_DEMO_LIMIT : undefined}>
-                  Value vs warning / alarm{frame?.defs.plant === "pyro" ? " (demo)" : ""}
-                </th>
-                <th scope="col" className="is-right">Residual</th>
-                <th scope="col">Residual trend</th>
-                <th scope="col">Validity</th>
-                <th scope="col">Cited by</th>
-                <th scope="col" className="is-right">
-                  <span className="dxo-sr">Links</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((s) => {
-                const sc = s.severity === "Critical" ? "is-bad" : s.severity === "Advisory" ? "is-warn" : "";
-                const tone = s.severity === "Critical" ? "bad" : s.severity === "Advisory" ? "warn" : undefined;
-                const rules = citedBy.get(s.tag) ?? [];
-                return (
-                  <tr key={s.tag} id={evidenceRowId(s.tag)} className="dxo-row pg-diag-evrow">
-                    <td>
-                      <div className="dxo-ident">
-                        <span className="ast-badge" data-tone={tone}>
-                          <KindIcon kind={sensorKind(s.sensorType, s.unit, s.tag)} />
-                        </span>
-                        <div className="ast-cell-stack">
-                          <span className="dxo-primary-text">{s.tag}</span>
-                          <span className="dxo-secondary-text pg-diag-wrap">{[s.name, s.subAssembly].filter(Boolean).join(" · ")}{s.timeToLimit ? ` · limit in ${s.timeToLimit} (est.)` : ""}</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="is-right">
-                      <span className={`dxo-readout ${sc}`}>
-                        <strong>{s.value !== null ? fmt(s.value) : s.display}</strong>
-                        {s.value !== null && <span>{s.unit}</span>}
-                      </span>
-                    </td>
-                    <td className="is-right ast-num pg-diag-muted">{s.model !== null ? fmt(s.model) : <span className="dxo-none">—</span>}</td>
-                    <td>
-                      <ModelLimitBar s={s} band={s.band ?? twoSided(frame?.defs.signalByTag[s.tag]?.limit, s.model)} />
-                    </td>
-                    <td className="is-right ast-num">
-                      {s.z !== null ? (
-                        <span className={Math.abs(s.z) >= 3 ? "dxo-tone-text-bad" : Math.abs(s.z) >= 2 ? "dxo-tone-text-warn" : ""}>
-                          {s.z >= 0 ? "+" : "−"}
-                          {Math.abs(s.z).toFixed(1)} σ
-                        </span>
-                      ) : (
-                        <span className="dxo-none">—</span>
-                      )}
-                    </td>
-                    <td>
-                      <ResidualBandSpark frame={frame} tag={s.tag} />
-                    </td>
-                    <td>
-                      <span className="ast-cell-stack">
-                        <span className="pg-diag-state" data-tone={VALIDITY_TONE[s.validity] === "good" ? "idle" : VALIDITY_TONE[s.validity]}>
-                          <span className="ast-chip-dot" aria-hidden="true" />
-                          {VALIDITY_LABEL[s.validity]}
-                        </span>
-                        {s.qualityNote && <span className="dxo-secondary-text pg-diag-wrap">{s.qualityNote}</span>}
-                      </span>
-                    </td>
-                    <td>{rules.length ? <span className="pg-diag-cited">{rules.join(", ")}</span> : <span className="dxo-none">—</span>}</td>
-                    <td className="is-right">
-                      <span className="pg-diag-row-actions">
-                        <button type="button" className="dxo-icon-btn" aria-label={`Open trend for ${s.tag}`} title="Trend" onClick={() => onOpenTrend(s.tag)}>
-                          <TrendIcon />
-                        </button>
-                        <button type="button" className="dxo-icon-btn" aria-label={`Open ${s.tag} on Sensor mapping`} title="Sensor mapping" onClick={() => onOpenSensor(s.tag)}>
-                          <MapIcon />
-                        </button>
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <TileGrid label="Sensor evidence" min={240} className="pg-diag-tiles">
+          {rows.map((s) => {
+            const tone = s.severity === "Critical" ? "bad" : s.severity === "Advisory" ? "warn" : undefined;
+            const vTone = VALIDITY_TONE[s.validity];
+            const rules = citedBy.get(s.tag) ?? [];
+            const zTone = s.z !== null && Math.abs(s.z) >= 3 ? "bad" : s.z !== null && Math.abs(s.z) >= 2 ? "warn" : undefined;
+            const foot = [s.timeToLimit ? `limit in ${s.timeToLimit} (est.)` : null, s.qualityNote].filter(Boolean).join(" · ");
+            return (
+              <Tile
+                key={s.tag}
+                className="pg-diag-tile pg-diag-evtile"
+                attrs={{ id: evidenceRowId(s.tag), "data-tag": s.tag }}
+                title={
+                  <span className="pg-diag-ev-title">
+                    <span className="ast-badge" data-tone={tone}>
+                      <KindIcon kind={sensorKind(s.sensorType, s.unit, s.tag)} />
+                    </span>
+                    {s.tag}
+                  </span>
+                }
+                sub={[s.name, s.subAssembly].filter(Boolean).join(" · ")}
+                status={{ label: VALIDITY_LABEL[s.validity], tone: vTone === "good" ? undefined : vTone }}
+                tone={tone}
+                value={s.value !== null ? fmt(s.value) : s.display}
+                unit={s.value !== null ? s.unit : undefined}
+                meter={
+                  <span className="pg-diag-ev-bar" title={pyro ? PYRO_DEMO_LIMIT : undefined}>
+                    <ModelLimitBar s={s} band={s.band ?? twoSided(frame?.defs.signalByTag[s.tag]?.limit, s.model)} />
+                  </span>
+                }
+                facts={[
+                  { label: "Model", value: s.model !== null ? fmt(s.model) : "—" },
+                  { label: "Residual", value: s.z !== null ? `${s.z >= 0 ? "+" : "−"}${Math.abs(s.z).toFixed(1)} σ` : "—", tone: zTone },
+                  { label: "Cited by", value: rules.length ? rules.join(", ") : "—" },
+                ]}
+                foot={foot || undefined}
+                actions={
+                  <>
+                    <button type="button" className="dxo-icon-btn" aria-label={`Open trend for ${s.tag}`} title="Trend" onClick={() => onOpenTrend(s.tag)}>
+                      <TrendIcon />
+                    </button>
+                    <button type="button" className="dxo-icon-btn" aria-label={`Open ${s.tag} on Sensor mapping`} title="Sensor mapping" onClick={() => onOpenSensor(s.tag)}>
+                      <MapIcon />
+                    </button>
+                  </>
+                }
+              >
+                <ResidualBandSpark frame={frame} tag={s.tag} />
+              </Tile>
+            );
+          })}
+        </TileGrid>
       )}
-    </div>
+    </>
   );
 }

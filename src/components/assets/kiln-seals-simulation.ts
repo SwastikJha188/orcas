@@ -54,9 +54,9 @@ import {
 } from "@/lib/pyro-sim/engine";
 import { PYRO_FLEET } from "@/lib/pyro-sim/fleet";
 import { recordFrames } from "@/lib/condition-report";
-import { flushHealth, recordHealth } from "@/lib/health-recorder";
-import { finishFleet, prerollFleet, type FleetEngines, type FleetSnapshot } from "@/lib/fleet-boot";
-import type { FleetBootRequest } from "@/lib/fleet-boot.worker";
+import { flushHealth, mergeHealth, recordHealth, HEALTH_KEEP_MS } from "@/lib/health-recorder";
+import { finishFleet, loadFleet, type FleetEngines } from "@/lib/fleet-boot";
+import type { FleetBootRequest, FleetBootResult } from "@/lib/fleet-boot.worker";
 import { PYRO_SCENARIOS, pyroScenario } from "@/lib/pyro-sim/scenarios";
 import { PYRO_MACHINE_IDS } from "@/lib/pyro-sim/signals";
 
@@ -200,18 +200,19 @@ const isPyro = (id: string) => PYRO_MACHINE_IDS.has(id);
 
 // The engines are built once per page, and React may discard a first render
 // (a lazy tab suspending, StrictMode), so they live here rather than in a ref.
-// Building them (warm-up + pre-roll) takes most of a second; a worker does
-// that so the page never freezes, and the last minute is stepped here so the
-// frames are this page's own. Until they arrive the fleet is empty and pages
-// show their non-live values, as they do outside the provider.
+// The page resumes the server's always-on plant (src/server/plant), caught up
+// to now, or pre-rolls its own when none is running; either takes most of a
+// second, so a worker does it and the page never freezes. The last minute is
+// stepped here so the frames are this page's own. Until they arrive the fleet
+// is empty and pages show their non-live values, as they do outside the provider.
 let fleetEngines: FleetEngines | null = null;
 let fleetBoot: Promise<FleetEngines> | null = null;
 
 function bootFleet(): Promise<FleetEngines> {
-  return (fleetBoot ??= new Promise<FleetSnapshot>((resolve) => {
+  return (fleetBoot ??= new Promise<FleetBootResult>((resolve) => {
     // All engines run on one clock: the first frame lands on "now".
     const request: FleetBootRequest = { nowMs: Date.now(), msPerMin: msPerMin(1) };
-    const onMainThread = () => resolve(prerollFleet(request.nowMs, request.msPerMin));
+    const onMainThread = () => void loadFleet(request.nowMs, request.msPerMin, window.location.origin).then(resolve);
     let worker: Worker;
     try {
       worker = new Worker(new URL("../../lib/fleet-boot.worker.ts", import.meta.url));
@@ -219,7 +220,7 @@ function bootFleet(): Promise<FleetEngines> {
       onMainThread();
       return;
     }
-    worker.onmessage = (e: MessageEvent<FleetSnapshot>) => {
+    worker.onmessage = (e: MessageEvent<FleetBootResult>) => {
       worker.terminate();
       resolve(e.data);
     };
@@ -228,7 +229,26 @@ function bootFleet(): Promise<FleetEngines> {
       onMainThread();
     };
     worker.postMessage(request);
-  }).then((snap) => (fleetEngines = finishFleet(snap, (tEnd) => anchorClock(tEnd, 1)))));
+  }).then(({ snap, resumed }) => {
+    fleetEngines = finishFleet(snap, (tEnd) => anchorClock(tEnd, 1), !resumed);
+    void syncHealthHistory();
+    return fleetEngines;
+  }));
+}
+
+/**
+ * Fill Health over time with what the server recorded (src/server/plant), so
+ * the charts cover their whole window, including time no page was open.
+ */
+async function syncHealthHistory(): Promise<void> {
+  try {
+    const res = await fetch(`/api/plant/health?from=${Date.now() - HEALTH_KEEP_MS}`, { cache: "no-store" });
+    if (!res.ok) return;
+    const { data } = (await res.json()) as { data: { step: number; series: Record<string, { t0: number; v: Array<number | null> }> } };
+    mergeHealth(data.series, data.step);
+  } catch {
+    /* no server history: the charts show what this browser recorded */
+  }
 }
 
 /** What the Simulation page shows of the line's demo layer: its knobs and the events layered on it. */
@@ -326,6 +346,7 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
       const missed = Math.min(MAX_CATCH_UP, Math.floor((Date.now() - hiddenSince) / TICK_MS) * speedMultiplier);
       hiddenSince = null;
       if (missed >= 1) stepAll(missed);
+      void syncHealthHistory();
     };
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("pagehide", flushHealth);

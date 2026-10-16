@@ -30,10 +30,9 @@ import {
   type DxSensor,
 } from "./diagnosis-model";
 import { diagnosisKpis } from "./diagnosis-summary";
-import { AlarmTable, type Shelf } from "./diagnosis-alarms";
+import { AlarmCards, type Shelf } from "./diagnosis-alarms";
 import { FaultCandidates, type Feedback } from "./diagnosis-findings";
-import { EvidenceTable } from "./diagnosis-evidence";
-import { VibrationSeverity } from "./diagnosis-vibration";
+import { EvidenceCards } from "./diagnosis-evidence";
 import "./diagnosis/overview-tab.css";
 import "./analysis/analysis-page.css";
 import "./diagnosis-page.css";
@@ -43,7 +42,7 @@ import "./diagnosis-page.css";
    now?" One scrolling page with a sticky section index:
 
    Alarms · Diagnosis (machine faults, then data-quality / service items)
-   · Evidence (signal validity, vibration severity)
+   · Evidence (signal validity)
 
    Live machines (kiln fleet, pyro line) read the live rule engine and the
    rule library in `frame.defs` (persistence 2–4 samples / 1 critical,
@@ -184,7 +183,6 @@ export function DiagnosisView({ machine, onNavigateToSensors, onNavigateToTrends
     if (a.state === "confirming") return `${a.persistence} sample${a.persistence === 1 ? "" : "s"} ago`;
     return a.since !== null ? fmtT(a.since) : null;
   };
-  const vibration = useMemo(() => sensors.filter((s) => s.isVibration), [sensors]);
 
   const acknowledge = useCallback(
     (ruleId: string) => {
@@ -302,8 +300,8 @@ export function DiagnosisView({ machine, onNavigateToSensors, onNavigateToTrends
       {indexItems.length > 1 && <SectionIndex items={indexItems} label="Diagnosis sections" pendingKey={DIAGNOSIS_SECTION_KEY} right={scopeChip} />}
 
       {show.alarms && frame && (
-        <Section id="dx-alarms" title="Alarms">
-          <AlarmTable
+        <Section bare id="dx-alarms" title="Alarms">
+          <AlarmCards
             alarms={alarms}
             shelved={activeShelves}
             t={frame.t}
@@ -321,7 +319,7 @@ export function DiagnosisView({ machine, onNavigateToSensors, onNavigateToTrends
       )}
 
       {show.diagnosis && (
-        <Section id="dx-diagnosis" title="Diagnosis">
+        <Section bare id="dx-diagnosis" title="Diagnosis">
           {open.length > 0 ? (
             <FaultCandidates
               findings={open}
@@ -343,8 +341,8 @@ export function DiagnosisView({ machine, onNavigateToSensors, onNavigateToTrends
       )}
 
       {show.evidence && (
-        <Section id="dx-evidence" title="Evidence">
-          <EvidenceTable
+        <Section bare id="dx-evidence" title="Evidence">
+          <EvidenceCards
             sensors={evidence}
             allSensors={sensors}
             frame={frame}
@@ -355,7 +353,6 @@ export function DiagnosisView({ machine, onNavigateToSensors, onNavigateToTrends
             onOpenSensor={openSensor}
             loading={catalog.isLoading}
           />
-          {vibration.length > 0 && <VibrationSeverity sensors={vibration} onOpenTrend={openTrend} />}
         </Section>
       )}
 

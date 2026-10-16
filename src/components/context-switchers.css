@@ -66,6 +66,15 @@
   background: var(--tone, var(--text-muted));
 }
 
+/* Narrow top bar: icon-only triggers so the action cluster never overflows. */
+@media (max-width: 900px) {
+  .navbar .ctx-sep,
+  .navbar .ctx-trigger-label,
+  .navbar .ctx-trigger-chev {
+    display: none;
+  }
+}
+
 /* Sidebar rail placement (.nav-rail) */
 .nav-rail .ctx-switchers {
   display: flex;
