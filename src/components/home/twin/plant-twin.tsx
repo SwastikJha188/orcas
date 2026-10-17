@@ -166,7 +166,7 @@ export function PlantTwin({ plant, lookup, alertsByMachine, liveIds, onOpenMachi
           showLabels
           inset={inset}
           navMode={navMode}
-          persistKey={`plant.${plant.id}`}
+          persistKey={inset && (inset.right > 0 || inset.bottom > 0) ? `plant.${plant.id}` : undefined}
         />
       ) : (
         <div className="ph-twin-loading" role="status">Loading 3D twin…</div>

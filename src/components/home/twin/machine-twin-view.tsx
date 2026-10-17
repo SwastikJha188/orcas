@@ -162,6 +162,10 @@ export function MachineTwinHome({
     setCommand((c) => ({ kind: id ? "focus" : "fit", n: c.n + 1 }));
   };
 
+  useEffect(() => {
+    setCommand((c) => ({ kind: "fit", n: c.n + 1 }));
+  }, [viewMode]);
+
   const renderTwinViewport = (inset: TwinInset) => (
     <div
       className="ph-twin"
@@ -189,7 +193,7 @@ export function MachineTwinHome({
           paints={paints}
           inset={inset}
           navMode={navMode}
-          persistKey={`machine.${machine.id}`}
+          persistKey={viewMode === "twin" ? `machine.${machine.id}` : undefined}
         />
       ) : (
         <div className="ph-twin-loading" role="status">Loading 3D twin…</div>
