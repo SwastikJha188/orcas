@@ -11,12 +11,14 @@ import {
   VPC_CRITICAL_AREAS,
   VPC_DEMO_OPERATING_CASE,
   VPC_MACHINE_ID,
+  VPC_MACHINES,
   VPC_PROCESS_STAGES,
   VPC_VARIANTS,
   type VpcCriticalAreaSpec,
   type VpcProcessStageSpec,
   type VpcVariantRow,
 } from "@/lib/vpc-sim/signals";
+import { conditionTone, toCondition } from "@/components/ui/status";
 import { VPC_COMBINED_FAULT_TABLE, type VpcCombinedRuleSpec } from "@/lib/vpc-sim/rules";
 import { LineSheet, lineSheetCaption, lineSheetHeading } from "./line-sheets/line-sheet";
 import { LINE_SHEETS } from "./line-sheets";
@@ -64,8 +66,42 @@ const CRITICAL_COLS: Column<VpcCriticalAreaSpec>[] = [
 
 export function VpcPlantOverview({ onOpenMachine }: { onOpenMachine: (machineId: string, subPage: AssetsSubPage) => void }) {
   const fleet = useKilnFleet();
-  const frame = fleet[VPC_MACHINE_ID]?.frame ?? null;
+  const [selectedMachineId, setSelectedMachineId] = useState<string>(VPC_MACHINE_ID);
+  const frame = fleet[selectedMachineId]?.frame ?? fleet[VPC_MACHINE_ID]?.frame ?? null;
   const [sheetId, setSheetId] = useState<string>("V-0");
+
+  const unitRows = VPC_MACHINES.map((m) => {
+    const f = fleet[m.id]?.frame;
+    const activeRule = f?.rules.find((r) => r.status === "ACTIVE" && r.category !== "Service life");
+    return {
+      id: m.id,
+      name: m.name,
+      health: f ? Math.round(f.overall) : 99,
+      condition: f?.condition ?? "Healthy",
+      t1: f?.signals.T1?.display ?? "1000",
+      p2: f?.signals.P2?.display ?? "-0.90",
+      p1: f?.signals.P1?.display ?? "1.80",
+      f1: f?.signals.F1?.display ?? "4.5",
+      activeAlert: activeRule ? `${activeRule.id} · ${activeRule.name}` : "All 16 signals within normal limits",
+    };
+  });
+
+  const unitCols: Column<(typeof unitRows)[number]>[] = [
+    { key: "id", header: "Unit", width: "100px", render: (r) => <strong className="ast-mono">{r.id}</strong> },
+    { key: "name", header: "Machine", width: "250px", render: (r) => r.name },
+    {
+      key: "cond",
+      header: "Condition",
+      width: "120px",
+      render: (r) => <StatusTag tone={conditionTone(r.condition)} label={toCondition(r.condition)} />,
+    },
+    { key: "health", header: "Health", width: "90px", render: (r) => <span className="ast-num">{r.health}%</span> },
+    { key: "t1", header: "Melt T1", width: "95px", render: (r) => <span className="ast-num">{r.t1} °C</span> },
+    { key: "p2", header: "Flask P2", width: "105px", render: (r) => <span className="ast-num">{r.p2} bar</span> },
+    { key: "p1", header: "Upper P1", width: "105px", render: (r) => <span className="ast-num">{r.p1} bar</span> },
+    { key: "f1", header: "Water F1", width: "105px", render: (r) => <span className="ast-num">{r.f1} L/min</span> },
+    { key: "alert", header: "Live status / active rule", render: (r) => r.activeAlert },
+  ];
 
   const ruleCols: Column<VpcCombinedRuleSpec>[] = [
     {
@@ -89,27 +125,56 @@ export function VpcPlantOverview({ onOpenMachine }: { onOpenMachine: (machineId:
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
+      {/* 3-Machine Casting Cell Fleet Table */}
+      <section className="ast-card pg-table-card" aria-label="Casting Cell Machines">
+        <div className="ast-card-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+          <h2 className="ast-card-title">Casting Cell Units (3 × Schultheiss VPC 066)</h2>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {VPC_MACHINES.map((m) => {
+              const cond = fleet[m.id]?.frame?.condition ?? "Healthy";
+              return (
+                <PillButton
+                  key={m.id}
+                  variant={selectedMachineId === m.id ? "primary" : "secondary"}
+                  onClick={() => setSelectedMachineId(m.id)}
+                >
+                  {m.id} · {toCondition(cond)}
+                </PillButton>
+              );
+            })}
+          </div>
+        </div>
+        <Table
+          columns={unitCols}
+          data={unitRows}
+          keyExtractor={(r) => r.id}
+          onRowClick={(r) => onOpenMachine(r.id, "overview")}
+        />
+      </section>
+
       {/* Interactive V-0 … V-7 Diagram Pack */}
       <section className="ast-card" aria-label="VPC 066 schematic and detail sheets">
         <div className="ast-card-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
           <div>
-            <h2 className="ast-card-title">{lineSheetHeading(sheetId)}</h2>
+            <h2 className="ast-card-title">
+              {selectedMachineId} · {lineSheetHeading(sheetId).replace(/^VPC-066 · /, "")}
+            </h2>
             <div className="ast-caption">{lineSheetCaption(sheetId)}</div>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <PillButton variant="primary" onClick={() => onOpenMachine(VPC_MACHINE_ID, "overview")}>
+            <PillButton variant="primary" onClick={() => onOpenMachine(selectedMachineId, "overview")}>
               Machine Overview
             </PillButton>
-            <PillButton variant="secondary" onClick={() => onOpenMachine(VPC_MACHINE_ID, "sensors")}>
+            <PillButton variant="secondary" onClick={() => onOpenMachine(selectedMachineId, "sensors")}>
               Sensors
             </PillButton>
-            <PillButton variant="secondary" onClick={() => onOpenMachine(VPC_MACHINE_ID, "diagnosis")}>
+            <PillButton variant="secondary" onClick={() => onOpenMachine(selectedMachineId, "diagnosis")}>
               Diagnosis
             </PillButton>
-            <PillButton variant="secondary" onClick={() => onOpenMachine(VPC_MACHINE_ID, "prognosis")}>
+            <PillButton variant="secondary" onClick={() => onOpenMachine(selectedMachineId, "prognosis")}>
               Prognosis
             </PillButton>
-            <PillButton variant="secondary" onClick={() => onOpenMachine(VPC_MACHINE_ID, "analysis")}>
+            <PillButton variant="secondary" onClick={() => onOpenMachine(selectedMachineId, "analysis")}>
               Analysis
             </PillButton>
           </div>
@@ -135,13 +200,13 @@ export function VpcPlantOverview({ onOpenMachine }: { onOpenMachine: (machineId:
         </div>
         <LineSheet
           sheetId={sheetId}
-          machineId={VPC_MACHINE_ID}
+          machineId={selectedMachineId}
           frame={frame}
           onOpenSheet={(id) => setSheetId(id)}
           onOpenMachine={(mId) => onOpenMachine(mId, "overview")}
           onSelectTag={(tag) => {
             if (tag) focusSensorOn("sensors", tag);
-            onOpenMachine(VPC_MACHINE_ID, "sensors");
+            onOpenMachine(selectedMachineId, "sensors");
           }}
         />
       </section>
@@ -182,8 +247,8 @@ export function VpcPlantOverview({ onOpenMachine }: { onOpenMachine: (machineId:
       {/* Diagnostic Rules Table */}
       <section className="ast-card pg-table-card" aria-label="Diagnostic Rules">
         <div className="ast-card-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-          <h2 className="ast-card-title">Diagnostic Rules (R-VPC-01 – R-VPC-10)</h2>
-          <PillButton variant="secondary" onClick={() => onOpenMachine(VPC_MACHINE_ID, "diagnosis")}>
+          <h2 className="ast-card-title">Diagnostic Rules (R-VPC-01 – R-VPC-10) · {selectedMachineId}</h2>
+          <PillButton variant="secondary" onClick={() => onOpenMachine(selectedMachineId, "diagnosis")}>
             Open Diagnosis
           </PillButton>
         </div>
@@ -197,7 +262,7 @@ export function VpcPlantOverview({ onOpenMachine }: { onOpenMachine: (machineId:
             } catch {
               /* storage unavailable */
             }
-            onOpenMachine(VPC_MACHINE_ID, "diagnosis");
+            onOpenMachine(selectedMachineId, "diagnosis");
           }}
         />
       </section>

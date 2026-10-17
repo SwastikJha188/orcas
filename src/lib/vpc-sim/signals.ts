@@ -844,6 +844,31 @@ export const VPC_SIGNALS: PyroSignalDef[] = [
 ];
 
 export const VPC_SIGNAL_BY_TAG: Record<string, PyroSignalDef> = Object.fromEntries(VPC_SIGNALS.map((s) => [s.tag, s]));
-export const VPC_MACHINES: PyroMachineDef[] = [VPC_MACHINE];
-export const VPC_MACHINE_BY_ID: Record<string, PyroMachineDef> = { [VPC_MACHINE_ID]: VPC_MACHINE };
-export const VPC_MACHINE_IDS: ReadonlySet<string> = new Set([VPC_MACHINE_ID]);
+
+export const VPC_MACHINES: PyroMachineDef[] = [
+  {
+    ...VPC_MACHINE,
+    id: "VPC-066",
+    code: "VPC-066",
+    name: "Schultheiss VPC 066 — Unit 01",
+    shortName: "VPC 066 #1",
+  },
+  {
+    ...VPC_MACHINE,
+    id: "VPC-067",
+    code: "VPC-067",
+    name: "Schultheiss VPC 066 — Unit 02",
+    shortName: "VPC 066 #2",
+  },
+  {
+    ...VPC_MACHINE,
+    id: "VPC-068",
+    code: "VPC-068",
+    name: "Schultheiss VPC 066 — Unit 03",
+    shortName: "VPC 066 #3",
+  },
+];
+
+export const VPC_MACHINE_BY_ID: Record<string, PyroMachineDef> = Object.fromEntries(VPC_MACHINES.map((m) => [m.id, m]));
+export const VPC_MACHINE_IDS: ReadonlySet<string> = new Set(VPC_MACHINES.map((m) => m.id));
+

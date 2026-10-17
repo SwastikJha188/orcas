@@ -286,7 +286,7 @@ function currentFrames(e: FleetEngines | null): Record<string, SimFrame> {
   return {
     ...Object.fromEntries(Object.entries(e.sims).map(([id, sim]) => [id, sim.frame!])),
     ...Object.fromEntries(Object.entries(e.line.machines).map(([id, ms]) => [id, ms.frame!])),
-    ...(e.vpc.frame ? { [VPC_MACHINE_ID]: e.vpc.frame } : {}),
+    ...Object.fromEntries(Object.entries(e.vpcs).filter(([, v]) => v.frame).map(([id, v]) => [id, v.frame!])),
   };
 }
 
@@ -323,7 +323,7 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
     const frame = isPyro(id)
       ? fleetEngines!.line.machines[id]?.frame
       : isVpc(id)
-        ? fleetEngines!.vpc.frame
+        ? fleetEngines!.vpcs[id]?.frame
         : fleetEngines!.sims[id]?.frame;
     if (frame) setFrames((f) => ({ ...f, [id]: frame }));
     if (isPyro(id)) setLineSim(lineView(fleetEngines!.line));
@@ -342,9 +342,10 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
       const line = fleetEngines!.line;
       for (let i = 1; i < minutes; i++) recordFrames(stepLine(line, false));
       Object.assign(next, recordFrames(stepLine(line, true)));
-      const vpc = fleetEngines!.vpc;
-      for (let i = 1; i < minutes; i++) stepVpcSim(vpc, false);
-      next[VPC_MACHINE_ID] = stepVpcSim(vpc, true);
+      for (const [id, vpc] of Object.entries(fleetEngines!.vpcs)) {
+        for (let i = 1; i < minutes; i++) stepVpcSim(vpc, false);
+        next[id] = stepVpcSim(vpc, true);
+      }
       setFrames(next);
       setLineSim(lineView(line));
       recordFleetHealth(next);
@@ -386,7 +387,8 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
       return;
     }
     if (isVpc(id)) {
-      const vpc = fleetEngines!.vpc;
+      const vpc = fleetEngines!.vpcs[id];
+      if (!vpc) return;
       setVpcAutopilot(vpc, false);
       setVpcScenario(vpc, scenarioId);
       stepVpcSim(vpc, true);
@@ -408,7 +410,8 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
       return;
     }
     if (isVpc(id)) {
-      const vpc = fleetEngines!.vpc;
+      const vpc = fleetEngines!.vpcs[id];
+      if (!vpc) return;
       setVpcAutopilot(vpc, on);
       stepVpcSim(vpc, true);
       refresh(id);
@@ -427,7 +430,8 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
       return;
     }
     if (isVpc(id)) {
-      const vpc = fleetEngines!.vpc;
+      const vpc = fleetEngines!.vpcs[id];
+      if (!vpc) return;
       setVpcProfile(vpc, profile);
       stepVpcSim(vpc, true);
       refresh(id);
@@ -447,7 +451,8 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
       return;
     }
     if (isVpc(id)) {
-      const vpc = fleetEngines!.vpc;
+      const vpc = fleetEngines!.vpcs[id];
+      if (!vpc) return;
       performVpcAction(vpc, ruleId, kind, false);
       stepVpcSim(vpc, true);
       refresh(id);
@@ -473,9 +478,10 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
     const line = fleetEngines!.line;
     for (let i = 1; i < minutes; i++) recordFrames(stepLine(line, false));
     Object.assign(next, recordFrames(stepLine(line, true)));
-    const vpc = fleetEngines!.vpc;
-    for (let i = 1; i < minutes; i++) stepVpcSim(vpc, false);
-    next[VPC_MACHINE_ID] = stepVpcSim(vpc, true);
+    for (const [id, vpc] of Object.entries(fleetEngines!.vpcs)) {
+      for (let i = 1; i < minutes; i++) stepVpcSim(vpc, false);
+      next[id] = stepVpcSim(vpc, true);
+    }
     setFrames(next);
     setLineSim(lineView(line));
     recordFleetHealth(next);

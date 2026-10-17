@@ -25,6 +25,15 @@ export const VPC_DEFS: PlantDefs = {
   processSystems: [],
 };
 
-export const VPC_FLEET: ReadonlyArray<{ machineId: string; profile: "healthy" | "advisory" | "critical" }> = [
-  { machineId: VPC_MACHINE_ID, profile: "advisory" },
+export interface VpcFleetMember {
+  machineId: string;
+  seed: number;
+  profile: "healthy" | "advisory" | "critical";
+}
+
+export const VPC_FLEET: ReadonlyArray<VpcFleetMember> = [
+  { machineId: "VPC-066", seed: 20261016, profile: "healthy" },
+  { machineId: "VPC-067", seed: 20261017, profile: "advisory" },
+  { machineId: "VPC-068", seed: 20261018, profile: "critical" },
 ];
+

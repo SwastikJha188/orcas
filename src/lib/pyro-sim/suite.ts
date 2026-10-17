@@ -13,6 +13,7 @@ import { createVpcSim, setVpcAutopilot, setVpcScenario, stepVpcSim } from "../vp
 import { PYRO_LINE_SEED } from "./fleet";
 import { PYRO_SCENARIOS, type PyroScenario } from "./scenarios";
 import { VPC_SCENARIOS } from "../vpc-sim/scenarios";
+import { VPC_MACHINE_IDS } from "../vpc-sim/signals";
 import type { Affected, Fired, SuiteCase, TestResult } from "../kiln-sim/test-lab";
 
 /** Simulated minutes per scenario. */
@@ -32,7 +33,7 @@ export interface PyroScenarioRun {
 
 /** Start one pyro or VPC scenario on a fresh line. */
 export function startPyroScenarioTest(sc: PyroScenario, seed = PYRO_LINE_SEED): PyroScenarioRun {
-  const isVpc = sc.machine === "VPC-066";
+  const isVpc = VPC_MACHINE_IDS.has(sc.machine);
   const vpcState = isVpc ? createVpcSim(seed) : null;
   const line = isVpc ? null : createLine(seed);
   if (vpcState) {
@@ -55,7 +56,7 @@ export function startPyroScenarioTest(sc: PyroScenario, seed = PYRO_LINE_SEED): 
     const end = Math.min(RUN_MIN, m + Math.max(1, Math.floor(minutes)));
     while (m < end) {
       m += 1;
-      const frames = vpcState ? { "VPC-066": stepVpcSim(vpcState, true) } : stepLine(line!, false);
+      const frames = vpcState ? { [sc.machine]: stepVpcSim(vpcState, true) } : stepLine(line!, false);
       for (const [mid, f] of Object.entries(frames)) {
         for (const r of f.rules) {
           if (r.status !== "ACTIVE") continue;
@@ -123,7 +124,7 @@ export type PyroSuiteCase = SuiteCase & { start: () => PyroScenarioRun };
 
 /** Every library scenario of one pyro or VPC machine except the healthy baseline. */
 export function pyroSuiteCases(machineId: string): PyroSuiteCase[] {
-  const list = machineId === "VPC-066" ? VPC_SCENARIOS : (PYRO_SCENARIOS[machineId] ?? []);
+  const list = VPC_MACHINE_IDS.has(machineId) ? VPC_SCENARIOS : (PYRO_SCENARIOS[machineId] ?? []);
   return list
     .filter((sc) => sc.id !== "healthy")
     .map((sc) => ({ id: sc.id, name: sc.name, run: () => runPyroScenarioTest(sc), start: () => startPyroScenarioTest(sc) }));

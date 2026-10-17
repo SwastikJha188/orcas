@@ -44,7 +44,7 @@ export const DOCUMENTS: Record<ChecklistKind, ChecklistDocument> = {
 };
 
 export function documentsFor(machineId: string): Record<ChecklistKind, ChecklistDocument> {
-  return machineId === "VPC-066" ? VPC_DOCUMENTS : DOCUMENTS;
+  return machineId.startsWith("VPC-") ? VPC_DOCUMENTS : DOCUMENTS;
 }
 
 const MACHINE_UNITS: Record<string, { equipment: string[]; sensor: string[] }> = {
@@ -55,6 +55,8 @@ const MACHINE_UNITS: Record<string, { equipment: string[]; sensor: string[] }> =
   "PYR-CLR-01": { equipment: ["GEN", "CLR-01"], sensor: ["CLR-01"] },
   "PYR-CCT-01": { equipment: ["GEN", "HMR-01", "CSL-01"], sensor: ["HMR-01", "CSL-01"] },
   "VPC-066": { equipment: ["GEN", "VPC-066"], sensor: ["VPC-066"] },
+  "VPC-067": { equipment: ["GEN", "VPC-066"], sensor: ["VPC-066"] },
+  "VPC-068": { equipment: ["GEN", "VPC-066"], sensor: ["VPC-066"] },
 };
 
 export const hasMaintenanceChecklist = (machineId: string) => machineId in MACHINE_UNITS;

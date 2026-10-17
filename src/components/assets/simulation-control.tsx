@@ -9,7 +9,7 @@ import { formatClock, type SimFrame, type StoryProfile } from "@/lib/kiln-sim/en
 import { PYRO_SCENARIOS, pyroScenario } from "@/lib/pyro-sim/scenarios";
 import { PYRO_MACHINES, PYRO_SIGNALS } from "@/lib/pyro-sim/signals";
 import { VPC_SCENARIOS, vpcScenario } from "@/lib/vpc-sim/scenarios";
-import { VPC_MACHINES, VPC_SIGNALS } from "@/lib/vpc-sim/signals";
+import { VPC_MACHINE_IDS, VPC_MACHINES, VPC_SIGNALS } from "@/lib/vpc-sim/signals";
 import type { Injection, LineSimSettings, SignalFaultSpec } from "@/lib/pyro-sim/engine";
 import type { KilnSimulation } from "./kiln-seals-simulation";
 
@@ -25,7 +25,10 @@ type Line = NonNullable<KilnSimulation["line"]>;
 
 const ALL_LINE_MACHINES = [...PYRO_MACHINES, ...VPC_MACHINES];
 const ALL_LINE_SIGNALS = [...PYRO_SIGNALS, ...VPC_SIGNALS];
-const ALL_LINE_SCENARIOS: Record<string, typeof VPC_SCENARIOS> = { ...PYRO_SCENARIOS, "VPC-066": VPC_SCENARIOS };
+const ALL_LINE_SCENARIOS: Record<string, typeof VPC_SCENARIOS> = {
+  ...PYRO_SCENARIOS,
+  ...Object.fromEntries(VPC_MACHINES.map((m) => [m.id, VPC_SCENARIOS])),
+};
 const MACHINE = new Map(ALL_LINE_MACHINES.map((m) => [m.id, m]));
 const code = (id: string) => MACHINE.get(id)?.code ?? id;
 
@@ -380,7 +383,7 @@ function EventsCard({ line, running, fleet }: { line: Line; running: Injection[]
       header: "Alert",
       width: "170px",
       render: (j) => {
-        const expected = (j.machine === "VPC-066" ? vpcScenario(j.scenarioId) : pyroScenario(j.machine, j.scenarioId)).expected;
+        const expected = (VPC_MACHINE_IDS.has(j.machine) ? vpcScenario(j.scenarioId) : pyroScenario(j.machine, j.scenarioId)).expected;
         const f = fleet[j.machine]?.frame;
         const raised = f ? activeRules(f).filter((r) => expected.includes(r.id)) : [];
         if (!expected.length) {
@@ -428,7 +431,13 @@ function EventsCard({ line, running, fleet }: { line: Line; running: Injection[]
 
 function SignalFaultCard({ line, machines }: { line: Line; machines: KilnSimulation[] }) {
   const [machine, setMachine] = useState(machines[0]?.machineId ?? "PYR-KLN-01");
-  const signals = useMemo(() => ALL_LINE_SIGNALS.filter((d) => d.machine === machine && d.type === "analog" && !d.calculated && d.origin === "online"), [machine]);
+  const signals = useMemo(
+    () =>
+      (VPC_MACHINE_IDS.has(machine) ? VPC_SIGNALS : ALL_LINE_SIGNALS.filter((d) => d.machine === machine)).filter(
+        (d) => d.type === "analog" && !d.calculated && d.origin === "online",
+      ),
+    [machine],
+  );
   const [tag, setTag] = useState("");
   const def = signals.find((d) => d.tag === tag) ?? signals[0];
   const [shape, setShape] = useState<SignalFaultSpec["shape"]>("ramp");

@@ -248,16 +248,19 @@ function stepAutopilot(state: VpcSimState): void {
     return;
   }
 
-  // Rotate scenarios periodically so the live plant tells a complete PdM story.
+  // If operator manually repaired the fault, recover briefly and then start the next fault in the profile rotation.
   if (state.scenarioId === "healthy") {
-    if (elapsed >= 12) {
+    if (elapsed >= 8) {
       const list = state.profile === "critical" ? CRITICAL_ROTATION : ADVISORY_ROTATION;
       const next = list[state.storyIdx % list.length];
       state.storyIdx += 1;
       setVpcScenario(state, next);
     } else {
-      state.phase = "healthy";
-      state.storyLabel = "VPC 066 Power — 18 kt yellow gold (1.0 kg) cycle nominal";
+      state.phase = state.repairedAt !== null ? "recovering" : "healthy";
+      state.storyLabel =
+        state.repairedAt !== null
+          ? "Corrective maintenance completed · returning to nominal cycle"
+          : "VPC 066 Power — 18 kt yellow gold (1.0 kg) cycle nominal";
     }
     return;
   }
@@ -269,18 +272,12 @@ function stepAutopilot(state: VpcSimState): void {
   if (elapsed < 6) {
     state.phase = "developing";
     state.storyLabel = `Developing: ${sc.name}`;
-  } else if (rm?.status === "ACTIVE" && elapsed >= 28 && !state.relief[leadRule]) {
-    performVpcAction(state, leadRule, "mitigate", true);
+  } else if (leadRule && state.relief[leadRule]) {
     state.phase = "mitigated";
-    state.storyLabel = `Crew mitigated ${leadRule} · monitoring casting cycle`;
-  } else if (elapsed >= 48) {
-    if (leadRule) performVpcAction(state, leadRule, "repair", true);
-    else setVpcScenario(state, "healthy");
-    state.phase = "recovering";
-    state.storyLabel = "Corrective maintenance completed · returning to nominal cycle";
+    state.storyLabel = `Mitigated ${leadRule} · temporary relief active, repair still required`;
   } else if (rm?.status === "ACTIVE") {
     state.phase = "detected";
-    state.storyLabel = `Confirmed finding: ${leadRule} — ${sc.name}`;
+    state.storyLabel = `Confirmed finding: ${leadRule} — ${sc.name} (awaiting operator action)`;
   } else {
     state.phase = "developing";
     state.storyLabel = `Monitoring: ${sc.name}`;
@@ -459,9 +456,10 @@ export function stepVpcSim(state: VpcSimState, buildFrame = true): SimFrame {
   const sc = vpcScenario(state.scenarioId);
   const elapsed = Math.max(0, state.t - state.scenarioStart);
 
-  // Compute relief factor from any mitigated rule
+  // Compute relief factor from any mitigated rule; advisory autopilot stays within the Advisory threshold band.
   const activeRelief = Math.max(0, ...Object.values(state.relief));
-  const scale = 1 - activeRelief;
+  const profileScale = state.autopilot && state.profile === "advisory" ? 0.68 : 1;
+  const scale = (1 - activeRelief) * profileScale;
 
   const vals: Record<string, number> = {};
   const models: Record<string, number> = {};

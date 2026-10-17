@@ -22,7 +22,7 @@ import React, { useMemo, useState } from "react";
 import { MX, MachinePad, MachineSvg } from "@/components/assets/machine-kit/machine-kit";
 import { PYRO_SPEC } from "@/lib/pyro-sim/spec";
 import { PYRO_MACHINE_BY_ID, PYRO_SIGNAL_BY_TAG, PYRO_SIGNALS } from "@/lib/pyro-sim/signals";
-import { VPC_SIGNAL_BY_TAG, VPC_SPEC } from "@/lib/vpc-sim/signals";
+import { VPC_MACHINE_BY_ID, VPC_SIGNAL_BY_TAG, VPC_SPEC } from "@/lib/vpc-sim/signals";
 import type { LiveSignal, SimFrame } from "@/lib/kiln-sim/engine";
 import { useKilnFleet } from "@/providers/kiln-simulation-context";
 import { LINE_SHEETS, LINE_SHEET_ART, LINE_SHEET_BY_ID, LINE_SHEET_GROUPS, lineSheetTags } from ".";
@@ -86,12 +86,15 @@ function usePoints(tags: string[], machineId: string | null | undefined, frame: 
   const fleet = useKilnFleet();
   return useMemo(() => {
     const out: Record<string, PointView> = {};
+    const isVpcMachine = Boolean(machineId && VPC_MACHINE_BY_ID[machineId]);
     for (const tag of tags) {
+      const isVpcSig = Boolean(VPC_SIGNAL_BY_TAG[tag]);
       const def = PYRO_SIGNAL_BY_TAG[tag] ?? VPC_SIGNAL_BY_TAG[tag];
       const spec = PYRO_SPEC[tag] ?? VPC_SPEC[tag];
-      const own = !machineId || !def || def.machine === machineId;
+      const own = !machineId || !def || def.machine === machineId || (isVpcSig && isVpcMachine);
       // The page's frame for its own points (every point when no machine is set); another machine reads its own frame.
-      const src = frame && (!machineId || !def || def.machine === machineId) ? frame : def ? fleet[def.machine]?.frame : null;
+      const ownerId = isVpcSig && isVpcMachine && machineId ? machineId : def?.machine;
+      const src = frame && own ? frame : ownerId ? fleet[ownerId]?.frame : null;
       const live = src?.signals[tag];
       const status = live?.status ?? "Normal";
       const padStatus = colorBy === "validity" ? (live ? (VALIDITY_STATUS[live.quality] ?? "Normal") : "Normal") : status;
@@ -99,7 +102,7 @@ function usePoints(tags: string[], machineId: string | null | undefined, frame: 
       out[tag] = {
         tag,
         own,
-        owner: def ? code(def.machine) : "",
+        owner: ownerId ? code(ownerId) : "",
         live,
         padStatus,
         status,

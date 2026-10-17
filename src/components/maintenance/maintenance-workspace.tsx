@@ -688,14 +688,18 @@ export function MaintenanceWorkspace() {
       const f = sim.frame;
       const mName =
         mId === "VPC-066"
-          ? "Schultheiss VPC 066"
-          : mId === "KLN-01"
-            ? "Rotary Kiln #1 (KLN-01)"
-            : mId === "KLN-02"
-              ? "Rotary Kiln #2 (KLN-02)"
-              : mId === "CL-01"
-                ? "Grate Cooler (CL-01)"
-                : mId;
+          ? "Schultheiss VPC 066 — Unit 01 (VPC-066)"
+          : mId === "VPC-067"
+            ? "Schultheiss VPC 066 — Unit 02 (VPC-067)"
+            : mId === "VPC-068"
+              ? "Schultheiss VPC 066 — Unit 03 (VPC-068)"
+              : mId === "KLN-01"
+                ? "Rotary Kiln #1 (KLN-01)"
+                : mId === "KLN-02"
+                  ? "Rotary Kiln #2 (KLN-02)"
+                  : mId === "CL-01"
+                    ? "Grate Cooler (CL-01)"
+                    : mId;
 
       for (const r of f.rules) {
         if ((r.status !== "ACTIVE" && r.status !== "PENDING") || r.severity === "Normal") continue;

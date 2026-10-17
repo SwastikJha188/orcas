@@ -30,7 +30,8 @@ import { gunzip, gzip } from "zlib";
 import { finishFleet, freezeFleet, prerollFleet, type FleetEngines, type FleetSnapshot, type PlantState } from "@/lib/fleet-boot";
 import { setWallClock, stepSim } from "@/lib/kiln-sim/engine";
 import { stepLine } from "@/lib/pyro-sim/engine";
-import { createVpcSim, setVpcAutopilot, setVpcProfile, stepVpcSim, VPC_MACHINE_ID } from "@/lib/vpc-sim/engine";
+import { createVpcSim, setVpcAutopilot, setVpcProfile, stepVpcSim } from "@/lib/vpc-sim/engine";
+import { VPC_FLEET } from "@/lib/vpc-sim/defs";
 import { recordFrames } from "@/lib/condition-report";
 import { HEALTH_KEEP_MS, HEALTH_STEP_MS } from "@/lib/health-recorder";
 import { decodePlant, encodePlant } from "@/lib/plant-codec";
@@ -164,12 +165,15 @@ function finish(snap: FleetSnapshot, wallMs: number, fresh: boolean): FleetEngin
  * builds its own frames after resuming).
  */
 function ensureVpc(e: FleetEngines): void {
-  if (!e.vpc) {
-    const v = createVpcSim(20261016);
-    setVpcAutopilot(v, true);
-    setVpcProfile(v, "advisory");
-    for (let i = 0; i < 90; i++) stepVpcSim(v, false);
-    e.vpc = v;
+  e.vpcs ??= {};
+  for (const m of VPC_FLEET) {
+    if (!e.vpcs[m.machineId]) {
+      const v = createVpcSim(m.seed);
+      setVpcAutopilot(v, true);
+      setVpcProfile(v, m.profile);
+      for (let i = 0; i < 90; i++) stepVpcSim(v, false);
+      e.vpcs[m.machineId] = v;
+    }
   }
 }
 
@@ -179,7 +183,7 @@ function stepFleet(e: FleetEngines, wallMs: number): void {
   if (sims.length) setWallClock(sims[0].t + 1, wallMs, MS_PER_MIN);
   for (const sim of sims) stepSim(sim, false);
   recordFrames(stepLine(e.line, false));
-  stepVpcSim(e.vpc, false);
+  for (const v of Object.values(e.vpcs)) stepVpcSim(v, false);
 }
 
 /** Each machine's health after the last step (the engines log it every minute, frame or not). */
@@ -188,7 +192,7 @@ function fleetHealth(e: FleetEngines): Record<string, number> {
   const out: Record<string, number> = {};
   for (const [id, sim] of Object.entries(e.sims)) out[id] = sim.healthHist.overall[sim.healthHist.overall.length - 1];
   for (const [id, ms] of Object.entries(e.line.machines)) out[id] = ms.healthHist.overall[ms.healthHist.overall.length - 1];
-  out[VPC_MACHINE_ID] = e.vpc.healthHist.overall[e.vpc.healthHist.overall.length - 1];
+  for (const [id, v] of Object.entries(e.vpcs)) out[id] = v.healthHist.overall[v.healthHist.overall.length - 1];
   return out;
 }
 

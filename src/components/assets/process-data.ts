@@ -527,6 +527,8 @@ export function getMachineProcesses(machine: AssetMachine): MachineProcessStage[
         },
       ];
     case "VPC-066":
+    case "VPC-067":
+    case "VPC-068":
       return [
         {
           id: "vpc066-s1",
