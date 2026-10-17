@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import { Tile, TileGrid } from "@/components/ui";
+import { Table, type Column } from "@/components/ui";
+import { StatusTag } from "../assets-shell-ui";
 import { focusSensorOn } from "../sensor-focus";
 import { Panel, Section } from "./an-ui";
 import { SECTION_IDS, Z_ANOMALY, Z_UNCLASSIFIED, fmt, liveRules, machineFaults, sevToTone, sigma, type SectionProps } from "./an-derive";
@@ -9,7 +10,7 @@ import { isConditionRule } from "@/lib/plant-defs";
 
 const withUnit = (v: string, unit: string) => (unit ? `${v} ${unit}` : v);
 
-/** Explanation — contribution waterfall, deterministic rule trace, and what clears the finding. */
+/** Explanation — contribution waterfall graph, broken rules table, and recovery target table. */
 export function AnExplain({ insights, frame, go }: SectionProps) {
   const a = insights.analysis;
   const top = machineFaults(a)[0];
@@ -39,14 +40,73 @@ export function AnExplain({ insights, frame, go }: SectionProps) {
     go("trends");
   };
 
+  const ruleCols: Column<(typeof rules)[number]>[] = [
+    { key: "id", header: "Rule", width: "120px", render: (r) => <span className="ast-mono">{r.id}</span> },
+    { key: "name", header: "What is wrong", width: "220px", render: (r) => <strong>{r.name}</strong> },
+    { key: "logic", header: "Rule condition", render: (r) => <span className="ast-num">{r.logic}</span> },
+    { key: "evidence", header: "Observed evidence", render: (r) => <span className="ast-num">{r.evidence || "—"}</span> },
+    {
+      key: "persistence",
+      header: "Samples",
+      width: "110px",
+      render: (r) => <span className="ast-num">{r.persistence} / {r.threshold}</span>,
+    },
+    {
+      key: "status",
+      header: "Status",
+      width: "130px",
+      render: (r) => {
+        const confirmed = r.status === "ACTIVE";
+        return <StatusTag tone={confirmed ? sevToTone(r.severity) : "idle"} label={confirmed ? "Confirmed" : "Confirming"} />;
+      },
+    },
+  ];
+
+  const clearCols: Column<(typeof clears)[number]>[] = [
+    {
+      key: "tag",
+      header: "Sensor",
+      width: "210px",
+      render: (c) => (
+        <span className="ast-cell-stack">
+          <span className="ast-cell-title ast-num">{c.tag} · {c.name}</span>
+        </span>
+      ),
+    },
+    {
+      key: "now",
+      header: "Current reading",
+      width: "140px",
+      render: (c) => <strong className="ast-num">{withUnit(fmt(c.now), c.unit)}</strong>,
+    },
+    {
+      key: "target",
+      header: "Target to clear",
+      width: "150px",
+      render: (c) => <span className="ast-num">{`${c.up ? "≥" : "≤"} ${withUnit(fmt(c.target), c.unit)}`}</span>,
+    },
+    {
+      key: "change",
+      header: "Required change",
+      width: "150px",
+      render: (c) => <span className="ast-num">{withUnit(`${c.change >= 0 ? "+" : "−"}${fmt(Math.abs(c.change))}`, c.unit)}</span>,
+    },
+    {
+      key: "z",
+      header: "Current deviation",
+      width: "130px",
+      render: (c) => <StatusTag tone={Math.abs(c.z) > Z_UNCLASSIFIED ? "bad" : "warn"} label={sigma(c.z)} />,
+    },
+  ];
+
   return (
     <Section id={SECTION_IDS.explanation} title="Explanation" bare>
       <section className="ast-card pg-an-card">
-        <Panel title={`Contribution to ${top ? top.id : "the health score"}`}>
+        <Panel title={`Sensor contribution to ${top ? top.id : "health score"}`}>
           <ol className="pg-an-contrib" aria-label="Input contributions, largest first">
             {steps.map((r) => (
               <li key={r.id}>
-                <button type="button" className="pg-an-contrib-row" onClick={() => open(r.tag)} aria-label={`${r.label}, ${Math.round(r.share)} % of the score${r.z !== null ? `, residual ${sigma(r.z)}` : ""}. Open in Trends`}>
+                <button type="button" className="pg-an-contrib-row" onClick={() => open(r.tag)} aria-label={`${r.label}, ${Math.round(r.share)} % of the score`}>
                   <span className="ast-cell-stack">
                     <span className="ast-cell-title">{r.label}</span>
                     <span className="ast-cell-sub">{r.tag}</span>
@@ -64,70 +124,21 @@ export function AnExplain({ insights, frame, go }: SectionProps) {
       </section>
 
       {frame && rules.length > 0 && (
-        <>
-          <h4 className="ui-tiles-head">
-            <span>
-              Rule trace <b>{rules.length}</b>
-            </span>
-            <span>samples to confirm · clean samples to clear</span>
-          </h4>
-          <TileGrid label="Rule trace" min={340}>
-            {rules.map((r) => {
-              const confirmed = r.status === "ACTIVE";
-              const tone = confirmed ? sevToTone(r.severity) : undefined;
-              return (
-                <Tile
-                  key={r.id}
-                  title={r.id}
-                  sub={r.name}
-                  status={{ label: confirmed ? "confirmed" : "pending", tone }}
-                  tone={tone}
-                  value={String(r.persistence)}
-                  unit={r.persistence === 1 ? "sample" : "samples"}
-                  meter={Math.min(100, (r.persistence / Math.max(1, r.threshold)) * 100)}
-                  facts={[
-                    { label: "Needed", value: String(r.threshold) },
-                    { label: "Clean", value: `${r.clean} / 4` },
-                  ]}
-                >
-                  <dl className="pg-analysis-dl pg-an-trace">
-                    <dt>Condition</dt>
-                    <dd>{r.logic}</dd>
-                    <dt>Value</dt>
-                    <dd className="ast-num">{r.evidence || "—"}</dd>
-                  </dl>
-                </Tile>
-              );
-            })}
-          </TileGrid>
-        </>
+        <section className="ast-card pg-table-card" aria-label="Broken rules trace">
+          <div className="ast-card-head">
+            <h4 className="ast-card-title">Rules evaluated &amp; broken ({rules.length})</h4>
+          </div>
+          <Table columns={ruleCols} data={rules} keyExtractor={(r) => r.id} />
+        </section>
       )}
 
       {clears.length > 0 && topRule && (
-        <>
-          <h4 className="ui-tiles-head">
-            <span>
-              Clears <b>{topRule.id}</b> when
-            </span>
-            <span>then {4 - Math.min(4, topRule.clean)} more clean samples</span>
-          </h4>
-          <TileGrid label={`Clears ${topRule.id} when`} min={280} className="pg-an-pair">
-            {clears.map((c) => (
-              <Tile
-                key={c.tag}
-                title={c.tag}
-                sub={c.name}
-                value={`${fmt(c.now)} → ${c.up ? "≥" : "≤"} ${fmt(c.target)}`}
-                unit={c.unit}
-                facts={[
-                  { label: "Change", value: withUnit(`${c.change >= 0 ? "+" : "−"}${fmt(Math.abs(c.change))}`, c.unit) },
-                  { label: "Residual", value: sigma(c.z), tone: Math.abs(c.z) > Z_UNCLASSIFIED ? "bad" : "warn" },
-                ]}
-                onSelect={() => open(c.tag)}
-              />
-            ))}
-          </TileGrid>
-        </>
+        <section className="ast-card pg-table-card" aria-label={`Sensor targets to clear ${topRule.id}`}>
+          <div className="ast-card-head">
+            <h4 className="ast-card-title">Sensor targets required to clear {topRule.id}</h4>
+          </div>
+          <Table columns={clearCols} data={clears} keyExtractor={(c) => c.tag} onRowClick={(c) => open(c.tag)} />
+        </section>
       )}
     </Section>
   );

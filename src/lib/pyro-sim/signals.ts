@@ -51,7 +51,7 @@ export interface PyroMachineDef {
   limitations?: string[];
 }
 
-export type PyroDiagramType = "feed-system" | "preheater" | "pyro-kiln" | "kiln-burner" | "grate-cooler" | "clinker-transport";
+export type PyroDiagramType = "feed-system" | "preheater" | "pyro-kiln" | "kiln-burner" | "grate-cooler" | "clinker-transport" | "vpc-casting";
 
 export interface PyroSystemDef {
   id: string;

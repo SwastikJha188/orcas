@@ -21,7 +21,9 @@ import { FLEET_CARDS, FLEET_RACKS, FLEET_SENSOR_SPECS } from "./seed-data/fleet-
 import { FLEET_DIAGNOSIS_RECORDS, buildTrendRecord, type TrendSignalRow } from "./seed-data/fleet-history";
 import { applyKilnFleet } from "./kiln-fleet";
 import { applyPyroLine } from "./pyro-line";
+import { applyVpcCasting } from "./vpc-casting";
 import { PYRO_MACHINE_IDS } from "@/lib/pyro-sim/signals";
+import { VPC_MACHINE_IDS } from "@/lib/vpc-sim/signals";
 import { KILN_FLEET_IDS } from "@/lib/kiln-sim/fleet";
 
 /* -------------------------------------------------------------------------- */
@@ -347,11 +349,11 @@ export async function applyFleetHistory(client: PoolClient): Promise<{ trends: n
        JOIN sensor_definitions sd ON sd.id = m.sensor_def_id
       WHERE m.machine_id <> ALL($1) AND lower(sd.unit) <> 'state'
       ORDER BY m.machine_id, m.tag`,
-    [[...KILN_FLEET_IDS, ...PYRO_MACHINE_IDS]],
+    [[...KILN_FLEET_IDS, ...PYRO_MACHINE_IDS, ...VPC_MACHINE_IDS]],
   );
 
   // Deleting trend_records cascades to trend_points automatically via FK!
-  await client.query("DELETE FROM trend_records WHERE machine_id <> ALL($1)", [[...KILN_FLEET_IDS, ...PYRO_MACHINE_IDS]]);
+  await client.query("DELETE FROM trend_records WHERE machine_id <> ALL($1)", [[...KILN_FLEET_IDS, ...PYRO_MACHINE_IDS, ...VPC_MACHINE_IDS]]);
   let trends = 0;
 
   for (const row of signals.rows) {
@@ -1149,6 +1151,8 @@ export async function seedDatabase(): Promise<{
     const fleet = await applyKilnFleet(client);
     // The full pyro line (its own plant, machines, sensors, edge registry and user).
     counts.pyro_line = (await applyPyroLine(client)).sensors;
+    // The Jewellery Casting VPC 066 plant, machine, sensors, edge registry and user.
+    counts.vpc_casting = (await applyVpcCasting(client)).sensors;
     counts.kiln_fleet_rows = fleet.rows;
 
     // 17. Seed Initial Work Orders linked to machines & users (3NF)

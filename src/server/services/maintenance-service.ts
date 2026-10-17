@@ -1,5 +1,6 @@
 import { query } from "@/server/db";
 import { EQUIPMENT_UNITS, SENSOR_UNITS } from "@/server/maintenance/checklists.generated";
+import { VPC_DOCUMENTS, VPC_EQUIPMENT_UNITS, VPC_SENSOR_UNITS } from "@/server/maintenance/vpc-checklists";
 import { createWorkOrder } from "@/server/services/ops-service";
 import { ADDABLE_ROUTES, freqOf, type RouteId } from "@/lib/maintenance";
 import {
@@ -15,7 +16,7 @@ import {
 } from "@/types/maintenance";
 
 /*
- * Machine maintenance checklists for the pyro line.
+ * Machine maintenance checklists for the pyro line and VPC 066 casting line.
  * Each machine gets the general hardware checks (GEN, instantiated per
  * machine, §1.2) plus the sections of the units it is built from. The main
  * exhaust gas treatment (EXH-IF) follows the preheater ID fan it serves.
@@ -42,6 +43,10 @@ export const DOCUMENTS: Record<ChecklistKind, ChecklistDocument> = {
   },
 };
 
+export function documentsFor(machineId: string): Record<ChecklistKind, ChecklistDocument> {
+  return machineId === "VPC-066" ? VPC_DOCUMENTS : DOCUMENTS;
+}
+
 const MACHINE_UNITS: Record<string, { equipment: string[]; sensor: string[] }> = {
   "PYR-FED-01": { equipment: ["GEN", "FSL-01", "KFS-01"], sensor: ["FSL-01", "KFS-01"] },
   "PYR-PHC-01": { equipment: ["GEN", "PHC-01", "EXH-IF"], sensor: ["PHC-01", "EXH-IF"] },
@@ -49,6 +54,7 @@ const MACHINE_UNITS: Record<string, { equipment: string[]; sensor: string[] }> =
   "PYR-BRN-01": { equipment: ["GEN", "BRN-01"], sensor: ["BRN-01"] },
   "PYR-CLR-01": { equipment: ["GEN", "CLR-01"], sensor: ["CLR-01"] },
   "PYR-CCT-01": { equipment: ["GEN", "HMR-01", "CSL-01"], sensor: ["HMR-01", "CSL-01"] },
+  "VPC-066": { equipment: ["GEN", "VPC-066"], sensor: ["VPC-066"] },
 };
 
 export const hasMaintenanceChecklist = (machineId: string) => machineId in MACHINE_UNITS;
@@ -58,10 +64,13 @@ export const MAINTENANCE_MACHINE_IDS = Object.keys(MACHINE_UNITS);
 
 const isKind = (v: unknown): v is ChecklistKind => v === "equipment" || v === "sensor";
 
+const ALL_EQUIPMENT_UNITS: ChecklistUnit[] = [...EQUIPMENT_UNITS, ...VPC_EQUIPMENT_UNITS];
+const ALL_SENSOR_UNITS: ChecklistUnit[] = [...SENSOR_UNITS, ...VPC_SENSOR_UNITS];
+
 function documentUnits(machineId: string, kind: ChecklistKind): ChecklistUnit[] {
   const codes = MACHINE_UNITS[machineId]?.[kind];
   if (!codes) throw new MaintenanceInputError(`No maintenance checklist for ${machineId}`);
-  const all = kind === "equipment" ? EQUIPMENT_UNITS : SENSOR_UNITS;
+  const all = kind === "equipment" ? ALL_EQUIPMENT_UNITS : ALL_SENSOR_UNITS;
   return codes.map((c) => all.find((u) => u.code === c)).filter((u): u is ChecklistUnit => Boolean(u));
 }
 
@@ -227,7 +236,7 @@ export async function getChecklist(machineId: string, kind: unknown): Promise<Ma
   const k: ChecklistKind = isKind(kind) ? kind : "equipment";
   const { units, removed } = await machineChecklist(machineId, k);
   const res = await query(`${RECORD_SELECT} WHERE mr.machine_id = $1 AND mr.kind = $2 ORDER BY mr.recorded_at DESC, mr.id DESC`, [machineId, k]);
-  return { machineId, document: DOCUMENTS[k], units, records: res.rows.map(mapRecord), removed };
+  return { machineId, document: documentsFor(machineId)[k], units, records: res.rows.map(mapRecord), removed };
 }
 
 /**

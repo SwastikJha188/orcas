@@ -50,13 +50,16 @@ const PyroSiteOverview = dynamic(() => import("./twin/pyro-site-overview").then(
 const CLEARED_HOLD_MS = 60_000;
 /** Live activity entries shown under the alerts, newest first across the kiln fleet. */
 const ACTIVITY_LIMIT = 24;
-const MAP_VIEW_KEY = "ultron.home.mapView";
-type MapView = "twin" | "layout";
+const MAP_VIEW_KEY = "ultron.home.viewMode";
+export type MapView = "operator" | "twin" | "layout";
 
 const VIEW_ITEMS = [
+  { id: "operator", label: "Operator view" },
   { id: "twin", label: "3D twin" },
   { id: "layout", label: "Layout" },
 ];
+
+const NO_INSET = { top: 0, right: 0, bottom: 0, left: 0 };
 
 function readStored(key: string): string | null {
   try {
@@ -97,10 +100,10 @@ export function PlantHome() {
   const [selected, setSelected] = useState<string | null>(null);
   useEffect(() => setSelected(null), [plantId]);
 
-  const [view, setView] = useState<MapView>("twin");
+  const [view, setView] = useState<MapView>("operator");
   useEffect(() => {
     const v = readStored(MAP_VIEW_KEY);
-    if (v === "twin" || v === "layout") setView(v);
+    if (v === "operator" || v === "twin" || v === "layout") setView(v);
   }, []);
   const chooseView = useCallback((v: MapView) => {
     setView(v);
@@ -111,8 +114,9 @@ export function PlantHome() {
   const stageRef = useRef<HTMLDivElement>(null);
   const sideRef = useRef<HTMLElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const topRef = useRef<HTMLDivElement>(null);
   const hudPanels = useMemo<Array<[Side, React.RefObject<HTMLElement | null>]>>(
-    () => [["right", sideRef], ["bottom", bottomRef]],
+    () => [["right", sideRef], ["bottom", bottomRef], ["top", topRef]],
     [],
   );
   const plant = roots.find((p) => p.id === plantId) ?? roots[0];
@@ -182,9 +186,31 @@ export function PlantHome() {
           finding: r.name,
           reading: r.evidence,
           recommendation: `${r.action} Likely cause: ${r.cause}.`,
+          cause: r.cause,
+          consequence: r.consequence,
+          ruleLogic: `${r.id} — ${r.logic}`,
+          action: r.action,
           age: r.since !== null ? `${formatDuration(f.t - r.since)} ago` : null,
           raised: r.since !== null ? formatClock(r.since).clock : null,
           t: r.since,
+        });
+      }
+      for (const sig of Object.values(f.signals)) {
+        if (sig.limitSeverity !== "Critical" && sig.limitSeverity !== "Advisory") continue;
+        const def = f.defs.signalByTag[sig.tag];
+        if (!def) continue;
+        const onset = f.t - Math.max(1, f.scenarioMinute);
+        out.push({
+          id: `${node.machineId}:sig:${sig.tag}`,
+          level: sig.limitSeverity === "Critical" ? "danger" : "alert",
+          machine: node.name,
+          machineId: node.machineId!,
+          finding: `${def.name} (${sig.tag}) — ${sig.limitSeverity === "Critical" ? "Alarm" : "Warning"} limit`,
+          reading: `${sig.display}${def.unit ? ` ${def.unit}` : ""}${sig.limitNote ? ` · ${sig.limitNote}` : ` · normal ${def.normalBand}`}`,
+          recommendation: `Check ${def.name} (${sig.tag}) against normal band (${def.normalBand}).`,
+          age: f.scenarioMinute > 0 ? `${formatDuration(f.scenarioMinute)} ago` : "live",
+          raised: formatClock(onset).clock,
+          t: onset,
         });
       }
     }
@@ -205,6 +231,8 @@ export function PlantHome() {
           finding: f.fault,
           reading: `${f.location} · ${f.frequency} · ${f.probability} %`,
           recommendation: f.recommendation,
+          cause: f.fault,
+          action: f.recommendation,
           age: null,
           raised: null,
           t: null,
@@ -223,6 +251,8 @@ export function PlantHome() {
         finding: evt.title,
         reading: evt.type,
         recommendation: evt.description,
+        cause: evt.title,
+        action: evt.description,
         age: evt.timestamp,
         raised: evt.timestamp,
         t: null,
@@ -360,6 +390,8 @@ export function PlantHome() {
         onOpenDiagnosis={openDiagnosis}
         onBack={() => setSelectedMachineId(null)}
         onOpen={(sub) => navigateToMachine(selectedMachine.id, sub)}
+        viewMode={view === "twin" ? "twin" : "operator"}
+        onChangeViewMode={(m) => chooseView(m)}
       />
     );
   }
@@ -381,6 +413,9 @@ export function PlantHome() {
             </span>
           )}
         </div>
+      </div>
+      <div className="pg-actions" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <PillNav items={VIEW_ITEMS} activeId={view} onChange={(id) => chooseView(id as MapView)} className="ph-head-nav" />
       </div>
     </header>
   );
@@ -404,14 +439,76 @@ export function PlantHome() {
           )}
         </div>
         <div className="ph-hud">
+          <div ref={topRef} className="mt3-bar ph-top-bar">
+            <span className="mt3-title">
+              <span className="mt3-name">{shortName(plant.name)}</span>
+            </span>
+            <StatusTag tone={plantSummary.tone} label={plantSummary.label} />
+            <PillNav items={VIEW_ITEMS} activeId="twin" onChange={(id) => chooseView(id as MapView)} className="ph-head-nav" />
+          </div>
           <aside ref={sideRef} className="ph-hud-side" aria-label="Plant condition">
             <PlantHealthGauge score={score} dist={dist} />
-            <AlertsFeed alerts={alerts} activity={activity} onOpen={openDiagnosis} loading={stored.loading} error={stored.error} />
+            <AlertsFeed
+              alerts={alerts}
+              activity={activity}
+              onOpen={openDiagnosis}
+              onNavigate={(mId, sub) => navigateToMachine(mId, sub)}
+              loading={stored.loading}
+              error={stored.error}
+            />
           </aside>
           <div ref={bottomRef} className="ph-hud-bottom ph-strip">
             <HealthTrendCard track={trackPlant} />
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (view === "operator") {
+    return (
+      <div className="ph-root ph-operator ast-root" aria-label="Plant overview — Operator view">
+        {head}
+
+        <div className="ph-operator-grid">
+          <div className="ph-operator-main">
+            <section className="ast-card ph-card ph-twin-card" aria-label="Digital twin">
+              <div className="ph-twin-card-stage">
+                {isPyroLine ? (
+                  <PyroSiteOverview inset={NO_INSET} onUnsupported={toLayout} />
+                ) : (
+                  <PlantTwin
+                    plant={plant}
+                    lookup={lookup}
+                    alertsByMachine={alertsByMachine}
+                    liveIds={liveIds}
+                    onOpenMachine={(id) => navigateToMachine(id, "overview")}
+                    onUnsupported={toLayout}
+                    inset={NO_INSET}
+                  />
+                )}
+              </div>
+            </section>
+            <div className="ph-strip ph-strip-compact">
+              <HealthTrendCard track={trackPlant} compact />
+            </div>
+          </div>
+
+          <aside className="ph-operator-side" aria-label="Plant condition">
+            <PlantHealthGauge score={score} dist={dist} compact />
+            <AlertsFeed
+              alerts={alerts}
+              activity={activity}
+              onOpen={openDiagnosis}
+              onNavigate={(mId, sub) => navigateToMachine(mId, sub)}
+              loading={stored.loading}
+              error={stored.error}
+              operatorMode
+            />
+          </aside>
+        </div>
+
+        {hasLive && <OpsCenter />}
       </div>
     );
   }
@@ -423,7 +520,14 @@ export function PlantHome() {
       <div className="ph-body">
         <aside className="ph-side" aria-label="Plant condition">
           <PlantHealthGauge score={score} dist={dist} />
-          <AlertsFeed alerts={alerts} activity={activity} onOpen={openDiagnosis} loading={stored.loading} error={stored.error} />
+          <AlertsFeed
+            alerts={alerts}
+            activity={activity}
+            onOpen={openDiagnosis}
+            onNavigate={(mId, sub) => navigateToMachine(mId, sub)}
+            loading={stored.loading}
+            error={stored.error}
+          />
         </aside>
         <div className="ph-main">
           <PlantMap

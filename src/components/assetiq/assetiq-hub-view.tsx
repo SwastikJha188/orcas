@@ -7,7 +7,7 @@ import {
   useKilnLiveStatus,
   usePrimaryMachineId,
 } from "@/providers/kiln-simulation-context";
-import { isPyroMachineId } from "@/lib/live-defs";
+import { isPyroMachineId, isVpcMachineId } from "@/lib/live-defs";
 import { EngineTab } from "./ai-engine-view";
 import { AccuracyTab, consumeAssetIqTab } from "./model-accuracy-view";
 import { FindingsTab } from "./assetiq-findings-view";
@@ -31,13 +31,15 @@ const TABS: Array<{ id: HubTab; label: string }> = [
   { id: "findings", label: "Findings" },
 ];
 
+const plantGroup = (id: string) => (isVpcMachineId(id) ? "vpc" : isPyroMachineId(id) ? "pyro" : "kiln");
+
 export function AssetIqHubView() {
   const [tab, setTab] = useState<HubTab>(() => consumeAssetIqTab() ?? "engine");
   const status = useKilnLiveStatus();
   const primaryId = usePrimaryMachineId();
   const live = Boolean(status?.byMachine[primaryId]);
   // Live machines of the active plant only (the status covers every plant).
-  const liveCount = status ? Object.keys(status.byMachine).filter((id) => isPyroMachineId(id) === isPyroMachineId(primaryId)).length : 0;
+  const liveCount = status ? Object.keys(status.byMachine).filter((id) => plantGroup(id) === plantGroup(primaryId)).length : 0;
   const active = TABS.find((t) => t.id === tab) ?? TABS[0];
 
   return (

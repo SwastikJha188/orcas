@@ -37,7 +37,8 @@ import { sheet as h0 } from "./h0";
 import { sheet as h1 } from "./h1";
 import { sheet as h2 } from "./h2";
 import { sheet as h3 } from "./h3";
+import { v0, v1, v2, v3, v4, v5, v6, v7 } from "./v0";
 
 export const LINE_SHEET_ART: Record<string, LineSheetArt> = Object.fromEntries(
-  [pyr0, f0, f1, f2, f3, f4, f5, p0, p1, p2, p3, p4, k0, k1, k2, k3, k4, k5, k6, k7, k8, k9, b0, b1, b2, b3, b4, c0, c1, c2, c3, c4, c5, h0, h1, h2, h3].map((s) => [s.id, s]),
+  [pyr0, f0, f1, f2, f3, f4, f5, p0, p1, p2, p3, p4, k0, k1, k2, k3, k4, k5, k6, k7, k8, k9, b0, b1, b2, b3, b4, c0, c1, c2, c3, c4, c5, h0, h1, h2, h3, v0, v1, v2, v3, v4, v5, v6, v7].map((s) => [s.id, s]),
 );

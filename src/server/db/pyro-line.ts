@@ -30,8 +30,8 @@ export const PYRO_PLANT_ID = "plant-pyro";
 export const PYRO_USER_ID = "usr-pyro";
 const MACHINE_IDS = PYRO_MACHINES.map((m) => m.id);
 
-/** Every drawing type the catalog accepts (the pyro line adds its own). */
-export const DIAGRAM_TYPES = ["mill", "crusher", "pump", "blower", "kiln", ...new Set(PYRO_MACHINES.map((m) => m.diagramType))];
+/** Every drawing type the catalog accepts (the pyro line and VPC 066 add their own). */
+export const DIAGRAM_TYPES = ["mill", "crusher", "pump", "blower", "kiln", "vpc-casting", ...new Set(PYRO_MACHINES.map((m) => m.diagramType))];
 
 const PLANT = {
   id: PYRO_PLANT_ID,

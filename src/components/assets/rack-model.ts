@@ -266,10 +266,10 @@ export function buildRackModel(input: {
       ? { newestS: (now - Math.max(...stamps)) / 1000, oldestS: (now - Math.min(...stamps)) / 1000, stamped: stamps.length }
       : null;
 
-  /* ---------- calculated inputs (kiln D5 Table 9.2 only; other machines have no input record) ---------- */
+  /* ---------- calculated inputs (kiln D5 Table 9.2 and VPC DT1) ---------- */
   const rowByTag = new Map(rows.map((r) => [r.ch.tag, r]));
   const calcInputs = new Map<string, { tag: string; row: ChannelRow | null }[]>();
-  for (const s of hasKilnSpec(machineId) ? calculated : []) {
+  for (const s of calculated) {
     const spec = CALCULATED_INPUTS[s.tag];
     if (spec) calcInputs.set(s.tag, spec.inputs.map((tag) => ({ tag, row: rowByTag.get(tag) ?? null })));
   }
@@ -277,7 +277,7 @@ export function buildRackModel(input: {
   /* ---------- checks ---------- */
   const checks: RackCheck[] = [];
   const catalogTotal = catalog.length;
-  const proposed = frame?.defs.plant === "pyro" || isPyroMachineId(machineId);
+  const proposed = isPyroMachineId(machineId);
   const wiredWord = proposed ? "allocated (proposed)" : "wired";
   checks.push({
     id: "wiring",

@@ -1,9 +1,9 @@
 import { query } from "@/server/db";
 import { createWorkOrder, listWorkOrders } from "@/server/services/ops-service";
 import {
-  DOCUMENTS,
   MAINTENANCE_MACHINE_IDS,
   RECORD_SELECT,
+  documentsFor,
   ensureTables as ensureChecklistTables,
   hasMaintenanceChecklist,
   machineChecklist,
@@ -23,6 +23,7 @@ import {
   transitionsFrom,
 } from "@/lib/pms";
 import { PYRO_MACHINE_BY_ID } from "@/lib/pyro-sim/signals";
+import { VPC_MACHINE_BY_ID } from "@/lib/vpc-sim/signals";
 import type { ChecklistKind } from "@/types/maintenance";
 import {
   PLAN_STATES,
@@ -126,7 +127,7 @@ const iso = (v: unknown) => (v === null || v === undefined ? null : new Date(v a
 const text = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
 
 function machineCode(machineId: string): string {
-  const m = PYRO_MACHINE_BY_ID[machineId];
+  const m = PYRO_MACHINE_BY_ID[machineId] ?? VPC_MACHINE_BY_ID[machineId];
   if (!m || !hasMaintenanceChecklist(machineId)) throw new PmsInputError(`No planned maintenance for ${machineId}`);
   return m.code;
 }
@@ -490,7 +491,7 @@ export async function getPms(machineId: string, userId: string | null, approveKn
   ]);
   return {
     machineId,
-    documents: DOCUMENTS,
+    documents: documentsFor(machineId),
     plans,
     workOrders,
     records: records.rows.map(mapRecord),
@@ -512,10 +513,22 @@ export async function getPms(machineId: string, userId: string | null, approveKn
   };
 }
 
-/** Every machine with planned maintenance (the pyro line), for the Maintenance workspace. */
+/** Every machine with planned maintenance in the signed-in user's plant scope, for the Maintenance workspace. */
 export async function getPmsLine(userId: string | null): Promise<PmsLine> {
   await ensureTables();
   const approve = await canApprove(userId);
-  const snapshots = await Promise.all(MAINTENANCE_MACHINE_IDS.map((id) => getPms(id, userId, approve)));
+  let targetIds = MAINTENANCE_MACHINE_IDS;
+  if (userId) {
+    const scoped = await query<{ id: string }>(
+      `SELECT m.id FROM machines m
+         JOIN user_plant_access upa ON upa.plant_id = m.plant_id
+        WHERE upa.user_id = $1`,
+      [userId],
+    );
+    const allowed = new Set(scoped.rows.map((r) => String(r.id)));
+    const filtered = MAINTENANCE_MACHINE_IDS.filter((id) => allowed.has(id));
+    if (filtered.length > 0) targetIds = filtered;
+  }
+  const snapshots = await Promise.all(targetIds.map((id) => getPms(id, userId, approve)));
   return { snapshots, canApprove: approve };
 }

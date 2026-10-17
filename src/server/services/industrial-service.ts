@@ -2,6 +2,7 @@ import pool, { query } from "@/server/db";
 import { seedDatabase, rebuildRackUnitsFromSignals, applyFleetSensorSpecs, applyFleetHistory } from "@/server/db/seed";
 import { applyKilnFleet } from "@/server/db/kiln-fleet";
 import { applyPyroLine } from "@/server/db/pyro-line";
+import { applyVpcCasting } from "@/server/db/vpc-casting";
 import {
   HierarchyNode,
   AssetMachine,
@@ -1211,14 +1212,15 @@ export async function rebuildKilnFleet(): Promise<{ machines: number; rows: numb
   }
 }
 
-/** The full pyro line (plant, machines, sensors, edge registry, user) in one transaction. */
+/** The full pyro line and VPC 066 casting cell in one transaction. */
 export async function rebuildPyroLine(): Promise<Record<string, number>> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     const result = await applyPyroLine(client);
+    const vpc = await applyVpcCasting(client);
     await client.query("COMMIT");
-    return result;
+    return { ...result, vpc_sensors: vpc.sensors };
   } catch (err) {
     await client.query("ROLLBACK");
     throw err;

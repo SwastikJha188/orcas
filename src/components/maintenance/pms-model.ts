@@ -6,6 +6,7 @@ import { isConditionRule } from "@/lib/plant-defs";
 import { ROUTES, type RouteId } from "@/lib/maintenance";
 import { PRIORITY_LABEL, STAGE_LABEL, isOpenStage, planDues, readinessBlockers, statusForStage, type PlanDue } from "@/lib/pms";
 import { PYRO_MACHINE_BY_ID } from "@/lib/pyro-sim/signals";
+import { VPC_MACHINE_BY_ID } from "@/lib/vpc-sim/signals";
 import { useKilnFleet } from "@/providers/kiln-simulation-context";
 import { useKilnOps } from "@/providers/kiln-ops-context";
 import type { Tone } from "@/components/ui";
@@ -87,9 +88,10 @@ export const PMS_LINE_URL = "/api/maintenance/pms/line";
 export const PRIORITY_RANK: Record<string, number> = { P1: 1, P2: 2, P3: 3, P4: 4 };
 export const priorityTone = (p: string): Tone => (p === "P1" ? "bad" : p === "P2" ? "warn" : "idle");
 
-/** "KLN-01" for PYR-KLN-01; merged machines keep their code (FED-01). */
-export const machineCode = (id: string) => PYRO_MACHINE_BY_ID[id]?.code ?? id;
-export const machineName = (id: string) => PYRO_MACHINE_BY_ID[id]?.shortName ?? PYRO_MACHINE_BY_ID[id]?.name ?? id;
+/** "KLN-01" for PYR-KLN-01; merged machines keep their code (FED-01); "VPC-066" for VPC-066. */
+export const machineCode = (id: string) => PYRO_MACHINE_BY_ID[id]?.code ?? VPC_MACHINE_BY_ID[id]?.code ?? id;
+export const machineName = (id: string) =>
+  PYRO_MACHINE_BY_ID[id]?.shortName ?? PYRO_MACHINE_BY_ID[id]?.name ?? VPC_MACHINE_BY_ID[id]?.shortName ?? VPC_MACHINE_BY_ID[id]?.name ?? id;
 
 export function stageTone(s: WoStage): Tone {
   if (s === "on_hold" || s === "deferred" || s === "awaiting_verification") return "warn";

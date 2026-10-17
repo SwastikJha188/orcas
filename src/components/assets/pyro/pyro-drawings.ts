@@ -6,29 +6,32 @@
  */
 import type { PyroDrawing } from "./pyro-drawing-types";
 import { PYRO_MACHINES } from "@/lib/pyro-sim/signals";
+import { VPC_MACHINES } from "@/lib/vpc-sim/signals";
 import { LINE_SHEETS, LINE_SHEET_ART } from "./line-sheets";
 import { PYRO_LAYOUT } from "./pyro-layout";
 
 export type { PyroDrawing };
+
+const ALL_DRAWING_MACHINES = [...PYRO_MACHINES, ...VPC_MACHINES];
 
 function fromSheet(machineId: string): PyroDrawing | null {
   const sheet = LINE_SHEETS.find((s) => s.kind === "overview" && s.machines.includes(machineId));
   const art = sheet ? LINE_SHEET_ART[sheet.id] : null;
   if (!art) return null;
   // Pads from the generated layout, so the drawing and the seeded sensor positions are the same data.
-  return { machineId, width: art.width, height: art.height, Art: art.Art, pads: PYRO_LAYOUT[machineId]?.pads ?? {}, windows: {} };
+  return { machineId, width: art.width, height: art.height, Art: art.Art, pads: PYRO_LAYOUT[machineId]?.pads ?? art.pads ?? {}, windows: {} };
 }
 
 export const PYRO_DRAWINGS: Record<string, PyroDrawing> = Object.fromEntries(
-  PYRO_MACHINES.flatMap((m) => {
+  ALL_DRAWING_MACHINES.flatMap((m) => {
     const d = fromSheet(m.id);
     return d ? [[m.id, d]] : [];
   }),
 );
 
-const BY_TYPE: Record<string, PyroDrawing> = Object.fromEntries(PYRO_MACHINES.filter((m) => PYRO_DRAWINGS[m.id]).map((m) => [m.diagramType, PYRO_DRAWINGS[m.id]]));
+const BY_TYPE: Record<string, PyroDrawing> = Object.fromEntries(ALL_DRAWING_MACHINES.filter((m) => PYRO_DRAWINGS[m.id]).map((m) => [m.diagramType, PYRO_DRAWINGS[m.id]]));
 
-/** The pyro drawing for a catalog diagram type ("preheater", "grate-cooler" …), else null. */
+/** The pyro drawing for a catalog diagram type ("preheater", "grate-cooler", "vpc-casting" …), else null. */
 export function pyroDrawingForType(diagramType: string | null | undefined): PyroDrawing | null {
   return (diagramType && BY_TYPE[diagramType]) || null;
 }

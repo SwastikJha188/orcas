@@ -1,8 +1,7 @@
 "use client";
 
-import { Edges } from "@react-three/drei";
 import type { ThreeEvent } from "@react-three/fiber";
-import React, { createContext, useContext, useMemo } from "react";
+import React, { createContext, useContext, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { grainTexture } from "./twin-textures";
@@ -97,9 +96,11 @@ export function roundedBox(w: number, h: number, d: number, radius: number) {
   return cached(`rb:${r3(w)}:${r3(h)}:${r3(d)}:${r3(rad)}`, () => new RoundedBoxGeometry(w, h, d, 3, rad));
 }
 
-/** Turned part around +y from an (r, y) profile. */
-export function lathe(key: string, profile: Array<[number, number]>, segments = 64) {
-  return cached(`la:${key}:${segments}`, () => new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r, y)), segments));
+/** Turned part around +y from an (r, y) profile; a partial sweep (phiLength < 2π) leaves a cut-away. */
+export function lathe(key: string, profile: Array<[number, number]>, segments = 64, phiStart = 0, phiLength = Math.PI * 2) {
+  return cached(`la:${key}:${segments}:${r3(phiStart)}:${r3(phiLength)}`, () =>
+    new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r, y)), segments, phiStart, phiLength),
+  );
 }
 
 /** Wide-flange (HEB-style) section, extruded along +y. */
@@ -126,6 +127,44 @@ export function iBeam(length: number, size = 0.3) {
     g.rotateX(-Math.PI / 2); // extrude along +y
     return g;
   });
+}
+
+/* ---------------------------------------------------------------- rim */
+
+/**
+ * The rim on a part's hard edges: plain 1 px line segments, with the edge geometry
+ * cached per source geometry (parts share geometries) and one line material per
+ * colour. drei's <Edges> builds a screen-space fat line with its own geometry and
+ * material for every part, which made a twin of a few hundred parts stall on load.
+ */
+const rimGeometries = new WeakMap<THREE.BufferGeometry, THREE.EdgesGeometry>();
+const rimMaterials = new Map<string, THREE.LineBasicMaterial>();
+const noRaycast = () => undefined;
+
+function rimMaterial(color: string) {
+  let m = rimMaterials.get(color);
+  if (!m) {
+    m = new THREE.LineBasicMaterial({ color });
+    rimMaterials.set(color, m);
+  }
+  return m;
+}
+
+function Rim({ color }: { color: string }) {
+  const ref = useRef<THREE.LineSegments>(null);
+  // The parent mesh gets its geometry (prop or child element) before this runs.
+  useLayoutEffect(() => {
+    const seg = ref.current;
+    const src = (seg?.parent as THREE.Mesh | null)?.geometry;
+    if (!seg || !src) return;
+    let g = rimGeometries.get(src);
+    if (!g) {
+      g = new THREE.EdgesGeometry(src, 30);
+      rimGeometries.set(src, g);
+    }
+    if (seg.geometry !== g) seg.geometry = g;
+  });
+  return <lineSegments ref={ref} material={rimMaterial(color)} raycast={noRaycast} />;
 }
 
 /* ---------------------------------------------------------------- part */
@@ -183,7 +222,7 @@ export function TwinPart({
       {...handlers}
     >
       {children}
-      {edges && <Edges threshold={30} color={selected ? ctx.selectColor : hovered ? ctx.hoverColor : ctx.edgeColor} />}
+      {edges && <Rim color={selected ? ctx.selectColor : hovered ? ctx.hoverColor : ctx.edgeColor} />}
     </mesh>
   );
 }

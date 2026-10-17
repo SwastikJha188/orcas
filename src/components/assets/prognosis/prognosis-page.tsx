@@ -120,11 +120,22 @@ export function MachinePrognosisPage({ machine }: MachinePrognosisPageProps) {
           longest && { label: "Horizon", value: `signals ${horizonText(longest.id)}${lastDay !== undefined ? ` · health ${lastDay} d` : ""}` },
         ]}
         actions={
-          props && (
-            <PillButton variant="secondary" onClick={() => downloadReport(props, stamp)}>
-              Prognosis report
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <PillButton variant="secondary" onClick={() => go("diagnosis")}>
+              Diagnosis
             </PillButton>
-          )
+            <PillButton variant="secondary" onClick={() => go("analysis")}>
+              Analysis
+            </PillButton>
+            <PillButton variant="secondary" onClick={() => go("sensors")}>
+              Sensors
+            </PillButton>
+            {props && (
+              <PillButton variant="secondary" onClick={() => downloadReport(props, stamp)}>
+                Prognosis report
+              </PillButton>
+            )}
+          </div>
         }
       />
 

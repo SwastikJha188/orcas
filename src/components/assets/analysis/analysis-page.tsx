@@ -26,6 +26,7 @@ import { simTimeMs } from "@/lib/kiln-sim/engine";
 import type { AssetMachine } from "../assets-data";
 import type { AssetsSubPage } from "../assets-view";
 import { useMachineInsights } from "../use-machine-insights";
+import { PillButton } from "@/components/ui";
 import { Empty, KpiStrip, PageHeader, SectionIndex, openActions, type AnalysisModuleId, type SectionIndexItem } from "./an-ui";
 import { SECTION_IDS, detectionRows, isAnomalous, liveRules, machineFaults, machineSources, type SectionProps } from "./an-derive";
 import { isConditionRule } from "@/lib/plant-defs";
@@ -105,6 +106,19 @@ export function MachineAnalysisPage({ machine }: MachineAnalysisPageProps) {
           { label: "Updated", value: inferredAt ?? "—" },
           pl && { label: "Inputs valid", value: `${pl.valid} / ${pl.valid + pl.held + pl.invalid + pl.suspect}` },
         ]}
+        actions={
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <PillButton variant="secondary" onClick={() => go("diagnosis")}>
+              Diagnosis
+            </PillButton>
+            <PillButton variant="secondary" onClick={() => go("prognosis")}>
+              Prognosis
+            </PillButton>
+            <PillButton variant="secondary" onClick={() => go("sensors")}>
+              Sensors
+            </PillButton>
+          </div>
+        }
       />
 
       {insights.isLoading && !data ? (

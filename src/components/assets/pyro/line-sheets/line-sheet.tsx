@@ -22,6 +22,7 @@ import React, { useMemo, useState } from "react";
 import { MX, MachinePad, MachineSvg } from "@/components/assets/machine-kit/machine-kit";
 import { PYRO_SPEC } from "@/lib/pyro-sim/spec";
 import { PYRO_MACHINE_BY_ID, PYRO_SIGNAL_BY_TAG, PYRO_SIGNALS } from "@/lib/pyro-sim/signals";
+import { VPC_SIGNAL_BY_TAG, VPC_SPEC } from "@/lib/vpc-sim/signals";
 import type { LiveSignal, SimFrame } from "@/lib/kiln-sim/engine";
 import { useKilnFleet } from "@/providers/kiln-simulation-context";
 import { LINE_SHEETS, LINE_SHEET_ART, LINE_SHEET_BY_ID, LINE_SHEET_GROUPS, lineSheetTags } from ".";
@@ -62,7 +63,8 @@ export function lineSheetCaption(id: string): string {
     return `Line overview · ${online} online signals + ${manual} manual records · schematic arrangement, not to scale · no burner in the preheater`;
   }
   const n = lineSheetTags(id).length;
-  return `${s.kind === "overview" ? "System overview" : "Detail sheet"} · ${n} monitoring point${n === 1 ? "" : "s"} · schematic arrangement, not to scale · tag set D4-OSW-PE-PYR Rev. 02`;
+  const tagSet = s.group === "V" ? "Schultheiss VPC 066 (P1–E2, DT1)" : "tag set D4-OSW-PE-PYR Rev. 02";
+  return `${s.kind === "overview" ? "System overview" : "Detail sheet"} · ${n} monitoring point${n === 1 ? "" : "s"} · schematic arrangement, not to scale · ${tagSet}`;
 }
 
 interface PointView {
@@ -85,7 +87,8 @@ function usePoints(tags: string[], machineId: string | null | undefined, frame: 
   return useMemo(() => {
     const out: Record<string, PointView> = {};
     for (const tag of tags) {
-      const def = PYRO_SIGNAL_BY_TAG[tag];
+      const def = PYRO_SIGNAL_BY_TAG[tag] ?? VPC_SIGNAL_BY_TAG[tag];
+      const spec = PYRO_SPEC[tag] ?? VPC_SPEC[tag];
       const own = !machineId || !def || def.machine === machineId;
       // The page's frame for its own points (every point when no machine is set); another machine reads its own frame.
       const src = frame && (!machineId || !def || def.machine === machineId) ? frame : def ? fleet[def.machine]?.frame : null;
@@ -102,8 +105,8 @@ function usePoints(tags: string[], machineId: string | null | undefined, frame: 
         status,
         value: live ? `${live.display}${unit}` : "—",
         manual: def?.origin === "manual",
-        optional: PYRO_SPEC[tag]?.priority === "Optional",
-        name: PYRO_SPEC[tag]?.parameter ?? def?.name ?? tag,
+        optional: spec?.priority === "Optional",
+        name: spec?.parameter ?? def?.name ?? tag,
       };
     }
     return out;

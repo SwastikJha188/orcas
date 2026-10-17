@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { PillButton, PillNav, Tile, TileGrid } from "@/components/ui";
+import { PillButton, PillNav, Table, type Column } from "@/components/ui";
+import { StatusTag } from "../assets-shell-ui";
 import { formatDuration } from "@/lib/kiln-sim/engine";
 import { focusSensorOn } from "../sensor-focus";
 import { MissingNote, Panel, Section, useElementWidth } from "./an-ui";
@@ -154,27 +155,23 @@ export function AnDetection({ insights, frame, go }: SectionProps) {
           <MissingNote title="No reference model for this machine." />
         </section>
         {p.anomalies.length > 0 && (
-          <>
-            <h4 className="ui-tiles-head">
-              <span>
-                Anomalies <b>{p.anomalies.length}</b>
-              </span>
-            </h4>
-            <TileGrid label="Anomalies" min={260}>
-              {p.anomalies.map((x) => (
-                <Tile
-                  key={x.tag}
-                  title={x.tag}
-                  sub={`${x.name} · ${x.component}`}
-                  status={{ label: x.severity, tone: sevToTone(x.severity) }}
-                  tone={sevToTone(x.severity)}
-                  value={x.deviation}
-                  facts={[{ label: "Score", value: x.score.toFixed(2) }]}
-                  onSelect={() => openTrends(go, x.tag)}
-                />
-              ))}
-            </TileGrid>
-          </>
+          <section className="ast-card pg-table-card" aria-label="Anomalies">
+            <div className="ast-card-head">
+              <h4 className="ast-card-title">Anomalies ({p.anomalies.length})</h4>
+            </div>
+            <Table
+              data={p.anomalies}
+              keyExtractor={(x) => x.tag}
+              onRowClick={(x) => openTrends(go, x.tag)}
+              columns={[
+                { key: "tag", header: "Sensor", width: "120px", render: (x) => <span className="ast-mono">{x.tag}</span> },
+                { key: "name", header: "Parameter", render: (x) => `${x.name} · ${x.component}` },
+                { key: "dev", header: "Deviation", width: "160px", render: (x) => <span className="ast-num">{x.deviation}</span> },
+                { key: "score", header: "Score", width: "100px", render: (x) => <span className="ast-num">{x.score.toFixed(2)}</span> },
+                { key: "sev", header: "Severity", width: "120px", render: (x) => <StatusTag tone={sevToTone(x.severity)} label={x.severity} /> },
+              ]}
+            />
+          </section>
         )}
       </Section>
     );
@@ -189,6 +186,52 @@ export function AnDetection({ insights, frame, go }: SectionProps) {
   const broken = p.correlation.pairs
     .filter((c) => c.baseline !== undefined && c.recent !== undefined && Math.abs(c.baseline) >= 0.6 && Math.abs(c.baseline - c.recent) >= 0.5)
     .slice(0, 4);
+
+  const offModelCols: Column<(typeof shown)[number]>[] = [
+    {
+      key: "tag",
+      header: "Sensor",
+      width: "210px",
+      render: (r) => (
+        <span className="ast-cell-stack">
+          <span className="ast-cell-title ast-num">{r.tag} · {r.name}</span>
+          <span className="ast-cell-sub">{r.sub}</span>
+        </span>
+      ),
+    },
+    {
+      key: "actual",
+      header: "Actual reading",
+      width: "140px",
+      render: (r) => <strong className="ast-num">{withUnit(fmt(r.actual), r.unit)}</strong>,
+    },
+    {
+      key: "expected",
+      header: "Expected (model)",
+      width: "140px",
+      render: (r) => <span className="ast-num ast-muted">{withUnit(fmt(r.expected), r.unit)}</span>,
+    },
+    {
+      key: "z",
+      header: "Residual",
+      width: "120px",
+      render: (r) => {
+        const tone = Math.abs(r.z!) > Z_UNCLASSIFIED ? "bad" : "warn";
+        return <StatusTag tone={tone} label={sigma(r.z!)} />;
+      },
+    },
+    {
+      key: "band",
+      header: `±${Z_ANOMALY}σ band`,
+      width: "130px",
+      render: (r) => <span className="ast-num ast-muted">{withUnit(`±${fmt(r.sigma * Z_ANOMALY)}`, r.unit)}</span>,
+    },
+    {
+      key: "rules",
+      header: "Rules broken",
+      render: (r) => <span className="ast-mono">{r.rules.length ? r.rules.join(", ") : "Unclassified"}</span>,
+    },
+  ];
 
   return (
     <Section
@@ -222,61 +265,41 @@ export function AnDetection({ insights, frame, go }: SectionProps) {
         </Panel>
       </section>
 
-      <h4 className="ui-tiles-head">
-        <span>
-          Off model <b>{anomalous.length}</b> of {rows.length}
-        </span>
-        <span>beyond ±{Z_ANOMALY}σ of the reference model</span>
-      </h4>
-      {shown.length === 0 ? (
-        <section className="ast-card pg-an-card" role="status">
-          <p className="pg-analysis-empty">All signals within ±{Z_ANOMALY}σ of the reference model.</p>
-        </section>
-      ) : (
-        <TileGrid label="Signals off the reference model" min={280}>
-          {shown.map((r) => {
-            const tone = Math.abs(r.z!) > Z_UNCLASSIFIED ? "bad" : "warn";
-            return (
-              <Tile
-                key={r.tag}
-                title={r.tag}
-                sub={`${r.name} · ${r.sub}`}
-                status={r.rules.length ? { label: r.rules.join(", ") } : { label: "Unclassified", tone: "warn" }}
-                tone={tone}
-                value={sigma(r.z!)}
-                unit="residual"
-                facts={[
-                  { label: "Expected", value: withUnit(fmt(r.expected), r.unit) },
-                  { label: "Actual", value: withUnit(fmt(r.actual), r.unit) },
-                  { label: `±${Z_ANOMALY}σ band`, value: withUnit(`±${fmt(r.sigma * Z_ANOMALY)}`, r.unit) },
-                  { label: "Samples", value: String(r.persistence) },
-                ]}
-                onSelect={() => openTrends(go, r.tag)}
-              />
-            );
-          })}
-        </TileGrid>
-      )}
+      <section className="ast-card pg-table-card" aria-label="Signals off the reference model">
+        <div className="ast-card-head">
+          <h4 className="ast-card-title">
+            Signals off model ({anomalous.length} of {rows.length} beyond ±{Z_ANOMALY}σ)
+          </h4>
+        </div>
+        {shown.length === 0 ? (
+          <p className="pg-analysis-empty" style={{ padding: "12px 16px", margin: 0 }}>
+            All signals within ±{Z_ANOMALY}σ of the reference model.
+          </p>
+        ) : (
+          <Table columns={offModelCols} data={shown} keyExtractor={(r) => r.tag} onRowClick={(r) => openTrends(go, r.tag)} />
+        )}
+      </section>
 
       {broken.length > 0 && (
-        <>
-          <h4 className="ui-tiles-head">
-            <span>
-              Coupling changed <b>{broken.length}</b>
-            </span>
-            <span>last hour, correlation r</span>
-          </h4>
-          <TileGrid label="Coupling changed in the last hour" min={220} compact >
-            {broken.map((c) => (
-              <Tile
-                key={`${c.a}-${c.b}`}
-                title={`${c.a} ↔ ${c.b}`}
-                value={`${c.baseline!.toFixed(2)} → ${c.recent!.toFixed(2)}`}
-                facts={[{ label: "Change", value: `${c.recent! - c.baseline! >= 0 ? "+" : "−"}${Math.abs(c.recent! - c.baseline!).toFixed(2)}` }]}
-              />
-            ))}
-          </TileGrid>
-        </>
+        <section className="ast-card pg-table-card" aria-label="Coupling changed in the last hour">
+          <div className="ast-card-head">
+            <h4 className="ast-card-title">Coupling changed ({broken.length})</h4>
+          </div>
+          <Table
+            data={broken}
+            keyExtractor={(c) => `${c.a}-${c.b}`}
+            columns={[
+              { key: "pair", header: "Sensor pair", render: (c) => <span className="ast-mono">{c.a} ↔ {c.b}</span> },
+              { key: "base", header: "Baseline r", render: (c) => <span className="ast-num">{c.baseline!.toFixed(2)}</span> },
+              { key: "recent", header: "Recent r", render: (c) => <span className="ast-num">{c.recent!.toFixed(2)}</span> },
+              {
+                key: "delta",
+                header: "Change (Δr)",
+                render: (c) => <strong className="ast-num">{`${c.recent! - c.baseline! >= 0 ? "+" : "−"}${Math.abs(c.recent! - c.baseline!).toFixed(2)}`}</strong>,
+              },
+            ]}
+          />
+        </section>
       )}
     </Section>
   );

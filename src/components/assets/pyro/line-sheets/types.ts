@@ -5,7 +5,7 @@ import type React from "react";
  * P preheater, K rotary kiln, B main burner, C clinker cooler, H crusher and
  * clinker transport.
  */
-export type LineSheetGroup = "L" | "F" | "P" | "K" | "B" | "C" | "H";
+export type LineSheetGroup = "L" | "F" | "P" | "K" | "B" | "C" | "H" | "V";
 
 /** One monitoring point as listed on a detail sheet. */
 export interface LineSheetPoint {

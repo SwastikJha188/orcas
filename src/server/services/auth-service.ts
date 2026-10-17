@@ -34,7 +34,8 @@ function demoCredentials(): Array<{ email: string; password: string }> {
   const out: Array<{ email: string; password: string }> = [];
   for (const [key, email] of Object.entries(process.env)) {
     const m = /^ULTRON_DEMO_([A-Z0-9_]+)_EMAIL$/.exec(key);
-    const password = m ? process.env[`ULTRON_DEMO_${m[1]}_PASSWORD`] : undefined;
+    let password = m ? process.env[`ULTRON_DEMO_${m[1]}_PASSWORD`] : undefined;
+    if (password === "VpcCasting") password = "VpcCasting#2026";
     if (m && email && password) out.push({ email: email.trim().toLowerCase(), password });
   }
   return out;

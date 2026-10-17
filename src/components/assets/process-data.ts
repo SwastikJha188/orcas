@@ -526,6 +526,192 @@ export function getMachineProcesses(machine: AssetMachine): MachineProcessStage[
           ],
         },
       ];
+    case "VPC-066":
+      return [
+        {
+          id: "vpc066-s1",
+          stepNumber: "01",
+          name: "Charge Crucible",
+          role: "Alloy Charging",
+          subtitle: "Jewellery alloy (gold, silver, platinum, palladium, brass or bronze) is placed in the upper melting crucible",
+          health: 99,
+          status: "Normal",
+          healthNotes: "Upper crucible charged; stopper rod S1 seated closed.",
+          transformation: "Loads precious or non-ferrous casting alloy charge into the graphite/ceramic crucible inside the upper melting chamber.",
+          associatedParts: ["Crucible / stopper", "Induction heating"],
+          parameters: [
+            { label: "Sealing Rod (S1)", value: "CLOSED", unit: "", status: "Normal" },
+            { label: "Crucible Temp (T1)", value: "1,000", unit: "°C", status: "Normal" },
+          ],
+          inputs: [
+            { name: "Jewellery Alloy Charge", category: "Material", rateOrSpec: "18K yellow gold / Ag-Cu alloy", sourceOrDestination: "Loaded into Upper Crucible", status: "Normal" },
+          ],
+          outputs: [
+            { name: "Charged Crucible", category: "Material", rateOrSpec: "Sealed by stopper rod S1", sourceOrDestination: "To Stage 02 Load Flask", status: "Normal" },
+          ],
+        },
+        {
+          id: "vpc066-s2",
+          stepNumber: "02",
+          name: "Load Heated Flask",
+          role: "Flask Loading",
+          subtitle: "Heated perforated investment flask with the mould tree is placed in the lower flask chamber",
+          health: 99,
+          status: "Normal",
+          healthNotes: "Perforated flask (Ø130 × 260 mm, 600 °C) seated on lower support base.",
+          transformation: "Positions the burnout-heated investment flask under the crucible pouring nozzle inside the lower flask chamber.",
+          associatedParts: ["Flask seals / closure", "Optional vibration"],
+          parameters: [
+            { label: "Flask Temp", value: "600", unit: "°C", status: "Normal" },
+            { label: "Flask Size", value: "Ø130 × 260", unit: "mm", status: "Normal" },
+          ],
+          inputs: [
+            { name: "Heated Investment Flask", category: "Material", rateOrSpec: "600 °C burnout flask with mould tree", sourceOrDestination: "From Burnout Furnace", status: "Normal" },
+          ],
+          outputs: [
+            { name: "Aligned Mould Assembly", category: "Material", rateOrSpec: "Positioned beneath pour nozzle", sourceOrDestination: "To Stage 03 Seal Chambers", status: "Normal" },
+          ],
+        },
+        {
+          id: "vpc066-s3",
+          stepNumber: "03",
+          name: "Seal Both Chambers",
+          role: "Chamber Closure & Interlock",
+          subtitle: "Upper melting chamber and lower flask chamber are closed and sealed",
+          health: 99,
+          status: "Normal",
+          healthNotes: "Chamber/flask door interlock S2 CLOSED; cooling water flow F1 at 4.5 L/min.",
+          transformation: "Seals both upper melting chamber and lower flask chamber and verifies door safety switch S2 and cooling water flow F1 before vacuum or heating.",
+          associatedParts: ["Flask seals / closure", "Cooling water"],
+          parameters: [
+            { label: "Door Interlock (S2)", value: "CLOSED", unit: "", status: "Normal" },
+            { label: "Cooling Flow (F1)", value: "4.5", unit: "L/min", status: "Normal" },
+            { label: "Cooling ΔT (DT1)", value: "6.0", unit: "°C", status: "Normal" },
+          ],
+          inputs: [
+            { name: "Cooling Water Supply", category: "Utility", rateOrSpec: "4.5 L/min at 24 °C (T2)", sourceOrDestination: "Cooling Water Pump Manifold", status: "Normal" },
+          ],
+          outputs: [
+            { name: "Hermetically Sealed Chambers", category: "Utility", rateOrSpec: "S2 CLOSED verified", sourceOrDestination: "To Stage 04 Evacuate & Backfill", status: "Normal" },
+          ],
+        },
+        {
+          id: "vpc066-s4",
+          stepNumber: "04",
+          name: "Evacuate & Protective Gas Backfill",
+          role: "Vacuum & Inert Atmosphere",
+          subtitle: "Air is evacuated and protective inert gas is used to reduce oxidation",
+          health: 99,
+          status: "Normal",
+          healthNotes: "Lower flask vacuum P2 at -0.90 bar; vacuum line P4 at -0.92 bar; gas supply P3 at 2.5 bar.",
+          transformation: "Evacuates air from both chambers via the vacuum pump (-0.90 bar) and backfills protective inert gas to prevent alloy oxidation.",
+          associatedParts: ["Vacuum system", "Gas / valves"],
+          parameters: [
+            { label: "Lower Flask Vacuum (P2)", value: "-0.90", unit: "bar", status: "Normal" },
+            { label: "Vacuum Branch (P4)", value: "-0.92", unit: "bar", status: "Normal" },
+            { label: "Gas Supply (P3)", value: "2.50", unit: "bar", status: "Normal" },
+            { label: "Pump Vibration (V1)", value: "2.2", unit: "mm/s", status: "Normal" },
+          ],
+          inputs: [
+            { name: "Vacuum Suction", category: "Utility", rateOrSpec: "16 / 21 m³/h Vacuum Pump", sourceOrDestination: "Vacuum Line Manifold P4", status: "Normal" },
+            { name: "Protective Inert Gas", category: "Gas", rateOrSpec: "2.5 bar Regulated Argon / N₂", sourceOrDestination: "Gas Supply Cylinder P3", status: "Normal" },
+          ],
+          outputs: [
+            { name: "Oxygen-Free Chamber Atmosphere", category: "Gas", rateOrSpec: "-0.90 bar lower flask vacuum", sourceOrDestination: "To Stage 05 Induction Melting", status: "Normal" },
+          ],
+        },
+        {
+          id: "vpc066-s5",
+          stepNumber: "05",
+          name: "Induction Melting",
+          role: "Medium-Frequency Induction Heating",
+          subtitle: "Medium-frequency induction generator melts and homogenises the metal up to target casting temperature",
+          health: 99,
+          status: "Normal",
+          healthNotes: "Melt temperature T1 at 1,000 °C; induction generator power E1 at 9.5 kW.",
+          transformation: "Applies 9.5 kW medium-frequency induction power (12 kW max) to melt and electromagnetically stir the alloy to a uniform 1,000 °C.",
+          associatedParts: ["Induction heating", "Cooling water"],
+          parameters: [
+            { label: "Melt Temp (T1)", value: "1,000", unit: "°C", status: "Normal" },
+            { label: "Induction Power (E1)", value: "9.5", unit: "kW", status: "Normal" },
+            { label: "Cooling Out (T3)", value: "30.0", unit: "°C", status: "Normal" },
+          ],
+          inputs: [
+            { name: "Electrical Supply", category: "Energy", rateOrSpec: "400 V, 3-phase, 16 A (9.5 kW)", sourceOrDestination: "Induction Generator Cabinet", status: "Normal" },
+          ],
+          outputs: [
+            { name: "Homogenised Molten Alloy", category: "Material", rateOrSpec: "1,000 °C uniform melt", sourceOrDestination: "To Stage 06 Bottom Pouring", status: "Normal" },
+          ],
+        },
+        {
+          id: "vpc066-s6",
+          stepNumber: "06",
+          name: "Bottom Pouring",
+          role: "Stopper Rod Actuation",
+          subtitle: "Sealing rod opens and molten metal flows directly from the bottom of the crucible into the flask",
+          health: 99,
+          status: "Normal",
+          healthNotes: "Sealing rod actuator S1 opens on pour command; clean bottom-pour stream into mould sprue.",
+          transformation: "Lifts the vertical graphite sealing rod (S1 = OPEN) so clean, slag-free molten metal pours directly from the crucible bottom into the flask sprue.",
+          associatedParts: ["Crucible / stopper"],
+          parameters: [
+            { label: "Sealing Rod (S1)", value: "OPEN", unit: "", status: "Normal" },
+            { label: "Pour Temp (T1)", value: "1,000", unit: "°C", status: "Normal" },
+          ],
+          inputs: [
+            { name: "Molten Alloy Stream", category: "Material", rateOrSpec: "1,000 °C bottom-poured melt", sourceOrDestination: "From Crucible Bottom Nozzle", status: "Normal" },
+          ],
+          outputs: [
+            { name: "Filled Investment Mould Tree", category: "Product", rateOrSpec: "Direct bottom pour into sprue", sourceOrDestination: "To Stage 07 Vacuum + Pressure Assist", status: "Normal" },
+          ],
+        },
+        {
+          id: "vpc066-s7",
+          stepNumber: "07",
+          name: "Vacuum + Pressure Assist",
+          role: "Differential Pressure & Vibration Solidification",
+          subtitle: "Vacuum pulls through the porous flask wall while gas overpressure pushes metal into fine filigree details",
+          health: 99,
+          status: "Normal",
+          healthNotes: "Upper chamber P1 at +1.8 bar overpressure; lower flask chamber P2 at -0.90 bar vacuum; vibration base V2 at 1.8 mm/s.",
+          transformation: "Maintains -0.90 bar vacuum in the lower flask chamber while applying +1.8 bar inert gas overpressure in the upper chamber (2.7 bar differential) plus optional direct vibration V2.",
+          associatedParts: ["Gas / valves", "Vacuum system", "Optional vibration"],
+          parameters: [
+            { label: "Upper Overpressure (P1)", value: "1.80", unit: "bar", status: "Normal" },
+            { label: "Lower Flask Vacuum (P2)", value: "-0.90", unit: "bar", status: "Normal" },
+            { label: "Flask Vibration (V2)", value: "1.8", unit: "mm/s", status: "Normal" },
+          ],
+          inputs: [
+            { name: "Upper Gas Overpressure", category: "Gas", rateOrSpec: "+1.8 bar via Solenoid Valve", sourceOrDestination: "Upper Melting Chamber P1", status: "Normal" },
+            { name: "Lower Mould Vacuum", category: "Utility", rateOrSpec: "-0.90 bar through porous wall", sourceOrDestination: "Lower Flask Chamber P2", status: "Normal" },
+          ],
+          outputs: [
+            { name: "Dense Fine-Filigree Casting", category: "Product", rateOrSpec: "High-density solidified tree", sourceOrDestination: "To Stage 08 Vent & Unload", status: "Normal" },
+          ],
+        },
+        {
+          id: "vpc066-s8",
+          stepNumber: "08",
+          name: "Solidify, Vent & Unload",
+          role: "Cycle Completion & Venting",
+          subtitle: "Pressure is held during solidification, then the chambers are vented and the cast flask is removed",
+          health: 99,
+          status: "Normal",
+          healthNotes: "Solidification hold complete; chambers vented safely; sealing rod S1 closed for next cycle.",
+          transformation: "Holds differential pressure through alloy solidification, vents chambers to atmospheric pressure, and unlocks flask chamber for unloading.",
+          associatedParts: ["Gas / valves", "Flask seals / closure"],
+          parameters: [
+            { label: "Sealing Rod (S1)", value: "CLOSED", unit: "", status: "Normal" },
+            { label: "Door Interlock (S2)", value: "CLOSED", unit: "", status: "Normal" },
+          ],
+          inputs: [
+            { name: "Solidified Jewellery Tree", category: "Product", rateOrSpec: "Cooled under +1.8 bar hold", sourceOrDestination: "From Stage 07", status: "Normal" },
+          ],
+          outputs: [
+            { name: "Finished Cast Flask", category: "Product", rateOrSpec: "Ready for quenching & de-investing", sourceOrDestination: "To Jewellery Finishing Cell", status: "Normal" },
+          ],
+        },
+      ];
     default:
       // Generic fallback based on machine properties
       return [

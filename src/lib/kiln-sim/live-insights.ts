@@ -493,9 +493,13 @@ function reasoning(f: SimFrame, src: IssueSource[]): ReasoningStep[] {
   const p = f.pipeline;
   const top = src[0];
   const hot: Severity = top && top.severity !== "Normal" ? top.severity : "Normal";
+  const isVpc = Boolean(f.defs.signalByTag["T1"] && f.defs.signalByTag["P2"]);
+  const modelDetail = isVpc
+    ? `${p.beyond3s} signals beyond 3σ · melt T1 ${(f.signals["T1"]?.value ?? 1020).toFixed(0)} °C · flask vac P2 ${(f.signals["P2"]?.value ?? 300).toFixed(0)} mbar`
+    : `${p.beyond3s} signals beyond 3σ · ambient est. ${f.drivers.ambientEst.toFixed(1)} °C · feed ${f.drivers.feed.toFixed(0)} t/h`;
   return [
     { id: "quality", label: "1 · Data quality", detail: `${p.valid} valid · ${p.held} held · ${p.invalid} invalid · ${p.suspect} suspect`, status: p.invalid + p.suspect > 0 ? "Advisory" : "Normal" },
-    { id: "model", label: "2 · Reference model", detail: `${p.beyond3s} signals beyond 3σ · ambient est. ${f.drivers.ambientEst.toFixed(1)} °C · feed ${f.drivers.feed.toFixed(0)} t/h`, status: p.beyond3s > 0 ? "Advisory" : "Normal" },
+    { id: "model", label: "2 · Reference model", detail: modelDetail, status: p.beyond3s > 0 ? "Advisory" : "Normal" },
     { id: "rules", label: "3 · Rules", detail: `${p.evaluated} evaluated · ${p.matching} matching`, status: hot },
     { id: "confirm", label: "4 · Confirmation", detail: `${p.confirmed} confirmed · ${p.pending} pending (persistence 2–4 samples, hysteresis 4)`, status: p.confirmed > 0 ? hot : "Normal" },
     { id: "action", label: "5 · Action", detail: `P1 ${p.p1} · P2 ${p.p2} · P3 ${p.p3}${top && top.severity !== "Normal" ? ` — ${top.cause}` : ""}`, status: p.p1 > 0 ? "Critical" : p.p2 > 0 ? "Advisory" : "Normal" },
@@ -701,7 +705,9 @@ export function buildLiveInsights(f: SimFrame, machineId: string, db: DbSensorMe
         engine:
           f.defs.plant === "kiln"
             ? "ULTRON reference model (D5 Table 9.5) · 21-rule library"
-            : `ULTRON operating-state reference model (D4-OSW-PE-PYR) · ${f.defs.rules.length}-rule library`,
+            : f.defs.signalByTag["T1"] && f.defs.signalByTag["P2"]
+              ? `ULTRON VPC 066 reference model (§7.4) · ${f.defs.rules.length}-rule library`
+              : `ULTRON operating-state reference model (D4-OSW-PE-PYR) · ${f.defs.rules.length}-rule library`,
       },
       sources: src,
       faults: faults(f),

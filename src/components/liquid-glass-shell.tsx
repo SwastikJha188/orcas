@@ -11,10 +11,10 @@ import {
 } from "./navigation-icons";
 import { ThemeToggle } from "./theme-toggle";
 import { CopilotLauncher } from "./copilot/copilot";
-import { ContextSwitchers } from "./context-switchers";
+import { ContextSwitchers, UserSwitcher } from "./context-switchers";
 import { useEdge } from "@/providers/edge-context";
 import { usePrimaryMachineId } from "@/providers/kiln-simulation-context";
-import { isPyroMachineId } from "@/lib/live-defs";
+import { isPyroMachineId, isVpcMachineId } from "@/lib/live-defs";
 
 export type WorkspaceTab = "home" | "assets" | "maintenance" | "devices" | "assetiq" | "configure";
 
@@ -26,7 +26,7 @@ interface LiquidGlassShellProps {
 const PRIMARY: Array<{ id: WorkspaceTab; label: string; Icon: ComponentType<{ className?: string }> }> = [
   { id: "home", label: "Home", Icon: HomeIcon },
   { id: "assets", label: "Assets", Icon: AssetsIcon },
-  // Planned maintenance: the pyro line's machines carry the OSWARteck checklists and plans.
+  // Planned maintenance: the pyro line and VPC 066 carry checklists and plans.
   { id: "maintenance", label: "Maintenance", Icon: MaintenanceIcon },
   { id: "devices", label: "Devices", Icon: DevicesIcon },
   { id: "assetiq", label: "AssetIQ", Icon: AssetIQIcon },
@@ -89,7 +89,8 @@ function GatewayNavbarStatus({ onSelectTab }: { onSelectTab?: (tab: WorkspaceTab
 }
 
 export function LiquidGlassShell({ activeTab = "home", onSelectTab }: LiquidGlassShellProps) {
-  const hasPms = isPyroMachineId(usePrimaryMachineId());
+  const primaryId = usePrimaryMachineId();
+  const hasPms = isPyroMachineId(primaryId) || isVpcMachineId(primaryId);
   return (
     <>
       <header className="navbar liquid-glass" aria-label="Top navigation">
@@ -119,6 +120,7 @@ export function LiquidGlassShell({ activeTab = "home", onSelectTab }: LiquidGlas
 
         <div className="nav-rail-footer">
           <CopilotLauncher />
+          <UserSwitcher onManageUsers={() => onSelectTab?.("configure")} />
         </div>
       </nav>
 

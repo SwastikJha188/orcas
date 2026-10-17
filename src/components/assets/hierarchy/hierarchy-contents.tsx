@@ -22,7 +22,8 @@ import {
 import type { Tone } from "../assets-shell-ui";
 import { toCondition } from "@/components/ui/status";
 import { PyroLineOverview } from "../pyro/pyro-line-overview";
-import { PYRO_PLANT_ID } from "@/providers/kiln-simulation-context";
+import { VpcPlantOverview } from "../pyro/vpc-plant-overview";
+import { PYRO_PLANT_ID, VPC_PLANT_ID } from "@/providers/kiln-simulation-context";
 
 /* ==========================================================================
    Assets directory contents for the selected plant / area / process cell.
@@ -145,6 +146,7 @@ export function HierarchyContents({ roots, lookup, node, onSelectNode, onOpenMac
       )}
 
       {node.id === PYRO_PLANT_ID && <PyroLineOverview onOpenMachine={onOpenMachine} />}
+      {node.id === VPC_PLANT_ID && <VpcPlantOverview onOpenMachine={onOpenMachine} />}
 
       {entries.length === 0 && folders.length === 0 ? (
         <div className="ast-card ast-empty">

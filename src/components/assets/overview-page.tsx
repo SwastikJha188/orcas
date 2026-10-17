@@ -205,12 +205,24 @@ export function OverviewPage({
               </span>
             )}
           </div>
-          <div className="pg-ov-hero-actions">
+          <div className="pg-ov-hero-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             {locateTag && (
               <PillButton variant="secondary" onClick={() => select(locateTag)}>
                 Locate worst point
               </PillButton>
             )}
+            <PillButton variant="secondary" onClick={() => go("sensors")}>
+              Sensors
+            </PillButton>
+            <PillButton variant="secondary" onClick={() => go("diagnosis")}>
+              Diagnosis
+            </PillButton>
+            <PillButton variant="secondary" onClick={() => go("prognosis")}>
+              Prognosis
+            </PillButton>
+            <PillButton variant="secondary" onClick={() => go("analysis")}>
+              Analysis
+            </PillButton>
           </div>
         </div>
 
@@ -689,6 +701,9 @@ function MachineDrawing({
               }}
             >
               Open in Sensors
+            </PillButton>
+            <PillButton variant="secondary" onClick={() => go("diagnosis")}>
+              Diagnosis
             </PillButton>
             <button type="button" className="pg-ov-icon-btn" onClick={() => onSelect(null)} aria-label="Clear selection">
               ×

@@ -126,22 +126,26 @@ export function AnFaults({ insights, frame, go }: SectionProps) {
       )}
 
       {rule && (
-        <Panel title={`Mechanism, ${rule.id}`}>
+        <Panel title={`Fault summary · ${rule.id} (${rule.name})`}>
           <dl className="pg-analysis-dl">
-            <dt>Cause</dt>
+            <dt>What is wrong</dt>
             <dd>{rule.cause}</dd>
-            <dt>Consequence</dt>
+            <dt>What it impacts</dt>
             <dd>{rule.consequence}</dd>
-            {rule.unproven && (
+            <dt>Rule broken</dt>
+            <dd className="ast-num">
+              {rule.id}: {rule.logic}
+            </dd>
+            {rule.evidence && (
               <>
-                <dt>Not yet proven</dt>
-                <dd>{rule.unproven}</dd>
+                <dt>Evidence</dt>
+                <dd className="ast-num">{rule.evidence}</dd>
               </>
             )}
-            {rule.hold && (
+            {rule.action && (
               <>
-                <dt>HOLD</dt>
-                <dd>{rule.hold}</dd>
+                <dt>Action to take</dt>
+                <dd>{rule.action}</dd>
               </>
             )}
           </dl>

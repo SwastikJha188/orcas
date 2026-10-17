@@ -13,15 +13,24 @@ import { createSim, freezeSim, setAutopilot, setProfile, setWallClock, stepSim, 
 import { KILN_FLEET } from "./kiln-sim/fleet";
 import { LIVE_SIM_SETTINGS, createLine, freezeLine, setAutopilot as lineSetAutopilot, setLineSettings, setProfile as lineSetProfile, stepLine, thawLine, type FrozenLine, type LineState } from "./pyro-sim/engine";
 import { PYRO_FLEET, PYRO_LINE_SEED } from "./pyro-sim/fleet";
+import { createVpcSim, freezeVpc, setVpcAutopilot, setVpcProfile, stepVpcSim, thawVpc, type FrozenVpc, type VpcSimState } from "./vpc-sim/engine";
 import { exportReportTotals, importReportTotals, recordFrames, type ReportTotals } from "./condition-report";
 import { decodePlant } from "./plant-codec";
 
 /** Simulated minutes run before the first frame, so each kiln opens already in its condition. */
 export const PRE_ROLL_MIN = 90;
 
-export type FleetEngines = { sims: Record<string, SimState>; line: LineState };
+export type FleetEngines = { sims: Record<string, SimState>; line: LineState; vpc: VpcSimState };
 /** Every engine one minute short of its first frame, as structured-cloneable data. */
-export type FleetSnapshot = { sims: Record<string, FrozenSim>; line: FrozenLine; report: ReportTotals };
+export type FleetSnapshot = { sims: Record<string, FrozenSim>; line: FrozenLine; vpc?: FrozenVpc; report: ReportTotals };
+
+function buildFreshVpc(): FrozenVpc {
+  const vpc = createVpcSim(20261016);
+  setVpcAutopilot(vpc, true);
+  setVpcProfile(vpc, "advisory");
+  for (let i = 1; i < PRE_ROLL_MIN; i++) stepVpcSim(vpc, false);
+  return freezeVpc(vpc);
+}
 
 /**
  * Warm up and pre-roll every engine, all but the last minute. All engines run
@@ -46,7 +55,8 @@ export function prerollFleet(nowMs: number, msPerMin: number): FleetSnapshot {
   }
   setWallClock(line.t + PRE_ROLL_MIN, nowMs, msPerMin);
   for (let i = 1; i < PRE_ROLL_MIN; i++) recordFrames(stepLine(line, false));
-  return { sims, line: freezeLine(line), report: exportReportTotals() };
+  const vpc = buildFreshVpc();
+  return { sims, line: freezeLine(line), vpc, report: exportReportTotals() };
 }
 
 const isStartupEvent = (e: { kind: string; title: string }) => e.kind === "scenario" || (e.kind === "action" && e.title.startsWith("Autopilot"));
@@ -75,7 +85,12 @@ export function finishFleet(snap: FleetSnapshot, anchor: (tEnd: number) => void,
     if (fresh) ms.events = ms.events.filter((e) => !isStartupEvent(e));
     if (ms.frame) ms.frame = { ...ms.frame, events: ms.events.slice() };
   }
-  return { sims, line };
+  const vpc = thawVpc(snap.vpc ?? buildFreshVpc());
+  anchor(vpc.t + 1);
+  stepVpcSim(vpc, true);
+  if (fresh || !snap.vpc) vpc.events = vpc.events.filter((e) => !isStartupEvent(e));
+  if (vpc.frame) vpc.frame = { ...vpc.frame, events: vpc.events.slice() };
+  return { sims, line, vpc };
 }
 
 /* --------------------------------------------------------------------------
@@ -91,12 +106,13 @@ export function freezeFleet(e: FleetEngines): FleetSnapshot {
   const sims = Object.fromEntries(Object.entries(e.sims).map(([id, sim]) => [id, { ...freezeSim(sim), frame: null }])) as Record<string, FrozenSim>;
   const line = freezeLine(e.line);
   const machines = Object.fromEntries(Object.entries(line.machines).map(([id, ms]) => [id, { ...ms, frame: null }]));
-  return { sims, line: { ...line, machines } as FrozenLine, report: exportReportTotals() };
+  return { sims, line: { ...line, machines } as FrozenLine, vpc: freezeVpc(e.vpc), report: exportReportTotals() };
 }
 
 /** Step a frozen fleet `minutes` simulated minutes without frames (catching a saved plant up to now). */
 export function advanceFrozenFleet(snap: FleetSnapshot, minutes: number): FleetSnapshot {
-  if (minutes < 1) return snap;
+  const baseVpc = snap.vpc ?? buildFreshVpc();
+  if (minutes < 1) return { ...snap, vpc: baseVpc };
   importReportTotals(snap.report);
   const sims: Record<string, FrozenSim> = {};
   for (const [id, frozen] of Object.entries(snap.sims)) {
@@ -108,7 +124,9 @@ export function advanceFrozenFleet(snap: FleetSnapshot, minutes: number): FleetS
   for (let i = 0; i < minutes; i++) recordFrames(stepLine(line, false));
   const frozen = freezeLine(line);
   const machines = Object.fromEntries(Object.entries(frozen.machines).map(([id, ms]) => [id, { ...ms, frame: null }]));
-  return { sims, line: { ...frozen, machines } as FrozenLine, report: exportReportTotals() };
+  const vpc = thawVpc(baseVpc);
+  for (let i = 0; i < minutes; i++) stepVpcSim(vpc, false);
+  return { sims, line: { ...frozen, machines } as FrozenLine, vpc: freezeVpc(vpc), report: exportReportTotals() };
 }
 
 /** What `/api/plant/state` serves: the server's fleet after its last step, taken at `wallMs`. */

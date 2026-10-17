@@ -3,7 +3,7 @@
 import React, { useMemo } from "react";
 import type { CorrelationPair } from "@/server/services/insights-service";
 import { fmt, healthStatus, isBaselineRisk, rangeText, roundHours, type RulRow } from "./prognosis-derive";
-import { Tile, TileGrid } from "@/components/ui";
+import { Table, type Column } from "@/components/ui";
 import { EvidenceChip, tagsForMode, toneFor, type ProgSectionProps } from "./prog-ui";
 
 type Points = ProgSectionProps["data"]["condition"]["points"];
@@ -16,7 +16,7 @@ interface Evidence {
   quality: string;
 }
 
-/** Degradation & evidence for the selected failure mode (render in a bare section): P-F bracket and health projection card, then contributing signals and changing couplings as cards. */
+/** Degradation & evidence for the selected failure mode: P-F bracket and health projection chart, plus contributing signals table. */
 export function ProgDegradation({ data, analysis, rows, frame, mode }: ProgSectionProps) {
   const governing = useMemo(() => {
     const k = mode ?? data.risks.find((r) => !isBaselineRisk(r)) ?? null;
@@ -68,8 +68,65 @@ export function ProgDegradation({ data, analysis, rows, frame, mode }: ProgSecti
 
   if (data.condition.points.length < 2 || !row) return null;
 
-  const sigma = (z: number | null) => (z === null ? "—" : `${z >= 0 ? "+" : "−"}${Math.abs(z).toFixed(1)}`);
+  const sigma = (z: number | null) => (z === null ? "—" : `${z >= 0 ? "+" : "−"}${Math.abs(z).toFixed(1)} σ`);
   const validity = (q: string) => (q === "Good" ? "Valid" : q === "—" ? "No data" : q);
+
+  const evCols: Column<Evidence>[] = [
+    { key: "tag", header: "Sensor", width: "130px", render: (e) => <EvidenceChip tag={e.tag} /> },
+    { key: "label", header: "Parameter", render: (e) => e.label },
+    {
+      key: "value",
+      header: "Reading",
+      width: "160px",
+      render: (e) => {
+        const r = readingParts(e.value);
+        return (
+          <span className="ast-num" style={{ fontWeight: 600 }}>
+            {r.value ?? e.value}
+            {r.unit && <span className="ast-unit"> {r.unit}</span>}
+          </span>
+        );
+      },
+    },
+    {
+      key: "z",
+      header: "Deviation vs model",
+      width: "150px",
+      render: (e) => (
+        <span className="ast-num" style={{ color: e.z !== null && Math.abs(e.z) >= 3 ? "var(--status-warning)" : undefined }}>
+          {sigma(e.z)}
+        </span>
+      ),
+    },
+    {
+      key: "quality",
+      header: "Data validity",
+      width: "130px",
+      render: (e) => <span className="ast-num">{validity(e.quality)}</span>,
+    },
+  ];
+
+  const couplingCols: Column<(typeof changing)[number]>[] = [
+    {
+      key: "pair",
+      header: "Sensor pair",
+      width: "220px",
+      render: (p) => (
+        <span className="pg-prog-driver">
+          <EvidenceChip tag={p.a} />
+          <span className="ast-muted" aria-hidden="true"> ↔ </span>
+          <EvidenceChip tag={p.b} />
+        </span>
+      ),
+    },
+    { key: "base", header: "Baseline correlation (r)", render: (p) => <span className="ast-num">{p.baseline.toFixed(2)}</span> },
+    { key: "recent", header: "Recent correlation (r)", render: (p) => <span className="ast-num">{p.recent.toFixed(2)}</span> },
+    {
+      key: "delta",
+      header: "Shift (Δr)",
+      render: (p) => <strong className="ast-num">{(p.delta >= 0 ? "+" : "−") + Math.abs(p.delta).toFixed(2)}</strong>,
+    },
+  ];
 
   return (
     <>
@@ -89,55 +146,20 @@ export function ProgDegradation({ data, analysis, rows, frame, mode }: ProgSecti
         </div>
       </section>
       {evidence.length > 0 && (
-        <>
-          <h4 className="ui-tiles-head">Contributing signals</h4>
-          <TileGrid label="Contributing signals" min={240} compact>
-            {evidence.map((e) => {
-              const r = readingParts(e.value);
-              return (
-                <Tile
-                  key={e.tag}
-                  title={<EvidenceChip tag={e.tag} />}
-                  sub={<span title={e.label}>{e.label}</span>}
-                  value={r.value}
-                  unit={r.unit}
-                  facts={[
-                    { label: "σ vs model", value: sigma(e.z), tone: e.z !== null && Math.abs(e.z) >= 3 ? "warn" : undefined },
-                    { label: "Validation", value: validity(e.quality), tone: e.quality !== "Good" && e.quality !== "—" ? "warn" : undefined },
-                  ]}
-                />
-              );
-            })}
-          </TileGrid>
-        </>
+        <section className="ast-card pg-table-card" aria-label="Contributing signals">
+          <div className="ast-card-head">
+            <h4 className="ast-card-title">Contributing signals</h4>
+          </div>
+          <Table columns={evCols} data={evidence} keyExtractor={(e) => e.tag} />
+        </section>
       )}
       {changing.length > 0 && (
-        <>
-          <h4 className="ui-tiles-head">Changing coupling</h4>
-          <TileGrid label="Signal couplings changing" min={240} compact>
-            {changing.map((p) => (
-              <Tile
-                key={`${p.a}|${p.b}`}
-                className="pg-prog-ctile"
-                title={
-                  <span className="pg-prog-driver">
-                    <EvidenceChip tag={p.a} />
-                    <span className="ast-muted" aria-hidden="true">
-                      ↔
-                    </span>
-                    <EvidenceChip tag={p.b} />
-                  </span>
-                }
-                value={(p.delta >= 0 ? "+" : "−") + Math.abs(p.delta).toFixed(2)}
-                unit="Δr"
-                facts={[
-                  { label: "Earlier r", value: p.baseline.toFixed(2) },
-                  { label: "Last hour r", value: p.recent.toFixed(2) },
-                ]}
-              />
-            ))}
-          </TileGrid>
-        </>
+        <section className="ast-card pg-table-card" aria-label="Changing signal correlations">
+          <div className="ast-card-head">
+            <h4 className="ast-card-title">Changing signal correlations</h4>
+          </div>
+          <Table columns={couplingCols} data={changing} keyExtractor={(p) => `${p.a}|${p.b}`} />
+        </section>
       )}
     </>
   );

@@ -3,7 +3,7 @@
 import React, { createContext, use, useContext, useMemo } from "react";
 import { KILN_FLEET_IDS, useKilnFleetSimulation, type KilnSimulation } from "@/components/assets/kiln-seals-simulation";
 import type { SimFrame } from "@/lib/kiln-sim/engine";
-import { isLiveMachineId, isPyroMachineId } from "@/lib/live-defs";
+import { isLiveMachineId, isPyroMachineId, isVpcMachineId } from "@/lib/live-defs";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 
 /**
@@ -17,7 +17,7 @@ const KilnFleetContext = createContext<Record<string, KilnSimulation> | null>(nu
 /** The active plant's primary machine simulation: the plant-wide features (ops, Copilot, AI engine) follow it. */
 export const KilnSimulationContext = createContext<KilnSimulation | null>(null);
 
-/** Primary machine of the active plant (KLN-01 on the kiln-seal plant, PYR-KLN-01 on the pyro line). */
+/** Primary machine of the active plant (KLN-01 on the kiln-seal plant, PYR-KLN-01 on the pyro line, VPC-066 on VPC casting). */
 const PrimaryMachineContext = createContext<string>("KLN-01");
 
 type LiveCell = Pick<SimFrame, "overall" | "condition">;
@@ -33,15 +33,26 @@ export const PRIMARY_KILN_ID = "KLN-01";
 /** Primary machine of the pyro line. */
 export const PRIMARY_PYRO_ID = "PYR-KLN-01";
 export const PYRO_PLANT_ID = "plant-pyro";
+/** Primary machine of the VPC 066 jewellery casting plant. */
+export const PRIMARY_VPC_ID = "VPC-066";
+export const VPC_PLANT_ID = "plant-vpc";
 
 /** Primary live machine for a plant: the plant-wide demo features follow it. */
 export function primaryMachineFor(plantId: string | null | undefined): string {
-  return plantId === PYRO_PLANT_ID ? PRIMARY_PYRO_ID : PRIMARY_KILN_ID;
+  if (plantId === PYRO_PLANT_ID) return PRIMARY_PYRO_ID;
+  if (plantId === VPC_PLANT_ID) return PRIMARY_VPC_ID;
+  return PRIMARY_KILN_ID;
+}
+
+function plantGroupOf(machineId: string): "pyro" | "vpc" | "kiln" {
+  if (isVpcMachineId(machineId)) return "vpc";
+  if (isPyroMachineId(machineId)) return "pyro";
+  return "kiln";
 }
 
 /** True when a live machine belongs to the same plant as the primary machine. */
 function samePlant(machineId: string, primaryId: string): boolean {
-  return isPyroMachineId(machineId) === isPyroMachineId(primaryId);
+  return plantGroupOf(machineId) === plantGroupOf(primaryId);
 }
 
 /**

@@ -177,6 +177,8 @@ export function fitPoints(
   inset: TwinInset,
   margin = 1,
   dir: THREE.Vector3 = VIEW_DIR,
+  /** Closest the camera comes, metres (small machines focus closer than the plant). */
+  minDist = 8,
 ) {
   const centre = new THREE.Box3().setFromPoints(points).getCenter(new THREE.Vector3());
   const fwd = dir.clone().negate();
@@ -216,7 +218,7 @@ export function fitPoints(
     hiY = Math.max(hiY, y + tTop * s);
     loY = Math.min(loY, y - tBottom * s);
   }
-  const dist = Math.max(8, (hiX - loX) / (tLeft + tRight), (hiY - loY) / (tTop + tBottom));
+  const dist = Math.max(minDist, (hiX - loX) / (tLeft + tRight), (hiY - loY) / (tTop + tBottom));
   const tgt = centre
     .clone()
     .addScaledVector(right, (hiX - tRight * dist + loX + tLeft * dist) / 2)

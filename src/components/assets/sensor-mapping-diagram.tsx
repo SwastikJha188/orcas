@@ -5,7 +5,7 @@ import type { MachineCatalog } from "./use-machine-catalog";
 import type { DetailedSensorInfo } from "./machine-sensor-mapping-view";
 import { subAssemblyPadMap, type DiagramPin } from "./kiln-component-diagrams";
 import { KILN_SUB_ASSEMBLIES } from "./kiln-subassembly-specs";
-import { isPyroMachineId } from "@/lib/live-defs";
+import { isPyroMachineId, isVpcMachineId } from "@/lib/live-defs";
 
 /* ==========================================================================
    Machine components for the sensor views: each catalog sub-assembly with
@@ -47,11 +47,11 @@ export interface Component {
 /**
  * The machine's components (catalog sub-assemblies with sensors), each with its
  * pins on the dedicated component drawing when one exists (kiln-seal fleet;
- * pyro components use the diagram-pack sheets on the Overview instead).
+ * pyro / VPC components use the diagram-pack sheets on the Overview instead).
  */
 export function useMachineComponents(machineId: string, catalog: MachineCatalog, sensors: DetailedSensorInfo[]): Component[] {
   const byTag = useMemo(() => new Map(sensors.map((s) => [tagOf(s), s])), [sensors]);
-  const pyro = isPyroMachineId(machineId);
+  const pyro = isPyroMachineId(machineId) || isVpcMachineId(machineId);
   return useMemo<Component[]>(() => {
     const specs = new Map(pyro ? [] : KILN_SUB_ASSEMBLIES.map((a) => [a.id, a]));
     const subByTag = new Map(catalog.sensors.map((s) => [s.tag, s.subassemblyId]));

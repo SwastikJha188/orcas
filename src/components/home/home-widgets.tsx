@@ -94,11 +94,14 @@ export function PlantHealthGauge({
   score,
   dist,
   title = "Plant health",
+  compact = false,
 }: {
   score: number | null;
   dist: Distribution;
   /** Card title; the machine twin reuses the gauge as "Machine health". */
   title?: string;
+  /** Smaller card footprint for Operator View. */
+  compact?: boolean;
 }) {
   const value = Math.max(0, Math.min(100, score ?? 0));
   const tone: Tone = score === null ? "idle" : healthTone(value);
@@ -110,7 +113,7 @@ export function PlantHealthGauge({
   const tr = gaugeAt(t + 0.018, G_R + 17);
 
   return (
-    <section className="ast-card ph-card ph-gauge" aria-label={title}>
+    <section className={`ast-card ph-card ph-gauge${compact ? " ph-gauge-compact" : ""}`} aria-label={title}>
       <div className="ast-card-head ph-card-head">
         <h2 className="ast-card-title">{title}</h2>
         <StatusTag tone={chip.tone} label={chip.label} />
@@ -164,6 +167,14 @@ export interface HomeAlert {
   finding: string;
   reading: string;
   recommendation: string;
+  /** Plain-language explanation of what is wrong. */
+  cause?: string;
+  /** Plain-language explanation of what it impacts. */
+  consequence?: string;
+  /** Rule broken (ID and threshold condition). */
+  ruleLogic?: string;
+  /** Action to take. */
+  action?: string;
   /** Age text ("12 min ago") or null for stored conditions with no onset. */
   age: string | null;
   raised: string | null;
@@ -258,17 +269,22 @@ export function AlertsFeed({
   alerts,
   activity = [],
   onOpen,
+  onNavigate,
   loading = false,
   error = null,
+  operatorMode = false,
 }: {
   alerts: HomeAlert[];
   /** Live activity, newest first; keeps the card moving between alerts. */
   activity?: HomeActivity[];
   onOpen: (machineId: string) => void;
+  onNavigate?: (machineId: string, subPage: "diagnosis" | "prognosis" | "analysis" | "sensors") => void;
   /** Stored alert sources still loading. */
   loading?: boolean;
   /** Stored alert sources failed; shown instead of claiming "no alerts". */
   error?: string | null;
+  /** Operator View: wider card with active faults expanded to show What is wrong, Impact, Rule broken, Evidence, Action. */
+  operatorMode?: boolean;
 }) {
   const [open, setOpen] = useState<string | null>(null);
   const ops = useKilnOps();
@@ -277,7 +293,7 @@ export function AlertsFeed({
   const shownActivity = usePresence(activity, (e) => e.id);
   const danger = active.filter((a) => a.level === "danger").length;
   return (
-    <section className="ast-card ph-card ph-alerts" aria-label="Alerts">
+    <section className={`ast-card ph-card ph-alerts${operatorMode ? " ph-alerts-operator" : ""}`} aria-label="Alerts">
       <div className="ast-card-head ph-card-head">
         <h2 className="ast-card-title">
           Alerts
@@ -314,12 +330,13 @@ export function AlertsFeed({
           )}
           <ul className="ph-feed">
           {shownAlerts.map(({ item: a, phase, delay }) => {
-            const expanded = open === a.id && phase !== "leave";
+            const expanded = phase !== "leave" && open === a.id;
+            const toggleExpand = () => setOpen(expanded ? null : a.id);
             const tone: Tone = a.cleared ? "idle" : a.level === "danger" ? "bad" : "warn";
             return (
               <li key={a.id} {...slotProps(phase, delay)}>
                 <div className="ph-alert" data-tone={tone} data-cleared={a.cleared ? "" : undefined}>
-                  <button type="button" className="ph-alert-row" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : a.id)}>
+                  <button type="button" className="ph-alert-row" aria-expanded={expanded} onClick={toggleExpand}>
                     <span className="ph-alert-top">
                       <span className="ph-alert-age ast-num">{a.age ?? "on record"}</span>
                       <span className="ph-alert-machine">{a.machine}</span>
@@ -336,7 +353,7 @@ export function AlertsFeed({
                         {a.origin ? ` · ${a.origin}` : ""}
                         {a.cleared ? ` · cleared ${a.cleared}` : ""} · {a.machineId}
                       </span>
-                      <div className="ph-alert-actions">
+                      <div className="ph-alert-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                         {(() => {
                           // Live findings of the plant's primary machine (id "<machine>:<ruleId>") can be acted on.
                           const ruleId = !a.cleared && a.machineId === ops.machineId && a.id.split(":").length === 2 ? a.id.split(":")[1] : null;
@@ -360,7 +377,7 @@ export function AlertsFeed({
                           );
                         })()}
                         <PillButton variant="secondary" onClick={() => onOpen(a.machineId)}>
-                          Open diagnosis
+                          Open in Diagnosis
                         </PillButton>
                       </div>
                     </div>
@@ -460,11 +477,14 @@ function thin(points: HealthPoint[]): TrendPoint[] {
 export function HealthTrendCard({
   track,
   height,
+  compact = false,
 }: {
   /** Recorded health on the real clock from `from` (epoch ms) to now (`@/lib/health-recorder`). */
   track: (from: number) => HealthPoint[];
   /** Fixed plot height in px; without it the plot fills the card. */
   height?: number;
+  /** Smaller card footprint for Operator View. */
+  compact?: boolean;
 }) {
   const [period, setPeriod] = useState("360");
   useEffect(() => {
@@ -501,10 +521,10 @@ export function HealthTrendCard({
   // The change is measured over what was recorded, not the whole window.
   const deltaSpan = partial && firstAt !== null ? formatSpan((points[points.length - 1].t - firstAt) / 60_000) : spanLabel;
 
-  const [ref, size] = useSize<HTMLDivElement>(320, height ?? 120);
+  const [ref, size] = useSize<HTMLDivElement>(320, height ?? (compact ? 96 : 120));
   const gradId = useSvgId("ph-trend-area");
   const width = size.width;
-  const h = height ?? Math.max(80, size.height);
+  const h = height ?? Math.max(compact ? 68 : 80, size.height);
   const padL = 30;
   const padR = 0;
   const padT = 6;
@@ -527,7 +547,7 @@ export function HealthTrendCard({
   const hp = hi !== null ? pts[hi] : null;
 
   return (
-    <section className="ast-card ph-card ph-trend" aria-label="Health over time">
+    <section className={`ast-card ph-card ph-trend${compact ? " ph-trend-compact" : ""}`} aria-label="Health over time">
       <div className="ast-card-head ph-card-head">
         <div className="ph-head-text">
           <h2 className="ast-card-title">Health over time</h2>

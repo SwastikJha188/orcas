@@ -232,12 +232,12 @@ function blower(): MachineModel {
   };
 }
 
-/** The five 3D models; every catalog diagram type is drawn as one of them. */
-export type TwinKind = "mill" | "crusher" | "pump" | "blower" | "kiln";
+/** The 3D models; every catalog diagram type is drawn as one of them (kiln and VPC are built models, see machine-twin-canvas). */
+export type TwinKind = "mill" | "crusher" | "pump" | "blower" | "kiln" | "vpc-casting";
 
 const NATIVE: readonly string[] = ["mill", "crusher", "pump", "blower", "kiln"];
 
-/** Pyro-line diagram types → the closest existing model (the twin has no pyro geometry of its own). */
+/** Pyro-line & VPC diagram types → 3D twin model. */
 const PYRO_TWIN: Record<string, TwinKind> = {
   "pyro-kiln": "kiln",
   "clinker-transport": "crusher",
@@ -245,6 +245,7 @@ const PYRO_TWIN: Record<string, TwinKind> = {
   "grate-cooler": "blower", // cooling-air fans
   preheater: "blower", // cyclone string on the ID fan
   "feed-system": "blower", // aeration blowers, feed-elevator drive
+  "vpc-casting": "vpc-casting",
 };
 
 export function twinKind(type: string | null | undefined): TwinKind {

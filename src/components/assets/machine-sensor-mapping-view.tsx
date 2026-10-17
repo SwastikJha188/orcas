@@ -48,6 +48,7 @@ import { TRENDS_FOCUS_KEY } from "./trends-focus";
 import { ManualRecords } from "./pyro/manual-records";
 import { PyroMachineSpec } from "./pyro/pyro-machine-spec";
 import { PYRO_MACHINE_BY_ID } from "@/lib/pyro-sim/signals";
+import { VPC_MACHINE_BY_ID } from "@/lib/vpc-sim/signals";
 
 /* ==========================================================================
    Machine › Sensors — one scrolling page.
@@ -281,8 +282,8 @@ export function MachineSensorMappingView({ machine, simulation: simProp }: Machi
 
   const [scope, setScope] = useState<SensorScope | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
-  // Pyro line: the D4 machine specification and its manual records. The diagram sheets live on the Overview.
-  const pyroSpec = Boolean(PYRO_MACHINE_BY_ID[machine.id]);
+  // Pyro line & VPC 066: machine specification and manual records. The diagram sheets live on the Overview.
+  const pyroSpec = Boolean(PYRO_MACHINE_BY_ID[machine.id] || VPC_MACHINE_BY_ID[machine.id]);
   const [focusNonce, setFocusNonce] = useState(0);
 
   useEffect(() => {
@@ -469,9 +470,20 @@ export function MachineSensorMappingView({ machine, simulation: simProp }: Machi
           },
         ]}
         actions={
-          <PillButton variant="secondary" onClick={() => goDevices(rows.find((r) => tagOf(r) === selectedTag)?.livePoint)}>
-            Open in Devices
-          </PillButton>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <PillButton variant="secondary" onClick={() => setActiveSubPage("overview")}>
+              Overview
+            </PillButton>
+            <PillButton variant="secondary" onClick={() => setActiveSubPage("trends")}>
+              Trends
+            </PillButton>
+            <PillButton variant="secondary" onClick={() => setActiveSubPage("diagnosis")}>
+              Diagnosis
+            </PillButton>
+            <PillButton variant="secondary" onClick={() => goDevices(rows.find((r) => tagOf(r) === selectedTag)?.livePoint)}>
+              Open in Devices
+            </PillButton>
+          </div>
         }
       />
 

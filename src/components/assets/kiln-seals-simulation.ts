@@ -59,6 +59,17 @@ import { finishFleet, loadFleet, type FleetEngines } from "@/lib/fleet-boot";
 import type { FleetBootRequest, FleetBootResult } from "@/lib/fleet-boot.worker";
 import { PYRO_SCENARIOS, pyroScenario } from "@/lib/pyro-sim/scenarios";
 import { PYRO_MACHINE_IDS } from "@/lib/pyro-sim/signals";
+import {
+  performVpcAction,
+  setVpcAutopilot,
+  setVpcProfile,
+  setVpcScenario,
+  stepVpcSim,
+  VPC_MACHINE_ID,
+} from "@/lib/vpc-sim/engine";
+import { VPC_FLEET } from "@/lib/vpc-sim/defs";
+import { VPC_SCENARIOS, vpcScenario } from "@/lib/vpc-sim/scenarios";
+import { VPC_MACHINE_IDS } from "@/lib/vpc-sim/signals";
 
 export { KILN_FLEET, KILN_FLEET_IDS } from "@/lib/kiln-sim/fleet";
 import type { EvaluatedRule, KilnSealsHealthScores, KilnSealsSensorData, SealTimeSeriesPoint } from "./kiln-seals-types";
@@ -197,6 +208,7 @@ function anchorClock(tEnd: number, speed: number) {
 }
 
 const isPyro = (id: string) => PYRO_MACHINE_IDS.has(id);
+const isVpc = (id: string) => VPC_MACHINE_IDS.has(id);
 
 // The engines are built once per page, and React may discard a first render
 // (a lazy tab suspending, StrictMode), so they live here rather than in a ref.
@@ -274,6 +286,7 @@ function currentFrames(e: FleetEngines | null): Record<string, SimFrame> {
   return {
     ...Object.fromEntries(Object.entries(e.sims).map(([id, sim]) => [id, sim.frame!])),
     ...Object.fromEntries(Object.entries(e.line.machines).map(([id, ms]) => [id, ms.frame!])),
+    ...(e.vpc.frame ? { [VPC_MACHINE_ID]: e.vpc.frame } : {}),
   };
 }
 
@@ -307,7 +320,11 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
 
   /** Re-read the frames after an out-of-step change to one engine. */
   const refresh = useCallback((id: string) => {
-    const frame = isPyro(id) ? fleetEngines!.line.machines[id]?.frame : fleetEngines!.sims[id]?.frame;
+    const frame = isPyro(id)
+      ? fleetEngines!.line.machines[id]?.frame
+      : isVpc(id)
+        ? fleetEngines!.vpc.frame
+        : fleetEngines!.sims[id]?.frame;
     if (frame) setFrames((f) => ({ ...f, [id]: frame }));
     if (isPyro(id)) setLineSim(lineView(fleetEngines!.line));
   }, []);
@@ -325,6 +342,9 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
       const line = fleetEngines!.line;
       for (let i = 1; i < minutes; i++) recordFrames(stepLine(line, false));
       Object.assign(next, recordFrames(stepLine(line, true)));
+      const vpc = fleetEngines!.vpc;
+      for (let i = 1; i < minutes; i++) stepVpcSim(vpc, false);
+      next[VPC_MACHINE_ID] = stepVpcSim(vpc, true);
       setFrames(next);
       setLineSim(lineView(line));
       recordFleetHealth(next);
@@ -365,6 +385,14 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
       refresh(id);
       return;
     }
+    if (isVpc(id)) {
+      const vpc = fleetEngines!.vpc;
+      setVpcAutopilot(vpc, false);
+      setVpcScenario(vpc, scenarioId);
+      stepVpcSim(vpc, true);
+      refresh(id);
+      return;
+    }
     const sim = fleetEngines!.sims[id];
     if (!sim) return;
     engineSetAutopilot(sim, false);
@@ -376,6 +404,13 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
   const setAutopilot = useCallback((id: string, on: boolean) => {
     if (isPyro(id)) {
       lineSetAutopilot(fleetEngines!.line, id, on);
+      refresh(id);
+      return;
+    }
+    if (isVpc(id)) {
+      const vpc = fleetEngines!.vpc;
+      setVpcAutopilot(vpc, on);
+      stepVpcSim(vpc, true);
       refresh(id);
       return;
     }
@@ -391,6 +426,13 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
       refresh(id);
       return;
     }
+    if (isVpc(id)) {
+      const vpc = fleetEngines!.vpc;
+      setVpcProfile(vpc, profile);
+      stepVpcSim(vpc, true);
+      refresh(id);
+      return;
+    }
     const sim = fleetEngines!.sims[id];
     if (!sim) return;
     engineSetProfile(sim, profile);
@@ -401,6 +443,13 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
   const performAction = useCallback((id: string, ruleId: string, kind: OperatorAction) => {
     if (isPyro(id)) {
       linePerformAction(fleetEngines!.line, id, ruleId, kind);
+      refresh(id);
+      return;
+    }
+    if (isVpc(id)) {
+      const vpc = fleetEngines!.vpc;
+      performVpcAction(vpc, ruleId, kind, false);
+      stepVpcSim(vpc, true);
       refresh(id);
       return;
     }
@@ -424,6 +473,9 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
     const line = fleetEngines!.line;
     for (let i = 1; i < minutes; i++) recordFrames(stepLine(line, false));
     Object.assign(next, recordFrames(stepLine(line, true)));
+    const vpc = fleetEngines!.vpc;
+    for (let i = 1; i < minutes; i++) stepVpcSim(vpc, false);
+    next[VPC_MACHINE_ID] = stepVpcSim(vpc, true);
     setFrames(next);
     setLineSim(lineView(line));
     recordFleetHealth(next);
@@ -510,7 +562,7 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
   return useMemo(
     () =>
       Object.fromEntries(
-        [...KILN_FLEET, ...PYRO_FLEET]
+        [...KILN_FLEET, ...PYRO_FLEET, ...VPC_FLEET]
           .filter((k) => frames[k.machineId])
           .map((k) => [k.machineId, buildSimulation(k.machineId, frames[k.machineId], rotationAngle, isPaused, speedMultiplier, controls, lineSim)]),
       ),
@@ -561,9 +613,14 @@ function buildSimulation(
   c: FleetControls,
   lineSim: LineSimView | null,
 ) {
-  // Pyro scenarios share the kiln scenario shape (driver names differ, which no page reads).
+  // Pyro and VPC scenarios share the kiln scenario shape (driver names differ, which no page reads).
   const pyro = isPyro(machineId);
-  const scenario: KilnScenario = pyro ? (pyroScenario(machineId, frame.scenarioId) as unknown as KilnScenario) : scenarioById(frame.scenarioId);
+  const vpc = isVpc(machineId);
+  const scenario: KilnScenario = vpc
+    ? (vpcScenario(frame.scenarioId) as unknown as KilnScenario)
+    : pyro
+      ? (pyroScenario(machineId, frame.scenarioId) as unknown as KilnScenario)
+      : scenarioById(frame.scenarioId);
   let _sensorData: KilnSealsSensorData | undefined;
   let _healthScores: KilnSealsHealthScores | undefined;
   let _evaluatedRules: EvaluatedRule[] | undefined;
@@ -572,7 +629,11 @@ function buildSimulation(
     machineId,
     frame,
     scenario,
-    scenarios: pyro ? ((PYRO_SCENARIOS[machineId] ?? []) as unknown as KilnScenario[]) : KILN_SCENARIOS,
+    scenarios: vpc
+      ? (VPC_SCENARIOS as unknown as KilnScenario[])
+      : pyro
+        ? ((PYRO_SCENARIOS[machineId] ?? []) as unknown as KilnScenario[])
+        : KILN_SCENARIOS,
     activeScenarioId: frame.scenarioId,
     autopilot: frame.autopilot,
     profile: frame.profile,

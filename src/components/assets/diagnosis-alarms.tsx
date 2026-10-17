@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState } from "react";
-import { PillButton, PillNav, Tile, TileGrid } from "@/components/ui";
+import { PillButton, PillNav, Table, type Column } from "@/components/ui";
 import type { OpsWorkOrder } from "@/providers/kiln-ops-context";
 import { formatDuration } from "@/lib/kiln-sim/engine";
-import type { Tone } from "./assets-shell-ui";
+import { StatusTag, type Tone } from "./assets-shell-ui";
 import { ACTION } from "@/components/ui/status";
 import {
   HYSTERESIS_SAMPLES,
@@ -14,15 +14,6 @@ import {
   type DxSensor,
 } from "./diagnosis-model";
 
-/* ==========================================================================
-   Alarms (ISA-18.2 lifecycle): pending (persistence n/k) → unacknowledged →
-   acknowledged → clearing (hysteresis n/4) → cleared. One card per alarm:
-   signal value against its limit as the headline; per-card acknowledge
-   and shelve (time-limited, reason required, auto-unshelve; kept in this
-   browser only — there is no shelving backend).
-   ========================================================================== */
-
-/** Segmented sample counter: filled = samples counted toward the transition. */
 export function Samples({ n, of, label }: { n: number; of: number; label: string }) {
   const filled = Math.max(0, Math.min(of, n));
   return (
@@ -48,9 +39,9 @@ const SHELVE_FOR = [
 const SHELVE_REASONS = ["Nuisance / chattering", "Maintenance in progress", "Known — awaiting planned stop", "Instrument under check"];
 
 function isaState(a: DxAlarm): { label: string; tone: Tone } {
-  if (a.state === "confirming") return { label: "Pending", tone: "idle" };
-  if (a.state === "clearing") return { label: a.acknowledged ? "Clearing · ack" : "Clearing · unack", tone: toneOf(a.severity) };
-  return { label: a.acknowledged ? "Active · ack" : "Active · unack", tone: toneOf(a.severity) };
+  if (a.state === "confirming") return { label: "Confirming", tone: "idle" };
+  if (a.state === "clearing") return { label: a.acknowledged ? "Clearing · Ack" : "Clearing", tone: toneOf(a.severity) };
+  return { label: a.acknowledged ? "Acknowledged" : "Unacknowledged", tone: toneOf(a.severity) };
 }
 
 function fmtNum(v: number) {
@@ -58,17 +49,10 @@ function fmtNum(v: number) {
   return v.toFixed(a >= 1000 ? 0 : a >= 100 ? 1 : 2);
 }
 
-/** The signal behind the alarm: first cited sensor with a numeric reading. */
 function signalOf(a: DxAlarm, byTag: Map<string, DxSensor>): DxSensor | null {
   const s = a.tags.map((t) => byTag.get(t)).find((x) => x && x.value !== null);
   return s && s.value !== null ? s : null;
 }
-
-/** Stops clicks / keys inside a tile body from selecting the tile. */
-const keepInside = {
-  onClick: (e: React.SyntheticEvent) => e.stopPropagation(),
-  onKeyDown: (e: React.SyntheticEvent) => e.stopPropagation(),
-};
 
 export function AlarmCards({
   alarms,
@@ -106,185 +90,197 @@ export function AlarmCards({
   const onShelf = alarms.filter((a) => shelved.has(a.ruleId));
   const now = Date.now();
 
-  return (
-    <>
-      {live.length === 0 ? (
-        <p className="pg-diag-missing">{onShelf.length ? "Every raised alarm is shelved." : "No alarms."}</p>
-      ) : (
-        <TileGrid label="Alarms" min={300} className="pg-diag-tiles">
-          {live.map((a) => {
-            const st = isaState(a);
-            const selected = selectedRuleId === a.ruleId;
-            const raised = a.state !== "confirming";
-            const left = responseLeft(a, t);
-            const wo = workOrders?.find((w) => w.ruleId === a.ruleId && (w.status === "open" || w.status === "in_progress")) ?? null;
-            const s = signalOf(a, byTag);
-            const limit = s ? (s.alarm ?? s.warn) : null;
-            const persisted = raised ? a.threshold : Math.min(a.persistence, a.threshold);
-            return (
-              <Tile
-                key={a.ruleId}
-                className="pg-diag-tile"
-                title={
-                  <>
-                    {a.priority} · {a.ruleId}
-                  </>
-                }
-                sub={
-                  <>
-                    <span className="pg-diag-tile-name">{a.name}</span>
-                    {a.where ? ` · ${a.where}` : ""}
-                  </>
-                }
-                status={st}
-                tone={raised ? st.tone : undefined}
-                value={s ? fmtNum(s.value as number) : undefined}
-                unit={s ? s.unit : undefined}
-                meter={
-                  s ? (
-                    <span className="pg-diag-tile-meta">
-                      {s.tag}
-                      {limit !== null ? ` · limit ${limit} ${s.unit}` : ""}
-                    </span>
-                  ) : undefined
-                }
-                selected={selected}
-                onSelect={() => onSelect(selected ? null : a.ruleId)}
-                attrs={{ "data-rule": a.ruleId }}
-                facts={[
-                  {
-                    label: "Persistence",
-                    value: (
-                      <span className="pg-diag-progress">
-                        <Samples n={persisted} of={a.threshold} label={`Persistence ${persisted} of ${a.threshold}`} />
-                        {persisted}/{a.threshold}
-                      </span>
-                    ),
-                  },
-                  {
-                    label: "Clear",
-                    value:
-                      a.state === "clearing" ? (
-                        <span className="pg-diag-progress">
-                          <Samples n={a.clean} of={HYSTERESIS_SAMPLES} label={`${a.clean} of ${HYSTERESIS_SAMPLES} clean samples`} />
-                          {a.clean}/{HYSTERESIS_SAMPLES}
-                        </span>
-                      ) : (
-                        "—"
-                      ),
-                  },
-                  { label: "In alarm", value: raised && a.activeFor ? a.activeFor : "—" },
-                  { label: "Respond in", value: left ?? "—", tone: left === "overdue" ? "warn" : undefined },
-                ]}
-                foot={raised && a.since !== null ? `since ${fmtT(a.since)}` : `${a.persistence} sample${a.persistence === 1 ? "" : "s"} matching`}
-                actions={
-                  <>
-                    {raised && !a.acknowledged && (
-                      <PillButton variant="secondary" className="pg-diag-sm" onClick={() => onAcknowledge(a.ruleId)}>
-                        {ACTION.acknowledge}
-                      </PillButton>
-                    )}
-                    {raised && (
-                      <PillButton
-                        variant="secondary"
-                        className="pg-diag-sm"
-                        aria-expanded={shelving === a.ruleId}
-                        onClick={() => {
-                          setShelving(shelving === a.ruleId ? null : a.ruleId);
-                          setReason("");
-                        }}
-                      >
-                        Shelve
-                      </PillButton>
-                    )}
-                    {wo ? (
-                      <span className="pg-diag-tile-meta" title={wo.title}>
-                        WO-{wo.id}
-                      </span>
-                    ) : (
-                      onWorkOrder &&
-                      raised &&
-                      a.category !== "Data quality" && (
-                        <PillButton variant="secondary" className="pg-diag-sm" onClick={() => onWorkOrder(a.ruleId)}>
-                          Work order
-                        </PillButton>
-                      )
-                    )}
-                  </>
-                }
+  const cols: Column<DxAlarm>[] = [
+    {
+      key: "rule",
+      header: "Rule broken",
+      width: "130px",
+      render: (a) => (
+        <span className="ast-cell-stack">
+          <span className="ast-mono">{a.ruleId}</span>
+          <span className="ast-cell-sub">{a.priority}</span>
+        </span>
+      ),
+    },
+    {
+      key: "name",
+      header: "What is wrong",
+      render: (a) => (
+        <span className="ast-cell-stack">
+          <span className="ast-cell-title">{a.name}</span>
+          {a.where && <span className="ast-cell-sub">{a.where}</span>}
+        </span>
+      ),
+    },
+    {
+      key: "sensor",
+      header: "Evidence reading",
+      width: "210px",
+      render: (a) => {
+        const s = signalOf(a, byTag);
+        const limit = s ? (s.alarm ?? s.warn) : null;
+        if (!s) return <span className="ast-num">{a.tags.join(", ") || "—"}</span>;
+        return (
+          <span className="ast-cell-stack ast-num">
+            <span className="ast-cell-title">
+              {s.tag}: {fmtNum(s.value as number)} {s.unit}
+            </span>
+            {limit !== null && <span className="ast-cell-sub">Limit {limit} {s.unit}</span>}
+          </span>
+        );
+      },
+    },
+    {
+      key: "status",
+      header: "State",
+      width: "150px",
+      render: (a) => {
+        const st = isaState(a);
+        return <StatusTag tone={st.tone} label={`${a.severity} · ${st.label}`} />;
+      },
+    },
+    {
+      key: "duration",
+      header: "Active for",
+      width: "140px",
+      render: (a) => {
+        const raised = a.state !== "confirming";
+        const left = responseLeft(a, t);
+        return (
+          <span className="ast-cell-stack ast-num">
+            <span>{raised && a.activeFor ? a.activeFor : `${a.persistence}/${a.threshold} samples`}</span>
+            {raised && a.since !== null && <span className="ast-cell-sub">Since {fmtT(a.since)}</span>}
+            {left && <span className="ast-cell-sub">Respond in {left}</span>}
+          </span>
+        );
+      },
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      width: "220px",
+      render: (a) => {
+        const raised = a.state !== "confirming";
+        const wo = workOrders?.find((w) => w.ruleId === a.ruleId && (w.status === "open" || w.status === "in_progress")) ?? null;
+        return (
+          <span
+            style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {raised && !a.acknowledged && (
+              <PillButton variant="secondary" className="pg-diag-sm" onClick={() => onAcknowledge(a.ruleId)}>
+                {ACTION.acknowledge}
+              </PillButton>
+            )}
+            {raised && (
+              <PillButton
+                variant="secondary"
+                className="pg-diag-sm"
+                aria-expanded={shelving === a.ruleId}
+                onClick={() => {
+                  setShelving(shelving === a.ruleId ? null : a.ruleId);
+                  setReason("");
+                }}
               >
-                {shelving === a.ruleId && (
-                  <form
-                    className="pg-diag-shelve"
-                    {...keepInside}
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const d = SHELVE_FOR.find((x) => x.id === dur) ?? SHELVE_FOR[0];
-                      if (!reason) return;
-                      onShelve(a.ruleId, d.ms, reason);
-                      setShelving(null);
-                    }}
-                  >
-                    <PillNav items={SHELVE_FOR.map(({ id, label }) => ({ id, label }))} activeId={dur} onChange={setDur} />
-                    <label className="pg-diag-select">
-                      <span className="dxo-sr">Reason</span>
-                      <select value={reason} onChange={(e) => setReason(e.target.value)} required>
-                        <option value="">Reason…</option>
-                        {SHELVE_REASONS.map((r) => (
-                          <option key={r} value={r}>
-                            {r}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <PillButton type="submit" variant="primary" className="pg-diag-sm" disabled={!reason}>
-                      Shelve
-                    </PillButton>
-                  </form>
-                )}
-              </Tile>
-            );
-          })}
-        </TileGrid>
+                Shelve
+              </PillButton>
+            )}
+            {wo ? (
+              <span className="pg-diag-tile-meta" title={wo.title}>
+                WO-{wo.id}
+              </span>
+            ) : (
+              onWorkOrder &&
+              raised &&
+              a.category !== "Data quality" && (
+                <PillButton variant="secondary" className="pg-diag-sm" onClick={() => onWorkOrder(a.ruleId)}>
+                  Work order
+                </PillButton>
+              )
+            )}
+          </span>
+        );
+      },
+    },
+  ];
+
+  return (
+    <section className="ast-card pg-table-card" aria-label="Active alarms">
+      {live.length === 0 ? (
+        <p className="pg-diag-missing" style={{ padding: "12px 16px", margin: 0 }}>
+          {onShelf.length ? "All active alarms are currently shelved." : "No active alarms."}
+        </p>
+      ) : (
+        <Table
+          columns={cols}
+          data={live}
+          keyExtractor={(a) => a.ruleId}
+          onRowClick={(a) => onSelect(selectedRuleId === a.ruleId ? null : a.ruleId)}
+        />
+      )}
+
+      {shelving && (
+        <form
+          className="pg-diag-shelve"
+          style={{ padding: "10px 16px", borderTop: "1px solid var(--border-subtle)" }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const d = SHELVE_FOR.find((x) => x.id === dur) ?? SHELVE_FOR[0];
+            if (!reason) return;
+            onShelve(shelving, d.ms, reason);
+            setShelving(null);
+          }}
+        >
+          <span className="ast-mono" style={{ marginRight: 8 }}>Shelve {shelving}:</span>
+          <PillNav items={SHELVE_FOR.map(({ id, label }) => ({ id, label }))} activeId={dur} onChange={setDur} />
+          <label className="pg-diag-select">
+            <span className="dxo-sr">Reason</span>
+            <select value={reason} onChange={(e) => setReason(e.target.value)} required>
+              <option value="">Reason…</option>
+              {SHELVE_REASONS.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+          </label>
+          <PillButton type="submit" variant="primary" className="pg-diag-sm" disabled={!reason}>
+            Confirm shelve
+          </PillButton>
+          <PillButton type="button" variant="secondary" className="pg-diag-sm" onClick={() => setShelving(null)}>
+            Cancel
+          </PillButton>
+        </form>
       )}
 
       {onShelf.length > 0 && (
-        <>
-          <div className="ui-tiles-head">
-            <button type="button" className="pg-diag-inline-link" aria-expanded={showShelved} onClick={() => setShowShelved((v) => !v)}>
-              Shelved ({onShelf.length})
-            </button>
-          </div>
+        <div className="pg-diag-shelf-bar" style={{ padding: "8px 16px" }}>
+          <button type="button" className="dxo-link" aria-expanded={showShelved} onClick={() => setShowShelved((v) => !v)}>
+            {showShelved ? "Hide" : "Show"} {onShelf.length} shelved
+          </button>
           {showShelved && (
-            <TileGrid label="Shelved alarms" min={300} className="pg-diag-tiles">
+            <ul className="pg-diag-shelf-list">
               {onShelf.map((a) => {
-                const sh = shelved.get(a.ruleId) as Shelf;
+                const sh = shelved.get(a.ruleId)!;
+                const leftMin = Math.max(1, Math.round((sh.until - now) / 60_000));
                 return (
-                  <Tile
-                    key={a.ruleId}
-                    className="pg-diag-tile"
-                    title={
-                      <>
-                        {a.priority} · {a.ruleId}
-                      </>
-                    }
-                    sub={<span className="pg-diag-tile-name">{a.name}</span>}
-                    status={{ label: "Shelved" }}
-                    value={formatDuration(Math.max(0, (sh.until - now) / 60_000))}
-                    unit="to return"
-                    foot={sh.reason}
-                    actions={
-                      <PillButton variant="secondary" className="pg-diag-sm" onClick={() => onUnshelve(a.ruleId)}>
-                        Unshelve
-                      </PillButton>
-                    }
-                  />
+                  <li key={a.ruleId}>
+                    <span className="ast-num">
+                      {a.ruleId} · {a.name}
+                    </span>
+                    <span className="pg-diag-muted">
+                      {sh.reason} · {formatDuration(leftMin)} left
+                    </span>
+                    <button type="button" className="dxo-link" onClick={() => onUnshelve(a.ruleId)}>
+                      Unshelve
+                    </button>
+                  </li>
                 );
               })}
-            </TileGrid>
+            </ul>
           )}
-        </>
+        </div>
       )}
-    </>
+    </section>
   );
 }

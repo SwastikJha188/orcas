@@ -287,11 +287,22 @@ export function DiagnosisView({ machine, onNavigateToSensors, onNavigateToTrends
         status={{ label: condition, tone: conditionTone }}
         meta={meta}
         actions={
-          leadTag ? (
-            <PillButton variant="secondary" onClick={() => openTrend(leadTag)}>
-              {`Trend ${leadTag}`}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {leadTag && (
+              <PillButton variant="secondary" onClick={() => openTrend(leadTag)}>
+                {`Trend ${leadTag}`}
+              </PillButton>
+            )}
+            <PillButton variant="secondary" onClick={() => go("sensors")}>
+              Sensors
             </PillButton>
-          ) : undefined
+            <PillButton variant="secondary" onClick={() => go("prognosis")}>
+              Prognosis
+            </PillButton>
+            <PillButton variant="secondary" onClick={() => go("analysis")}>
+              Analysis
+            </PillButton>
+          </div>
         }
       />
 
@@ -335,7 +346,17 @@ export function DiagnosisView({ machine, onNavigateToSensors, onNavigateToTrends
               onPrognosis={() => go("prognosis")}
             />
           ) : (
-            <p className="pg-diag-missing">No machine fault present.</p>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <p className="pg-diag-missing" style={{ margin: 0 }}>No machine fault present.</p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <PillButton variant="secondary" onClick={() => go("prognosis")}>
+                  Open Prognosis
+                </PillButton>
+                <PillButton variant="secondary" onClick={() => go("analysis")}>
+                  Open Analysis
+                </PillButton>
+              </div>
+            </div>
           )}
         </Section>
       )}

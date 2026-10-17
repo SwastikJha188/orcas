@@ -13,6 +13,7 @@ import { EQUATION_BY_TARGET } from "@/lib/kiln-sim/relationships";
 import type { DefSignal, PlantDefs } from "@/lib/plant-defs";
 import { PYRO_DEFS } from "@/lib/pyro-sim/defs";
 import { PYRO_SPEC, type PyroSpecEntry } from "@/lib/pyro-sim/spec";
+import { VPC_SPEC } from "@/lib/vpc-sim/signals";
 import {
   ANALYSERS as PYRO_ANALYSERS,
   BLOWBACK_STUCK_MIN as PYRO_BLOWBACK_STUCK_MIN,
@@ -227,9 +228,9 @@ export interface SensorRow extends DetailedSensorInfo {
   outOfRange: boolean;
 }
 
-/** D4-OSW-PE-PYR schedule entry for a tag of a pyro machine (the kiln fleet has none). */
+/** D4-OSW-PE-PYR / VPC 066 schedule entry for a tag (the kiln fleet has none). */
 export function d4Of(defs: PlantDefs | null, tag: string): PyroSpecEntry | undefined {
-  return defs?.plant === "pyro" ? PYRO_SPEC[tag] : undefined;
+  return defs?.plant === "pyro" ? (PYRO_SPEC[tag] ?? VPC_SPEC[tag]) : undefined;
 }
 
 /**
@@ -259,7 +260,7 @@ export const D4_REQUIRED_TARGET_PCT = 95;
  */
 export function requiredAvailability(frame: SimFrame | null | undefined): { valid: number; total: number; pct: number; invalid: string[] } | null {
   if (frame?.defs.plant !== "pyro") return null;
-  const tags = frame.defs.signals.filter((s) => PYRO_SPEC[s.tag]?.priority === "Required").map((s) => s.tag);
+  const tags = frame.defs.signals.filter((s) => (PYRO_SPEC[s.tag] ?? VPC_SPEC[s.tag])?.priority === "Required").map((s) => s.tag);
   if (!tags.length) return null;
   const invalid = tags.filter((t) => frame.signals[t]?.quality !== "Good");
   const valid = tags.length - invalid.length;
@@ -611,6 +612,14 @@ const PYRO_CALC_DEFS: Record<string, CalcDef> = {
     inputs: ["FLO-BRN-01", "FLO-KFS-01"],
     validity: "Suspect when the coal or kiln-feed meter is flagged",
   },
+  DT1: {
+    tag: "DT1",
+    value: "Cooling-water temperature rise",
+    formula: "T3 − T2",
+    ref: "VPC 066 §7.2 · Cooling-water temperature rise across induction coil & chamber",
+    inputs: ["T2", "T3"],
+    validity: "Suspect when either cooling-water inlet (T2) or outlet (T3) temperature is flagged",
+  },
 };
 
 /**
@@ -629,12 +638,24 @@ export function scannerEntryOf(defs: PlantDefs | null, tag: string): PyroSpecEnt
 /** Calculated-value definitions of the machine's plant (kiln fleet: D5 Table 9.2). */
 export function calcDefsFor(defs: PlantDefs | null): Record<string, CalcDef> {
   if (defs?.plant !== "pyro") return CALC_DEFS;
-  return Object.fromEntries(Object.entries(PYRO_CALC_DEFS).filter(([tag]) => defs.signalByTag[tag]));
+  const vpcCalc: Record<string, CalcDef> = {
+    DT1: {
+      tag: "DT1",
+      value: "Cooling water temperature rise",
+      formula: "T3 − T2",
+      ref: "Gateway calculation (§7.3)",
+      inputs: ["T2", "T3"],
+      validity: "Suspect when either RTD (T2 or T3) is flagged",
+    },
+  };
+  const merged = { ...PYRO_CALC_DEFS, ...vpcCalc };
+  return Object.fromEntries(Object.entries(merged).filter(([tag]) => defs.signalByTag[tag]));
 }
 
-/** Pyro machine that owns `tag` (calculation inputs on another machine), else null. */
+/** Pyro/VPC machine that owns `tag` (calculation inputs on another machine), else null. */
 export function pyroOwnerOf(tag: string): string | null {
   for (const [id, d] of Object.entries(PYRO_DEFS)) if (d.signalByTag[tag]) return id;
+  if (VPC_SPEC[tag]) return "VPC-066";
   return null;
 }
 
@@ -645,8 +666,12 @@ export const D4_SENSOR_SPEC: Record<string, { range: string; accuracy: string; o
   "IEPE accelerometer": { range: "±50 g · 0.5 Hz–10 kHz", accuracy: "100 mV/g ±5 %", output: "IEPE to DAQ", mounting: "Stud on bearing housing", source: "New" },
   "Pt100 RTD": { range: "−50…+200 °C", accuracy: "Class A", output: "PLC / DCS", mounting: "Existing, embedded", source: "Existing" },
   "Thermocouple type K": { range: "0…1,400 °C", accuracy: "Class 1", output: "DCS", mounting: "Existing probe", source: "Existing" },
+  "Thermocouple type S": { range: "0…1,600 °C", accuracy: "Class 1", output: "Machine PLC", mounting: "Crucible TC pocket", source: "Existing" },
   "Two-colour pyrometer": { range: "800…2,000 °C", accuracy: "±0.75 %", output: "4–20 mA", mounting: "Existing, hood", source: "Existing" },
   "Pressure transmitter": { range: "per tag", accuracy: "≤ 0.1 % span", output: "4–20 mA / HART", mounting: "Existing", source: "Existing" },
+  "Flow transmitter": { range: "0…15 L/min", accuracy: "±1 % FS", output: "4–20 mA / PLC", mounting: "Inline cooling manifold", source: "Existing" },
+  "Power transducer": { range: "0…15 kW (400 V 3~)", accuracy: "Class 0.5", output: "Generator / PLC", mounting: "Control cabinet", source: "Existing" },
+  "Motor CT / transmitter": { range: "0…10 A", accuracy: "Class 0.5", output: "4–20 mA to gateway", mounting: "Motor feed", source: "New" },
   "LVDT position transmitter": { range: "±50 mm", accuracy: "±0.5 mm", output: "4–20 mA to thrust PLC", mounting: "Existing on cylinder", source: "Existing" },
   "Solid flow meter": { range: "0–500 / 0–25 t/h", accuracy: "±0.5–1 %", output: "DCS", mounting: "Existing", source: "Existing" },
   "Gas analyser channel": { range: "O₂ 0–25 %; CO 0–20,000 ppm", accuracy: "±2 % range", output: "DCS / Modbus", mounting: "Existing, extractive", source: "Existing" },

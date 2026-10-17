@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PillButton } from "@/components/ui";
+import { PillButton, PillNav } from "@/components/ui";
 import type { AssetMachine } from "@/components/assets/assets-data";
 import type { AssetsSubPage } from "@/components/assets/assets-view";
 import { IconBack, IconChevron, IconClose, StatusTag, healthTone, severityTone, type Tone } from "@/components/assets/assets-shell-ui";
@@ -17,6 +17,13 @@ import type { TwinCameraCommand, TwinInset } from "./plant-twin-canvas";
 import { hasWebGL, useTwinColors } from "./plant-twin";
 import { useCoveredInset, type Side } from "./use-covered-inset";
 import "./machine-twin.css";
+
+const MACHINE_VIEW_ITEMS = [
+  { id: "operator", label: "Operator view" },
+  { id: "twin", label: "3D twin" },
+];
+
+const NO_INSET: TwinInset = { top: 0, right: 0, bottom: 0, left: 0 };
 
 /* ==========================================================================
    Machine twin on Home (ULTRON MachineQuickView, inside the Digital Twin).
@@ -77,6 +84,8 @@ export function MachineTwinHome({
   onOpenDiagnosis,
   onBack,
   onOpen,
+  viewMode = "operator",
+  onChangeViewMode,
 }: {
   machine: AssetMachine;
   alerts: HomeAlert[];
@@ -86,6 +95,8 @@ export function MachineTwinHome({
   onOpenDiagnosis: (machineId: string) => void;
   onBack: () => void;
   onOpen: (subPage: AssetsSubPage) => void;
+  viewMode?: "operator" | "twin";
+  onChangeViewMode?: (mode: "operator" | "twin") => void;
 }) {
   const { frame, systems, dots, overall, worst, conditionLabel } = useMachineOverview(machine);
   const colors = useTwinColors();
@@ -112,7 +123,7 @@ export function MachineTwinHome({
     () => [["right", sideRef], ["bottom", bottomRef], ["top", topRef]],
     [],
   );
-  const covered: TwinInset = useCoveredInset(stageRef, panels, true);
+  const covered: TwinInset = useCoveredInset(stageRef, panels, viewMode === "twin");
 
   const twinSystems = useMemo<MachineTwinSystem[]>(
     () =>
@@ -151,89 +162,155 @@ export function MachineTwinHome({
     setCommand((c) => ({ kind: id ? "focus" : "fit", n: c.n + 1 }));
   };
 
+  const renderTwinViewport = (inset: TwinInset) => (
+    <div
+      className="ph-twin"
+      style={
+        {
+          "--twin-top": `${inset.top}px`,
+          "--twin-right": `${inset.right}px`,
+          "--twin-bottom": `${inset.bottom}px`,
+          "--twin-left": `${inset.left}px`,
+        } as React.CSSProperties
+      }
+    >
+      {!supported ? (
+        <div className="ph-twin-loading" role="status">3D twin needs WebGL</div>
+      ) : colors && paints ? (
+        <MachineTwinCanvas
+          diagramType={machine.diagramType}
+          machineTone={tone}
+          systems={twinSystems}
+          dots={dots}
+          selectedId={selectedId}
+          onSelect={select}
+          command={command}
+          colors={colors}
+          paints={paints}
+          inset={inset}
+          navMode={navMode}
+          persistKey={`machine.${machine.id}`}
+        />
+      ) : (
+        <div className="ph-twin-loading" role="status">Loading 3D twin…</div>
+      )}
+
+      <TwinNavBar navMode={navMode} onNavMode={setNavMode} onReset={() => setCommand((c) => ({ kind: "fit", n: c.n + 1 }))} />
+
+      <TwinHint navMode={navMode} extra="click a component" />
+
+      <div className="ph-twin-legend" aria-label="Legend">
+        <span><i data-tone="good" />Normal</span>
+        <span><i data-tone="warn" />Advisory</span>
+        <span><i data-tone="bad" />Critical</span>
+        <span className="ast-num">{dots.length} sensors · {twinSystems.length} components</span>
+      </div>
+
+      {selected && (
+        <aside className="ph-inspector ph-twin-inspector mt3-inspector" aria-label={`${selected.name} details`}>
+          <div className="ph-insp-head">
+            <div>
+              <span className="ph-insp-name">{selected.name}</span>
+              <span className="ph-sub">Component · {machine.id}</span>
+            </div>
+            <button type="button" className="ast-icon-btn" onClick={() => select(null)} aria-label="Close details">
+              <IconClose />
+            </button>
+          </div>
+          <StatusTag tone={selected.tone} label={selected.status} />
+          <dl className="ph-insp-rows">
+            <div><dt>Health</dt><dd className="ast-num">{selected.health}<span className="ast-unit">%</span></dd></div>
+            <div><dt>Sensors</dt><dd className="ast-num">{selectedDots.length}</dd></div>
+          </dl>
+          {selectedDots.length > 0 && (
+            <ul className="mt3-sensors" aria-label="Sensors on this component">
+              {selectedDots.map((d) => (
+                <li key={d.tag}>
+                  <span className="ph-unit-dot" data-tone={severityTone(d.status)} aria-hidden="true" />
+                  <span className="mt3-sensor-tag ast-num">{d.tag}</span>
+                  <span className="mt3-sensor-name">{d.name}</span>
+                  <span className="mt3-sensor-value ast-num">
+                    {d.value}
+                    {d.unit && <span className="ast-unit"> {d.unit}</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <PillButton onClick={() => onOpen("health")}>
+            Component health <IconChevron size={10} />
+          </PillButton>
+        </aside>
+      )}
+    </div>
+  );
+
+  if (viewMode === "operator") {
+    return (
+      <div className="ph-root ph-operator ast-root" aria-label={`${machine.name} — Operator view`}>
+        <header className="ast-head ph-head">
+          <div className="ast-head-main">
+            <ol className="ast-crumbs" aria-label="Location">
+              <li>Home</li>
+              <li>{machine.area}</li>
+              <li>{machine.id}</li>
+            </ol>
+            <div className="ast-title-row">
+              <PillButton variant="secondary" onClick={onBack} icon={<IconBack size={12} />}>
+                Plant
+              </PillButton>
+              <h1 className="ast-title">{machine.name}</h1>
+              <StatusTag tone={tone} label={conditionLabel} />
+            </div>
+          </div>
+          <div className="pg-actions" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            {onChangeViewMode && (
+              <PillNav
+                items={MACHINE_VIEW_ITEMS}
+                activeId="operator"
+                onChange={(id) => onChangeViewMode(id as "operator" | "twin")}
+                className="ph-head-nav"
+              />
+            )}
+            <PillButton variant="primary" onClick={() => onOpen("overview")}>
+              Open machine <IconChevron size={10} />
+            </PillButton>
+          </div>
+        </header>
+
+        <div className="ph-operator-grid">
+          <div className="ph-operator-main">
+            <section className="ast-card ph-card ph-twin-card" aria-label={`${machine.name} digital twin`}>
+              <div className="ph-twin-card-stage">
+                {renderTwinViewport(NO_INSET)}
+              </div>
+            </section>
+            <div className="ph-strip ph-strip-compact">
+              <HealthTrendCard track={trackMachine} compact />
+            </div>
+          </div>
+
+          <aside className="ph-operator-side" aria-label="Machine condition">
+            <PlantHealthGauge score={overall} dist={dist} title="Machine health" compact />
+            <AlertsFeed
+              alerts={alerts}
+              activity={activity}
+              onOpen={onOpenDiagnosis}
+              onNavigate={(_mId, sub) => onOpen(sub)}
+              loading={alertsLoading}
+              error={alertsError}
+              operatorMode
+            />
+          </aside>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="ph-root ph-immersive ast-root" aria-label={`${machine.name} digital twin`}>
       <div ref={stageRef} className="ph-stage">
-        <div
-          className="ph-twin"
-          style={
-            {
-              "--twin-top": `${covered.top}px`,
-              "--twin-right": `${covered.right}px`,
-              "--twin-bottom": `${covered.bottom}px`,
-              "--twin-left": `${covered.left}px`,
-            } as React.CSSProperties
-          }
-        >
-          {!supported ? (
-            <div className="ph-twin-loading" role="status">3D twin needs WebGL</div>
-          ) : colors && paints ? (
-            <MachineTwinCanvas
-              diagramType={machine.diagramType}
-              machineTone={tone}
-              systems={twinSystems}
-              dots={dots}
-              selectedId={selectedId}
-              onSelect={select}
-              command={command}
-              colors={colors}
-              paints={paints}
-              inset={covered}
-              navMode={navMode}
-              persistKey={`machine.${machine.id}`}
-            />
-          ) : (
-            <div className="ph-twin-loading" role="status">Loading 3D twin…</div>
-          )}
-
-          <TwinNavBar navMode={navMode} onNavMode={setNavMode} onReset={() => setCommand((c) => ({ kind: "fit", n: c.n + 1 }))} />
-
-          <TwinHint navMode={navMode} extra="click a component" />
-
-          <div className="ph-twin-legend" aria-label="Legend">
-            <span><i data-tone="good" />Normal</span>
-            <span><i data-tone="warn" />Advisory</span>
-            <span><i data-tone="bad" />Critical</span>
-            <span className="ast-num">{dots.length} sensors · {twinSystems.length} components</span>
-          </div>
-
-          {selected && (
-            <aside className="ph-inspector ph-twin-inspector mt3-inspector" aria-label={`${selected.name} details`}>
-              <div className="ph-insp-head">
-                <div>
-                  <span className="ph-insp-name">{selected.name}</span>
-                  <span className="ph-sub">Component · {machine.id}</span>
-                </div>
-                <button type="button" className="ast-icon-btn" onClick={() => select(null)} aria-label="Close details">
-                  <IconClose />
-                </button>
-              </div>
-              <StatusTag tone={selected.tone} label={selected.status} />
-              <dl className="ph-insp-rows">
-                <div><dt>Health</dt><dd className="ast-num">{selected.health}<span className="ast-unit">%</span></dd></div>
-                <div><dt>Sensors</dt><dd className="ast-num">{selectedDots.length}</dd></div>
-              </dl>
-              {selectedDots.length > 0 && (
-                <ul className="mt3-sensors" aria-label="Sensors on this component">
-                  {selectedDots.map((d) => (
-                    <li key={d.tag}>
-                      <span className="ph-unit-dot" data-tone={severityTone(d.status)} aria-hidden="true" />
-                      <span className="mt3-sensor-tag ast-num">{d.tag}</span>
-                      <span className="mt3-sensor-name">{d.name}</span>
-                      <span className="mt3-sensor-value ast-num">
-                        {d.value}
-                        {d.unit && <span className="ast-unit"> {d.unit}</span>}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <PillButton onClick={() => onOpen("health")}>
-                Component health <IconChevron size={10} />
-              </PillButton>
-            </aside>
-          )}
-        </div>
+        {renderTwinViewport(covered)}
       </div>
 
       <div className="ph-hud">
@@ -248,13 +325,28 @@ export function MachineTwinHome({
             </span>
           </span>
           <StatusTag tone={tone} label={conditionLabel} />
+          {onChangeViewMode && (
+            <PillNav
+              items={MACHINE_VIEW_ITEMS}
+              activeId="twin"
+              onChange={(id) => onChangeViewMode(id as "operator" | "twin")}
+              className="ph-head-nav"
+            />
+          )}
           <PillButton variant="primary" onClick={() => onOpen("overview")}>
             Open machine <IconChevron size={10} />
           </PillButton>
         </div>
         <aside ref={sideRef} className="ph-hud-side" aria-label="Machine condition">
           <PlantHealthGauge score={overall} dist={dist} title="Machine health" />
-          <AlertsFeed alerts={alerts} activity={activity} onOpen={onOpenDiagnosis} loading={alertsLoading} error={alertsError} />
+          <AlertsFeed
+            alerts={alerts}
+            activity={activity}
+            onOpen={onOpenDiagnosis}
+            onNavigate={(_mId, sub) => onOpen(sub)}
+            loading={alertsLoading}
+            error={alertsError}
+          />
         </aside>
         <div ref={bottomRef} className="ph-hud-bottom ph-strip">
           <HealthTrendCard track={trackMachine} />

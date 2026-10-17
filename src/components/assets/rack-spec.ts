@@ -16,7 +16,7 @@
    machines get `null` and the page says no specification is on file.
    ========================================================================== */
 
-import { isPyroMachineId } from "@/lib/live-defs";
+import { isPyroMachineId, isVpcMachineId } from "@/lib/live-defs";
 import { DAQ_NODES as PYRO_DAQ_NODES, type DaqNode } from "@/lib/pyro-sim/sensor-meta";
 import { PYRO_SIGNAL_BY_TAG } from "@/lib/pyro-sim/signals";
 
@@ -59,6 +59,7 @@ export const CALCULATED_INPUTS: Record<string, { inputs: string[]; basis: string
   "CAL-KLN-03": { inputs: ["STS-KLN-08"], basis: "Shell maximum from the IR scanner map", ref: "D5 Table 9.2 · Table 5.3.4" },
   "CAL-KLN-06": { inputs: ["GAS-KLN-01"], basis: "Inlet O₂ above the reference model", ref: "D5 Table 9.2 · Table 5.3.4" },
   "CAL-KLN-07": { inputs: ["POS-KLN-01"], basis: "LVDT position against seal travel", ref: "D5 Table 9.2 · Table 5.3.4" },
+  DT1: { inputs: ["T2", "T3"], basis: "Cooling-water temperature rise (T3 − T2)", ref: "VPC 066 §7.2" },
 };
 
 /* --------------------------------------------------------------------------
@@ -87,6 +88,21 @@ export const PYRO_UPLINK_SPEC: SpecRow[] = [
   { label: "OT security", value: "Client OT security rules (IEC 62443 approach)", ref: "D5 §7.3 · Table 10.1" },
 ];
 
+export const VPC_EDGE_HARDWARE_SPEC: SpecRow[] = [
+  { label: "Devices", value: "1 × ULTRON edge gateway (industrial PC); 1 × 4-channel IEPE vibration DAQ card; 1 × analog/RTD acquisition module", ref: "VPC 066 §7" },
+  { label: "Dynamic channels", value: "4 IEPE inputs (2 used: V1 vacuum pump, V2 optional flask vibration base; 2 spare); 24-bit; up to 25.6 kS/s", ref: "VPC 066 §7.1 / §7.2" },
+  { label: "Process data", value: "Read-only Modbus TCP / OPC UA client to VPC 066 control cabinet (T1, P1, P2, F1, E1, S1, S2) + external transmitters (P3, T2, T3, T4, P4, E2)", ref: "VPC 066 §7.1" },
+  { label: "Edge processing", value: "Cooling ΔT calculation (DT1 = T3 − T2), RMS vibration, rule evaluation (R-VPC-01 … R-VPC-11), data-quality checks", ref: "VPC 066 §7.2 / §7.4" },
+  { label: "Location / Ex", value: "Jewellery casting cell control cabinet (safe area, 400 V / 3-phase / 16 A)", ref: "VPC 066 §3" },
+  { label: "IP rating", value: "IP54 enclosure adjacent to VPC 066 control cabinet", ref: "VPC 066 §3" },
+];
+
+export const VPC_UPLINK_SPEC: SpecRow[] = [
+  { label: "Plant side", value: "Read-only interface to Schultheiss VPC 066 PLC + external monitoring module; never overrides safety interlocks", ref: "VPC 066 §6 / §7" },
+  { label: "Server side", value: "MQTT over TLS 1.2+ to ULTRON cloud / plant server", ref: "VPC 066 §7" },
+  { label: "Buffering", value: "Local SSD store-and-forward ≥ 7 days cycle & scalar history", ref: "VPC 066 §7" },
+];
+
 /** Hardware specification a machine's Rack page compares against, or null when none is on file. */
 export interface RackSpecSet {
   ref: string;
@@ -104,6 +120,17 @@ export interface RackSpecSet {
 export function rackSpecFor(machineId: string): RackSpecSet | null {
   if (hasKilnSpec(machineId))
     return { ref: RACK_SPEC_REF, hardware: EDGE_HARDWARE_SPEC, uplink: UPLINK_SPEC, iepeChannels: IEPE_SPEC_CHANNELS, iepe: `${IEPE_SPEC_CHANNELS} inputs, 24-bit, ≤ 51.2 kS/s, synchronous`, clock: "Time stamps at the gateway", gateway: "1 × ULTRON edge gateway (industrial PC)", daqNodes: [] };
+  if (isVpcMachineId(machineId))
+    return {
+      ref: "Schultheiss VPC 066 §7",
+      hardware: VPC_EDGE_HARDWARE_SPEC,
+      uplink: VPC_UPLINK_SPEC,
+      iepeChannels: 4,
+      iepe: "4 IEPE inputs (V1 required, V2 optional), 24-bit, 25.6 kS/s",
+      clock: "NTP / PTP synchronised at edge gateway",
+      gateway: "1 × ULTRON edge gateway (VPC-GW-01)",
+      daqNodes: [],
+    };
   if (isPyroMachineId(machineId))
     return {
       ref: PYRO_RACK_SPEC_REF,

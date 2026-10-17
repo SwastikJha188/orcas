@@ -16,7 +16,7 @@ import {
   subtreeMachines,
 } from "@/components/assets/hierarchy/hierarchy-model";
 import { useHierarchyData } from "@/components/assets/hierarchy/use-hierarchy-data";
-import { useIndustrialData, type UserRecord } from "@/providers/industrial-data-context";
+import { useIndustrialData } from "@/providers/industrial-data-context";
 import "@/components/assets/assets-shell.css";
 import "./context-switchers.css";
 
@@ -45,7 +45,7 @@ function useAnchoredMenu(width: number) {
     const menuH = menu.current?.offsetHeight || 280;
     if (r.left / uz < 96 && vw >= 600) {
       const left = Math.min(r.right / uz + 8, vw - width - 8);
-      const top = Math.max(8, Math.min(r.top / uz, vh - menuH - 12));
+      const top = Math.max(8, Math.min(r.top / uz, vh - menuH - 32));
       setPos({ left, top });
     } else {
       const left = Math.max(8, Math.min(r.right / uz - width, vw - width - 8));
@@ -462,15 +462,12 @@ function MachineSwitcher({
 
 const USER_W = 310;
 
-function UserSwitcher({
-  currentUser,
-  onSignOut,
+export function UserSwitcher({
   onManageUsers,
 }: {
-  currentUser: UserRecord | null;
-  onSignOut: () => void;
-  onManageUsers: () => void;
-}) {
+  onManageUsers?: () => void;
+} = {}) {
+  const { currentUser, signOut, setActiveTab } = useIndustrialData();
   const m = useAnchoredMenu(USER_W);
   if (!currentUser) return null;
 
@@ -518,7 +515,7 @@ function UserSwitcher({
                 data-menu-item
                 className="ctx-row"
                 onClick={() => {
-                  onManageUsers();
+                  (onManageUsers ?? (() => setActiveTab("configure")))();
                   m.close();
                 }}
               >
@@ -539,7 +536,7 @@ function UserSwitcher({
               className="ctx-row"
               onClick={() => {
                 m.close();
-                onSignOut();
+                void signOut();
               }}
             >
               <Check on={false} />
@@ -568,8 +565,6 @@ export function ContextSwitchers() {
     setSelectedMachineId,
     activeTab,
     setActiveTab,
-    currentUser,
-    signOut,
   } = useIndustrialData();
   const { roots, lookup } = useHierarchyData();
   const plant = roots.find((p) => p.id === selectedPlantId) ?? roots[0];
@@ -591,16 +586,10 @@ export function ContextSwitchers() {
   if (roots.length === 0) return null;
 
   return (
-    <div className="ctx-switchers" role="group" aria-label="Plant, machine, and operator context">
+    <div className="ctx-switchers" role="group" aria-label="Plant and machine context">
       <PlantSwitcher roots={roots} plant={plant} lookup={lookup} onChange={choosePlant} />
       <span className="ctx-sep" aria-hidden="true">/</span>
       <MachineSwitcher plant={plant} machineId={selectedMachineId} lookup={lookup} onChange={chooseMachine} />
-      {currentUser && (
-        <>
-          <span className="ctx-sep" aria-hidden="true">·</span>
-          <UserSwitcher currentUser={currentUser} onSignOut={() => void signOut()} onManageUsers={() => setActiveTab("configure")} />
-        </>
-      )}
     </div>
   );
 }

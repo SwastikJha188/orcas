@@ -5,8 +5,9 @@
  * the same yard as the plant twin (ground, fog, light, floating labels, camera
  * fit, real-world paints like the plant's CAD models).
  *
- * The kiln is a built model in real metres (kiln-twin-3d), with every D4 signal
- * on its physical anchor. Other machine types are extruded from their schematic
+ * The kiln and the VPC-066 casting cell are built models in real metres
+ * (kiln-twin-3d, vpc-twin-3d), with every scheduled signal on its physical
+ * anchor. Other machine types are extruded from their schematic
  * primitives (machine-twin-model). Sensor points are not drawn on the twin;
  * pyro sensor coordinates only place the field instruments and size each
  * component's label anchor. Status is carried by the component labels;
@@ -39,6 +40,7 @@ import {
 import { TwinHtml } from "./twin-html";
 import { UNIT, buildMachineModel, modelExtent, ownerOf, twinKind, usesForeignSpace, type MachineFinish, type MachinePrim } from "./machine-twin-model";
 import { KILN_ANCHORS, KILN_CENTRE_X, KilnModel, kilnOwners } from "./kiln-twin-3d";
+import { VPC_ANCHORS, VPC_CENTRE_X, VPC_LABEL_ANCHORS, VpcModel, vpcOwners, type VpcRole } from "./vpc-twin-3d";
 import { TwinControls, clearTwinPose, loadTwinPose, usePersistTwinPose, useTwinNavigation, type TwinNavMode } from "./twin-nav";
 import { PartCtx, TwinPart, useTwinMaterials, type PartCtxValue, type ShellSkin, type TwinPaint, type TwinPaints } from "./twin-part";
 import { TWIN_GL, TwinLighting } from "./twin-lighting";
@@ -296,6 +298,8 @@ function CameraRig({
 }) {
   const { camera, invalidate, size } = useThree();
   const controls = useThree((st) => st.controls) as OrbitControlsImpl | null;
+  // Compact machines (the VPC cell) focus a single chamber; the plant's 8 m floor would stop well short.
+  const minFit = radius < 8 ? 1.4 : 8;
   const goal = useRef<{ pos: THREE.Vector3; tgt: THREE.Vector3 } | null>(null);
   const fitted = useRef(false);
   const operated = useRef(false);
@@ -322,8 +326,13 @@ function CameraRig({
   useEffect(() => {
     if (!controls || points.length === 0) return;
     if (!fitted.current) {
-      const saved = loadTwinPose(persistKey);
-      const g = saved ? { pos: new THREE.Vector3(...saved.pos), tgt: new THREE.Vector3(...saved.tgt) } : fitPoints(points, size.width, size.height, inset, 1, VIEW_DIR);
+      const stored = loadTwinPose(persistKey);
+      const pose = stored && { pos: new THREE.Vector3(...stored.pos), tgt: new THREE.Vector3(...stored.tgt) };
+      // A pose saved on a different build of this machine (e.g. before its model was rebuilt
+      // at another scale) would leave the camera far off the model: drop it and fit instead.
+      const saved = pose && pose.tgt.distanceTo(centre) <= radius * 1.5 && pose.pos.distanceTo(pose.tgt) <= radius * 4 ? pose : null;
+      if (stored && !saved) clearTwinPose(persistKey);
+      const g = saved ?? fitPoints(points, size.width, size.height, inset, 1, VIEW_DIR, minFit);
       operated.current = !!saved;
       camera.position.copy(g.pos);
       controls.target.copy(g.tgt);
@@ -338,10 +347,10 @@ function CameraRig({
     if (command.kind === "fit") {
       clearTwinPose(persistKey);
       operated.current = false;
-      goal.current = fitPoints(points, size.width, size.height, inset, 1, VIEW_DIR);
+      goal.current = fitPoints(points, size.width, size.height, inset, 1, VIEW_DIR, minFit);
     } else if (command.kind === "focus" && focus) {
       operated.current = true;
-      goal.current = fitPoints(focus, size.width, size.height, inset, 1.3, VIEW_DIR);
+      goal.current = fitPoints(focus, size.width, size.height, inset, 1.3, VIEW_DIR, minFit);
     } else if (command.kind === "zoom-in" || command.kind === "zoom-out") {
       operated.current = true;
       const k = command.kind === "zoom-in" ? 0.72 : 1.38;
@@ -356,9 +365,9 @@ function CameraRig({
     if (!fitted.current || lastLayout.current === layoutKey) return;
     lastLayout.current = layoutKey;
     if (operated.current) return;
-    goal.current = fitPoints(points, size.width, size.height, inset, 1, VIEW_DIR);
+    goal.current = fitPoints(points, size.width, size.height, inset, 1, VIEW_DIR, minFit);
     invalidate();
-  }, [layoutKey, inset, points, size.width, size.height, invalidate]);
+  }, [layoutKey, inset, points, size.width, size.height, minFit, invalidate]);
 
   useTwinNavigation({
     centre,
@@ -380,7 +389,7 @@ function CameraRig({
   });
 
   return (
-    <TwinControls navMode={navMode} maxPolarAngle={Math.PI / 2.1} minDistance={2} maxDistance={Math.max(60, radius * 8)} />
+    <TwinControls navMode={navMode} maxPolarAngle={Math.PI / 2.1} minDistance={radius < 8 ? 0.8 : 2} maxDistance={Math.max(60, radius * 8)} />
   );
 }
 
@@ -416,6 +425,8 @@ function SceneContents({
   // Pyro-line machines use their detailed model from the pyro plant (same build as the Home site).
   const pyroKey = (diagramType && PYRO_KEY[diagramType]) || null;
   const isKiln = !pyroKey && twinKind(diagramType) === "kiln";
+  const isVpc = !pyroKey && twinKind(diagramType) === "vpc-casting";
+  const built = isKiln || isVpc;
   const pyro = useMemo(() => {
     if (!pyroKey) return null;
     const mats = createKitMats();
@@ -456,6 +467,13 @@ function SceneContents({
   const systemKey = systems.map((s) => `${s.id}:${s.name}:${s.bbox ? Object.values(s.bbox).join(",") : ""}`).join("|");
   // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on systemKey
   const kilnOwn = useMemo(() => kilnOwners(systems), [systemKey]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on systemKey
+  const vpcOwn = useMemo(() => vpcOwners(systems), [systemKey]);
+  const vpcRoleOf = useMemo(() => {
+    const m = new Map<string, VpcRole>();
+    for (const [r, id] of Object.entries(vpcOwn) as Array<[VpcRole, string | null]>) if (id) m.set(id, r);
+    return m;
+  }, [vpcOwn]);
   const genericOwn = useMemo(
     () => generic.prims.map((p) => ownerOf(p, systems.map((s) => ({ id: s.id, bbox: s.bbox && toModel.box(s.bbox) })))),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on systemKey
@@ -496,7 +514,7 @@ function SceneContents({
     });
     setBounds({ all, bySystem, samples });
     invalidate();
-  }, [isKiln, pyro, generic, kilnOwn, genericOwn, invalidate]);
+  }, [isKiln, isVpc, pyro, generic, kilnOwn, vpcOwn, genericOwn, invalidate]);
 
   // Sensor pads: kiln tags on their physical anchors; others raycast onto the surface.
   // `dots` is a new array every live tick, but only the sensors' positions matter here:
@@ -506,10 +524,11 @@ function SceneContents({
   const dotPlaces = dots.map((d) => `${d.tag}:${d.x}:${d.y}:${d.systemId ?? ""}`).join("|");
   const pads = useMemo<PlacedPad[]>(() => {
     const dots = dotsRef.current;
-    if (isKiln) {
+    if (isKiln || isVpc) {
+      const [anchors, cx] = isKiln ? [KILN_ANCHORS, KILN_CENTRE_X] : [VPC_ANCHORS, VPC_CENTRE_X];
       return dots.flatMap((dot) => {
-        const a = KILN_ANCHORS[dot.tag];
-        return a ? [{ dot, p: new THREE.Vector3(a[0] - KILN_CENTRE_X, a[1], a[2]) }] : [];
+        const a = anchors[dot.tag];
+        return a ? [{ dot, p: new THREE.Vector3(a[0] - cx, a[1] + PLINTH_H, a[2]) }] : [];
       });
     }
     const root = model.current;
@@ -561,7 +580,7 @@ function SceneContents({
       return [{ dot, p: new THREE.Vector3(wx, wy, hit ? hit.point.z + 0.1 : 0) }];
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on dotPlaces, not on live values
-  }, [isKiln, pyro, dotPlaces, map, bounds, toModel]);
+  }, [isKiln, isVpc, pyro, dotPlaces, map, bounds, toModel]);
 
   // Pyro models are merged per material, so a subsystem's extent comes from its sensor pads.
   const padBounds = useMemo(() => {
@@ -582,9 +601,9 @@ function SceneContents({
     if (!bounds) return [];
     // The model's own silhouette plus a little headroom over its top for the labels.
     const c = bounds.all.getCenter(new THREE.Vector3());
-    const head = new THREE.Vector3(c.x, bounds.all.max.y + (isKiln ? 3 : 2), c.z);
+    const head = new THREE.Vector3(c.x, bounds.all.max.y + (isKiln ? 3 : isVpc ? 0.5 : 2), c.z);
     return bounds.samples.length ? [...bounds.samples, head] : corners(bounds.all);
-  }, [bounds, isKiln]);
+  }, [bounds, isKiln, isVpc]);
   const focus = useMemo(() => {
     const b = selectedId ? systemBox(selectedId) : undefined;
     return b ? corners(b) : null;
@@ -623,7 +642,7 @@ function SceneContents({
   const size = all.getSize(new THREE.Vector3());
   const centre = useMemo(() => all.getCenter(new THREE.Vector3()).setY(0), [all]);
   const radius = Math.max(4, size.length() / 2);
-  const pad = isKiln || pyro ? 4 : 1.6;
+  const pad = isKiln || pyro ? 4 : isVpc ? 1.2 : 1.6;
   const slabW = size.x + pad;
   const slabD = size.z + pad;
   // Machine-kit rule: the slab rim stays quiet; status lives on the measurement pads and labels.
@@ -632,8 +651,17 @@ function SceneContents({
   // The built model only changes with its parts and owners; live ticks must not re-render it
   // (hover and selection still reach its parts through PartCtx).
   const builtModel = useMemo(
-    () => (pyro ? <primitive object={pyro.group} /> : isKiln ? <KilnModel owners={kilnOwn} /> : <GenericModel prims={generic.prims} map={map} owners={genericOwn} />),
-    [pyro, isKiln, kilnOwn, generic.prims, map, genericOwn],
+    () =>
+      pyro ? (
+        <primitive object={pyro.group} />
+      ) : isKiln ? (
+        <KilnModel owners={kilnOwn} />
+      ) : isVpc ? (
+        <VpcModel owners={vpcOwn} />
+      ) : (
+        <GenericModel prims={generic.prims} map={map} owners={genericOwn} />
+      ),
+    [pyro, isKiln, isVpc, kilnOwn, vpcOwn, generic.prims, map, genericOwn],
   );
 
   return (
@@ -668,7 +696,7 @@ function SceneContents({
 
       <PartCtx.Provider value={ctx}>
         {/* The built model stands on the plinth. */}
-        <group ref={model} position={[0, isKiln || pyro ? PLINTH_H : 0, 0]}>
+        <group ref={model} position={[0, built || pyro ? PLINTH_H : 0, 0]}>
           {builtModel}
         </group>
       </PartCtx.Provider>
@@ -680,11 +708,14 @@ function SceneContents({
           const b = systemBox(s.id);
           if (!b) return null;
           const c = b.getCenter(new THREE.Vector3());
+          // The VPC cell is compact: each component's label hangs at its own built anchor.
+          const role = isVpc ? vpcRoleOf.get(s.id) : undefined;
+          const la = role && VPC_LABEL_ANCHORS[role];
           return (
             <SystemLabel
               key={s.id}
               system={s}
-              anchor={new THREE.Vector3(c.x, b.max.y + (isKiln ? 1.4 : 0.5), c.z)}
+              anchor={la ? new THREE.Vector3(la[0] - VPC_CENTRE_X, la[1] + PLINTH_H, la[2]) : new THREE.Vector3(c.x, b.max.y + (isKiln ? 1.4 : 0.5), c.z)}
               active={s.id === selectedId || s.id === hover}
               sensors={sensorsBySystem.get(s.id) ?? 0}
               labels={labels}

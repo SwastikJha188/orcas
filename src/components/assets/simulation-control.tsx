@@ -8,11 +8,13 @@ import { useKilnFleet } from "@/providers/kiln-simulation-context";
 import { formatClock, type SimFrame, type StoryProfile } from "@/lib/kiln-sim/engine";
 import { PYRO_SCENARIOS, pyroScenario } from "@/lib/pyro-sim/scenarios";
 import { PYRO_MACHINES, PYRO_SIGNALS } from "@/lib/pyro-sim/signals";
+import { VPC_SCENARIOS, vpcScenario } from "@/lib/vpc-sim/scenarios";
+import { VPC_MACHINES, VPC_SIGNALS } from "@/lib/vpc-sim/signals";
 import type { Injection, LineSimSettings, SignalFaultSpec } from "@/lib/pyro-sim/engine";
 import type { KilnSimulation } from "./kiln-seals-simulation";
 
 /**
- * Simulation › Control (pyro line): the plant-wide demo layer.
+ * Simulation › Control (pyro line & VPC 066): the plant-wide demo layer.
  *
  * KPI strip → quick actions → event generator and sensor knobs → machines →
  * running events → signal fault builder. Every control moves signals only;
@@ -21,7 +23,10 @@ import type { KilnSimulation } from "./kiln-seals-simulation";
 
 type Line = NonNullable<KilnSimulation["line"]>;
 
-const MACHINE = new Map(PYRO_MACHINES.map((m) => [m.id, m]));
+const ALL_LINE_MACHINES = [...PYRO_MACHINES, ...VPC_MACHINES];
+const ALL_LINE_SIGNALS = [...PYRO_SIGNALS, ...VPC_SIGNALS];
+const ALL_LINE_SCENARIOS: Record<string, typeof VPC_SCENARIOS> = { ...PYRO_SCENARIOS, "VPC-066": VPC_SCENARIOS };
+const MACHINE = new Map(ALL_LINE_MACHINES.map((m) => [m.id, m]));
 const code = (id: string) => MACHINE.get(id)?.code ?? id;
 
 const PROFILE_OPTIONS: Array<{ value: StoryProfile; label: string }> = [
@@ -54,7 +59,7 @@ const activeRules = (f: SimFrame) => f.rules.filter((r) => r.status === "ACTIVE"
 
 export function SimulationControl({ simulation, line }: { simulation: KilnSimulation; line: Line }) {
   const fleet = useKilnFleet();
-  const machines = useMemo(() => PYRO_MACHINES.map((m) => fleet[m.id]).filter(Boolean) as KilnSimulation[], [fleet]);
+  const machines = useMemo(() => ALL_LINE_MACHINES.map((m) => fleet[m.id]).filter(Boolean) as KilnSimulation[], [fleet]);
   const frames = machines.map((m) => m.frame);
   const speed = simulation.speedMultiplier;
   const t = line.t;
@@ -90,7 +95,7 @@ export function SimulationControl({ simulation, line }: { simulation: KilnSimula
 
 function QuickActions({ line, machines }: { line: Line; machines: KilnSimulation[] }) {
   const [machine, setMachine] = useState(machines[0]?.machineId ?? "PYR-KLN-01");
-  const scenarios = (PYRO_SCENARIOS[machine] ?? []).filter((s) => s.id !== "healthy");
+  const scenarios = (ALL_LINE_SCENARIOS[machine] ?? []).filter((s) => s.id !== "healthy");
   const [scenarioId, setScenarioId] = useState("");
   const picked = scenarios.find((s) => s.id === scenarioId) ?? scenarios[0];
   const groups = [...new Set(scenarios.map((s) => (s.id.startsWith("line-") ? "Line trips & upsets" : s.group)))];
@@ -375,7 +380,7 @@ function EventsCard({ line, running, fleet }: { line: Line; running: Injection[]
       header: "Alert",
       width: "170px",
       render: (j) => {
-        const expected = pyroScenario(j.machine, j.scenarioId).expected;
+        const expected = (j.machine === "VPC-066" ? vpcScenario(j.scenarioId) : pyroScenario(j.machine, j.scenarioId)).expected;
         const f = fleet[j.machine]?.frame;
         const raised = f ? activeRules(f).filter((r) => expected.includes(r.id)) : [];
         if (!expected.length) {
@@ -423,7 +428,7 @@ function EventsCard({ line, running, fleet }: { line: Line; running: Injection[]
 
 function SignalFaultCard({ line, machines }: { line: Line; machines: KilnSimulation[] }) {
   const [machine, setMachine] = useState(machines[0]?.machineId ?? "PYR-KLN-01");
-  const signals = useMemo(() => PYRO_SIGNALS.filter((d) => d.machine === machine && d.type === "analog" && !d.calculated && d.origin === "online"), [machine]);
+  const signals = useMemo(() => ALL_LINE_SIGNALS.filter((d) => d.machine === machine && d.type === "analog" && !d.calculated && d.origin === "online"), [machine]);
   const [tag, setTag] = useState("");
   const def = signals.find((d) => d.tag === tag) ?? signals[0];
   const [shape, setShape] = useState<SignalFaultSpec["shape"]>("ramp");

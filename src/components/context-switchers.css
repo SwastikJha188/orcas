@@ -101,6 +101,11 @@
   border-color: transparent;
 }
 
+.nav-rail .ctx-trigger-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
 .nav-rail .ctx-trigger:hover:not(:disabled),
 .nav-rail .ctx-trigger[data-open] {
   background: var(--bg-surface-elevated);

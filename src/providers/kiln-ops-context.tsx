@@ -3,7 +3,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { invalidateApi } from "@/lib/api-cache";
 import { PRIMARY_KILN_ID, useKilnSimulation, usePrimaryMachineId } from "@/providers/kiln-simulation-context";
-import { OpsToastHost, type OpsToast } from "@/components/ops/ops-toasts";
 
 /* ==========================================================================
    Suggestion -> action loop for the active plant's primary machine (KLN-01 on
@@ -96,8 +95,6 @@ type SimWithActions = { performAction?: (ruleId: string, kind: ActionKind) => un
 
 const DUE: Record<string, string> = { P1: "Within 4 h", P2: "Within 24 h", P3: "Within 7 days", P4: "Next planned outage" };
 
-let toastSeq = 0;
-
 /**
  * The simulated plant restarts healthy on every page load, so work orders still
  * open from an earlier run refer to faults that are no longer on the plant.
@@ -136,12 +133,6 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
   const frame = sim?.machineId === machineId ? sim.frame : null;
   const [workOrders, setWorkOrders] = useState<OpsWorkOrder[]>([]);
   const [acks, setAcks] = useState<Set<string>>(new Set());
-  const [toasts, setToasts] = useState<OpsToast[]>([]);
-
-  const pushToast = useCallback((toast: Omit<OpsToast, "id">) => {
-    setToasts((list) => [...list.slice(-2), { ...toast, id: ++toastSeq }]);
-  }, []);
-  const dismissToast = useCallback((id: number) => setToasts((list) => list.filter((t) => t.id !== id)), []);
 
   // Load from the database for the active plant's primary machine.
   const machineRef = useRef(machineId);
@@ -245,10 +236,9 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
           n.delete(ruleId);
           return n;
         });
-        pushToast({ tone: "bad", title: "Acknowledgement failed", detail: "The alert could not be saved." });
       }
     },
-    [perform, pushToast],
+    [perform],
   );
 
   const createWorkOrder = useCallback(
@@ -257,7 +247,6 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
       if (!rule) return null;
       const existing = workOrdersRef.current.find((w) => w.ruleId === ruleId && (w.status === "open" || w.status === "in_progress"));
       if (existing) {
-        pushToast({ tone: "info", title: `Work order WO-${existing.id} already open`, detail: existing.title });
         return existing;
       }
       const actionKind: WorkOrderKind = kind ?? (rule.severity === "Critical" ? "repair" : "mitigate");
@@ -278,16 +267,14 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
           }),
         });
         setWorkOrders((list) => [wo, ...list]);
-        pushToast({ tone: "info", title: `Work order WO-${wo.id} created`, detail: rule.name });
         // Raising a work order also acknowledges the finding.
         if (!acks.has(ruleId)) void acknowledge(ruleId);
         return wo;
-      } catch (e) {
-        pushToast({ tone: "bad", title: "Work order failed", detail: e instanceof Error ? e.message : "Request failed" });
+      } catch {
         return null;
       }
     },
-    [acks, acknowledge, pushToast],
+    [acks, acknowledge],
   );
 
   const updateWorkOrder = useCallback(
@@ -301,15 +288,12 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
         if (patch.status && patch.status !== current.status && current.ruleId) {
           if (patch.status === "in_progress" && current.actionKind === "mitigate") perform(current.ruleId, "mitigate");
           if (patch.status === "done" && current.actionKind === "repair") perform(current.ruleId, "repair");
-          if (patch.status === "done") pushToast({ tone: "good", title: `WO-${id} completed`, detail: current.title });
-          if (patch.status === "in_progress") pushToast({ tone: "info", title: `WO-${id} started`, detail: current.title });
         }
-      } catch (e) {
+      } catch {
         setWorkOrders((list) => list.map((w) => (w.id === id ? current : w)));
-        pushToast({ tone: "bad", title: "Update failed", detail: e instanceof Error ? e.message : "Request failed" });
       }
     },
-    [perform, pushToast],
+    [perform],
   );
 
   // Mirror actions taken outside this provider — the autopilot crew, or the
@@ -372,25 +356,25 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
             await api("/api/alerts/ack", { method: "POST", body: JSON.stringify({ ruleId: a.ruleId, machineId: target, simTime: e.t }) });
           } else if (a.kind === "mitigate") {
             const wo = openFor("mitigate");
-            const saved = wo ? await save(wo.id, { status: "in_progress" }) : await raise("mitigate");
-            pushToast({ tone: "info", title: `WO-${saved.id} mitigation started`, detail: e.title });
+            if (wo) await save(wo.id, { status: "in_progress" });
+            else await raise("mitigate");
           } else if (a.kind === "repair") {
             const mitigation = openFor("mitigate");
             if (mitigation) await save(mitigation.id, { status: "done", notes: "Superseded by repair" });
             const wo = openFor("repair");
-            const saved = wo ? await save(wo.id, { status: "in_progress" }) : await raise("repair");
-            pushToast({ tone: "info", title: `WO-${saved.id} repair dispatched`, detail: e.title });
+            if (wo) await save(wo.id, { status: "in_progress" });
+            else await raise("repair");
           } else if (a.kind === "complete") {
             for (const w of workOrdersRef.current.filter((x) => x.ruleId === a.ruleId && (x.status === "open" || x.status === "in_progress"))) {
               await save(w.id, { status: "done" });
             }
           }
         } catch {
-          pushToast({ tone: "bad", title: "Work order sync failed", detail: e.title });
+          /* ignore background sync errors */
         }
       })();
     }
-  }, [events, pushToast, machineId]);
+  }, [events, machineId]);
 
   // Copilot: window.dispatchEvent(new CustomEvent("ultron:create-work-order", { detail: { ruleId } })).
   const createRef = useRef(createWorkOrder);
@@ -411,10 +395,5 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
     [machineId, alerts, workOrders, acknowledge, createWorkOrder, updateWorkOrder, unread],
   );
 
-  return (
-    <OpsContext.Provider value={value}>
-      {children}
-      <OpsToastHost toasts={toasts} onDismiss={dismissToast} />
-    </OpsContext.Provider>
-  );
+  return <OpsContext.Provider value={value}>{children}</OpsContext.Provider>;
 }
