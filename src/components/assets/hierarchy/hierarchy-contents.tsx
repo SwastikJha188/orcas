@@ -86,13 +86,17 @@ export function HierarchyContents({ roots, lookup, node, onSelectNode, onOpenMac
           </ol>
           <div className="ast-title-row">
             <h1 className="ast-title">{node.name}</h1>
-            <span className="hx-type-badge">
-              <TypeIcon type={node.type} size={12} />
-              {TYPE_LABEL[node.type]}
-            </span>
-            {entries.length > 0 && <StatusTag tone={tone} label={rollupLabel(tone)} />}
+            {node.id !== VPC_PLANT_ID && (
+              <>
+                <span className="hx-type-badge">
+                  <TypeIcon type={node.type} size={12} />
+                  {TYPE_LABEL[node.type]}
+                </span>
+                {entries.length > 0 && <StatusTag tone={tone} label={rollupLabel(tone)} />}
+              </>
+            )}
           </div>
-          <span className="ast-caption ast-num">{context}</span>
+          {node.id !== VPC_PLANT_ID && <span className="ast-caption ast-num">{context}</span>}
         </div>
         {worst && needsAttention > 0 && (
           <div className="pg-actions">
@@ -103,7 +107,7 @@ export function HierarchyContents({ roots, lookup, node, onSelectNode, onOpenMac
         )}
       </header>
 
-      {entries.length > 0 && (
+      {entries.length > 0 && node.id !== VPC_PLANT_ID && (
         <KpiCards label="Level summary">
           <KpiCard
             label="Machines"
@@ -153,9 +157,9 @@ export function HierarchyContents({ roots, lookup, node, onSelectNode, onOpenMac
           <strong className="hx-empty-title">No assets at this level</strong>
           Nothing is registered under {node.name} in the plant hierarchy.
         </div>
-      ) : (
+      ) : node.id !== VPC_PLANT_ID ? (
         <MachineRegister key={node.id} entries={entries} onOpenMachine={onOpenMachine} />
-      )}
+      ) : null}
     </div>
   );
 }

@@ -20,10 +20,10 @@ export const VPC_USER_ID = "usr-vpc";
 const PLANT = {
   id: VPC_PLANT_ID,
   code: "JWL-VPC-01",
-  name: "Jewellery Casting Plant — Schultheiss VPC 066",
-  shortName: "Jewellery Casting",
+  name: "Vacuum Casting Plant — Schultheiss VPC 066",
+  shortName: "Vacuum Casting",
   region: "Precious Metals Manufacturing Division",
-  location: "Jewellery Casting Section — Automatic Vacuum-Pressure Casting Cell (3 Units)",
+  location: "Vacuum Casting Section — Automatic Vacuum-Pressure Casting Cell (3 Units)",
   coordinates: "19°07'14\"N 72°52'06\"E",
   timeZone: "Asia/Kolkata",
   status: "Advisory",

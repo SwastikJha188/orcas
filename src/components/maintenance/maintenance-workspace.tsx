@@ -861,7 +861,7 @@ export function MaintenanceWorkspace() {
   const urgentProactiveCount = proactiveParts.filter((p) => p.used / p.rated >= 0.85).length;
 
   const plantTitle = isVpc
-    ? "Jewellery Casting Plant — Schultheiss VPC 066"
+    ? "Vacuum Casting Plant — Schultheiss VPC 066"
     : isPyro
       ? "Pyroprocessing Line"
       : "Cement Kiln & Cooler Line";
