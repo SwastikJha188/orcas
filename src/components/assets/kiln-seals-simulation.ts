@@ -54,8 +54,9 @@ import {
 } from "@/lib/pyro-sim/engine";
 import { PYRO_FLEET } from "@/lib/pyro-sim/fleet";
 import { recordFrames } from "@/lib/condition-report";
-import { flushHealth, mergeHealth, recordHealth, HEALTH_KEEP_MS } from "@/lib/health-recorder";
-import { finishFleet, loadFleet, type FleetEngines } from "@/lib/fleet-boot";
+import { flushHealth, mergeHealth, HEALTH_KEEP_MS } from "@/lib/health-recorder";
+import { applyEngineConfig, engineConfigAppliedAt, fetchEngineConfig } from "@/lib/engine-config";
+import { applySimCommand, finishFleet, loadFleet, syncFleetConfig, type FleetEngines, type SimCommand } from "@/lib/fleet-boot";
 import type { FleetBootRequest, FleetBootResult } from "@/lib/fleet-boot.worker";
 import { PYRO_SCENARIOS, pyroScenario } from "@/lib/pyro-sim/scenarios";
 import { PYRO_MACHINE_IDS } from "@/lib/pyro-sim/signals";
@@ -241,16 +242,78 @@ function bootFleet(): Promise<FleetEngines> {
       onMainThread();
     };
     worker.postMessage(request);
-  }).then(({ snap, resumed }) => {
+  }).then(async ({ snap, resumed, savedAt }) => {
+    plantSavedAt = savedAt ?? null;
+    // The worker configured its own copy of the engines; this realm needs the same database configuration.
+    if (engineConfigAppliedAt() === null) applyEngineConfig(await fetchEngineConfig(window.location.origin));
     fleetEngines = finishFleet(snap, (tEnd) => anchorClock(tEnd, 1), !resumed);
     void syncHealthHistory();
+    setInterval(() => void syncHealthHistory(), HEALTH_SYNC_MS);
+    void syncSimulation();
+    setInterval(() => void syncSimulation(), SIM_SYNC_MS);
     return fleetEngines;
   }));
 }
 
+/** How often the page re-reads the Simulation page's settings and actions. */
+const SIM_SYNC_MS = 10_000;
+let simVersionSeen: number | null = null;
+let simCommandSeen: number | null = null;
+/** When the server took the plant this page resumed (null: pre-rolled its own). */
+let plantSavedAt: number | null = null;
+
 /**
- * Fill Health over time with what the server recorded (src/server/plant), so
- * the charts cover their whole window, including time no page was open.
+ * Keep this page's engines in step with the Simulation page: new settings or machine profiles (re-read the
+ * engine configuration and sync), and new actions ("start a fault now", "clear faults"). Actions the plant applied
+ * before it was saved are already in the plant this page resumed; on the first read the ones it applied after
+ * that (or not yet) are applied here, as far along as on the plant; after that every new one. The Simulation page also
+ * calls it right after queueing an action, so this page shows it without waiting for the next read.
+ */
+let simSyncing: Promise<void> | null = null;
+
+export function syncSimulation(): Promise<void> {
+  // One read at a time, so an action is never applied twice.
+  simSyncing ??= readSimulation().finally(() => {
+    simSyncing = null;
+  });
+  return simSyncing;
+}
+
+async function readSimulation(): Promise<void> {
+  if (!fleetEngines) return;
+  try {
+    const res = await fetch(`/api/simulation${simCommandSeen !== null ? `?since=${simCommandSeen}` : ""}`, { cache: "no-store" });
+    if (!res.ok) return;
+    const body = (await res.json()) as { data?: { version: number; commands: SimCommand[] } };
+    const data = body.data;
+    if (!data) return;
+    if (simVersionSeen !== null && data.version !== simVersionSeen) {
+      applyEngineConfig(await fetchEngineConfig(window.location.origin));
+      syncFleetConfig(fleetEngines);
+    }
+    simVersionSeen = data.version;
+    const newest = data.commands.reduce((m, c) => Math.max(m, c.id), simCommandSeen ?? 0);
+    if (simCommandSeen !== null) for (const cmd of data.commands) if (cmd.id > simCommandSeen) applySimCommand(fleetEngines, cmd);
+    if (simCommandSeen === null && plantSavedAt !== null) {
+      const now = Date.now();
+      for (const cmd of data.commands) {
+        const at = cmd.appliedAt ? Date.parse(cmd.appliedAt) : now;
+        if (at > plantSavedAt) applySimCommand(fleetEngines, cmd, Math.max(0, Math.round((now - at) / msPerMin(1))));
+      }
+    }
+    simCommandSeen = newest;
+  } catch {
+    /* offline: try again next time */
+  }
+}
+
+/** How often Health over time re-reads the server evaluation's scores. */
+const HEALTH_SYNC_MS = 60_000;
+
+/**
+ * Fill Health over time with the Machine Health Index the server evaluation
+ * stored (machine_health_scores), so the charts cover their whole window,
+ * including time no page was open.
  */
 async function syncHealthHistory(): Promise<void> {
   try {
@@ -276,10 +339,6 @@ function lineView(line: LineState | undefined): LineSimView | null {
   return { t: line.t, settings: line.sim, events: line.injections.map((j) => ({ ...j })), nextEventAt: line.nextEventAt };
 }
 
-/** Hand every machine's health to the wall-clock recorder (Health over time reads it, not the per-minute frame history). */
-function recordFleetHealth(frames: Record<string, SimFrame>): void {
-  recordHealth(Object.fromEntries(Object.entries(frames).map(([id, f]) => [id, f.overall])));
-}
 
 function currentFrames(e: FleetEngines | null): Record<string, SimFrame> {
   if (!e) return {};
@@ -348,7 +407,6 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
       }
       setFrames(next);
       setLineSim(lineView(line));
-      recordFleetHealth(next);
     };
     // A hidden tab neither steps the plant nor re-renders; on return the
     // missed minutes are simulated in one go (capped) and drawn once.
@@ -484,7 +542,6 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
     }
     setFrames(next);
     setLineSim(lineView(line));
-    recordFleetHealth(next);
   }, []);
 
   /* ---------------- pyro line demo layer (events, noise, health drift) ---------------- */
@@ -631,7 +688,7 @@ function buildSimulation(
   let _healthScores: KilnSealsHealthScores | undefined;
   let _evaluatedRules: EvaluatedRule[] | undefined;
   let _timeSeries: SealTimeSeriesPoint[] | undefined;
-  return {
+  const sim = {
     machineId,
     frame,
     scenario,
@@ -671,6 +728,37 @@ function buildSimulation(
       return (_timeSeries ??= toTimeSeries(frame));
     },
   };
+  buildInputs.set(sim, { c, lineSim });
+  return sim;
 }
 
 export type KilnSimulation = ReturnType<typeof buildSimulation>;
+
+/** What `snapshotSimulation` needs to rebuild a simulation that is not on the simulation itself. */
+const buildInputs = new WeakMap<object, { c: FleetControls; lineSim: LineSimView | null }>();
+
+/**
+ * A frame whose rolling series no longer move. The engine hands out its own
+ * history arrays and keeps pushing to them every tick, so a frame held for
+ * the display snapshot would otherwise grow past its `t`.
+ */
+function freezeFrame(f: SimFrame): SimFrame {
+  const copy = <T,>(r: Record<string, T[]>) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v.slice()]));
+  return {
+    ...f,
+    times: f.times.slice(),
+    history: copy(f.history),
+    modelHistory: copy(f.modelHistory),
+    healthHistory: copy(f.healthHistory) as SimFrame["healthHistory"],
+    qualityHistory: f.qualityHistory && copy(f.qualityHistory),
+    events: f.events.slice(),
+    shellScans: f.shellScans?.slice(),
+  };
+}
+
+/** The simulation as of now, with series that stay put while the engine runs on (for the calm display snapshot). */
+export function snapshotSimulation(sim: KilnSimulation): KilnSimulation {
+  const inputs = buildInputs.get(sim);
+  if (!inputs) return sim;
+  return buildSimulation(sim.machineId, freezeFrame(sim.frame), sim.rotationAngle, sim.isPaused, sim.speedMultiplier, inputs.c, inputs.lineSim);
+}

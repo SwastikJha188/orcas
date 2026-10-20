@@ -1,11 +1,12 @@
 import type { ChecklistKind, MaintenanceRecord } from "@/types/maintenance";
 import type { PlanState, PmsPlan, PmsWorkOrder, Readiness, ReadinessKey, ReadinessState, WoStage } from "@/types/pms";
-import { ROUTES, latestByTask, type RouteId } from "@/lib/maintenance";
+import { latestByTask } from "@/lib/maintenance";
 
 /* ==========================================================================
    Planned maintenance vocabulary and rules (pure; client and server).
-   OSW-SW-PMS-PYR-01 §5: priority (urgency) and stage (workflow) are separate;
-   a finding is not a work order; nothing closes without verification.
+   OSW-SW-PMS-PYR-01 §5: priority (urgency, named in the database) and stage
+   (workflow) are separate; a finding is not a work order; nothing closes
+   without verification.
    ========================================================================== */
 
 /* ------------------------------------------------------------ lifecycle */
@@ -185,48 +186,16 @@ export function transitionBlocker(wo: PmsWorkOrder, to: WoStage, reason: string)
   return null;
 }
 
-/* ------------------------------------------------------------ priority */
-
-export const PRIORITY_LABEL: Record<string, string> = {
-  P1: "Immediate",
-  P2: "Urgent",
-  P3: "Planned",
-  P4: "Routine",
-};
-
 /* ------------------------------------------------------------ plans */
 
-const ROUTE_CODE: Record<RouteId, string> = {
-  shift: "SH",
-  daily: "D",
-  weekly: "W",
-  monthly: "M",
-  quarterly: "Q",
-  annual: "A",
-  stop: "STOP",
-  event: "EVT",
-  live: "LIVE",
-  oem: "OEM",
-  site: "SITE",
-};
-
-/** Stable plan id: one plan per unit and route (GEN is per machine). */
-export function planId(machineCode: string, kind: ChecklistKind, unitCode: string, route: RouteId): string {
+/** Stable plan id: one plan per unit and round (GEN is per machine); `planCode` is the round's code (maintenance_routes). */
+export function planId(machineCode: string, kind: ChecklistKind, unitCode: string, planCode: string): string {
   const unit = unitCode === "GEN" ? `${machineCode}-GEN` : unitCode;
-  return `PLN-${unit}${kind === "sensor" ? "-IN" : ""}-${ROUTE_CODE[route]}`;
+  return `PLN-${unit}${kind === "sensor" ? "-IN" : ""}-${planCode}`;
 }
 
-/** Trigger as the plan library names it (report §4). */
-export function planTrigger(route: string): string {
-  switch (route) {
-    case "stop": return "Shutdown window";
-    case "event": return "Condition / event";
-    case "live": return "Live (ULTRON)";
-    case "oem": return "OEM interval";
-    case "site": return "Site survey";
-    default: return "Calendar";
-  }
-}
+/** Trigger as the plan library names it (report §4), from the database. */
+export const planTrigger = (p: Pick<PmsPlan, "trigger">): string => p.trigger;
 
 export function planStrategy(route: string): string {
   switch (route) {
@@ -242,7 +211,7 @@ export function planStrategy(route: string): string {
 /** Plans that generate due work (Rule 1 / Rule 8). */
 export const planGenerates = (p: Pick<PmsPlan, "state">) => p.state === "Provisional" || p.state === "Approved";
 
-export const planHours = (p: Pick<PmsPlan, "route">) => ROUTES[p.route as RouteId]?.hours ?? null;
+export const planHours = (p: Pick<PmsPlan, "intervalHours">) => p.intervalHours;
 
 /** Plan work mode: isolation if any task needs a verified stop. */
 export function planMode(p: Pick<PmsPlan, "tasks">): "Run" | "Run + stop" | "Isolate" {

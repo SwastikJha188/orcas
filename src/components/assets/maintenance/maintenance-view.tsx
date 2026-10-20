@@ -6,19 +6,13 @@ import { Dialog, Field, FieldGrid, FormNote, PillButton, PillNav, Select, Status
 import { invalidateApi, useApi } from "@/lib/api-cache";
 import { formatLocalTime } from "@/lib/time";
 import {
-  ADDABLE_ROUTES,
-  MODE,
-  OWNER,
-  ROUTES,
-  ROUTE_ORDER,
-  SCOPE,
-  intervalLabel,
+  MAINTENANCE_VOCABULARY_URL,
+  everyText,
   latestByTask,
   primaryStep,
-  routeOf,
+  roundName,
   taskState,
   type LiveValidity,
-  type RouteId,
   type TaskState,
   type TaskStateKey,
 } from "@/lib/maintenance";
@@ -32,6 +26,7 @@ import type {
   InspectionResult,
   MaintenanceChecklist,
   MaintenanceRecord,
+  MaintenanceVocabulary,
   RemovedChecklistItem,
 } from "@/types/maintenance";
 import { Chevron, Empty, KpiStrip, PageHeader, Section } from "../analysis/an-ui";
@@ -56,11 +51,14 @@ interface Row {
   unit: ChecklistUnit;
   group: string;
   groupNum: string;
-  route: RouteId;
+  /** Round id (maintenance_routes). */
+  route: string;
   state: TaskState;
 }
 
-type RoundId = RouteId | "attention";
+/** A round id from the vocabulary, or "attention" (everything that needs action). */
+type RoundId = string;
+const ATTENTION = "attention";
 
 interface Round {
   id: RoundId;
@@ -85,53 +83,41 @@ const STATE_TONE: Record<TaskStateKey, Tone> = {
   Invalid: "bad",
 };
 
-const ROUND_LABEL: Partial<Record<RouteId, string>> = {
-  shift: "Shift round",
-  daily: "Daily round",
-  weekly: "Weekly round",
-  monthly: "Monthly round",
-  quarterly: "Quarterly round",
-  annual: "Annual round",
-  stop: "Planned stop",
-  event: "After an event",
-  live: "Live checks",
-  oem: "Calibration and tests",
-  site: "Site survey",
-};
+type VocabRoute = MaintenanceVocabulary["routes"][number];
 
-const ROUND_BASIS: Record<RouteId, string> = {
-  shift: "Every 8 h",
-  daily: "Every 24 h",
-  weekly: "Every 7 days",
-  monthly: "Every 30 days",
-  quarterly: "Every 91 days",
-  annual: "Every 12 months",
-  stop: "At the next planned stop",
-  event: "After a trip, overload or upset",
-  live: "Run continuously by ULTRON",
-  oem: "OEM / plant calibration interval",
-  site: "After the site survey",
-};
+/** What drives a round: its calendar interval, or the trigger the database names. */
+const roundBasis = (r: VocabRoute) => (r.intervalHours === null ? r.trigger : everyText(r.intervalHours));
 
 /** A result that is current or still open: shown as the pressed button on the row. */
 const isDone = (s: TaskState) => s.current || s.key === "Pass" || s.key === "NA";
+/** Everyday words for a checkpoint state shown on screen (keys stay as they are). */
+const STATE_WORD: Partial<Record<TaskStateKey, string>> = {
+  Pass: "Done",
+  NA: "Not applicable",
+  Valid: "Reading good",
+  Suspect: "Reading may be wrong",
+  Invalid: "Reading not usable",
+  Hold: "Needs follow-up",
+  "No live feed": "Not live",
+};
+const stateWord = (k: TaskStateKey): string => STATE_WORD[k] ?? k;
 const needsAction = (r: Row) => r.state.open !== null || r.state.key === "Overdue" || ((r.state.key === "Suspect" || r.state.key === "Invalid") && r.route === "live");
 const unitName = (u: ChecklistUnit) => (u.code === "GEN" ? "General" : u.code);
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-function roundStatus(id: RoundId, rows: Row[], done: number): { label: string; tone: Tone } {
+function roundStatus(id: RoundId, rows: Row[], done: number, timed: boolean): { label: string; tone: Tone } {
   const defects = rows.filter((r) => r.state.open === "Defect").length;
   const holds = rows.filter((r) => r.state.open === "Hold").length;
   const overdue = rows.filter((r) => r.state.key === "Overdue").length;
-  if (id === "attention") return rows.length ? { label: `${rows.length}`, tone: defects ? "bad" : "warn" } : { label: "None", tone: "idle" };
+  if (id === ATTENTION) return rows.length ? { label: `${rows.length}`, tone: defects ? "bad" : "warn" } : { label: "None", tone: "idle" };
   if (defects) return { label: plural(defects, "defect"), tone: "bad" };
   if (id === "live") {
     const exceptions = rows.filter((r) => r.state.due).length;
-    return exceptions ? { label: plural(exceptions, "exception"), tone: "warn" } : { label: `${done} valid`, tone: "idle" };
+    return exceptions ? { label: plural(exceptions, "reading to review", "readings to review"), tone: "warn" } : { label: `${done} good`, tone: "idle" };
   }
   if (overdue) return { label: `${overdue} overdue`, tone: "warn" };
-  if (holds) return { label: `${holds} on hold`, tone: "warn" };
-  if (ROUTES[id].hours === null) return { label: done === rows.length ? "Recorded" : "Not timed", tone: "idle" };
+  if (holds) return { label: `${holds} need${holds === 1 ? "s" : ""} follow-up`, tone: "warn" };
+  if (!timed) return { label: done === rows.length ? "Recorded" : "Not timed", tone: "idle" };
   const due = rows.length - done;
   return due ? { label: `${due} due`, tone: "idle" } : { label: "Complete", tone: "good" };
 }
@@ -165,7 +151,7 @@ function StateMark({ state }: { state: TaskState }) {
             : k === "Defect" || k === "Invalid" ? ICON.defect
               : null;
   return (
-    <span className={`mt-mark ${icon ? "is-set" : ""} ${k === "No live feed" ? "is-dashed" : ""}`} data-tone={tone === "idle" ? undefined : tone} title={k}>
+    <span className={`mt-mark ${icon ? "is-set" : ""} ${k === "No live feed" ? "is-dashed" : ""}`} data-tone={tone === "idle" ? undefined : tone} title={stateWord(k)}>
       {icon}
     </span>
   );
@@ -192,10 +178,16 @@ async function call<T = unknown>(url: string, method: "POST" | "DELETE", body: u
   }
 }
 
-/** One machine's equipment or instrument checklist, hosted by Maintenance › Work orders & checklists. */
-export function MaintenanceView({ machine, kind }: { machine: AssetMachine; kind: ChecklistKind }) {
+/**
+ * One machine's equipment or instrument checklist, hosted by Maintenance › Preventive.
+ * `routes` limits it to those rounds (a preventive group: Daily, Weekly, …) and `bare`
+ * leaves out the page header and summary (the host shows them across the line).
+ */
+export function MaintenanceView({ machine, kind, routes, bare }: { machine: AssetMachine; kind: ChecklistKind; routes?: string[]; bare?: boolean }) {
   const url = `/api/maintenance?machineId=${encodeURIComponent(machine.id)}&kind=${kind}`;
   const api = useApi<MaintenanceChecklist>(url);
+  const vocabApi = useApi<MaintenanceVocabulary>(MAINTENANCE_VOCABULARY_URL);
+  const vocab = vocabApi.data ?? null;
   const sim = useKilnSimulationFor(machine.id);
   const tz = useSiteTimeZone({ machineId: machine.id });
   const { navigateToMachine } = useIndustrialData();
@@ -227,7 +219,7 @@ export function MaintenanceView({ machine, kind }: { machine: AssetMachine; kind
   const liveTags = useMemo(() => {
     if (kind !== "sensor" || !data) return [] as string[];
     const out: string[] = [];
-    for (const u of data.units) for (const g of u.groups) for (const t of g.tasks) if (t.tag && routeOf(t) === "live") out.push(t.tag);
+    for (const u of data.units) for (const g of u.groups) for (const t of g.tasks) if (t.tag && t.route === "live") out.push(t.tag);
     return out;
   }, [kind, data]);
   const signals = sim?.frame.signals;
@@ -248,30 +240,33 @@ export function MaintenanceView({ machine, kind }: { machine: AssetMachine; kind
     return () => window.clearInterval(id);
   }, []);
 
+  const routeKey = routes?.join(",") ?? null;
   const rows = useMemo<Row[]>(() => {
     if (!data) return [];
     const latest = latestByTask(data.records);
+    const only = routeKey === null ? null : new Set(routeKey.split(","));
     const out: Row[] = [];
     for (const unit of data.units)
       for (const g of unit.groups)
         for (const task of g.tasks)
-          out.push({
-            task,
-            unit,
-            group: g.title,
-            groupNum: g.num,
-            route: routeOf(task),
-            state: taskState(task, latest.get(task.id) ?? null, now, task.tag ? live.get(task.tag) : null),
-          });
+          if (!only || only.has(task.route))
+            out.push({
+              task,
+              unit,
+              group: g.title,
+              groupNum: g.num,
+              route: task.route,
+              state: taskState(task, latest.get(task.id) ?? null, now, task.tag ? live.get(task.tag) : null),
+            });
     return out;
-  }, [data, live, now]);
+  }, [data, live, now, routeKey]);
 
   const counts = useMemo(() => {
     const c = { total: rows.length, due: 0, overdue: 0, never: 0, calendar: 0, current: 0, defects: 0, holds: 0, liveChecks: 0, exceptions: 0, noLive: 0 };
     for (const r of rows) {
       if (r.state.due) c.due += 1;
       if (r.state.key === "Overdue") c.overdue += 1;
-      if (ROUTES[r.route].hours !== null) {
+      if (r.task.intervalHours !== null) {
         c.calendar += 1;
         if (r.state.key === "Not recorded") c.never += 1;
       }
@@ -287,31 +282,54 @@ export function MaintenanceView({ machine, kind }: { machine: AssetMachine; kind
     return c;
   }, [rows]);
 
+  const routeById = useMemo(() => new Map((vocab?.routes ?? []).map((r) => [r.id, r])), [vocab]);
+  const roundLabel = useCallback((id: string) => {
+    const r = routeById.get(id);
+    return r ? roundName(r.label, r.intervalHours) : id;
+  }, [routeById]);
+
   const rounds = useMemo<Round[]>(() => {
     const inUnit = rows.filter((r) => unitCode === "all" || r.unit.code === unitCode);
     const make = (id: RoundId, list: Row[]): Round => {
       const done = list.filter((r) => isDone(r.state)).length;
+      const route = routeById.get(id);
+      // A round the vocabulary does not list reads from its tasks (their interval wording).
+      const timed = route ? route.intervalHours !== null : list.some((r) => r.task.intervalHours !== null);
       return {
         id,
-        label: id === "attention" ? "Needs action" : (ROUND_LABEL[id] ?? ROUTES[id].label),
-        basis: id === "attention" ? "Defects, holds, overdue tasks and live exceptions" : ROUND_BASIS[id],
+        label: id === ATTENTION ? "Needs action" : roundLabel(id),
+        basis: id === ATTENTION ? "Defects, follow-ups, overdue tasks and doubtful live readings" : route ? roundBasis(route) : (list[0]?.task.interval ?? ""),
         rows: list,
         done,
-        status: roundStatus(id, list, done),
+        status: roundStatus(id, list, done, timed),
       };
     };
-    const out = [make("attention", inUnit.filter(needsAction))];
-    for (const id of ROUTE_ORDER[kind]) {
+    const out: Round[] = [];
+    // The kind's rounds in the database's display order, then any round only the tasks name.
+    const order = (vocab?.kindRoutes[kind] ?? []).map((k) => k.routeId).filter((id) => !routes || routes.includes(id));
+    for (const r of inUnit) if (!order.includes(r.route)) order.push(r.route);
+    for (const id of order) {
       const list = inUnit.filter((r) => r.route === id);
       if (list.length) out.push(make(id, list));
     }
+    // One round needs no list of rounds (nor a "Needs action" one: its sheet shows every state).
+    if (out.length > 1 || !routes) out.unshift(make(ATTENTION, inUnit.filter(needsAction)));
+    // A group with no items yet still shows its (empty) round, so items can be added to it.
+    if (!out.length) out.push(make(routes?.[0] ?? ATTENTION, []));
     return out;
-  }, [rows, kind, unitCode]);
+  }, [rows, kind, unitCode, vocab, routeById, roundLabel, routes]);
+  const single = rounds.length === 1;
+
+  /** Rounds a site-added item may join (database: addable rounds of this kind, within the shown rounds). */
+  const addable = useMemo(
+    () => (vocab?.kindRoutes[kind] ?? []).filter((k) => k.addable && (!routes || routes.includes(k.routeId))).map((k) => ({ value: k.routeId, label: roundLabel(k.routeId) })),
+    [vocab, kind, roundLabel, routes],
+  );
 
   // Open on what needs action; otherwise the first round with work due.
   const activeRound =
     rounds.find((r) => r.id === roundId) ??
-    (rounds[0].rows.length ? rounds[0] : rounds.find((r) => r.id !== "attention" && r.status.label.endsWith("due")) ?? rounds[1] ?? rounds[0]);
+    (single || rounds[0].rows.length ? rounds[0] : rounds.find((r) => r.id !== ATTENTION && r.status.label.endsWith("due")) ?? rounds[1] ?? rounds[0]);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -374,17 +392,17 @@ export function MaintenanceView({ machine, kind }: { machine: AssetMachine; kind
   );
 
   const add = useCallback(
-    async (input: { route: RouteId; unitCode: string; groupNum: string; component: string; check: string; pass: string }): Promise<Outcome> => {
+    async (input: { route: string; unitCode: string; groupNum: string; component: string; check: string; pass: string }): Promise<Outcome> => {
       const out = await call<ChecklistTask>("/api/maintenance/items", "POST", { machineId: machine.id, kind, ...input }, "Could not add the item");
       if ("error" in out) return { tone: "bad", text: out.error };
       setRoundId(input.route);
       setQuery("");
       setOpenOnly(false);
       setExpandedId(null);
-      setNotice({ tone: "good", text: `Added to the ${(ROUND_LABEL[input.route] ?? ROUTES[input.route].label).toLowerCase()}: ${out.data.component}` });
+      setNotice({ tone: "good", text: `Added to the ${roundLabel(input.route).toLowerCase()}: ${out.data.component}` });
       return { tone: "good", text: "Added" };
     },
-    [machine.id, kind],
+    [machine.id, kind, roundLabel],
   );
 
   const openSensor = useCallback(
@@ -405,9 +423,9 @@ export function MaintenanceView({ machine, kind }: { machine: AssetMachine; kind
   const status: { label: string; tone: Tone } = counts.defects
     ? { label: plural(counts.defects, "open defect"), tone: "bad" }
     : counts.holds
-      ? { label: `${counts.holds} on hold`, tone: "warn" }
+      ? { label: `${counts.holds} need${counts.holds === 1 ? "s" : ""} follow-up`, tone: "warn" }
       : counts.overdue || counts.exceptions
-        ? { label: kind === "sensor" ? plural(counts.exceptions, "exception") : `${counts.overdue} overdue`, tone: "warn" }
+        ? { label: kind === "sensor" ? plural(counts.exceptions, "reading to review", "readings to review") : `${counts.overdue} overdue`, tone: "warn" }
         : counts.due
           ? { label: `${counts.due} due`, tone: "idle" }
           : { label: "Normal", tone: "good" };
@@ -416,23 +434,23 @@ export function MaintenanceView({ machine, kind }: { machine: AssetMachine; kind
     kind === "sensor"
       ? [
           {
-            label: "Live checks",
+            label: "Checked from live readings",
             value: `${counts.liveChecks - counts.exceptions - counts.noLive}`,
-            unit: `/ ${counts.liveChecks}`,
+            unit: `of ${counts.liveChecks}`,
             bar: counts.liveChecks ? ((counts.liveChecks - counts.exceptions - counts.noLive) / counts.liveChecks) * 100 : 0,
-            foot: counts.noLive ? `valid now · ${counts.noLive} without live feed` : "valid now · run by ULTRON",
+            foot: counts.noLive ? `good now · ${counts.noLive} not live` : "good now · checked automatically",
           },
-          { label: "Exceptions", value: `${counts.exceptions}`, tone: counts.exceptions ? ("warn" as Tone) : undefined, foot: "for the shift to review" },
+          { label: "Readings to review", value: `${counts.exceptions}`, tone: counts.exceptions ? ("warn" as Tone) : undefined, foot: "for the shift to review" },
           { label: "Open defects", value: `${counts.defects}`, tone: counts.defects ? ("bad" as Tone) : undefined, foot: "work orders opened" },
-          { label: "On hold", value: `${counts.holds}`, tone: counts.holds ? ("warn" as Tone) : undefined, foot: "awaiting follow-up" },
+          { label: "Needs follow-up", value: `${counts.holds}`, tone: counts.holds ? ("warn" as Tone) : undefined, foot: "waiting for someone to follow up" },
         ]
       : [
           {
-            label: "Compliance",
+            label: "Done on time",
             value: `${counts.calendar ? Math.round(((counts.calendar - counts.due) / counts.calendar) * 100) : 0}`,
             unit: "%",
             bar: counts.calendar ? ((counts.calendar - counts.due) / counts.calendar) * 100 : 0,
-            foot: `${counts.calendar - counts.due} of ${counts.calendar} timed tasks within interval`,
+            foot: `${counts.calendar - counts.due} of ${counts.calendar} timed tasks done on schedule`,
           },
           {
             label: "Due",
@@ -441,12 +459,193 @@ export function MaintenanceView({ machine, kind }: { machine: AssetMachine; kind
             foot: [counts.overdue && `${counts.overdue} overdue`, counts.never && `${counts.never} never recorded`].filter(Boolean).join(" · ") || "all rounds current",
           },
           { label: "Open defects", value: `${counts.defects}`, tone: counts.defects ? ("bad" as Tone) : undefined, foot: "work orders opened" },
-          { label: "On hold", value: `${counts.holds}`, tone: counts.holds ? ("warn" as Tone) : undefined, foot: "awaiting follow-up" },
+          { label: "Needs follow-up", value: `${counts.holds}`, tone: counts.holds ? ("warn" as Tone) : undefined, foot: "waiting for someone to follow up" },
         ];
 
   const title = kind === "sensor" ? "Instrument maintenance" : "Equipment maintenance";
   const unitItems = data && data.units.length > 1 ? [{ id: "all", label: "All units" }, ...data.units.map((u) => ({ id: u.code, label: unitName(u) }))] : [];
   const pct = activeRound.rows.length ? (activeRound.done / activeRound.rows.length) * 100 : 0;
+
+  const body = data && vocab && (
+    <>
+      {unitItems.length > 0 && (
+        <div className="ast-toolbar">
+          <PillNav ariaLabel="Unit" items={unitItems} activeId={unitCode} onChange={setUnitCode} />
+        </div>
+      )}
+
+      <div className={`mt-rounds ${single ? "is-single" : ""}`}>
+        {!single && (
+          <nav className="ast-card mt-round-list" aria-label="Rounds">
+            <ul>
+              {rounds.map((rd) => {
+                const active = rd.id === activeRound.id;
+                const share = rd.rows.length ? (rd.done / rd.rows.length) * 100 : 0;
+                return (
+                  <li key={rd.id}>
+                    <button
+                      type="button"
+                      className={`mt-round ${active ? "active" : ""} ${rd.id === ATTENTION ? "is-attention" : ""}`}
+                      aria-current={active ? "true" : undefined}
+                      onClick={() => {
+                        setRoundId(rd.id);
+                        setExpandedId(null);
+                      }}
+                    >
+                      <span className="mt-round-head">
+                        <span className="mt-round-name">{rd.label}</span>
+                        <span className="mt-round-status ast-num" data-tone={rd.status.tone === "idle" ? undefined : rd.status.tone}>
+                          {rd.status.label}
+                        </span>
+                      </span>
+                      <span className="mt-round-basis">{rd.basis}</span>
+                      {rd.id !== ATTENTION && (
+                        <span className="mt-round-progress">
+                          <span className="mt-bar" aria-hidden="true">
+                            <span style={{ width: `${share}%` }} />
+                          </span>
+                          <span className="ast-num">
+                            {rd.done}/{rd.rows.length}
+                          </span>
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+        )}
+
+        <section className="ast-card mt-sheet" aria-label={activeRound.label}>
+          <header className="mt-sheet-head">
+            <div className="mt-sheet-title">
+              <h3>{activeRound.label}</h3>
+              <span className="ast-caption">{activeRound.basis}</span>
+            </div>
+            {activeRound.id !== ATTENTION && (
+              <div className="mt-sheet-progress">
+                <span className="mt-sheet-count ast-num">
+                  {activeRound.done}
+                  <span> / {activeRound.rows.length} {activeRound.id === "live" ? "valid" : "done"}</span>
+                </span>
+                <span className="mt-bar is-wide" aria-hidden="true">
+                  <span style={{ width: `${pct}%` }} />
+                </span>
+              </div>
+            )}
+          </header>
+
+          <div className="mt-sheet-tools">
+            {activeRound.id !== ATTENTION && (
+              <button type="button" className="ast-filter" aria-pressed={openOnly} onClick={() => setOpenOnly(!openOnly)}>
+                Hide done
+              </button>
+            )}
+            <SearchPill value={query} onChange={setQuery} placeholder={kind === "sensor" ? "Search item, tag, instrument" : "Search item, component"} label="Search round" />
+            <PillButton icon={ICON.plus} onClick={() => setAdding(true)}>
+              Add item
+            </PillButton>
+          </div>
+          {notice && (
+            <div className="mt-notice">
+              <FormNote tone={notice.tone}>{notice.text}</FormNote>
+            </div>
+          )}
+
+          {groups.length === 0 ? (
+            <div className="ast-empty">
+              {activeRound.id === ATTENTION && !query
+                ? "Nothing needs action: no defects, follow-ups, overdue tasks or doubtful live readings."
+                : activeRound.rows.length === 0
+                  ? "Nothing in this round yet. Use Add item to put a check in it."
+                  : "No checklist items match."}
+            </div>
+          ) : (
+            groups.map((g) => {
+              const gDone = g.rows.filter((r) => isDone(r.state)).length;
+              return (
+                <section key={g.key} className="mt-assembly" aria-label={g.title}>
+                  <header className="mt-assembly-head">
+                    <span className="mt-assembly-name">{g.title}</span>
+                    <span className="ast-caption">
+                      {unitName(g.unit)}
+                      {g.unit.conditional ? " · conditional, not D5-approved" : ""}
+                    </span>
+                    <span className="mt-assembly-count ast-num">
+                      {gDone}/{g.rows.length}
+                    </span>
+                  </header>
+                  <ul className="mt-checkpoints">
+                    {g.rows.map((r) => (
+                      <Checkpoint
+                        key={r.task.id}
+                        r={r}
+                        kind={kind}
+                        machineCode={machine.id}
+                        timeZone={tz.timeZone}
+                        records={expandedId === r.task.id ? data.records.filter((x) => x.taskId === r.task.id) : null}
+                        expanded={expandedId === r.task.id}
+                        onToggle={() => setExpandedId(expandedId === r.task.id ? null : r.task.id)}
+                        onRecord={record}
+                        onUndo={undo}
+                        onRemove={remove}
+                        onOpenSensor={openSensor}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              );
+            })
+          )}
+
+          {data.removed.length > 0 && (
+            <div className="mt-removed">
+              <button type="button" className="mt-removed-toggle" aria-expanded={showRemoved} onClick={() => setShowRemoved(!showRemoved)}>
+                <Chevron className={`mt-cp-chevron ${showRemoved ? "is-open" : ""}`} />
+                {plural(data.removed.length, "removed item")}
+              </button>
+              {showRemoved && (
+                <ul>
+                  {data.removed.map((it) => (
+                    <li key={it.taskId}>
+                      <span className="mt-removed-text">
+                        <span className="mt-cp-title">{it.component}</span>
+                        <span className="ast-caption">
+                          {it.where} · removed {formatLocalTime(it.removedAt, { date: true, seconds: false, timeZone: tz.timeZone })}
+                          {it.removedBy ? ` · ${it.removedBy}` : ""}
+                        </span>
+                      </span>
+                      <PillButton variant="secondary" onClick={() => void restore(it)}>
+                        Restore
+                      </PillButton>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </section>
+      </div>
+
+      <AddItemDialog
+        open={adding}
+        onClose={() => setAdding(false)}
+        routes={addable}
+        units={data.units}
+        defaultRoute={addable.some((o) => o.value === activeRound.id) ? activeRound.id : (addable[0]?.value ?? "")}
+        defaultSection={groups[0] ? groups[0].key : `${data.units[0]?.code}|${data.units[0]?.groups[0]?.num}`}
+        onAdd={add}
+      />
+    </>
+  );
+
+  if (bare)
+    return (
+      <div className="ast-root mt-page mt-bare" aria-label={title}>
+        {body || (api.isLoading && !data ? <Empty title="Loading checklist…" /> : <Empty title="Checklist unavailable.">{api.error ?? vocabApi.error ?? "No maintenance checklist for this machine."}</Empty>)}
+      </div>
+    );
 
   return (
     <div className="ast-root pg-frame mt-page" aria-label={title}>
@@ -455,7 +654,7 @@ export function MaintenanceView({ machine, kind }: { machine: AssetMachine; kind
         status={data ? status : null}
         meta={[
           data && { label: "Checklist", value: `${data.document.number} ${data.document.revision}`, title: data.document.title },
-          data && { label: "Issue", value: "Design review · not issued", title: data.document.status },
+          data && { label: "Status", value: data.document.status, title: `Issued ${data.document.issued}` },
           data && {
             label: "Last result",
             value: lastRecord ? `${lastRecord.taskId} · ${formatLocalTime(lastRecord.recordedAt, { date: true, seconds: false, timeZone: tz.timeZone })}` : "none recorded",
@@ -463,182 +662,20 @@ export function MaintenanceView({ machine, kind }: { machine: AssetMachine; kind
         ]}
       />
 
-      {api.isLoading && !data ? (
+      {(api.isLoading && !data) || (data && !vocab && vocabApi.isLoading) ? (
         <section className="ast-card" role="status" aria-live="polite">
           <Empty title="Loading checklist…" />
         </section>
-      ) : !data ? (
+      ) : !data || !vocab ? (
         <section className="ast-card">
-          <Empty title="Checklist unavailable.">{api.error ?? "No maintenance checklist for this machine."}</Empty>
+          <Empty title="Checklist unavailable.">{api.error ?? vocabApi.error ?? "No maintenance checklist for this machine."}</Empty>
         </section>
       ) : (
         <>
           <KpiStrip page label={`${title} summary`} items={kpis} />
           <div className="pg-frame-body">
             <Section id="maintenance-rounds" title="Rounds">
-              {unitItems.length > 0 && (
-                <div className="ast-toolbar">
-                  <PillNav ariaLabel="Unit" items={unitItems} activeId={unitCode} onChange={setUnitCode} />
-                </div>
-              )}
-
-              <div className="mt-rounds">
-                <nav className="ast-card mt-round-list" aria-label="Rounds">
-                  <ul>
-                    {rounds.map((rd) => {
-                      const active = rd.id === activeRound.id;
-                      const share = rd.rows.length ? (rd.done / rd.rows.length) * 100 : 0;
-                      return (
-                        <li key={rd.id}>
-                          <button
-                            type="button"
-                            className={`mt-round ${active ? "active" : ""} ${rd.id === "attention" ? "is-attention" : ""}`}
-                            aria-current={active ? "true" : undefined}
-                            onClick={() => {
-                              setRoundId(rd.id);
-                              setExpandedId(null);
-                            }}
-                          >
-                            <span className="mt-round-head">
-                              <span className="mt-round-name">{rd.label}</span>
-                              <span className="mt-round-status ast-num" data-tone={rd.status.tone === "idle" ? undefined : rd.status.tone}>
-                                {rd.status.label}
-                              </span>
-                            </span>
-                            <span className="mt-round-basis">{rd.basis}</span>
-                            {rd.id !== "attention" && (
-                              <span className="mt-round-progress">
-                                <span className="mt-bar" aria-hidden="true">
-                                  <span style={{ width: `${share}%` }} />
-                                </span>
-                                <span className="ast-num">
-                                  {rd.done}/{rd.rows.length}
-                                </span>
-                              </span>
-                            )}
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </nav>
-
-                <section className="ast-card mt-sheet" aria-label={activeRound.label}>
-                  <header className="mt-sheet-head">
-                    <div className="mt-sheet-title">
-                      <h3>{activeRound.label}</h3>
-                      <span className="ast-caption">{activeRound.basis}</span>
-                    </div>
-                    {activeRound.id !== "attention" && (
-                      <div className="mt-sheet-progress">
-                        <span className="mt-sheet-count ast-num">
-                          {activeRound.done}
-                          <span> / {activeRound.rows.length} {activeRound.id === "live" ? "valid" : "done"}</span>
-                        </span>
-                        <span className="mt-bar is-wide" aria-hidden="true">
-                          <span style={{ width: `${pct}%` }} />
-                        </span>
-                      </div>
-                    )}
-                  </header>
-
-                  <div className="mt-sheet-tools">
-                    {activeRound.id !== "attention" && (
-                      <button type="button" className="ast-filter" aria-pressed={openOnly} onClick={() => setOpenOnly(!openOnly)}>
-                        Hide done
-                      </button>
-                    )}
-                    <SearchPill value={query} onChange={setQuery} placeholder={kind === "sensor" ? "Search item, tag, instrument" : "Search item, component"} label="Search round" />
-                    <PillButton icon={ICON.plus} onClick={() => setAdding(true)}>
-                      Add item
-                    </PillButton>
-                  </div>
-                  {notice && (
-                    <div className="mt-notice">
-                      <FormNote tone={notice.tone}>{notice.text}</FormNote>
-                    </div>
-                  )}
-
-                  {groups.length === 0 ? (
-                    <div className="ast-empty">
-                      {activeRound.id === "attention" && !query ? "Nothing needs action: no defects, holds, overdue tasks or live exceptions." : "No checkpoints match."}
-                    </div>
-                  ) : (
-                    groups.map((g) => {
-                      const gDone = g.rows.filter((r) => isDone(r.state)).length;
-                      return (
-                        <section key={g.key} className="mt-assembly" aria-label={g.title}>
-                          <header className="mt-assembly-head">
-                            <span className="mt-assembly-name">{g.title}</span>
-                            <span className="ast-caption">
-                              {unitName(g.unit)}
-                              {g.unit.conditional ? " · conditional, not D5-approved" : ""}
-                            </span>
-                            <span className="mt-assembly-count ast-num">
-                              {gDone}/{g.rows.length}
-                            </span>
-                          </header>
-                          <ul className="mt-checkpoints">
-                            {g.rows.map((r) => (
-                              <Checkpoint
-                                key={r.task.id}
-                                r={r}
-                                kind={kind}
-                                machineCode={machine.id}
-                                timeZone={tz.timeZone}
-                                records={expandedId === r.task.id ? data.records.filter((x) => x.taskId === r.task.id) : null}
-                                expanded={expandedId === r.task.id}
-                                onToggle={() => setExpandedId(expandedId === r.task.id ? null : r.task.id)}
-                                onRecord={record}
-                                onUndo={undo}
-                                onRemove={remove}
-                                onOpenSensor={openSensor}
-                              />
-                            ))}
-                          </ul>
-                        </section>
-                      );
-                    })
-                  )}
-
-                  {data.removed.length > 0 && (
-                    <div className="mt-removed">
-                      <button type="button" className="mt-removed-toggle" aria-expanded={showRemoved} onClick={() => setShowRemoved(!showRemoved)}>
-                        <Chevron className={`mt-cp-chevron ${showRemoved ? "is-open" : ""}`} />
-                        {plural(data.removed.length, "removed item")}
-                      </button>
-                      {showRemoved && (
-                        <ul>
-                          {data.removed.map((it) => (
-                            <li key={it.taskId}>
-                              <span className="mt-removed-text">
-                                <span className="mt-cp-title">{it.component}</span>
-                                <span className="ast-caption">
-                                  {it.where} · removed {formatLocalTime(it.removedAt, { date: true, seconds: false, timeZone: tz.timeZone })}
-                                  {it.removedBy ? ` · ${it.removedBy}` : ""}
-                                </span>
-                              </span>
-                              <PillButton variant="secondary" onClick={() => void restore(it)}>
-                                Restore
-                              </PillButton>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  )}
-                </section>
-              </div>
-
-              <AddItemDialog
-                open={adding}
-                onClose={() => setAdding(false)}
-                kind={kind}
-                units={data.units}
-                defaultRoute={ADDABLE_ROUTES[kind].includes(activeRound.id as RouteId) ? (activeRound.id as RouteId) : ADDABLE_ROUTES[kind][0]}
-                defaultSection={groups[0] ? groups[0].key : `${data.units[0]?.code}|${data.units[0]?.groups[0]?.num}`}
-                onAdd={add}
-              />
+              {body}
             </Section>
           </div>
         </>
@@ -650,19 +687,19 @@ export function MaintenanceView({ machine, kind }: { machine: AssetMachine; kind
 /* ---------------------------------------------------------------- checkpoint */
 
 const PROBLEMS: { result: InspectionResult; label: string; title: string }[] = [
-  { result: "Hold", label: "Needs follow-up", title: "Hold: an as-found observation to follow up" },
+  { result: "Hold", label: "Needs follow-up", title: "Something seen that someone should come back and check" },
   { result: "Defect", label: "Defect", title: "Records the defect and opens a repair work order" },
-  { result: "NA", label: "Not applicable", title: "Only with documented proof of absence" },
+  { result: "NA", label: "Not applicable", title: "Only when it is written down that this item is not fitted here" },
 ];
 
 /** The one plain-words line under a checkpoint: when it was last done, or what is wrong. */
 function statusLine(r: Row, when: string | null): string | null {
   const { state } = r;
-  if (r.route === "live") return state.liveNote ?? (state.key === "Valid" ? "Checked live by ULTRON" : null);
+  if (r.route === "live") return state.liveNote ?? (state.key === "Valid" ? "Checked automatically from live readings" : null);
   if (state.open && state.last) return `${state.open === "Hold" ? "Needs follow-up" : "Defect"} · ${when}${state.last.inspector ? ` · ${state.last.inspector}` : ""}`;
   if (state.key === "Overdue" && state.last) return `Overdue · last done ${when}`;
   if (state.last) return `${state.last.result === "NA" ? "Not applicable" : "Done"} ${when}${state.last.inspector ? ` · ${state.last.inspector}` : ""}`;
-  return ROUTES[r.route].hours === null ? "Not recorded" : "Not done yet";
+  return r.task.intervalHours === null ? "Not recorded" : "Not done yet";
 }
 
 const Checkpoint = React.memo(function Checkpoint({
@@ -745,7 +782,7 @@ const Checkpoint = React.memo(function Checkpoint({
   const when = state.last ? formatLocalTime(state.last.recordedAt, { date: true, seconds: false, timeZone }) : null;
   const line = statusLine(r, when);
   const tone = STATE_TONE[state.key];
-  const flag = isLive ? (tone === "idle" ? null : state.key) : state.open === "Hold" ? "Follow-up" : state.open ?? (state.key === "Overdue" ? "Overdue" : null);
+  const flag = isLive ? (tone === "idle" ? null : stateWord(state.key)) : state.open === "Hold" ? "Follow-up" : state.open ?? (state.key === "Overdue" ? "Overdue" : null);
   const isolate = task.mode.startsWith("OFF");
 
   return (
@@ -766,8 +803,7 @@ const Checkpoint = React.memo(function Checkpoint({
           </label>
         )}
         <button type="button" className="mt-cp-main" aria-expanded={expanded} onClick={onToggle}>
-          <span className="mt-cp-title">
-            {kind === "sensor" && task.tag && <span className="mt-cp-tag ast-num">{task.tag}</span>}
+          <span className="mt-cp-title" title={task.tag ? `${task.tag} · ${task.component}` : undefined}>
             {task.component}
           </span>
           <span className="mt-cp-check">{step.text}</span>
@@ -778,7 +814,7 @@ const Checkpoint = React.memo(function Checkpoint({
               </span>
             )}
             {isolate && (
-              <span className="mt-cp-mode" title={MODE[task.mode]}>
+              <span className="mt-cp-mode" title={task.modeLabel || task.mode}>
                 {ICON.lock}
                 Isolate first
               </span>
@@ -875,28 +911,28 @@ const Checkpoint = React.memo(function Checkpoint({
             <dt>Item</dt>
             <dd className="ast-num">{task.id}</dd>
             <dt>Interval</dt>
-            <dd>{intervalLabel(task)}</dd>
+            <dd>{task.interval}</dd>
             {task.owner && (
               <>
                 <dt>Owner</dt>
-                <dd>{OWNER[task.owner] ?? task.owner}</dd>
+                <dd>{task.ownerLabel || task.owner}</dd>
               </>
             )}
             {task.mode && (
               <>
-                <dt>Mode</dt>
-                <dd>{MODE[task.mode] ?? task.mode}</dd>
+                <dt>Machine state</dt>
+                <dd>{task.modeLabel || task.mode}</dd>
               </>
             )}
             {task.scope && (
               <>
                 <dt>Scope</dt>
-                <dd>{SCOPE[task.scope] ?? task.scope}</dd>
+                <dd>{task.scopeLabel || task.scope}</dd>
               </>
             )}
             {task.priority && (
               <>
-                <dt>D5 priority</dt>
+                <dt>Priority (D5)</dt>
                 <dd>{task.priority}</dd>
               </>
             )}
@@ -976,7 +1012,7 @@ function NoteForm({
 function AddItemDialog({
   open,
   onClose,
-  kind,
+  routes,
   units,
   defaultRoute,
   defaultSection,
@@ -984,15 +1020,16 @@ function AddItemDialog({
 }: {
   open: boolean;
   onClose: () => void;
-  kind: ChecklistKind;
+  /** Rounds this checklist kind lets a site-added item join (database vocabulary). */
+  routes: { value: string; label: string }[];
   units: ChecklistUnit[];
-  defaultRoute: RouteId;
+  defaultRoute: string;
   defaultSection: string;
-  onAdd: (input: { route: RouteId; unitCode: string; groupNum: string; component: string; check: string; pass: string }) => Promise<Outcome>;
+  onAdd: (input: { route: string; unitCode: string; groupNum: string; component: string; check: string; pass: string }) => Promise<Outcome>;
 }) {
   const [check, setCheck] = useState("");
   const [component, setComponent] = useState("");
-  const [route, setRoute] = useState<RouteId>(defaultRoute);
+  const [route, setRoute] = useState<string>(defaultRoute);
   const [section, setSection] = useState(defaultSection);
   const [pass, setPass] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1010,6 +1047,10 @@ function AddItemDialog({
 
   const sections = units.flatMap((u) => u.groups.map((g) => ({ value: `${u.code}|${g.num}`, label: `${unitName(u)} · ${g.title}` })));
   const save = async () => {
+    if (!route) {
+      setError("No round on this checklist takes added items.");
+      return;
+    }
     if (!check.trim() || !component.trim()) {
       setError(!check.trim() ? "Describe what to check." : "Name the equipment or component.");
       return;
@@ -1051,7 +1092,7 @@ function AddItemDialog({
         </Field>
         <Field label="Round">
           {(id, d) => (
-            <Select id={id} describedBy={d} value={route} onChange={(v) => setRoute(v as RouteId)} options={ADDABLE_ROUTES[kind].map((rt) => ({ value: rt, label: ROUND_LABEL[rt] ?? ROUTES[rt].label }))} />
+            <Select id={id} describedBy={d} value={route} onChange={setRoute} options={routes.length ? routes : [{ value: "", label: "—" }]} />
           )}
         </Field>
         <Field label="Section">

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createEdgeEntity, isEdgeKind } from "@/server/services/edge-service";
 import { getMqttRuntime } from "@/server/mqtt/runtime";
 import { fail, failFrom, readBody } from "../_respond";
+import { accessFail, requestScope } from "@/app/api/_lib/respond";
+import { requireEdgeFields } from "@/server/services/edge-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,11 +15,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const body = await readBody(request);
   if (!body) return fail(400, "INVALID_JSON", "Request body must be a JSON object.");
   try {
+    await requireEdgeFields(await requestScope(request), kind, body);
     const data = await createEdgeEntity(kind, body);
     // Brokers, gateways and formats decide what each connection subscribes to.
     if (kind !== "points" && kind !== "sources" && kind !== "cards") await getMqttRuntime().reload();
     return NextResponse.json({ data }, { status: 201 });
   } catch (err) {
-    return failFrom(err, "EDGE_CREATE_ERROR");
+    return accessFail(err) ?? failFrom(err, "EDGE_CREATE_ERROR");
   }
 }

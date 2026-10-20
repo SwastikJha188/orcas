@@ -5,6 +5,7 @@ import type { DetailedSensorInfo } from "./machine-sensor-mapping-view";
 import { severityTone, type Tone } from "./assets-shell-ui";
 import { LimitBar, gaugeScale } from "./sensor-gauge";
 import type { LimitRule } from "@/lib/kiln-sim/signals";
+import { displayName, isIdOnly } from "@/lib/display-name";
 
 /* ==========================================================================
    Sensor cards around a drawing: the drawing at full stage width, with one
@@ -636,7 +637,9 @@ export function SensorWidgetStage({
 
   const card = (it: Item) => {
     const s = it.sensor;
-    const point = pointOf?.(s) || s.point || it.tag;
+    // Drawing callout (P4); ID-only points stay in the tooltip.
+    const rawPoint = pointOf?.(s) || s.point || "";
+    const point = isIdOnly(rawPoint) ? "" : rawPoint;
     const scale = detailed ? gaugeScale(s, limitOf?.(it.tag)) : null;
     return (
       <button
@@ -648,7 +651,7 @@ export function SensorWidgetStage({
         data-hot={hot === it.tag || undefined}
         data-detailed={detailed || undefined}
         aria-pressed={selectedTag === it.tag}
-        aria-label={`${point} ${it.tag} ${s.name}: ${s.value} ${s.unit}, ${s.status}${s.dataQuality ? `, data ${s.dataQuality.label.toLowerCase()}` : ""}`}
+        aria-label={`${point} ${displayName(s.name)}: ${s.value} ${s.unit}, ${s.status}${s.dataQuality ? `, data ${s.dataQuality.label.toLowerCase()}` : ""}`}
         onClick={() => onToggle(it.tag)}
         onMouseEnter={() => setHover(it.tag)}
         onMouseLeave={() => setHover(null)}
@@ -657,8 +660,8 @@ export function SensorWidgetStage({
       >
         <span className="ast-smw-card-head">
           <span className="ast-chip-dot" aria-hidden="true" />
-          <span className="ast-smw-name" title={s.name}>
-            {s.name}
+          <span className="ast-smw-name" title={[it.tag, rawPoint && rawPoint !== point ? rawPoint : "", s.name].filter(Boolean).join(" · ")}>
+            {displayName(s.name)}
           </span>
         </span>
         <span className="ast-smw-card-foot">

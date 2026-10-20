@@ -4,6 +4,8 @@ import { testBrokerConnection } from "@/server/mqtt/runtime";
 import type { ApiSuccess } from "@/types/api";
 import type { BrokerTestResult } from "@/types/edge";
 import { fail, failFrom, readBody } from "../_respond";
+import { accessFail, requestScope } from "@/app/api/_lib/respond";
+import { requireBroker } from "@/server/services/edge-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,10 +21,11 @@ export async function POST(request: NextRequest) {
   const { id: _omit, ...fields } = body;
   void _omit;
   try {
+    await requireBroker(await requestScope(request), id);
     const config = await brokerConfigForTest(fields, id);
     const res: ApiSuccess<BrokerTestResult> = { data: await testBrokerConnection(config) };
     return NextResponse.json(res);
   } catch (err) {
-    return failFrom(err, "BROKER_TEST_ERROR");
+    return accessFail(err) ?? failFrom(err, "BROKER_TEST_ERROR");
   }
 }

@@ -68,9 +68,9 @@ export const LINE_SCENARIOS: PyroScenario[] = [
     description:
       "D5 Table 9.4.5 row 3. Sticky meal builds up in the C5 cone: cone pressure rises toward zero, the hot meal to the kiln cools, and part of the meal is held up in the tower, so the kiln gets less feed than the meter shows (burning zone and inlet run hotter, torque falls). At 5 h the operator stops the feed for cleaning.",
     effects: [
-      { target: sig("PRS-PHC-08"), delta: 12, onsetMin: 5, rampMin: 240, shape: "accel" },
+      { target: sig("PRS-PHC-08"), delta: 3.7, onsetMin: 5, rampMin: 240, shape: "accel" },
       { target: sig("TMP-PHC-07"), delta: -30, onsetMin: 5, rampMin: 240, shape: "accel" },
-      { target: sig("TMP-PHC-05"), delta: 16, onsetMin: 5, rampMin: 240, shape: "accel" },
+      { target: sig("TMP-PHC-05"), delta: 12, onsetMin: 5, rampMin: 240, shape: "accel" },
       { target: drv("mealLoss"), delta: 0.12, onsetMin: 60, rampMin: 200, shape: "ramp" },
       { equipment: "kfs-elevator", state: "stopped", onsetMin: 300 },
     ],
@@ -150,7 +150,7 @@ export const LINE_SCENARIOS: PyroScenario[] = [
     description:
       "D5 Table 9.4.5 row 8, Table 3.1 flame → shell chain. The swirl channel blocks: the flame lengthens and impinges near 54–58 m, where the shell runs hot, and sticky molten clinker reaches the cooler (hot discharge, first compartment pressure up).",
     effects: [
-      { target: sig("PRS-BRN-01"), delta: -40, onsetMin: 5, rampMin: 120, shape: "accel" },
+      { target: sig("PRS-BRN-01"), delta: -16, onsetMin: 5, rampMin: 120, shape: "accel" },
       { target: prof("hotBand"), delta: 60, onsetMin: 40, rampMin: 200, shape: "ramp" },
       { target: sig("TMP-CLR-08"), delta: 18, onsetMin: 80, rampMin: 200, shape: "ramp" },
       { target: sig("PRS-CLR-01"), delta: 6, onsetMin: 80, rampMin: 200, shape: "ramp" },
@@ -269,7 +269,7 @@ export const LINE_SCENARIOS: PyroScenario[] = [
     documentedDetection: "+2h 32m",
     description: "D5 Table 9.4.5 row 9, Table 3.1 air chain, FP-35 effect. Holes in compartment 2 let the air short-circuit: its pressure falls at a higher fan current, the cooler recuperates less heat, so the secondary air cools and the burning zone and hood follow (fuel use).",
     effects: [
-      { target: sig("PRS-CLR-02"), delta: -21, onsetMin: 5, rampMin: 200, shape: "accel" },
+      { target: sig("PRS-CLR-02"), delta: -17.9, onsetMin: 5, rampMin: 200, shape: "accel" },
       { target: sig("ELE-CLR-02"), delta: 14, onsetMin: 5, rampMin: 200, shape: "accel" },
       { target: sig("TMP-CLR-08"), delta: 20, onsetMin: 5, rampMin: 200, shape: "accel" },
       { target: drv("coolerRecup"), delta: 0.12, onsetMin: 5, rampMin: 200, shape: "accel" },

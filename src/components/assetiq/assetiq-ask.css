@@ -1,0 +1,320 @@
+/* AssetIQ · Ask. Semantic tokens only; works in light and dark. */
+
+/* The Ask sheet fills the module stage edge to edge; it scrolls inside. */
+.opc-module-stage.aqk-stage {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+}
+
+.aqk-root {
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: 0;
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  color: var(--page-fg);
+}
+
+/* ---- Conversations ---- */
+.aqk-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-block-size: 0;
+  padding: 12px 10px 12px 12px;
+  border-inline-end: 1px solid var(--separator);
+}
+.aqk-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-elevated);
+  color: var(--page-fg);
+  font: inherit;
+  font-size: var(--fs-md);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), transform 60ms var(--ease-out);
+}
+.aqk-new:hover { background: var(--pill-active-bg); border-color: var(--border-hover); }
+.aqk-new:active { transform: scale(0.98); }
+.aqk-new svg { color: var(--text-muted); }
+
+.aqk-side-scroll { flex: 1; min-block-size: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 14px; }
+.aqk-group h3 {
+  margin: 0 0 4px;
+  padding-inline: 10px;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.aqk-group ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 1px; }
+.aqk-group li { position: relative; display: flex; align-items: center; border-radius: var(--radius-md); }
+.aqk-group li:hover { background: var(--hover-faint); }
+.aqk-group li.is-active { background: var(--pill-active-bg); }
+.aqk-hist {
+  flex: 1;
+  min-inline-size: 0;
+  padding: 7px 30px 7px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-md);
+  text-align: start;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.aqk-group li:hover .aqk-hist,
+.aqk-group li.is-active .aqk-hist { color: var(--page-fg); }
+.aqk-hist-del {
+  position: absolute;
+  inset-inline-end: 4px;
+  inline-size: 22px;
+  block-size: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+}
+.aqk-group li:hover .aqk-hist-del,
+.aqk-hist-del:focus-visible { opacity: 1; }
+.aqk-hist-del:hover { color: var(--page-fg); background: var(--bg-surface-elevated); }
+.aqk-hist-del svg { inline-size: 11px; block-size: 11px; }
+
+/* ---- Conversation column ---- */
+.aqk-main {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+/* Empty conversation: everything centred on the composer. */
+.aqk-hero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px 24px 12vh;
+  overflow-y: auto;
+}
+.aqk-mark {
+  inline-size: 48px;
+  block-size: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface-elevated);
+  color: var(--accent-primary);
+}
+.aqk-hero-title {
+  margin: 0;
+  font-size: var(--fs-9xl);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--dx-ink);
+  text-align: center;
+}
+.aqk-context {
+  margin: 0 0 10px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 0;
+  font-size: var(--fs-md);
+  color: var(--text-muted);
+}
+.aqk-context > span + span::before { content: "·"; margin-inline: 8px; color: var(--text-muted); }
+.aqk-context > span:first-child { color: var(--page-fg); font-weight: 500; }
+.aqk-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 600; color: var(--dx-ink); }
+.aqk-cond.is-warn { color: var(--status-warning); }
+.aqk-cond.is-crit { color: var(--status-danger); }
+
+.aqk-hero .aqk-composer,
+.aqk-hero .aqk-suggest { inline-size: min(720px, 100%); }
+
+/* Running conversation */
+.aqk-scroll {
+  flex: 1;
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+}
+.aqk-thread {
+  inline-size: min(760px, 100%);
+  margin-inline: auto;
+  padding: 28px 24px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+/* Back-to-back answers (insights arriving together) get a rule between them. */
+.aqk-thread > .cp-msg-ai + .cp-msg-ai { padding-block-start: 24px; border-block-start: 1px solid var(--separator); }
+/* Answers read as text on the page, not as bubbles with an avatar. */
+.aqk-thread .cp-msg-ai > .cp-avatar { display: none; }
+.aqk-thread .cp-text { font-size: var(--fs-lg); line-height: 1.6; max-width: none; }
+.aqk-thread .cp-user-bubble { max-inline-size: 75%; padding: 9px 14px; font-size: var(--fs-lg); border-radius: var(--radius-lg); }
+.aqk-thread .cp-spark { max-inline-size: 520px; }
+.aqk-thread .cp-body { gap: 12px; }
+/* Actions sit under the answer as a compact row. */
+.aqk-thread .cp-actions { gap: 4px; }
+.aqk-thread .cp-btn { padding: 5px 10px; font-size: var(--fs-sm); }
+.aqk-thread .cp-btn-text { padding-inline: 8px; }
+
+.aqk-dock {
+  inline-size: min(760px, 100%);
+  margin-inline: auto;
+  padding: 8px 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ---- Composer ---- */
+.aqk-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 10px 8px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-pop);
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+.aqk-composer:focus-within { border-color: var(--border-hover); }
+.aqk-composer textarea {
+  resize: none;
+  border: none;
+  background: transparent;
+  color: var(--page-fg);
+  font: inherit;
+  font-size: var(--fs-lg);
+  line-height: 1.5;
+  padding: 2px 0;
+  max-block-size: 200px;
+  overflow-y: auto;
+  outline: none;
+}
+/* The composer's border shows focus; the field itself draws no ring. */
+.aqk-composer textarea:focus-visible { outline: none; }
+.aqk-composer.is-large textarea { min-block-size: 48px; }
+.aqk-composer textarea::placeholder { color: var(--text-muted); }
+.aqk-composer-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.aqk-scope {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-inline-size: 0;
+  max-inline-size: 70%;
+  padding: 4px 6px 4px 8px;
+  border-radius: var(--radius-md);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.aqk-scope:hover { background: var(--hover-faint); color: var(--page-fg); }
+.aqk-scope-key { flex: none; }
+.aqk-scope select {
+  appearance: none;
+  field-sizing: content;
+  min-inline-size: 0;
+  border: none;
+  background: transparent;
+  color: var(--page-fg);
+  font: inherit;
+  font-weight: 500;
+  padding: 0;
+  cursor: pointer;
+  text-overflow: ellipsis;
+  outline: none;
+}
+.aqk-scope select option { color: initial; }
+.aqk-scope svg { flex: none; }
+.aqk-scope:has(select:focus-visible) { outline: 2px solid var(--accent-primary); outline-offset: 1px; }
+.aqk-send {
+  inline-size: 32px;
+  block-size: 32px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
+  cursor: pointer;
+  transition: transform 60ms var(--ease-out), opacity var(--dur-fast) var(--ease-out);
+}
+.aqk-send:active:not(:disabled) { transform: scale(0.96); }
+.aqk-send:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* ---- Suggestions ---- */
+.aqk-suggest { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.aqk-suggest::-webkit-scrollbar { display: none; }
+.aqk-suggest.is-wrap { flex-wrap: wrap; justify-content: center; overflow: visible; }
+.aqk-chip {
+  flex: none;
+  padding: 5px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.aqk-chip:hover { background: var(--hover-faint); border-color: var(--border-hover); color: var(--page-fg); }
+.aqk-chip:active { transform: scale(0.98); }
+.aqk-alerts { display: inline-flex; align-items: center; gap: 7px; color: var(--status-warning); border-color: color-mix(in srgb, var(--status-warning) 45%, var(--border-subtle)); }
+.aqk-alerts i { inline-size: 7px; block-size: 7px; border-radius: 50%; background: currentColor; }
+.aqk-alerts.is-crit { color: var(--status-danger); border-color: color-mix(in srgb, var(--status-danger) 45%, var(--border-subtle)); }
+.aqk-alerts:hover { color: var(--page-fg); }
+
+.aqk-new:focus-visible,
+.aqk-hist:focus-visible,
+.aqk-hist-del:focus-visible,
+.aqk-chip:focus-visible,
+.aqk-send:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+
+/* ---- Narrow screens: the conversation list folds away ---- */
+@media (max-width: 760px) {
+  .aqk-root { grid-template-columns: minmax(0, 1fr); }
+  .aqk-side { display: none; }
+  .aqk-hero { padding-inline: 16px; }
+  .aqk-hero-title { font-size: var(--fs-5xl); }
+  .aqk-thread, .aqk-dock { padding-inline: 16px; }
+  /* 16px text so iOS does not zoom on focus. */
+  .aqk-composer textarea { font-size: var(--fs-xl); }
+}
+
+/* ---- AssetIQ chrome: machine and view pills stay on one row ---- */
+.aiq-hub .opc-topbar { flex-wrap: nowrap; }
+.aiq-hub .opc-stage-tabs { overflow-x: auto; scrollbar-width: none; }
+.aiq-hub .opc-stage-tabs::-webkit-scrollbar { display: none; }
+.aiq-hub .opc-stage-tabs .opc-pill-group { flex-wrap: nowrap; max-inline-size: none; }
+.aiq-hub .opc-topbar-right { flex-wrap: nowrap; }

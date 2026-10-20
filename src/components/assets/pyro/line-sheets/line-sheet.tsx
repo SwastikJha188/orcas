@@ -27,18 +27,22 @@ import type { LiveSignal, SimFrame } from "@/lib/kiln-sim/engine";
 import { useKilnFleet } from "@/providers/kiln-simulation-context";
 import { LINE_SHEETS, LINE_SHEET_ART, LINE_SHEET_BY_ID, LINE_SHEET_GROUPS, lineSheetTags } from ".";
 import { textWidth } from "./text-width";
+import { HealthOutline, type OutlineOwner } from "./health-outline";
+import type { LineSheetArt } from "./types";
 import { useContentBox, type ContentBox } from "../../use-content-box";
+import { displayName } from "@/lib/display-name";
+import { plainWords } from "@/lib/plain-words";
 import "./line-sheet.css";
 
 export type LineSheetColorBy = "limits" | "validity";
 
 const VALIDITY_STATUS: Record<string, string> = {
   Good: "Normal",
-  Suspect: "Advisory",
+  Suspect: "Alert",
   Invalid: "Critical",
 };
-/** Pad scale on a sheet (ring r 7.5 sheet units, as the PDF's pads). */
-const PAD_SCALE = 1.5;
+/** Pad scale on a sheet. */
+const PAD_SCALE = 0.9;
 const PAD_R = 5 * PAD_SCALE + 1;
 const CHIP_H = 15;
 const CHIP_FONT = 8.6;
@@ -50,7 +54,7 @@ export function lineSheetHeading(id: string): string {
   const s = LINE_SHEET_BY_ID[id];
   if (!s) return id;
   if (s.kind === "line") return `Pyro line · ${s.equipment} — ${s.title}`;
-  return `${(s.codes ?? s.machines.map(code)).join(" + ")} · ${s.equipment} — ${s.title}`;
+  return `${s.machines.map((id) => PYRO_MACHINE_BY_ID[id]?.shortName ?? VPC_MACHINE_BY_ID[id]?.shortName ?? code(id)).join(" + ")} · ${s.equipment} — ${s.title}`;
 }
 
 /** "Detail sheet · 11 monitoring points". */
@@ -60,11 +64,11 @@ export function lineSheetCaption(id: string): string {
   if (s.kind === "line") {
     const online = PYRO_SIGNALS.filter((x) => x.origin === "online").length;
     const manual = PYRO_SIGNALS.filter((x) => x.origin === "manual").length;
-    return `Line overview · ${online} online signals + ${manual} manual records · schematic arrangement, not to scale · no burner in the preheater`;
+    return `Line overview · ${online} live sensors + ${manual} readings typed in by hand · simplified layout, not to scale · no burner in the preheater`;
   }
   const n = lineSheetTags(id).length;
   const tagSet = s.group === "V" ? "Schultheiss VPC 066 (P1–E2, DT1)" : "tag set D4-OSW-PE-PYR Rev. 02";
-  return `${s.kind === "overview" ? "System overview" : "Detail sheet"} · ${n} monitoring point${n === 1 ? "" : "s"} · schematic arrangement, not to scale · ${tagSet}`;
+  return `${s.kind === "overview" ? "System overview" : "Detail sheet"} · ${n} sensor${n === 1 ? "" : "s"} · simplified layout, not to scale · ${tagSet}`;
 }
 
 interface PointView {
@@ -116,7 +120,7 @@ function usePoints(tags: string[], machineId: string | null | undefined, frame: 
   }, [tags, machineId, frame, fleet, colorBy]);
 }
 
-const valueTone = (status: string) => (status === "Critical" ? "bad" : status === "Advisory" ? "warn" : undefined);
+const valueTone = (status: string) => (status === "Critical" ? "bad" : status === "Alert" ? "warn" : undefined);
 
 /** Small pad glyph for lists (same marks as the drawing). */
 function PadGlyph({ p }: { p: PointView }) {
@@ -165,8 +169,33 @@ function NoteText({ text, onOpenSheet }: { text: string; onOpenSheet?: (id: stri
 
 /** Content box of a sheet drawing in sheet units: [x, y, w, h]. */
 export type SheetBox = ContentBox;
-/** Outer radius of a pad as drawn (selection halo of the MachinePad at PAD_SCALE). */
-const PAD_OUTER = 12 * PAD_SCALE;
+
+/**
+ * Line sheet (PYR-0): each machine's condition as a thin line in its colour
+ * along the outline of its own equipment (green normal, amber advisory, red
+ * critical); the drawing itself is never coloured. A stretch of outline belongs
+ * to the smallest of the machines' areas (`shades`, else its link region) it
+ * lies in; machines without a condition stay unoutlined.
+ */
+export function MachineHealthShade({
+  art,
+  toneOf,
+}: {
+  art: Pick<LineSheetArt, "id" | "Art" | "width" | "height" | "links" | "shades">;
+  toneOf: (machineId: string) => "good" | "warn" | "bad" | "idle" | "info" | null | undefined;
+}) {
+  const owners = Object.entries(art.links ?? {})
+    .flatMap(([id, link]) => {
+      const t = toneOf(id);
+      const tone = t === "bad" ? "bad" : t === "warn" ? "warn" : t === "good" || t === "info" ? "good" : null;
+      return (art.shades?.[id] ?? [link]).map((box) => ({ box, tone }) as OutlineOwner);
+    })
+    .sort((a, b) => a.box[2] * a.box[3] - b.box[2] * b.box[3]);
+  if (!owners.some((o) => o.tone)) return null;
+  return <HealthOutline art={art} owners={owners} />;
+}
+/** Outer radius of a pad as drawn (halo of the MachinePad at PAD_SCALE). */
+const PAD_OUTER = 9 * PAD_SCALE;
 
 /** Equipment art, pads and (optionally) tag chips — the geometry `useSheetBox` measures. */
 function SheetFootprint({ sheetId, chips }: { sheetId: string; chips: boolean }) {
@@ -188,7 +217,7 @@ function SheetFootprint({ sheetId, chips }: { sheetId: string; chips: boolean })
 
 /** The tight content box of a sheet drawing (art + pads, + chips when shown); see `useContentBox`. */
 export function useSheetBox(sheetId: string | null, chips: boolean): { box: SheetBox | null; measure: React.ReactNode } {
-  return useContentBox(sheetId ? `sheet:${sheetId}|${chips ? 1 : 0}` : null, () => (sheetId ? <SheetFootprint sheetId={sheetId} chips={chips} /> : null));
+  return useContentBox(sheetId ? `sheet:v4:${sheetId}|${chips ? 1 : 0}` : null, () => (sheetId ? <SheetFootprint sheetId={sheetId} chips={chips} /> : null));
 }
 
 /** A detail sheet's note, as printed; sheet references open that sheet. */
@@ -254,7 +283,7 @@ export function LineSheet({
   const interactive = (tag: string) => {
     const p = points[tag];
     const sel = selectedTag === tag;
-    const label = `${tag} ${p?.name ?? ""}: ${p?.value ?? "—"}`;
+    const label = `${p?.name ? plainWords(displayName(p.name)) : ""} (${tag}): ${p?.value ?? "—"}`;
     return p?.own && onSelectTag
       ? {
           role: "button",
@@ -292,25 +321,35 @@ export function LineSheet({
       <g aria-hidden="true">
         <Art />
       </g>
+      {meta.kind === "line" && (
+        <MachineHealthShade
+          art={art}
+          toneOf={(id) => {
+            const cond = fleet[id]?.frame?.condition;
+            return cond === "Critical" ? "bad" : cond === "Alert" ? "warn" : cond ? "good" : null;
+          }}
+        />
+      )}
       {meta.kind === "line" && art.links && (
         <g>
           {Object.entries(art.links).map(([id, [x, y, w, h]]) => {
             const m = PYRO_MACHINE_BY_ID[id];
             const cond = fleet[id]?.frame?.condition;
-            const tone = cond === "Critical" ? MX.bad : cond === "Advisory" ? MX.warn : MX.good;
+            const tone = cond === "Critical" ? MX.bad : cond === "Alert" ? MX.warn : MX.good;
             const online = PYRO_SIGNALS.filter((s) => s.machine === id && s.origin === "online").length;
             const manual = PYRO_SIGNALS.filter((s) => s.machine === id && s.origin === "manual").length;
             const n = manual ? `${online} + ${manual}` : `${online}`;
             const open = () => onOpenMachine?.(id);
-            // A merged machine shows its D4 units ("FSL-01 + KFS-01"), as the sheet does.
-            const label = m?.units?.join(" + ") ?? code(id);
+            // Machine name; its D4 unit codes ("FSL-01 + KFS-01") stay in the tooltip.
+            const units = m?.units?.join(" + ") ?? code(id);
+            const label = m?.shortName ?? m?.name ?? units;
             return (
               <g
                 key={id}
                 className="lsh-link"
                 role={onOpenMachine ? "link" : "img"}
                 tabIndex={onOpenMachine ? 0 : undefined}
-                aria-label={`${label} ${m?.name ?? ""} · ${n} points${cond ? ` · ${cond === "Healthy" ? "healthy" : cond.toLowerCase()}` : ""}`}
+                aria-label={`${m?.name ?? label} · ${n} points${cond ? ` · ${cond === "Healthy" ? "healthy" : cond.toLowerCase()}` : ""}`}
                 onClick={open}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
@@ -319,13 +358,11 @@ export function LineSheet({
                   }
                 }}
               >
+                <title>{`${units} · ${m?.name ?? ""}`}</title>
                 <rect x={x} y={y} width={w} height={h} rx={10} fill="transparent" stroke="transparent" className="lsh-link-hit" />
                 <circle cx={x + w / 2 - textWidth(`${label} · ${n}`, 9, 600, 0.06) / 2 - 8} cy={y + h + 12} r={3.2} fill={tone} />
                 <text x={x + w / 2 + 2} y={y + h + 15.5} textAnchor="middle" fontSize={9} fontWeight={600} letterSpacing="0.06em" fill="var(--dx-ink)">
                   {label} · {n}
-                </text>
-                <text x={x + w / 2} y={y + h + 28} textAnchor="middle" fontSize={7.6} fontWeight={600} letterSpacing="0.1em" fill={MX.label}>
-                  {(m?.shortName ?? m?.name ?? "").toUpperCase()}
                 </text>
               </g>
             );
@@ -390,8 +427,8 @@ export function LineSheet({
       <div className="lsh-host">
         <div className="lsh lsh-detail">
           <div className="lsh-draw mx-canvas">{drawing}</div>
-          <aside className="lsh-panel" aria-label={`${sheetId} monitoring points`}>
-            <h3 className="lsh-panel-title">Monitoring points · {tags.length}</h3>
+          <aside className="lsh-panel" aria-label={`${sheetId} sensors`}>
+            <h3 className="lsh-panel-title">Sensors on this drawing · {tags.length}</h3>
             <ul className="lsh-points">
               {(meta.points ?? []).map((pt) => {
                 const p = points[pt.tag];
@@ -404,15 +441,16 @@ export function LineSheet({
                     data-selected={selectedTag === pt.tag || undefined}
                     data-hot={hover === pt.tag || undefined}
                     data-other={p.own ? undefined : ""}
+                    title={`${pt.tag} · ${p.name}`}
                   >
                     <PadGlyph p={p} />
                     <span className="lsh-row-main">
                       <span className="lsh-row-head">
-                        <span className="lsh-tag">{pt.tag}</span>
-                        <span className="lsh-req">{p.manual ? "Manual record" : p.optional ? "Optional" : "Required"}</span>
+                        <span className="lsh-tag">{plainWords(displayName(p.name))}</span>
+                        <span className="lsh-req">{p.manual ? "Typed in by hand" : p.optional ? "Nice to have" : "Must have"}</span>
                       </span>
-                      <span className="lsh-desc">{pt.text}</span>
-                      {pt.location && <span className="lsh-loc">{pt.location}</span>}
+                      <span className="lsh-desc">{plainWords(pt.text)}</span>
+                      {pt.location && <span className="lsh-loc">{plainWords(pt.location)}</span>}
                     </span>
                     <span className="lsh-val" data-tone={valueTone(p.status)}>
                       {p.value}
@@ -441,8 +479,8 @@ export function LineSheet({
       <div className="lsh-host">
         <div className="lsh lsh-overview">
           <div className="lsh-draw mx-canvas">{drawing}</div>
-          <section className="lsh-parts" aria-label={`${sheetId} parts and monitoring points`}>
-            <h3 className="lsh-panel-title">Parts and monitoring points · {tags.length}</h3>
+          <section className="lsh-parts" aria-label={`${sheetId} parts and sensors`}>
+            <h3 className="lsh-panel-title">Parts and sensors · {tags.length}</h3>
             <div className="lsh-parts-grid">
               {(meta.parts ?? []).map((id) => {
                 const part = LINE_SHEET_BY_ID[id];
@@ -468,10 +506,10 @@ export function LineSheet({
                             data-selected={selectedTag === pt.tag || undefined}
                             data-hot={hover === pt.tag || undefined}
                             data-other={p.own ? undefined : ""}
-                            title={`${pt.tag} · ${pt.text}`}
+                            title={`${pt.tag} · ${p.name} · ${pt.text}`}
                           >
                             <PadGlyph p={p} />
-                            <span className="lsh-tag">{pt.tag}</span>
+                            <span className="lsh-tag">{plainWords(displayName(p.name))}</span>
                             <span className="lsh-val" data-tone={valueTone(p.status)}>
                               {p.value}
                             </span>
@@ -498,8 +536,8 @@ export function LineSheet({
     <div className="lsh-host">
       <div className="lsh lsh-line">
         <div className="lsh-draw mx-canvas">{drawing}</div>
-        <section className="lsh-parts" aria-label="Sheet index">
-          <h3 className="lsh-panel-title">Sheet index · {LINE_SHEETS.length} sheets</h3>
+        <section className="lsh-parts" aria-label="All drawings">
+          <h3 className="lsh-panel-title">All drawings · {LINE_SHEETS.length}</h3>
           <div className="lsh-parts-grid lsh-index">
             {groups.map(({ g, sheets }) => (
               <div key={g} className="lsh-part">

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE, SESSION_DAYS, signIn } from "@/server/services/auth-service";
+import { SESSION_COOKIE, sessionDays, signIn } from "@/server/services/auth-service";
 
 export const runtime = "nodejs";
 
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
       path: "/",
-      maxAge: SESSION_DAYS * 86_400,
+      maxAge: (await sessionDays()) * 86_400,
     });
     return res;
   } catch (error) {

@@ -58,16 +58,16 @@ export function FormatsView({ sectionNav }: { sectionNav?: React.ReactNode }) {
   const current = editing?.format ? formats.find((f) => f.id === editing.format!.id) ?? editing.format : null;
 
   return (
-    <div className="pg-root ast-root fmt-root" aria-label="Data formats">
+    <div className="pg-root ast-root fmt-root" aria-label="Message formats">
       <header className="ast-head pg-head">
         <div className="ast-head-main">
           <ol className="ast-crumbs" aria-label="Location">
             <li>Devices</li>
-            <li>Data formats</li>
+            <li>Message formats</li>
             {editing && <li>{current?.name ?? "New format"}</li>}
           </ol>
           <div className="ast-title-row">
-            <h1 className="ast-title">Data formats</h1>
+            <h1 className="ast-title">Message formats</h1>
             {registry && <StatusTag tone="idle" label={`${formats.length} format${formats.length === 1 ? "" : "s"}`} />}
           </div>
         </div>
@@ -85,7 +85,7 @@ export function FormatsView({ sectionNav }: { sectionNav?: React.ReactNode }) {
       {!registry ? (
         error ? (
           <div className="ast-card ast-empty">
-            <strong className="fmt-empty-title">Format registry unavailable. Retry.</strong>
+            <strong className="fmt-empty-title">The list of message formats could not be loaded. Try again.</strong>
             <PillButton variant="secondary" onClick={() => void refresh()}>
               Retry
             </PillButton>
@@ -133,23 +133,23 @@ function FormatsTable({ formats, used, onOpen }: { formats: EdgeFormat[]; used: 
     },
     {
       key: "kind",
-      header: "Kind",
+      header: "Type",
       render: (f) => (f.builtIn ? <StatusTag tone="info" label="Built in" /> : <span className="ast-cell-text">JSON</span>),
     },
     {
       key: "topic",
-      header: "Topic template",
+      header: "Channel pattern (topic)",
       render: (f) => (
         <span className="ast-cell-stack">
           <span className="fmt-mono">{f.builtIn ? `…/${f.topic}` : f.topic}</span>
-          {f.builtIn && <span className="ast-cell-sub">Under each broker&rsquo;s topic prefix</span>}
+          {f.builtIn && <span className="ast-cell-sub">After each data connection&rsquo;s channel prefix</span>}
         </span>
       ),
     },
-    { key: "records", header: "Records", render: (f) => <span className="fmt-mono">{f.records || <span className="ast-muted">Whole payload</span>}</span> },
+    { key: "records", header: "Where readings sit", render: (f) => <span className="fmt-mono">{f.records || <span className="ast-muted">Whole message</span>}</span> },
     {
       key: "gateways",
-      header: "Gateways",
+      header: "Used by data collectors",
       render: (f) => {
         const codes = used.get(f.id) ?? [];
         if (codes.length === 0) return <span className="ast-muted">None</span>;

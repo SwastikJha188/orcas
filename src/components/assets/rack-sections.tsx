@@ -23,7 +23,9 @@ import {
   type SlotState,
 } from "./eurocard-module";
 import { SIGNAL_LABEL, STATE_TONE, rowKey, type ChannelRow, type RackModel } from "./rack-model";
-import { CALCULATED_INPUTS, rackSpecFor, signalTypeOf, type RackSpecSet } from "./rack-spec";
+import { signalTypeOf, type RackSpecSet } from "./rack-spec";
+import { displayName } from "@/lib/display-name";
+import { QUALITY_LABEL } from "./sensors-model";
 
 export interface RackLinks {
   sensor: (tag: string) => void;
@@ -134,10 +136,10 @@ export function RackChassis({
   const st = moduleState(selected);
   const showNote = selected?.note && !new RegExp(`slot\\s*0*${selected.position}$`, "i").test(selected.note);
   return (
-    <section className="ast-card pg-rack-chassis" aria-label={`Chassis ${rack.code}`}>
+    <section className="ast-card pg-rack-chassis" aria-label={`Card frame ${rack.code}`}>
       <CardHead
         title={`${rack.code} · ${rack.kindLabel}`}
-        meta={`${rack.positions} single-channel slots · ${rack.modules.length} ${model.proposed ? "allocated (proposed)" : "wired"} · ${rack.positions - rack.modules.length} spare${rack.protocol ? ` · ${rack.protocol}` : ""}`}
+        meta={`${rack.positions} slots, one sensor each · ${rack.modules.length} ${model.proposed ? "planned" : "wired"} · ${rack.positions - rack.modules.length} spare${rack.protocol ? ` · ${rack.protocol}` : ""}`}
         right={<ChassisSwitch racks={racks} activeId={rack.rackId} onChange={onRack} />}
       />
       <div className="pg-rack-chassis-body">
@@ -173,7 +175,7 @@ export function RackChassis({
               <div className="pg-rack-inspect-head">
                 <span className="pg-rack-kicker ast-num">
                   Slot {selected.positionLabel} · card {selected.code}
-                  {showNote ? ` · documented ${selected.note!.toLowerCase()}` : ""}
+                  {showNote ? ` · on the drawings as ${selected.note!.toLowerCase()}` : ""}
                 </span>
                 <span className="pg-rack-inspect-title">
                   {selected.model ?? `Card ${selected.code}`}
@@ -181,17 +183,17 @@ export function RackChassis({
                 </span>
               </div>
               <dl className="pg-rack-dl">
-                <dt>Type</dt>
+                <dt>Card type</dt>
                 <dd>{orDash(selected.cardType)}</dd>
-                <dt>Signal</dt>
+                <dt>Takes in</dt>
                 <dd>{signalTypeOf(selected.cardType, rack.protocol)}</dd>
-                <dt>Card channel</dt>
+                <dt>Input on card</dt>
                 <dd className="ast-num">
                   {selected.channels[0]?.channel ?? "—"} of {selected.cardCapacity}
                 </dd>
               </dl>
 
-              <ul className="pg-rack-chlist" aria-label={`Channels of card ${selected.code}`}>
+              <ul className="pg-rack-chlist" aria-label={`Inputs of card ${selected.code}`}>
                 {selected.channels.map((ch) => {
                   const on = ch.channel === selectedChannel?.channel;
                   const s = channelState(ch);
@@ -200,9 +202,9 @@ export function RackChassis({
                     <li key={ch.channel}>
                       <button type="button" className="pg-rack-chlist-row" aria-pressed={on} onClick={() => onSelect(selected.position, ch.channel)}>
                         <span className="pg-rack-chlist-ch ast-num">{/^\d+$/.test(ch.channel) ? pad2(Number(ch.channel)) : ch.channel}</span>
-                        <span className="pg-rack-chlist-tag">
+                        <span className="pg-rack-chlist-tag" title={`${ch.tag} · ${ch.parameter}`}>
                           {s !== "ok" && <span className="ast-chip-dot" data-tone={STATE_TONE[s]} aria-label={SIGNAL_LABEL[s]} />}
-                          {ch.tag}
+                          <span>{displayName(ch.parameter || ch.tag)}</span>
                         </span>
                         <span className="pg-rack-chlist-val ast-num">
                           {row?.ch.currentValue || "—"}
@@ -217,44 +219,44 @@ export function RackChassis({
               {selectedChannel && (
                 <>
                   <dl className="pg-rack-dl">
-                    <dt>Channel</dt>
-                    <dd className="ast-num">
-                      {selectedChannel.channel} · {selectedChannel.tag}
+                    <dt>Input</dt>
+                    <dd title={selectedChannel.tag}>
+                      <span className="ast-num">{selectedChannel.channel}</span> · {displayName(selectedChannel.parameter || selectedChannel.tag)}
                     </dd>
                     <dt>Instrument</dt>
                     <dd>{orDash(selectedChannel.instrument)}</dd>
-                    <dt>Sampling</dt>
+                    <dt>How often</dt>
                     <dd className="ast-num">{parseRate(selectedChannel.sampleRate)}</dd>
-                    <dt>Register</dt>
+                    <dt>Data address</dt>
                     <dd className="ast-num">{orDash(selectedChannel.address)}</dd>
-                    <dt>Quality</dt>
-                    <dd>{orDash(selectedChannel.quality)}</dd>
+                    <dt>Reading quality</dt>
+                    <dd>{selectedChannel.quality ? ((QUALITY_LABEL as Record<string, string>)[selectedChannel.quality] ?? selectedChannel.quality) : "—"}</dd>
                     {selectedRow?.point && (
                       <>
-                        <dt>Original tag</dt>
+                        <dt>Name in the plant system</dt>
                         <dd className="ast-num">{selectedRow.point.sourceTag || "Not recorded"}</dd>
                         <dt>Security zone</dt>
                         <dd>{selectedRow.point.source.securityZone || selectedRow.point.gateway.securityZone || "Not recorded"}</dd>
-                        <dt>Source time</dt>
-                        <dd className="ast-num">{stampsOf?.(selectedChannel.tag)?.source ?? "Not recorded (receipt time only)"}</dd>
-                        <dt>Received</dt>
+                        <dt>Measured at</dt>
+                        <dd className="ast-num">{stampsOf?.(selectedChannel.tag)?.source ?? "Not recorded (only the time it arrived)"}</dd>
+                        <dt>Received at</dt>
                         <dd className="ast-num">
                           {stampsOf?.(selectedChannel.tag)?.received ?? (selectedRow.point.live.updatedAt
                             ? formatTime
                               ? formatTime(selectedRow.point.live.updatedAt)
                               : selectedRow.point.live.updatedAt
-                            : "No gateway reading")}
+                            : "No reading received yet")}
                         </dd>
                       </>
                     )}
                   </dl>
                   <div className="pg-rack-actions">
                     <PillButton variant="secondary" onClick={() => links.sensor(selectedChannel.tag)}>
-                      Sensor
+                      Open sensor
                     </PillButton>
                     {selectedRow?.point && (
                       <PillButton variant="secondary" onClick={() => links.devices(`card:${selectedRow.point!.source.id}/${selectedRow.point!.card}`)}>
-                        Device
+                        Open network device
                       </PillButton>
                     )}
                   </div>
@@ -262,7 +264,7 @@ export function RackChassis({
               )}
             </>
           ) : (
-            <span className="ast-muted">No card recorded in this chassis.</span>
+            <span className="ast-muted">No card is recorded in this frame.</span>
           )}
         </div>
       </div>
@@ -306,7 +308,7 @@ export function RackSlots({
     { key: "slot", header: "Slot", width: "64px", render: (r) => <span className="ast-num">{pad2(r.position)}</span> },
     {
       key: "module",
-      header: "Module",
+      header: "Card",
       render: (r) => {
         const m = r.module;
         return (
@@ -314,23 +316,32 @@ export function RackSlots({
             <Glyph type={m?.sensorType ?? "STS"} state={moduleState(m ?? undefined)} empty={!m} />
             <span className="ast-cell-stack">
               <span className={m ? "ast-cell-title" : "ast-muted"}>{m ? m.model ?? `Card ${m.code}` : "Spare"}</span>
-              <span className="ast-cell-sub">{m ? m.cardType ?? "Type not recorded" : `${SLOT_HP} HP`}</span>
+              <span className="ast-cell-sub">{m ? m.cardType ?? "Type not recorded" : `${SLOT_HP} HP wide`}</span>
             </span>
           </span>
         );
       },
     },
-    { key: "signal", header: "Signal", render: (r) => (r.module ? <span className="ast-cell-sub">{signalTypeOf(r.module.cardType, rack.protocol)}</span> : <span className="ast-muted">—</span>) },
+    { key: "signal", header: "Takes in", render: (r) => (r.module ? <span className="ast-cell-sub">{signalTypeOf(r.module.cardType, rack.protocol)}</span> : <span className="ast-muted">—</span>) },
     {
       key: "channel",
-      header: "Card ch",
+      header: "Input on card",
       width: "96px",
-      render: (r) => (r.module ? <Value v={`${r.module.channels[0]?.channel ?? "—"} / ${r.module.cardCapacity}`} /> : <span className="pg-analysis-r ast-muted">—</span>),
+      render: (r) => (r.module ? <Value v={`${r.module.channels[0]?.channel ?? "—"} of ${r.module.cardCapacity}`} /> : <span className="pg-analysis-r ast-muted">—</span>),
     },
     {
       key: "sensor",
       header: "Sensor",
-      render: (r) => <span className="ast-cell-sub ast-num">{r.module?.channels[0]?.tag ?? "—"}</span>,
+      render: (r) => {
+        const c = r.module?.channels[0];
+        return c ? (
+          <span className="ast-cell-sub" title={`${c.tag} · ${c.parameter}`}>
+            {displayName(c.parameter || c.tag)}
+          </span>
+        ) : (
+          <span className="ast-cell-sub">—</span>
+        );
+      },
     },
     { key: "state", header: "State", width: "112px", render: (r) => <State state={moduleState(r.module ?? undefined)} /> },
   ];
@@ -338,7 +349,7 @@ export function RackSlots({
     <section className="ast-card pg-table-card" aria-label={`Slots of ${rack.code}`}>
       <CardHead
         title={`Slots · ${rack.code}`}
-        meta={`${rack.modules.length} ${proposed ? "allocated (proposed)" : "fitted"} · ${spare} spare`}
+        meta={`${rack.modules.length} ${proposed ? "planned" : "in use"} · ${spare} spare`}
         right={
           <div className="pg-actions">
             {spare > 0 && (
@@ -384,11 +395,10 @@ export function RackChannelMap({
   links: RackLinks;
 }) {
   const rows = filter === "all" ? model.rows : model.rowsByRack.get(filter) ?? [];
-  const allSim = rows.length > 0 && rows.every((r) => r.origin === "sim");
   const columns: Column<ChannelRow>[] = [
     {
       key: "loc",
-      header: "Location",
+      header: "Where",
       width: "128px",
       render: (r) => (
         <span className="ast-num pg-rack-loc">
@@ -405,49 +415,47 @@ export function RackChannelMap({
       header: "Sensor",
       render: (r) => (
         <span className="ast-cell-stack">
-          <span className="ast-cell-title ast-num">{r.ch.tag}</span>
-          <span className="ast-cell-sub" title={r.ch.parameter}>
-            {r.ch.parameter}
+          <span className="ast-cell-title" title={`${r.ch.tag} · ${r.ch.parameter}`}>
+            {displayName(r.ch.parameter || r.ch.tag)}
           </span>
         </span>
       ),
     },
     { key: "card", header: "Card", render: (r) => <span className="ast-cell-sub">{r.module.model ?? `Card ${r.module.code}`}</span> },
-    { key: "reg", header: "Register", width: "88px", render: (r) => <Value v={orDash(r.ch.address)} /> },
-    { key: "rate", header: "Sampling", width: "92px", render: (r) => <Value v={parseRate(r.ch.sampleRate)} /> },
+    { key: "reg", header: "Data address", width: "88px", render: (r) => <Value v={orDash(r.ch.address)} /> },
+    { key: "rate", header: "How often", width: "92px", render: (r) => <Value v={parseRate(r.ch.sampleRate)} /> },
     {
       key: "reading",
-      header: allSim ? "Reading (sim.)" : "Reading",
+      header: "Reading",
       width: "124px",
       render: (r) => (
         <span className="pg-analysis-r ast-num">
           {r.ch.currentValue || "—"}
           {r.ch.currentValue && r.ch.unit && <span className="ast-unit">{r.ch.unit}</span>}
-          {!allSim && r.origin === "sim" && <span className="ast-unit">sim.</span>}
         </span>
       ),
     },
     {
       key: "signal",
-      header: "Signal",
+      header: "Quality",
       width: "96px",
       render: (r) => {
         const s = channelState(r.ch);
         return <State state={s} label={SIGNAL_LABEL[s]} />;
       },
     },
-    { key: "process", header: "Process", width: "96px", render: (r) => <State state={processState(r.ch)} /> },
+    { key: "process", header: "Status", width: "96px", render: (r) => <State state={processState(r.ch)} /> },
     {
       key: "open",
       header: "",
       width: "124px",
       render: (r) => (
         <span className="pg-rack-links">
-          <LinkButton label="Sensor" title={`Open ${r.ch.tag} on Sensors`} onClick={() => links.sensor(r.ch.tag)} />
+          <LinkButton label="Sensor" title={`${r.ch.tag} · open on the Sensors page`} onClick={() => links.sensor(r.ch.tag)} />
           {r.point && (
             <LinkButton
               label="Device"
-              title={`Open card ${r.point.card} of ${r.point.source.code} in Devices`}
+              title={`Open card ${r.point.card} of ${r.point.source.code} on the Devices page`}
               onClick={() => links.devices(`card:${r.point!.source.id}/${r.point!.card}`)}
             />
           )}
@@ -457,10 +465,10 @@ export function RackChannelMap({
   ];
 
   return (
-    <section className="ast-card pg-table-card" aria-label="Channels">
+    <section className="ast-card pg-table-card" aria-label="Inputs">
       <CardHead
-        title="Channels"
-        meta={`${rows.length} ${model.proposed ? "allocated (proposed)" : "wired"} · ${model.origin.mqtt} MQTT · ${model.origin.sim} sim. · ${model.origin.stored} stored`}
+        title="Inputs"
+        meta={`${rows.length} ${model.proposed ? "planned" : "wired"} · ${model.origin.mqtt + model.origin.sim} live · ${model.origin.stored} saved values`}
         right={
           racks.length > 1 ? (
             <PillNav
@@ -492,47 +500,46 @@ interface SpecLine {
 
 export function RackCabinetSync({
   model,
-  machineId,
+  spec: set,
   heartbeat,
   links,
 }: {
   model: RackModel;
-  machineId: string;
+  /** The edge registry's record for this machine (GET /api/edge); null when none is on file or while loading. */
+  spec: RackSpecSet | null;
   heartbeat: string;
   links: RackLinks;
 }) {
   const { chassis, psu, ptp, packetLossPct } = model.record;
-  // Design-document specification on file for this machine (kiln D5-OSW-PE-KLN, pyro line D5-OSW-PE-PYR), else none.
-  const set: RackSpecSet | null = rackSpecFor(machineId);
-  const spec = (label: string, from: "hardware" | "uplink" = "hardware") => (set ? set[from].find((r) => r.label === label)?.value ?? null : null);
   const gw = model.link;
-  const iepe = model.checks.find((c) => c.id === "spec");
+  // IEPE module as the cabinet records it (rack units): channels on the card and channels mapped.
+  const iepeModule = model.rows.find((r) => r.module.sensorType === "VIB")?.module ?? null;
+  const iepeMapped = iepeModule ? model.rows.filter((r) => r.module === iepeModule).length : 0;
   const fr = model.freshness;
   const sourceZones = [
     ...new Map(model.rows.filter((r) => r.point?.source.securityZone).map((r) => [r.point!.source.code, `${r.point!.source.code} ${r.point!.source.securityZone}`])).values(),
   ];
 
   const raw: SpecLine[] = [
-    { group: "Cabinet", item: "Cabinet", recorded: chassis ? `${chassis.id}` : null, specified: spec("Devices"), state: "empty" },
-    { group: "Cabinet", item: "Location", recorded: chassis?.cabinetLocation || null, specified: spec("Location / Ex"), state: "empty" },
-    { group: "Cabinet", item: "Enclosure", recorded: chassis?.cabinetLocation.match(/IP\d{2}/)?.[0] ?? null, specified: spec("IP rating"), state: "empty" },
+    { group: "Cabinet", item: "Cabinet", recorded: chassis ? `${chassis.id}` : null, specified: set?.devices ?? null, state: "empty" },
+    { group: "Cabinet", item: "Location", recorded: chassis?.cabinetLocation || null, specified: set?.location ?? null, state: "empty" },
+    { group: "Cabinet", item: "Enclosure", recorded: chassis?.cabinetLocation.match(/IP\d{2}/)?.[0] ?? null, specified: null, state: "empty" },
     { group: "Cabinet", item: "Firmware", recorded: chassis?.firmware || null, specified: null, state: "empty" },
-    { group: "Cabinet", item: "Uptime", recorded: chassis?.uptime || null, specified: null, state: "empty" },
     {
       group: "Cabinet",
-      item: "IEPE module",
-      recorded: iepe ? iepe.result.split(";")[0] : null,
+      item: "Vibration card (IEPE)",
+      recorded: iepeModule ? `${iepeModule.cardCapacity} inputs · ${iepeMapped} in use` : null,
       specified: set?.iepe ?? null,
       state: "empty",
     },
-    // D5 Table 7.2: vibration DAQ node allocation (pyro line), against the accelerometers allocated to that node.
+    // Vibration DAQ nodes in the edge registry (rack sources with IEPE cards), against the channels allocated to each.
     ...(set?.daqNodes ?? []).map((n): SpecLine => {
       const used = model.rows.filter((r) => r.rack.code === n.code).length;
       return {
-        group: "DAQ",
+        group: "Vibration box",
         item: n.code,
-        recorded: used ? `${used} channel${used === 1 ? "" : "s"} allocated` : null,
-        specified: `${n.location} · ${n.tags.join(", ")} · ${n.tags.length} of ${n.channels}${n.ex ? " · Ex-certified" : ""}`,
+        recorded: used ? `${used} input${used === 1 ? "" : "s"} in use` : null,
+        specified: [n.name, n.channels !== null ? `${n.channels} vibration inputs` : null].filter(Boolean).join(" · "),
         state: "empty",
       };
     }),
@@ -543,19 +550,19 @@ export function RackCabinetSync({
       specified: null,
       state: psu.state,
     },
-    { group: "Power", item: "Rails", recorded: psu.volts.length ? psu.volts.map((v) => `${v.toFixed(1)} V`).join(" / ") : null, specified: null, state: "empty" },
+    { group: "Power", item: "Voltages", recorded: psu.volts.length ? psu.volts.map((v) => `${v.toFixed(1)} V`).join(" / ") : null, specified: null, state: "empty" },
     {
       group: "Time",
       item: "Clock",
-      recorded: ptp.mode === "Not reported" ? null : ptp.mode === "Locked" ? "PTP, locked to grandmaster" : `PTP · ${ptp.mode.toLowerCase()}`,
-      specified: set?.clock ?? null,
+      recorded: ptp.mode === "Not reported" ? null : ptp.mode === "Locked" ? "In sync with the master clock (PTP)" : `PTP · ${ptp.mode === "Holdover" ? "running on its own" : ptp.mode.toLowerCase()}`,
+      specified: null,
       state: ptp.state,
     },
-    { group: "Time", item: "Path delay", recorded: ptp.latencyMs !== null ? `${ptp.latencyMs} ms` : null, specified: null, state: "empty" },
+    { group: "Time", item: "Time signal delay", recorded: ptp.latencyMs !== null ? `${ptp.latencyMs} ms` : null, specified: null, state: "empty" },
     {
       group: "Time",
-      item: "Newest stamp",
-      recorded: fr ? `${Math.round(fr.newestS)} s ago · ${fr.stamped} points` : null,
+      item: "Newest time stamp",
+      recorded: fr ? `${Math.round(fr.newestS)} s ago · ${fr.stamped} readings` : null,
       specified: null,
       state: "empty",
     },
@@ -570,40 +577,39 @@ export function RackCabinetSync({
       specified: set?.gateway ?? null,
       state: gw.state,
     },
-    { group: "Uplink", item: "Link", recorded: gw.gateway ? gw.label : null, specified: null, state: gw.state },
+    { group: "Uplink", item: "Connection", recorded: gw.gateway ? gw.label : null, specified: null, state: gw.state },
     { group: "Uplink", item: "Security zone", recorded: gw.gateway?.securityZone ?? null, specified: null, state: "empty" },
-    { group: "Uplink", item: "Source zones", recorded: sourceZones.length ? sourceZones.join(" · ") : null, specified: null, state: "empty" },
-    { group: "Uplink", item: "Last heartbeat", recorded: gw.gateway?.lastSeenAt || model.proposed ? heartbeat : null, specified: null, state: "empty" },
-    { group: "Uplink", item: "Broker", recorded: gw.gateway?.brokerName ?? null, specified: spec("Server side", "uplink"), state: "empty" },
-    { group: "Uplink", item: "Protocols", recorded: chassis?.protocol || null, specified: spec("Plant side", "uplink"), state: "empty" },
-    { group: "Uplink", item: "Address", recorded: gw.gateway?.ip ?? chassis?.ipAddress ?? null, specified: null, state: "empty" },
-    { group: "Uplink", item: "Packet loss", recorded: packetLossPct !== null ? `${packetLossPct.toFixed(2)} %` : null, specified: null, state: "empty" },
-    { group: "Uplink", item: "Buffering", recorded: null, specified: spec("Buffering", "uplink"), state: "empty" },
+    { group: "Uplink", item: "Source security zones", recorded: sourceZones.length ? sourceZones.join(" · ") : null, specified: null, state: "empty" },
+    { group: "Uplink", item: "Last sign of life", recorded: gw.gateway?.lastSeenAt || model.proposed ? heartbeat : null, specified: null, state: "empty" },
+    { group: "Uplink", item: "Message server", recorded: gw.gateway?.brokerName ?? null, specified: null, state: "empty" },
+    { group: "Uplink", item: "Protocols", recorded: chassis?.protocol || null, specified: set?.protocols ?? null, state: "empty" },
+    { group: "Uplink", item: "Network address", recorded: gw.gateway?.ip ?? chassis?.ipAddress ?? null, specified: null, state: "empty" },
+    { group: "Uplink", item: "Data lost on the way", recorded: packetLossPct !== null ? `${packetLossPct.toFixed(2)} %` : null, specified: null, state: "empty" },
   ];
   const lines = raw.filter((l) => l.recorded !== null || l.specified !== null);
 
   const missing = [
-    "PTP offset",
-    "grandmaster",
+    "clock offset (PTP)",
+    "master clock",
     "cabinet temperature",
     "message rate",
     ...(!chassis ? ["cabinet record"] : []),
-    ...(!gw.gateway?.lastSeenAt ? ["heartbeat"] : []),
+    ...(!gw.gateway?.lastSeenAt ? ["sign of life"] : []),
   ];
 
   const columns: Column<SpecLine>[] = [
     { key: "group", header: "", width: "84px", render: (l) => <span className="pg-rack-kicker">{l.group}</span> },
     { key: "item", header: "Item", width: "140px", render: (l) => <span className="ast-cell-title">{l.item}</span> },
-    { key: "rec", header: "Recorded", render: (l) => (l.recorded !== null ? <span className="ast-num">{l.recorded}</span> : <span className="ast-muted">—</span>) },
-    { key: "spec", header: "Specified", render: (l) => <span className="ast-cell-sub">{l.specified ?? "—"}</span> },
+    { key: "rec", header: "On record", render: (l) => (l.recorded !== null ? <span className="ast-num">{l.recorded}</span> : <span className="ast-muted">—</span>) },
+    { key: "spec", header: "Should be", render: (l) => <span className="ast-cell-sub">{l.specified ?? "—"}</span> },
     { key: "state", header: "State", width: "112px", render: (l) => (l.state === "empty" ? <span className="ast-muted">—</span> : <State state={l.state} />) },
   ];
 
   return (
-    <section className="ast-card pg-table-card" aria-label="Cabinet and sync">
-      <CardHead title="Cabinet & sync" />
+    <section className="ast-card pg-table-card" aria-label="Cabinet and clock">
+      <CardHead title="Cabinet and clock" />
       <Table columns={columns} data={lines} keyExtractor={(l) => `${l.group}-${l.item}`} className="pg-rack-table pg-rack-spec" />
-      <p className="pg-rack-foot ast-caption">Not reported: {missing.join(", ")}.</p>
+      <p className="pg-rack-foot ast-caption">Not reported by the cabinet: {missing.join(", ")}.</p>
     </section>
   );
 }
@@ -614,33 +620,33 @@ export function RackCabinetSync({
 
 export function RackCalculatedSignals({ model, links }: { model: RackModel; links: RackLinks }) {
   type Row = (typeof model.calculated)[number];
+  const nameOf = new Map<string, string>([...model.calculated, ...model.manual, ...model.unwired].map((s) => [s.tag, s.name]));
   const allColumns: Column<Row>[] = [
     {
       key: "tag",
       header: "Value",
       render: (s) => (
         <span className="ast-cell-stack">
-          <span className="ast-cell-title ast-num">{s.tag}</span>
-          <span className="ast-cell-sub" title={s.name}>
-            {s.name}
+          <span className="ast-cell-title" title={`${s.tag} · ${s.name}`}>
+            {displayName(s.name)}
           </span>
         </span>
       ),
     },
     {
       key: "inputs",
-      header: "Inputs",
+      header: "Worked out from",
       render: (s) => {
         const ins = model.calcInputs.get(s.tag);
         if (!ins) return <span className="ast-muted">—</span>;
         return (
           <span className="pg-rack-inputs">
             {ins.map((i) => (
-              <span key={i.tag} className="ast-num">
-                <button type="button" className="pg-rack-textlink" onClick={() => links.sensor(i.tag)}>
-                  {i.tag}
+              <span key={i.tag}>
+                <button type="button" className="pg-rack-textlink" onClick={() => links.sensor(i.tag)} title={i.tag}>
+                  {displayName(i.row?.ch.parameter || nameOf.get(i.tag) || i.tag)}
                 </button>
-                <span className="ast-muted"> {i.row ? `${i.row.rack.code} · ${i.row.module.positionLabel}.${i.row.ch.channel}` : "not wired"}</span>
+                <span className="ast-muted ast-num"> {i.row ? `${i.row.rack.code} · ${i.row.module.positionLabel}.${i.row.ch.channel}` : "not wired yet"}</span>
               </span>
             ))}
           </span>
@@ -649,18 +655,19 @@ export function RackCalculatedSignals({ model, links }: { model: RackModel; link
     },
     {
       key: "basis",
-      header: "Basis",
-      render: (s) => <span className="ast-cell-sub">{(model.calcInputs.has(s.tag) && CALCULATED_INPUTS[s.tag]?.basis) || "—"}</span>,
+      header: "Method",
+      // The DB sensor type of the calculated measurement names its basis.
+      render: (s) => <span className="ast-cell-sub">{(model.calcInputs.has(s.tag) && s.sensorType) || "—"}</span>,
     },
     { key: "value", header: "Reading", width: "120px", render: (s) => <Value v={s.value || "—"} unit={s.unit || undefined} /> },
-    { key: "state", header: "Process", width: "96px", render: (s) => <State state={s.status === "Critical" ? "bad" : s.status === "Advisory" ? "warn" : "ok"} /> },
-    { key: "open", header: "", width: "84px", render: (s) => <LinkButton label="Sensor" title={`Open ${s.tag} on Sensors`} onClick={() => links.sensor(s.tag)} /> },
+    { key: "state", header: "Status", width: "96px", render: (s) => <State state={s.status === "Critical" ? "bad" : s.status === "Alert" ? "warn" : "ok"} /> },
+    { key: "open", header: "", width: "84px", render: (s) => <LinkButton label="Sensor" title={`${s.tag} · open on the Sensors page`} onClick={() => links.sensor(s.tag)} /> },
   ];
-  // Inputs and basis come from the kiln specification (D5 Table 9.2); machines without that record omit both columns.
+  // Inputs come from the gateway formulas on file; machines without one omit the inputs and basis columns.
   const columns = model.calcInputs.size > 0 ? allColumns : allColumns.filter((c) => c.key !== "inputs" && c.key !== "basis");
   return (
-    <section className="ast-card pg-table-card" aria-label="Calculated">
-      <CardHead title="Calculated" meta={`${plural(model.calculated.length, "value", "values")} · ${model.calculated[0]?.cardId || "gateway analytics"} · no wiring`} />
+    <section className="ast-card pg-table-card" aria-label="Calculated values">
+      <CardHead title="Calculated values" meta={`${plural(model.calculated.length, "value", "values")} · worked out on the gateway from other sensors · no wiring`} />
       <Table columns={columns} data={model.calculated} keyExtractor={(s) => s.tag} className="pg-rack-table pg-rack-calc" />
     </section>
   );

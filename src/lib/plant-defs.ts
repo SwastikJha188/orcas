@@ -54,8 +54,14 @@ export interface DefRule {
   owner?: string;
   /** What the evidence does not yet prove (D4 §8.2, SW-ALL-02). */
   unproven?: string;
-  /** HOLD disclosure: the rule runs on channels or designs still on HOLD (D4 Table 6.6 / MOM Table B.1); the text says when findings are capped at Advisory. */
+  /** HOLD disclosure: the rule runs on channels or designs still on HOLD (D4 Table 6.6 / MOM Table B.1); the text says when findings are capped at Alert. */
   hold?: string;
+  /** Headline anyone can read: what is wrong, in everyday words (docs/plain-language.md). */
+  plainTitle?: string;
+  /** What is happening and why it matters, in everyday words (1–2 sentences). */
+  plainWhat?: string;
+  /** What to do next, as an instruction to a person (1 sentence). */
+  plainTodo?: string;
 }
 
 export interface PlantDefs {
@@ -75,6 +81,8 @@ export interface PlantDefs {
   speedTag: string | null;
   /** Analog tags judged against an operator set-point: tag → `frame.drivers` key. */
   setpoints: Record<string, "feedSp" | "fuelSp">;
+  /** Share of the driver set-point a meter carries (two parallel solid-flow meters: half each); default 1. */
+  setpointShare?: Record<string, number>;
   /** Feed / fuel / speed meters the analysis treats as process drivers. */
   driverTags: { feed: string | null; fuel: string | null; speed: string | null };
   /** True when the frame carries a kiln shell scanner profile (Thermal tab). */

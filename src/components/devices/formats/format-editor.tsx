@@ -155,7 +155,7 @@ export function FormatEditor({ format, initial, gateways, onClose, onDuplicate }
       <div className="fmt-editor-bar">
         <div className="fmt-editor-title">
           <h2 className="ast-card-title">{readOnly ? format?.name : format ? "Edit format" : "New format"}</h2>
-          {readOnly && <StatusTag tone="info" label="Built in · read only" />}
+          {readOnly && <StatusTag tone="info" label="Built in · cannot be changed" />}
           {!readOnly && dirty && <StatusTag tone="warn" label="Unsaved" />}
         </div>
         <div className="pg-actions">
@@ -243,15 +243,15 @@ export function FormatEditor({ format, initial, gateways, onClose, onDuplicate }
             </FieldGrid>
           </FieldSection>
 
-          <FieldSection title="Topic">
+          <FieldSection title="Message channel (topic)">
             <Field
-              label={readOnly ? "Topic template (under the broker's topic prefix)" : "Topic template"}
+              label={readOnly ? "Channel pattern (after the data connection's channel prefix)" : "Channel pattern (topic)"}
               required
               wide
               error={!readOnly && (tried || draft.topic) && !template.ok ? template.message : null}
               hint={
                 template.ok
-                  ? `Subscribes to ${templateFilter(draft.topic, null)} (with {gateway} set to each assigned gateway)`
+                  ? `Listens on ${templateFilter(draft.topic, null)} ({gateway} becomes each linked data collector)`
                   : "Full topic. One placeholder or + per level; # only last."
               }
             >
@@ -271,7 +271,7 @@ export function FormatEditor({ format, initial, gateways, onClose, onDuplicate }
               )}
             </Field>
             {!readOnly && (
-              <div className="fmt-chips" role="group" aria-label="Insert into topic">
+              <div className="fmt-chips" role="group" aria-label="Insert into the channel pattern">
                 {TOKENS.map((t) => (
                   <button key={t} type="button" className="fmt-chip" onClick={() => insertToken(t)} aria-label={`Insert ${t}`}>
                     {t}
@@ -281,14 +281,14 @@ export function FormatEditor({ format, initial, gateways, onClose, onDuplicate }
             )}
           </FieldSection>
 
-          <FieldSection title="Payload mapping">
+          <FieldSection title="Where each value sits in the message">
             <div className="fmt-map">
               <label className="fmt-map-row">
                 <span className="fmt-map-label">
-                  <span className="fmt-map-name">Records</span>
-                  <span className="fmt-map-hint">Where readings sit; empty = whole payload</span>
+                  <span className="fmt-map-name">Readings</span>
+                  <span className="fmt-map-hint">Where the list of readings sits; empty = the whole message</span>
                 </span>
-                {pathInput("records", "Records path", draft.records, (v) => set("records", v), "readings · racks[*].cards[*]")}
+                {pathInput("records", "Readings path", draft.records, (v) => set("records", v), "readings · racks[*].cards[*]")}
               </label>
               {FORMAT_FIELD_KEYS.map((k) => (
                 <label key={k} className="fmt-map-row">
@@ -310,7 +310,7 @@ export function FormatEditor({ format, initial, gateways, onClose, onDuplicate }
 
           <FieldSection title="Time and defaults">
             <FieldGrid>
-              <Field label="Timestamp format" wide>
+              <Field label="Time format" wide>
                 {(id, d) => (
                   <Select
                     id={id}
@@ -323,7 +323,7 @@ export function FormatEditor({ format, initial, gateways, onClose, onDuplicate }
                 )}
               </Field>
               {(["rack", "card", "channel"] as const).map((k) => (
-                <Field key={k} label={`Default ${k}`} hint="When neither payload nor topic gives it">
+                <Field key={k} label={`Default ${k}`} hint="Used when neither the message nor its channel gives it">
                   {(id, d) => (
                     <input
                       id={id}
@@ -342,14 +342,14 @@ export function FormatEditor({ format, initial, gateways, onClose, onDuplicate }
 
           {format && (
             <p className="ast-caption">
-              {gateways.length === 0 ? "No gateway uses this format." : `Used by ${gateways.join(", ")}.`}
+              {gateways.length === 0 ? "No data collector uses this format." : `Used by ${gateways.join(", ")}.`}
             </p>
           )}
           {!readOnly && problems.length > 0 && (tried || dirty) && <FormNote tone="bad">{problems.join(" ")}</FormNote>}
         </div>
 
         <div className="fmt-side ast-card">
-          <FormatPreview format={previewFormat} pickLabel={readOnly ? null : target === "records" ? "Records" : FIELD_META[target].label} onPick={readOnly ? null : onPick} />
+          <FormatPreview format={previewFormat} pickLabel={readOnly ? null : target === "records" ? "Readings" : FIELD_META[target].label} onPick={readOnly ? null : onPick} />
         </div>
       </div>
     </form>

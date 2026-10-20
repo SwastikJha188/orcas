@@ -7,11 +7,13 @@ export interface PlantRecord {
   code: string;
   name: string;
   shortName: string;
-  region: string;
-  location: string;
-  coordinates: string;
+  region: string | null;
+  location: string | null;
+  coordinates: string | null;
   timeZone: string;
-  status: "Operational" | "Advisory" | "Standby" | "Maintenance";
+  status: "Operational" | "Alert" | "Standby" | "Maintenance";
+  /** Machine plant-wide features follow (Copilot, ops loop, AI engine); null when the plant has none. */
+  primaryMachineId: string | null;
   managerUserId: string | null;
   managerName: string | null;
   managerEmail: string | null;
@@ -22,7 +24,10 @@ export interface PlantRecord {
   operationalCount: number;
   advisoryCount: number;
   standbyCount: number;
-  averageHealth: number;
+  /** Machines with no evaluation yet (no readings). */
+  unevaluatedCount: number;
+  /** Mean Machine Health Index of the evaluated machines; null when none is evaluated. */
+  averageHealth: number | null;
   areaCount: number;
   userCount: number;
   createdAt: string;
@@ -53,58 +58,57 @@ export async function listPlants(userId?: string | null): Promise<PlantRecord[]>
     }
   }
 
-  const res = filterByUser
-    ? await query(
-        `SELECT p.*,
-                mgr.full_name AS manager_name,
-                mgr.email AS manager_email,
-                COUNT(DISTINCT m.id) AS machine_count,
-                COUNT(DISTINCT m.id) FILTER (WHERE m.status = 'Operational') AS operational_count,
-                COUNT(DISTINCT m.id) FILTER (WHERE m.status = 'Advisory') AS advisory_count,
-                COUNT(DISTINCT m.id) FILTER (WHERE m.status IN ('Standby', 'Maintenance')) AS standby_count,
-                COALESCE(ROUND(AVG(m.health)), 100) AS average_health,
-                COUNT(DISTINCT hn_area.id) AS area_count,
-                COUNT(DISTINCT upa_all.user_id) AS user_count
-           FROM plants p
-           JOIN user_plant_access upa_filter ON upa_filter.plant_id = p.id AND upa_filter.user_id = $1
-           LEFT JOIN users mgr ON mgr.id = p.manager_user_id
-           LEFT JOIN machines m ON m.plant_id = p.id
-           LEFT JOIN hierarchy_nodes hn_area ON hn_area.plant_id = p.id AND hn_area.type = 'area'
-           LEFT JOIN user_plant_access upa_all ON upa_all.plant_id = p.id
-          GROUP BY p.id, mgr.full_name, mgr.email
-          ORDER BY p.sort_order ASC, p.created_at ASC, p.name ASC`,
-        [userId],
-      )
-    : await query(
-        `SELECT p.*,
-                mgr.full_name AS manager_name,
-                mgr.email AS manager_email,
-                COUNT(DISTINCT m.id) AS machine_count,
-                COUNT(DISTINCT m.id) FILTER (WHERE m.status = 'Operational') AS operational_count,
-                COUNT(DISTINCT m.id) FILTER (WHERE m.status = 'Advisory') AS advisory_count,
-                COUNT(DISTINCT m.id) FILTER (WHERE m.status IN ('Standby', 'Maintenance')) AS standby_count,
-                COALESCE(ROUND(AVG(m.health)), 100) AS average_health,
-                COUNT(DISTINCT hn_area.id) AS area_count,
-                COUNT(DISTINCT upa_all.user_id) AS user_count
-           FROM plants p
-           LEFT JOIN users mgr ON mgr.id = p.manager_user_id
-           LEFT JOIN machines m ON m.plant_id = p.id
-           LEFT JOIN hierarchy_nodes hn_area ON hn_area.plant_id = p.id AND hn_area.type = 'area'
-           LEFT JOIN user_plant_access upa_all ON upa_all.plant_id = p.id
-          GROUP BY p.id, mgr.full_name, mgr.email
-          ORDER BY p.sort_order ASC, p.created_at ASC, p.name ASC`,
-      );
+  // Machine condition is the latest evaluated health score under each machine's health-model bands.
+  const res = await query(
+    `WITH latest AS (
+       SELECT DISTINCT ON (machine_id) machine_id, score FROM machine_health_scores
+        WHERE scored_at > NOW() - interval '1 day' ORDER BY machine_id, scored_at DESC
+     ), mstate AS (
+       SELECT m.id, m.plant_id, m.service_state, l.score,
+              CASE WHEN l.score IS NULL THEN NULL
+                   WHEN l.score < b.critical THEN 'Critical'
+                   WHEN l.score < b.advisory THEN 'Alert'
+                   ELSE 'Normal' END AS condition
+         FROM machines m
+         LEFT JOIN latest l ON l.machine_id = m.id
+         LEFT JOIN LATERAL (
+           SELECT MAX(value) FILTER (WHERE key = 'band_critical') AS critical, MAX(value) FILTER (WHERE key = 'band_advisory') AS advisory
+             FROM health_model_parameters WHERE model_id = m.health_model_id
+         ) b ON TRUE
+     )
+     SELECT p.*,
+            mgr.full_name AS manager_name,
+            mgr.email AS manager_email,
+            COUNT(DISTINCT ms.id) AS machine_count,
+            COUNT(DISTINCT ms.id) FILTER (WHERE ms.service_state = 'Operational' AND ms.condition = 'Normal') AS operational_count,
+            COUNT(DISTINCT ms.id) FILTER (WHERE ms.service_state = 'Operational' AND ms.condition IN ('Alert', 'Critical')) AS advisory_count,
+            COUNT(DISTINCT ms.id) FILTER (WHERE ms.service_state IN ('Standby', 'Maintenance')) AS standby_count,
+            COUNT(DISTINCT ms.id) FILTER (WHERE ms.service_state = 'Operational' AND ms.condition IS NULL) AS unevaluated_count,
+            ROUND(AVG(ms.score)::numeric, 1) AS average_health,
+            COUNT(DISTINCT hn_area.id) AS area_count,
+            COUNT(DISTINCT upa_all.user_id) AS user_count
+       FROM plants p
+       LEFT JOIN users mgr ON mgr.id = p.manager_user_id
+       LEFT JOIN mstate ms ON ms.plant_id = p.id
+       LEFT JOIN hierarchy_nodes hn_area ON hn_area.plant_id = p.id AND hn_area.type = 'area'
+       LEFT JOIN user_plant_access upa_all ON upa_all.plant_id = p.id
+      WHERE NOT $1::boolean OR EXISTS (SELECT 1 FROM user_plant_access f WHERE f.plant_id = p.id AND f.user_id = $2)
+      GROUP BY p.id, mgr.full_name, mgr.email
+      ORDER BY p.sort_order ASC, p.created_at ASC, p.name ASC`,
+    [filterByUser, userId ?? null],
+  );
 
   return res.rows.map((r) => ({
     id: String(r.id),
     code: String(r.code),
     name: String(r.name),
     shortName: String(r.short_name ?? r.name),
-    region: String(r.region),
-    location: String(r.location),
-    coordinates: String(r.coordinates),
-    timeZone: String(r.time_zone ?? "Africa/Lusaka"),
-    status: (r.status as PlantRecord["status"]) ?? "Operational",
+    region: r.region ? String(r.region) : null,
+    location: r.location ? String(r.location) : null,
+    coordinates: r.coordinates ? String(r.coordinates) : null,
+    timeZone: String(r.time_zone),
+    status: r.status as PlantRecord["status"],
+    primaryMachineId: r.primary_machine_id ? String(r.primary_machine_id) : null,
     managerUserId: r.manager_user_id ? String(r.manager_user_id) : null,
     managerName: r.manager_name ? String(r.manager_name) : null,
     managerEmail: r.manager_email ? String(r.manager_email) : null,
@@ -115,7 +119,8 @@ export async function listPlants(userId?: string | null): Promise<PlantRecord[]>
     operationalCount: Number(r.operational_count ?? 0),
     advisoryCount: Number(r.advisory_count ?? 0),
     standbyCount: Number(r.standby_count ?? 0),
-    averageHealth: Number(r.average_health ?? 100),
+    unevaluatedCount: Number(r.unevaluated_count ?? 0),
+    averageHealth: r.average_health === null || r.average_health === undefined ? null : Number(r.average_health),
     areaCount: Number(r.area_count ?? 0),
     userCount: Number(r.user_count ?? 0),
     createdAt: new Date(r.created_at as string).toISOString(),
@@ -137,7 +142,7 @@ export interface CreatePlantInput {
   location?: string;
   coordinates?: string;
   timeZone?: string;
-  status?: "Operational" | "Advisory" | "Standby" | "Maintenance";
+  status?: "Operational" | "Alert" | "Standby" | "Maintenance";
   managerUserId?: string | null;
   description?: string | null;
   commissionedYear?: number | null;
@@ -145,19 +150,22 @@ export interface CreatePlantInput {
   initialAreas?: string[];
 }
 
-export async function createPlant(input: CreatePlantInput): Promise<PlantRecord> {
+/** `creatorId`: the account adding the plant; it becomes the plant's administrator. */
+export async function createPlant(input: CreatePlantInput, creatorId?: string): Promise<PlantRecord> {
   await ensureDatabaseSeeded();
   const code = (input.code ?? "").trim().toUpperCase();
   const name = (input.name ?? "").trim();
   if (!code) throw new PlantServiceError("Plant code is required (e.g. 'LUM-04').");
   if (!name) throw new PlantServiceError("Plant name is required.");
+  const timeZone = input.timeZone?.trim();
+  if (!timeZone) throw new PlantServiceError("Plant time zone is required (e.g. 'Africa/Lusaka').");
 
   const dupCode = await query("SELECT id FROM plants WHERE UPPER(code) = $1", [code]);
   if (dupCode.rows[0]) throw new PlantServiceError(`Plant code '${code}' is already in use.`, 409);
 
   const slug = code.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const id = input.id?.trim() || `plant-${slug || randomUUID().slice(0, 6)}`;
-  const status = ["Operational", "Advisory", "Standby", "Maintenance"].includes(input.status ?? "")
+  const status = ["Operational", "Alert", "Standby", "Maintenance"].includes(input.status ?? "")
     ? input.status!
     : "Operational";
   const shortName = input.shortName?.trim() || name.split("—")[0].trim().slice(0, 64);
@@ -177,17 +185,15 @@ export async function createPlant(input: CreatePlantInput): Promise<PlantRecord>
         code,
         name,
         shortName,
-        input.region?.trim() || "Central Copperbelt",
-        input.location?.trim() || "Zambia Industrial Complex",
-        input.coordinates?.trim() || "12°30'00\"S 28°00'00\"E",
-        input.timeZone?.trim() || "Africa/Lusaka",
+        input.region?.trim() || null,
+        input.location?.trim() || null,
+        input.coordinates?.trim() || null,
+        timeZone,
         status,
         input.managerUserId?.trim() || null,
         input.description?.trim() || null,
-        typeof input.commissionedYear === "number" && Number.isFinite(input.commissionedYear)
-          ? input.commissionedYear
-          : new Date().getFullYear(),
-        input.designCapacity?.trim() || "25,000 t/d Nominal",
+        typeof input.commissionedYear === "number" && Number.isFinite(input.commissionedYear) ? input.commissionedYear : null,
+        input.designCapacity?.trim() || null,
       ],
     );
 
@@ -199,35 +205,27 @@ export async function createPlant(input: CreatePlantInput): Promise<PlantRecord>
       [id, name],
     );
 
-    // Create initial area & equipment group nodes so machines can be immediately added
-    const areas =
-      Array.isArray(input.initialAreas) && input.initialAreas.length > 0
-        ? input.initialAreas.map((a) => a.trim()).filter(Boolean)
-        : ["Primary Process Line"];
-
+    // The areas the plant was registered with (none are invented).
+    const areas = Array.isArray(input.initialAreas) ? input.initialAreas.map((a) => a.trim()).filter(Boolean) : [];
     for (const [idx, areaName] of areas.entries()) {
-      const areaId = `area-${slug}-${idx + 1}`;
-      const grpId = `grp-${slug}-${idx + 1}`;
       await client.query(
         `INSERT INTO hierarchy_nodes (id, plant_id, parent_id, name, type, machine_id, sort_order)
          VALUES ($1, $2, $2, $3, 'area', NULL, $4)
          ON CONFLICT (id) DO NOTHING`,
-        [areaId, id, areaName, 910 + idx * 10],
-      );
-      await client.query(
-        `INSERT INTO hierarchy_nodes (id, plant_id, parent_id, name, type, machine_id, sort_order)
-         VALUES ($1, $2, $3, $4, 'group', NULL, $5)
-         ON CONFLICT (id) DO NOTHING`,
-        [grpId, id, areaId, `${areaName} Rotating Assets`, 911 + idx * 10],
+        [`area-${slug}-${idx + 1}`, id, areaName, idx + 1],
       );
     }
 
-    // Automatically grant admin access to all global admin users and the assigned manager
-    const adminUsers = await client.query<{ id: string }>(
-      `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.can_manage_plants = TRUE`,
-    );
-    const adminIds = new Set<string>(adminUsers.rows.map((r) => String(r.id)));
+    // Plants are separate workspaces: only the creator and the assigned manager get
+    // access (all-plants roles open every plant without a row).
+    const adminIds = new Set<string>();
+    if (creatorId) adminIds.add(creatorId);
     if (input.managerUserId?.trim()) adminIds.add(input.managerUserId.trim());
+    const allPlantsUsers = await client.query<{ id: string }>(
+      "SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.all_plants AND u.id = ANY($1::varchar[])",
+      [[...adminIds]],
+    );
+    for (const r of allPlantsUsers.rows) adminIds.delete(r.id);
 
     for (const uid of adminIds) {
       await client.query(
@@ -259,7 +257,7 @@ export interface UpdatePlantInput {
   location?: string;
   coordinates?: string;
   timeZone?: string;
-  status?: "Operational" | "Advisory" | "Standby" | "Maintenance";
+  status?: "Operational" | "Alert" | "Standby" | "Maintenance";
   managerUserId?: string | null;
   description?: string | null;
   commissionedYear?: number | null;
@@ -294,27 +292,28 @@ export async function updatePlant(id: string, patch: UpdatePlantInput): Promise<
       );
     }
     if (patch.shortName !== undefined) {
-      params.push(patch.shortName.trim() || "Industrial Plant");
+      params.push(patch.shortName.trim() || String(existing.rows[0].name));
       sets.push(`short_name = $${params.length}`);
     }
     if (patch.region !== undefined) {
-      params.push(patch.region.trim() || "Central");
+      params.push(patch.region.trim() || null);
       sets.push(`region = $${params.length}`);
     }
     if (patch.location !== undefined) {
-      params.push(patch.location.trim() || "Industrial Zone");
+      params.push(patch.location.trim() || null);
       sets.push(`location = $${params.length}`);
     }
     if (patch.coordinates !== undefined) {
-      params.push(patch.coordinates.trim() || "12°30'00\"S 28°00'00\"E");
+      params.push(patch.coordinates.trim() || null);
       sets.push(`coordinates = $${params.length}`);
     }
     if (patch.timeZone !== undefined) {
-      params.push(patch.timeZone.trim() || "Africa/Lusaka");
+      if (!patch.timeZone.trim()) throw new PlantServiceError("A plant needs a time zone.");
+      params.push(patch.timeZone.trim());
       sets.push(`time_zone = $${params.length}`);
     }
     if (patch.status !== undefined) {
-      if (!["Operational", "Advisory", "Standby", "Maintenance"].includes(patch.status)) {
+      if (!["Operational", "Alert", "Standby", "Maintenance"].includes(patch.status)) {
         throw new PlantServiceError("Invalid plant status.");
       }
       params.push(patch.status);
@@ -364,8 +363,9 @@ export async function updatePlant(id: string, patch: UpdatePlantInput): Promise<
 
 export async function deletePlant(id: string): Promise<void> {
   await ensureDatabaseSeeded();
-  if (id === "plant-kln") {
-    throw new PlantServiceError("Primary demonstration plant 'plant-kln' cannot be deleted.", 400);
+  const machines = await query<{ n: number }>("SELECT COUNT(*)::int AS n FROM machines WHERE plant_id = $1", [id]);
+  if ((machines.rows[0]?.n ?? 0) > 0) {
+    throw new PlantServiceError(`Plant '${id}' still has ${machines.rows[0].n} machine(s); remove them first.`, 409);
   }
   const res = await query("DELETE FROM plants WHERE id = $1", [id]);
   if ((res.rowCount ?? 0) === 0) {

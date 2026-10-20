@@ -6,6 +6,7 @@
 // intervals are the documents' starting values until the plant approves them.
 
 import type { ChecklistDocument, ChecklistKind, MaintenanceRecord } from "./maintenance";
+import type { MaintenanceTypeId } from "./maintenance-types";
 
 /* ------------------------------------------------------------ plans */
 
@@ -38,8 +39,12 @@ export interface PmsPlan {
   kind: ChecklistKind;
   unitCode: string;
   unitTitle: string;
-  /** Route id from src/lib/maintenance (shift, weekly, stop, oem …). */
+  /** Round id (maintenance_routes: shift, weekly, stop, oem …). */
   route: string;
+  /** The round's name, calendar interval (null when not calendar-driven) and trigger, from the database. */
+  routeLabel: string;
+  intervalHours: number | null;
+  trigger: string;
   /** Section numbers the tasks come from (e.g. ["7.2", "7.4"]). */
   sections: string[];
   tasks: PlanTask[];
@@ -121,6 +126,12 @@ export interface PmsWorkOrder {
   readiness: Readiness;
   /** Inspection result that opened it (checklist defect), if any. */
   source: { kind: "finding" | "inspection" | "manual"; ref: string | null };
+  /** Preventive (inspection defect), predictive (alarm check, sensor finding or planned job) or proactive (part life); null when raised another way. */
+  maintenanceType: MaintenanceTypeId | null;
+  /** Part whose service life the job renews (proactive). */
+  partId: string | null;
+  /** Alarm check that raised it. */
+  checkId: number | null;
 }
 
 /** GET /api/maintenance/pms/line → every machine with planned maintenance on the line. */

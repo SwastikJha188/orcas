@@ -4,6 +4,7 @@
  * values computed on the page are named in each section's Method disclosure.
  */
 import { parseDuration } from "@/lib/kiln-sim/engine";
+import type { HealthBands } from "@/lib/reference-data";
 import type {
   FailureRisk,
   ForecastHorizon,
@@ -15,10 +16,10 @@ import type {
 
 export type PrognosisData = InsightsResponse["prognosis"];
 
-export const SEVERITY_RANK: Record<Severity, number> = { Normal: 0, Advisory: 1, Critical: 2 };
+export const SEVERITY_RANK: Record<Severity, number> = { Normal: 0, Alert: 1, Critical: 2 };
 
 export const toneOf = (s: Severity): "good" | "warn" | "bad" =>
-  s === "Critical" ? "bad" : s === "Advisory" ? "warn" : "good";
+  s === "Critical" ? "bad" : s === "Alert" ? "warn" : "good";
 
 export function worst(list: Severity[]): Severity {
   return list.reduce<Severity>((acc, s) => (SEVERITY_RANK[s] > SEVERITY_RANK[acc] ? s : acc), "Normal");
@@ -53,14 +54,35 @@ export function fmt(v: number | null | undefined): string {
 /**
  * Confidence-scaled band around a RUL estimate (calc.): the estimate
  * ± (100 − confidence) %. Used to show how firm each estimate is.
+ * Null when there is no estimate (nothing trending toward a limit) or no fit quality.
  */
-export function rulBand(r: RulItem): { lo: number; hi: number } {
+export function rulBand(r: RulItem): { lo: number; hi: number } | null {
+  if (r.hours === null || r.confidence === null) return null;
   const spread = Math.max(0, Math.min(0.9, (100 - r.confidence) / 100));
   return { lo: Math.max(1, r.hours * (1 - spread)), hi: r.hours * (1 + spread) };
 }
 
+/** Horizons for the failure chance shown on Prognosis (RUL table) and Diagnosis (sensor table). Plant hours. */
+export const FAILURE_HORIZONS = [
+  { id: "7d", label: "7 d", hours: 168 },
+  { id: "1mo", label: "1 mo", hours: 720 },
+  { id: "6mo", label: "6 mo", hours: 4320 },
+] as const;
+
+/**
+ * Chance (%) the remaining life runs out within `hours` (calc.): the share of
+ * the RUL interval (`rulBand`) that ends by then — 0 before the interval
+ * starts, 100 once it has passed, linear in between. As firm as the RUL
+ * estimate it comes from; not a calibrated failure probability.
+ */
+export function failureChance(band: { lo: number; hi: number }, hours: number): number {
+  if (hours <= band.lo) return 0;
+  if (hours >= band.hi) return 100;
+  return Math.round(((hours - band.lo) / (band.hi - band.lo)) * 100);
+}
+
 export function firstIntervention(rul: RulItem[]): RulItem | null {
-  return rul.reduce<RulItem | null>((m, r) => (m === null || r.hours < m.hours ? r : m), null);
+  return rul.reduce<RulItem | null>((m, r) => (r.hours === null ? m : m === null || m.hours === null || r.hours < m.hours ? r : m), null);
 }
 
 /* ------------------------------------------------------------------ */
@@ -162,8 +184,10 @@ export function valueAt(points: Points, day: number, pick: (p: Points[number]) =
   return pick(pts[pts.length - 1]) ?? null;
 }
 
-export function healthStatus(pct: number): Severity {
-  return pct >= 85 ? "Normal" : pct >= 70 ? "Advisory" : "Critical";
+/** Health score → condition, on the machine's health-model bands (as Diagnosis); null while the bands are unknown. */
+export function healthStatus(pct: number, bands: HealthBands | null): Severity | null {
+  if (!bands) return null;
+  return pct >= bands.advisory ? "Normal" : pct >= bands.critical ? "Alert" : "Critical";
 }
 
 /* ------------------------------------------------------------------ */
@@ -178,13 +202,14 @@ export const isBaselineRisk = (r: FailureRisk) => r.id.startsWith("base-");
 /** How a RUL estimate was produced, so the page can say so. */
 export type RulBasis = "finding" | "health";
 
-export interface RulRow extends RulItem {
+export interface RulRow extends Omit<RulItem, "driver"> {
   basis: RulBasis;
   /** Failure mode setting the estimate (finding-based rows only). */
   driver: FailureRisk | null;
   /** Sensor tags behind the driver. */
   tags: string[];
-  band: { lo: number; hi: number };
+  /** RUL interval; null when there is no estimate (`dueLabel` says why). */
+  band: { lo: number; hi: number } | null;
 }
 
 const norm = (s: string) => s.toLowerCase();
@@ -196,7 +221,7 @@ export function tagsForRisk(r: FailureRisk, analysis: AnalysisPayload | null, da
   return data.locations[r.id] || data.forecasts[r.id] ? [r.id] : [];
 }
 
-const SEV_RANK: Record<Severity, number> = { Critical: 0, Advisory: 1, Normal: 2 };
+const SEV_RANK: Record<Severity, number> = { Critical: 0, Alert: 1, Normal: 2 };
 
 /** Non-baseline failure modes that cite this sub-assembly, most severe first. */
 export function findingsFor(name: string, data: PrognosisData): FailureRisk[] {
@@ -226,7 +251,7 @@ export function crossingsAt(data: PrognosisData, horizonId: string) {
   const h = data.horizons.find((x) => x.id === horizonId);
   if (!h) return [];
   return seriesFor(data, horizonId)
-    .filter((s) => s.confidence > 0)
+    .filter((s) => s.confidence !== null && s.confidence > 0)
     .map((s) => ({ s, c: limitCrossing(s, h) }))
     .filter((x): x is { s: ForecastSeries; c: LimitCrossing } => x.c !== null)
     .sort((a, b) => (a.c.level === "alarm" ? 0 : 1) - (b.c.level === "alarm" ? 0 : 1));
@@ -269,7 +294,7 @@ export function windowHours(label: string): number | null {
 }
 
 /** The failure mode that applies to a sub-assembly: its strongest finding, else its baseline exposure row. */
-export function riskForRow(r: RulItem, data: PrognosisData): FailureRisk | null {
+export function riskForRow(r: Pick<RulItem, "id" | "name">, data: PrognosisData): FailureRisk | null {
   return findingsFor(r.name, data)[0] ?? data.risks.find((x) => x.id === `base-${r.id}`) ?? null;
 }
 
@@ -279,8 +304,8 @@ export function riskForRow(r: RulItem, data: PrognosisData): FailureRisk | null 
  * precision an estimate supports: h below 2 d, days to 30 d, weeks beyond.
  * Other pages reuse `formatRulHours` / `formatRulInterval` / `formatRiskWindow`.
  */
-export function formatRulHours(hours: number): string {
-  if (!Number.isFinite(hours)) return "—";
+export function formatRulHours(hours: number | null): string {
+  if (hours === null || !Number.isFinite(hours)) return "—";
   if (hours < 48) return `${Math.max(1, Math.round(hours))} h`;
   if (hours <= 720) return `${Math.round(hours / 24)} d`;
   return `${Math.round(hours / 168)} wk`;
@@ -290,6 +315,7 @@ export function formatRulHours(hours: number): string {
 export function formatRulInterval(lo: number, hi: number): string {
   const a = formatRulHours(lo);
   const b = formatRulHours(hi);
+  if (a === b) return a;
   const [va, ua] = a.split(" ");
   const ub = b.split(" ")[1];
   return ua === ub ? `${va}–${b}` : `${a} – ${b}`;

@@ -54,7 +54,20 @@ interface IndustrialDataContextType {
   setActiveSubPage: (sub: AssetsSubPage) => void;
   selectedMachineId: string | null;
   setSelectedMachineId: (id: string | null) => void;
-  navigateToMachine: (machineId: string, subPage?: AssetsSubPage) => void;
+  /**
+   * Component (sub-assembly id) the machine pages are filtered to — Diagnosis,
+   * Prognosis, Analysis and Sensors. Tied to its machine: null on any other.
+   */
+  selectedComponentId: string | null;
+  /** Filter the machine's pages to one component (null: the whole machine). */
+  selectComponent: (machineId: string, subId: string | null) => void;
+  /**
+   * Opens a machine. Its Overview is the Operator view (Home); its Sensors, Diagnosis,
+   * Prognosis and Analysis pages (and their popups) are the Assets workspace.
+   * `workspace` forces one or the other.
+   */
+  navigateToMachine: (machineId: string, subPage?: AssetsSubPage, workspace?: "home" | "assets") => void;
+  /** Assets directory (no machine open). */
   navigateToAssetsHome: () => void;
   /** Plant chosen in the top bar's plant switcher (persisted). Null until hierarchy loads. */
   selectedPlantId: string | null;
@@ -105,7 +118,7 @@ interface IndustrialDataContextType {
   deleteMachine: (id: string) => Promise<void>;
 }
 
-const WORKSPACE_TABS: readonly WorkspaceTab[] = ["home", "assets", "maintenance", "devices", "assetiq", "configure"];
+const WORKSPACE_TABS: readonly WorkspaceTab[] = ["home", "assets", "problems", "maintenance", "devices", "assetiq", "configure", "simulation"];
 const SUB_PAGES: readonly AssetsSubPage[] = [
   "overview", "sensors", "diagnosis", "thermal", "prognosis",
   "analysis", "health", "trends", "rack", "simulation",
@@ -115,18 +128,18 @@ const isSubPage = (v: string | null): v is AssetsSubPage => SUB_PAGES.includes(v
 
 const PLANT_KEY = "ultron.home.plant";
 const USER_KEY = "ultron.auth.user";
-const DEFAULT_PLANT = "plant-kln";
 
 const SNAPSHOT_KEY = "ultron.data.snapshot.v2";
 
-type DataSnapshot = { hierarchy: HierarchyNode[]; machines: AssetMachine[]; plants?: PlantRecord[]; users?: UserRecord[] };
+type DataSnapshot = { userId?: string; hierarchy: HierarchyNode[]; machines: AssetMachine[]; plants?: PlantRecord[]; users?: UserRecord[] };
 
-function readSnapshot(): DataSnapshot | null {
+/** The last data this browser loaded for `userId` (another account's snapshot is never shown). */
+function readSnapshot(userId: string): DataSnapshot | null {
   try {
     const raw = localStorage.getItem(SNAPSHOT_KEY);
     if (!raw) return null;
     const snap = JSON.parse(raw) as Partial<DataSnapshot>;
-    return Array.isArray(snap.hierarchy) && Array.isArray(snap.machines) && snap.hierarchy.length > 0
+    return snap.userId === userId && Array.isArray(snap.hierarchy) && Array.isArray(snap.machines) && snap.hierarchy.length > 0
       ? { hierarchy: snap.hierarchy, machines: snap.machines, plants: snap.plants, users: snap.users }
       : null;
   } catch {
@@ -134,7 +147,7 @@ function readSnapshot(): DataSnapshot | null {
   }
 }
 
-function writeSnapshot(snap: { hierarchy: unknown[]; machines: unknown[]; plants?: unknown[]; users?: unknown[] }) {
+function writeSnapshot(snap: { userId: string; hierarchy: unknown[]; machines: unknown[]; plants?: unknown[]; users?: unknown[] }) {
   try {
     localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snap));
   } catch {
@@ -178,6 +191,9 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("home");
   const [activeSubPage, setActiveSubPage] = useState<AssetsSubPage>("overview");
   const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null);
+  const [selectedComponent, setSelectedComponent] = useState<{ machineId: string; subId: string } | null>(null);
+  const selectedComponentId = selectedComponent && selectedComponent.machineId === selectedMachineId ? selectedComponent.subId : null;
+  const selectComponent = useCallback((machineId: string, subId: string | null) => setSelectedComponent(subId ? { machineId, subId } : null), []);
   const [storedPlantId, setStoredPlantId] = useState<string | null>(null);
   // Signed-in account (server session cookie); replaces the old free user switch.
   const [auth, setAuth] = useState<{ status: "checking" | "signedIn" | "signedOut"; userId: string | null }>({ status: "checking", userId: null });
@@ -211,9 +227,14 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
       const tab = p.get("tab");
       const machine = p.get("machine");
       const page = p.get("page");
-      setActiveTab(isWorkspaceTab(tab) ? tab : machine ? "assets" : "home");
+      const subPage = isSubPage(page) ? page : "overview";
+      // Older links had no tab for machine pages: those pages live in Assets now.
+      const resolvedTab = isWorkspaceTab(tab) ? tab : machine && subPage !== "overview" ? "assets" : "home";
+      setActiveTab(resolvedTab);
       setSelectedMachineId(machine || null);
-      setActiveSubPage(isSubPage(page) ? page : "overview");
+      setActiveSubPage(subPage);
+      const component = p.get("component");
+      setSelectedComponent(machine && component ? { machineId: machine, subId: component } : null);
     };
     apply();
     setUrlReady(true);
@@ -224,14 +245,16 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
     if (!urlReady) return;
     const p = new URLSearchParams();
     if (activeTab !== "home") p.set("tab", activeTab);
-    if (activeTab === "assets" && selectedMachineId) {
+    if ((activeTab === "home" || activeTab === "assets") && selectedMachineId) {
       p.set("machine", selectedMachineId);
-      if (activeSubPage !== "overview") p.set("page", activeSubPage);
+      // Machine pages live in Assets; Home shows a machine's Overview only.
+      if (activeTab === "assets" && activeSubPage !== "overview") p.set("page", activeSubPage);
+      if (activeTab === "assets" && selectedComponentId) p.set("component", selectedComponentId);
     }
     const next = p.toString() ? `?${p}` : window.location.pathname;
     const current = window.location.search || window.location.pathname;
     if (next !== current) window.history.pushState(null, "", next);
-  }, [urlReady, activeTab, selectedMachineId, activeSubPage]);
+  }, [urlReady, activeTab, selectedMachineId, activeSubPage, selectedComponentId]);
 
   // Industrial data from PostgreSQL only. Everything starts empty; if a request
   // fails, the matching collection stays empty and `loadError` names it.
@@ -251,16 +274,19 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isDbLive, setIsDbLive] = useState<boolean>(false);
 
-  // Last good hierarchy + machines from this browser paint the shell instantly on
-  // reload; the PostgreSQL reads below replace them as soon as they land.
+  // Last good hierarchy + machines of this account from this browser paint the shell
+  // instantly on reload; the PostgreSQL reads below replace them as soon as they land.
+  const signedInUserId = auth.status === "signedIn" ? auth.userId : null;
+  const signedInRef = useRef(signedInUserId);
+  signedInRef.current = signedInUserId;
   useEffect(() => {
-    const snap = readSnapshot();
+    const snap = signedInUserId ? readSnapshot(signedInUserId) : null;
     if (!snap) return;
     setAllHierarchy((cur) => (cur.length === 0 ? snap.hierarchy : cur));
     setAllMachines((cur) => (cur.length === 0 ? snap.machines : cur));
     if (Array.isArray(snap.plants)) setPlants((cur) => (cur.length === 0 ? snap.plants! : cur));
     if (Array.isArray(snap.users)) setUsers((cur) => (cur.length === 0 ? snap.users! : cur));
-  }, []);
+  }, [signedInUserId]);
 
   // Fleet-wide reads load once; the selected machine's own reads load on their
   // own when the selection changes, so switching machines never refetches the fleet.
@@ -289,9 +315,11 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
     setMachineLoadError(failed.length > 0 ? failed.join(" · ") : null);
   }, []);
 
+  // Plant data is read per account: nothing loads before sign-in.
   useEffect(() => {
+    if (!signedInUserId) return;
     void loadMachineData(selectedMachineId);
-  }, [loadMachineData, selectedMachineId]);
+  }, [loadMachineData, selectedMachineId, signedInUserId]);
 
   const selectedRef = useRef(selectedMachineId);
   selectedRef.current = selectedMachineId;
@@ -315,8 +343,9 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
         if (Array.isArray(pl)) setPlants(pl as PlantRecord[]);
         if (Array.isArray(us)) setUsers(us as UserRecord[]);
         if (Array.isArray(rl)) setRoles(rl as RoleRecord[]);
-        if (Array.isArray(h) && Array.isArray(m)) {
+        if (Array.isArray(h) && Array.isArray(m) && signedInRef.current) {
           writeSnapshot({
+            userId: signedInRef.current,
             hierarchy: h,
             machines: m,
             plants: Array.isArray(pl) ? pl : undefined,
@@ -349,10 +378,10 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
     }
   }, [loadMachineData]);
 
-  // Initial load
+  // Load once the account is known, and again for each account that signs in.
   useEffect(() => {
-    refreshData();
-  }, [refreshData]);
+    if (signedInUserId) void refreshData();
+  }, [refreshData, signedInUserId]);
 
   // Reseed database trigger
   const reseedDatabase = useCallback(async (): Promise<boolean> => {
@@ -424,29 +453,38 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
     }
     setSelectedMachineId(null);
     setActiveTab("home");
+    // Drop the account's plant data so the next account never sees it.
+    setAllHierarchy([]);
+    setAllMachines([]);
+    setPlants([]);
+    setUsers([]);
+    setRacks([]);
+    setFleetStats(null);
+    setHasLoaded(false);
     setAuth({ status: "signedOut", userId: null });
   }, []);
 
   // Scope hierarchy and machines by the active user's accessible plants
   const accessiblePlantIds = useMemo(() => {
     // Plant access rows scope every account, admins included: each plant (the kiln-seal
-    // plant, the pyro line) is a separate workspace. No rows = unrestricted.
-    if (!currentUser || currentUser.plantAccess.length === 0) {
-      return null; // null = unrestricted across all plants
+    // plant, the pyro line) is a separate workspace. An all-plants role (the Oswar super
+    // administrator) opens every plant; any other account only the plants in its rows.
+    if (!currentUser || currentUser.role.allPlants) {
+      return null; // null = unrestricted across all plants (the API has already scoped the data)
     }
     return new Set(currentUser.plantAccess.map((a) => a.plantId));
   }, [currentUser]);
 
+  // The API already returns only the account's plants; this keeps the same rule on
+  // the client (an account without plants sees none, never every plant).
   const hierarchy = useMemo(() => {
     if (!accessiblePlantIds) return allHierarchy;
-    const filtered = allHierarchy.filter((p) => accessiblePlantIds.has(p.id));
-    return filtered.length > 0 ? filtered : allHierarchy;
+    return allHierarchy.filter((p) => accessiblePlantIds.has(p.id));
   }, [allHierarchy, accessiblePlantIds]);
 
   const machines = useMemo(() => {
     if (!accessiblePlantIds) return allMachines;
-    const filtered = allMachines.filter((m) => !m.plantId || accessiblePlantIds.has(m.plantId));
-    return filtered.length > 0 ? filtered : allMachines;
+    return allMachines.filter((m) => m.plantId && accessiblePlantIds.has(m.plantId));
   }, [allMachines, accessiblePlantIds]);
 
   // Acquisition racks of the visible machines only: each plant is a separate workspace.
@@ -456,16 +494,26 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
     return racks.filter((r) => !r.machineId || visible.has(r.machineId));
   }, [racks, machines, accessiblePlantIds]);
 
-  // Seamless cross-page machine navigator
-  const navigateToMachine = useCallback((machineId: string, subPage: AssetsSubPage = "overview") => {
-    setSelectedMachineId(machineId);
-    setActiveSubPage(subPage);
-    setActiveTab("assets");
-  }, []);
+  // Cross-page machine navigator: the Overview opens in the Operator view, every
+  // other machine page in Assets (see the type above).
+  const navigateToMachine = useCallback(
+    (machineId: string, subPage: AssetsSubPage = "overview", workspace?: "home" | "assets") => {
+      const target = workspace ?? (subPage === "overview" ? "home" : "assets");
+      setSelectedMachineId(machineId);
+      setActiveSubPage(subPage);
+      setActiveTab(target);
+      if (target === "home" && typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("ultron:open-operator-machine", { detail: { machineId, subPage } }),
+        );
+      }
+    },
+    [],
+  );
 
-  // Return to assets homepage
   const navigateToAssetsHome = useCallback(() => {
     setSelectedMachineId(null);
+    setActiveSubPage("overview");
     setActiveTab("assets");
   }, []);
 
@@ -475,7 +523,6 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
     const has = (id: string | null | undefined) => Boolean(id && hierarchy.some((p) => p.id === id));
     if (has(storedPlantId)) return storedPlantId;
     if (has(currentUser?.defaultPlantId)) return currentUser!.defaultPlantId!;
-    if (has(DEFAULT_PLANT)) return DEFAULT_PLANT;
     return hierarchy[0].id;
   }, [hierarchy, storedPlantId, currentUser]);
 
@@ -564,6 +611,8 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
       setActiveSubPage,
       selectedMachineId,
       setSelectedMachineId,
+      selectedComponentId,
+      selectComponent,
       navigateToMachine,
       navigateToAssetsHome,
       selectedPlantId,
@@ -606,6 +655,8 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
       activeTab,
       activeSubPage,
       selectedMachineId,
+      selectedComponentId,
+      selectComponent,
       navigateToMachine,
       navigateToAssetsHome,
       selectedPlantId,

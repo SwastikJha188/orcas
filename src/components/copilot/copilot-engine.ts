@@ -2,12 +2,14 @@
  * ULTRON Copilot intent engine.
  *
  * A deterministic intent router plus templated answer generator over the LIVE
- * frame of the active plant's primary machine (KLN-01 on the kiln-seal plant,
- * PYR-KLN-01 on the pyro line). The machine is described by `frame.defs`
+ * frame of the active plant's primary machine (from the database). The
+ * machine is described by `frame.defs`
  * (signals, sub-assemblies, systems, rules); a question that names another
  * machine of the plant is answered from that machine's frame. No network, no
  * LLM: every number in an answer is read from the running plant (signals,
- * reference model residuals, rule states, forecasts).
+ * reference model residuals, rule states, forecasts). Alarms and findings come
+ * from the database: the server evaluation's findings and the machine's event
+ * record (`AskContext.record`), never from the browser engine's rule states.
  * Pure TypeScript, no React, so it can be unit-tested headlessly.
  */
 import { ACTION } from "@/components/ui/status";
@@ -16,12 +18,13 @@ import { formatDuration, type LiveSignal, type RuleState, type SimFrame } from "
 import { buildLiveInsights } from "@/lib/kiln-sim/live-insights";
 import type { PlantDefs } from "@/lib/plant-defs";
 import { isConditionRule } from "@/lib/plant-defs";
+import type { FindingDto, MachineEventDto } from "@/types/monitoring";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
 /* ------------------------------------------------------------------ */
 
-export type Sev = "Normal" | "Advisory" | "Critical";
+export type Sev = "Normal" | "Alert" | "Critical";
 
 export type IntentId = "status" | "why" | "predict" | "recommend" | "rule" | "compare" | "sensor-fault" | "health" | "help" | "fallback";
 
@@ -71,11 +74,19 @@ export interface CopilotAnswer {
   machineId?: string;
 }
 
+/** A machine's monitoring record from the database: open findings and recent events (newest first). */
+export interface MachineRecord {
+  findings: FindingDto[];
+  events: MachineEventDto[] | null;
+}
+
 /** A live machine of the active plant. */
 export interface PlantMachine {
   id: string;
   name: string;
   frame: SimFrame;
+  /** Its record from the database; null while it loads or when it failed. */
+  record?: MachineRecord | null;
 }
 
 export interface AskContext {
@@ -86,16 +97,18 @@ export interface AskContext {
   machineId?: string;
   /** Every live machine of the active plant, the primary included. A question naming another machine is answered from its frame. */
   plant?: PlantMachine[];
+  /** The machine's findings and events from the database; null while they load. Alarms are read only from here. */
+  record?: MachineRecord | null;
 }
 
 /* ------------------------------------------------------------------ */
 /* Frame helpers                                                       */
 /* ------------------------------------------------------------------ */
 
-const sevRank: Record<Sev, number> = { Normal: 0, Advisory: 1, Critical: 2 };
+const sevRank: Record<Sev, number> = { Normal: 0, Alert: 1, Critical: 2 };
 const subName = (f: SimFrame, id: string) => f.defs.subassemblies.find((s) => s.id === id)?.name ?? id;
 /** Machine label used in answers. */
-const labelOf = (ctx: AskContext) => ctx.machineId ?? (ctx.frame.defs.plant === "kiln" ? "KLN-01" : "this machine");
+const labelOf = (ctx: AskContext) => ctx.machineId ?? "this machine";
 /** Sub-assemblies that describe process context, not machine condition. */
 const isProcessSub = (f: SimFrame, id: string) => {
   const sa = f.defs.subassemblies.find((s) => s.id === id);
@@ -112,7 +125,6 @@ export function pendingRules(f: SimFrame): RuleState[] {
 }
 const isDq = (r: RuleState) => !isConditionRule(r);
 
-const fmtZ = (z: number | null) => (z === null ? "—" : `${z >= 0 ? "+" : "−"}${Math.abs(z).toFixed(1)}σ`);
 const defOf = (f: SimFrame, tag: string) => f.defs.signalByTag[tag];
 const isAnalog = (f: SimFrame, tag: string) => f.defs.signalByTag[tag]?.type === "analog";
 const unitOf = (f: SimFrame, tag: string) => {
@@ -130,10 +142,25 @@ const lc = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 /** Lower-cases a name's first letter unless it starts an acronym ("ID fan" stays). */
 const lcName = (s: string) => (/^[A-Z][a-z]/.test(s) ? lc(s) : s);
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+/** A sentence used inside another one: first letter lower-cased, closing full stop dropped. */
+const clause = (s: string) => lc(s.trim()).replace(/[.!?]+$/, "");
+/** Plain headline of a rule (docs/plain-language.md); the engineering name when none is written. */
+const ruleTitle = (r: { name: string; plainTitle?: string }) => r.plainTitle || r.name;
+/** What to do about a rule, in plain words when written. */
+const ruleTodo = (r: { action: string; plainTodo?: string }) => r.plainTodo || r.action;
+/** A rule's live state in words. */
+const stateWords = (status: string) => (status === "ACTIVE" ? "active" : status === "PENDING" ? "still being confirmed" : "quiet");
+/** How far a reading sits from its expected value, in words. */
+const zWords = (z: number | null) => {
+  if (z === null) return "no expected value to compare with";
+  const a = Math.abs(z);
+  const dir = z >= 0 ? "above" : "below";
+  return a < 2 ? "close to its expected value" : a < 3 ? `somewhat ${dir} its expected value` : `far ${dir} its expected value`;
+};
 /** Live set-point for set-point-judged tags (`defs.setpoints`). */
 const setpointOf = (f: SimFrame, tag: string) => {
   const key = f.defs.setpoints[tag];
-  return key ? f.drivers[key] : undefined;
+  return key ? f.drivers[key] * (f.defs.setpointShare?.[tag] ?? 1) : undefined;
 };
 /**
  * limitPair only reads `limit` (and the set-point), which kiln and pyro definitions share.
@@ -196,7 +223,7 @@ function actionsFor(rule: RuleState | null, opts: { diagnosis?: boolean } = {}):
   const out: ActionSpec[] = [];
   if (rule && rule.status !== "QUIET") {
     const dq = isDq(rule);
-    if (!dq) out.push({ kind: "mitigate", label: "Mitigate", ruleId: rule.id });
+    if (!dq) out.push({ kind: "mitigate", label: "Apply short-term fix", ruleId: rule.id });
     out.push({ kind: "repair", label: dq ? "Schedule calibration" : "Schedule repair", ruleId: rule.id });
     out.push({ kind: "workorder", label: ACTION.workOrder, ruleId: rule.id });
   }
@@ -205,37 +232,80 @@ function actionsFor(rule: RuleState | null, opts: { diagnosis?: boolean } = {}):
 }
 
 /* ------------------------------------------------------------------ */
+/* Database record (findings, events)                                  */
+/* ------------------------------------------------------------------ */
+
+/** Open findings, most severe first, then newest. */
+function openFindings(rec: MachineRecord): FindingDto[] {
+  return rec.findings
+    .filter((x) => x.clearedAt === null)
+    .sort((a, b) => sevRank[b.severity] - sevRank[a.severity] || Date.parse(b.openedAt) - Date.parse(a.openedAt));
+}
+const findingId = (x: FindingDto) => x.rule?.code ?? x.measurement?.tag ?? null;
+const findingLabel = (x: FindingDto) => {
+  const id = findingId(x);
+  if (x.rule?.plainTitle) return x.rule.plainTitle;
+  const name = x.rule?.name ?? x.measurement?.name ?? x.typeName;
+  return id ? `${id} ${name}` : name;
+};
+const sentence = (t: string) => (/[.!?]$/.test(t.trim()) ? t.trim() : `${t.trim()}.`);
+const causeWords = (x: FindingDto) => x.causeStatus.replace("_", " ");
+/** Live tags that carry a finding's evidence: the fired rule's inputs, or its measurement. */
+function findingTags(f: SimFrame, x: FindingDto): string[] {
+  const code = x.rule?.code;
+  const r = code ? f.rules.find((y) => y.id === code) : undefined;
+  if (r?.tags.length) return r.tags;
+  if (x.measurement) return [x.measurement.tag];
+  return code ? (f.defs.ruleById[code]?.inputs ?? []) : [];
+}
+const ruleOfFinding = (f: SimFrame, x: FindingDto | undefined) => (x?.rule ? (f.rules.find((r) => r.id === x.rule!.code) ?? null) : null);
+
+/* ------------------------------------------------------------------ */
 /* Entity resolution (fuzzy)                                           */
 /* ------------------------------------------------------------------ */
 
-const STOP = new Set(["the", "a", "an", "of", "is", "are", "in", "on", "at", "to", "for", "and", "or", "my", "kiln", "kln", "01", "sensor", "temperature", "temp", "what", "why", "how", "will", "when", "high", "low", "abnormal"]);
+const STOP = new Set(["the", "a", "an", "of", "is", "are", "in", "on", "at", "to", "for", "and", "or", "my", "sensor", "temperature", "temp", "what", "why", "how", "will", "when", "high", "low", "abnormal"]);
 
-/** Hand-written synonyms for the kiln-seal machine, on top of the names in its definitions. */
-const KILN_ALIASES: { sub: Record<string, string[]>; system: Record<string, string[]> } = {
-  sub: {
-    "main-motor": ["main motor", "motor", "winding", "drive motor", "kiln motor"],
-    gearbox: ["gearbox", "gear box", "reducer", "gear unit"],
-    "pinion-gear": ["pinion", "girth gear", "girth", "gear mesh", "pinion gear"],
-    lubrication: ["lubrication", "lube", "oil system", "oil circuit", "oil cooler", "gearbox oil", "oil"],
-    "auxiliary-drive": ["auxiliary drive", "aux drive", "auxiliary", "barring", "inching"],
-    "station-1": ["station 1", "station one", "pier 1", "support 1"],
-    "station-2": ["station 2", "station two", "pier 2", "support 2"],
-    "station-3": ["station 3", "station three", "pier 3", "support 3"],
-    thrust: ["thrust", "hydraulic thrust", "axial", "lvdt", "axial position"],
-    "shell-refractory": ["shell", "refractory", "hot spot", "hotspot", "scanner", "coating", "ring build"],
-    "inlet-seal": ["inlet seal", "kiln inlet seal", "false air", "inlet"],
-    "outlet-seal": ["outlet seal", "outlet", "hood seal", "seal overlap", "overlap"],
-    "kiln-inlet": ["kiln inlet gas", "gas analyser", "analyser", "o2", "co "],
-    "feed-fuel": ["feed", "fuel", "feed and fuel", "throughput"],
-    "burner-hood": ["burner", "hood", "hood pressure"],
-  },
-  system: {
-    "DRV-KLN-01": ["drive train", "drivetrain", "drive system", "drive"],
-    "SUP-KLN-01": ["support", "supports", "support and thrust", "rollers", "roller"],
-    "SHL-KLN-01": ["shell", "seals", "shell and seals"],
-    "PRC-KLN-01": ["process", "process context"],
-  },
-};
+/**
+ * Plain-English synonyms for sub-assembly / system names, matched against the
+ * names in the machine's definitions (never against ids). A synonym only
+ * applies when exactly one sub-assembly (or system) of the machine claims it.
+ */
+const NAME_SYNONYMS: Array<[RegExp, string[]]> = [
+  [/\bmotor\b/i, ["motor", "drive motor", "winding"]],
+  [/\bgearbox\b/i, ["gear box", "reducer", "gear unit"]],
+  [/\bpinion\b|\bgirth\b/i, ["pinion", "girth", "gear mesh"]],
+  [/\blubricat/i, ["lube", "oil system", "oil circuit", "oil cooler", "oil"]],
+  [/\bauxiliary\b/i, ["aux drive", "auxiliary", "barring", "inching"]],
+  [/\bthrust\b/i, ["hydraulic thrust", "axial", "axial position", "lvdt"]],
+  [/\bshell\b|\brefractory\b/i, ["hot spot", "hotspot", "scanner", "coating", "ring build"]],
+  [/\binlet seal\b/i, ["false air", "inlet"]],
+  [/\boutlet seal\b/i, ["outlet", "hood seal", "seal overlap", "overlap"]],
+  [/\bfeed\b/i, ["throughput"]],
+  [/^drive\b/i, ["drivetrain", "drive system", "drive"]],
+  [/\bsupports?\b/i, ["supports", "rollers", "roller"]],
+];
+
+const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
+
+/** Synonyms a name earns: the table above plus "station 1" → "station one", "pier 1", "support 1". */
+function nameSynonyms(name: string): string[] {
+  const out = NAME_SYNONYMS.filter(([re]) => re.test(name)).flatMap(([, syn]) => syn);
+  const station = name.match(/\bstation\s+(\d)\b/i);
+  if (station) {
+    const n = station[1];
+    out.push(`station ${NUMBER_WORDS[+n]}`, `pier ${n}`, `support ${n}`);
+  }
+  return out;
+}
+
+/** Synonyms per entity id, keeping only those exactly one entity of the list claims. */
+function uniqueSynonyms(items: Array<{ id: string; name: string }>): Record<string, string[]> {
+  const claimed = new Map<string, number>();
+  const per = items.map((it) => [it.id, [...new Set(nameSynonyms(it.name))]] as const);
+  for (const [, syn] of per) for (const a of syn) claimed.set(a, (claimed.get(a) ?? 0) + 1);
+  return Object.fromEntries(per.map(([id, syn]) => [id, syn.filter((a) => claimed.get(a) === 1)]));
+}
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9.\- ]+/g, " ").replace(/\s+/g, " ").trim();
 const words = (s: string) => norm(s).split(" ").filter((w) => w && !STOP.has(w));
@@ -265,29 +335,16 @@ export interface Entities {
   systems: string[];
 }
 
-/** Kiln-seal keyword → tag shortcuts (the kiln's curated list). */
-const KILN_KEYWORD_TAGS: Array<[RegExp, string[]]> = [
-  [/\bvibration|\bvib\b/, ["VIB-KLN-01", "VIB-KLN-02", "VIB-KLN-03", "VIB-KLN-04"]],
-  [/\bwinding\b/, ["TMP-KLN-21"]],
-  [/\btorque\b|\bmotor current\b|\bcurrent\b/, ["ELE-KLN-01"]],
-  [/\boil temp/, ["TMP-KLN-15"]],
-  [/\boil pressure\b/, ["PRS-KLN-04"]],
-  [/\bo2\b|\boxygen\b/, ["GAS-KLN-01"]],
-  [/\bshell temp|\bhot ?spot\b/, ["CAL-KLN-03"]],
-  [/\bfalse air\b/, ["CAL-KLN-06"]],
-  [/\bseal overlap\b|\boverlap\b/, ["CAL-KLN-07"]],
-  [/\bhood pressure\b/, ["PRS-KLN-03"]],
-  [/\blvdt\b|\baxial\b/, ["POS-KLN-01"]],
-  [/\bkiln speed\b|\brpm\b/, ["SPD-KLN-01"]],
-];
-
-/** Keyword → signal-name patterns for every other machine; the tags come from its definitions. */
+/** Keyword → signal-name patterns; the tags come from the machine's definitions (names as stored in the database). */
 const NAME_KEYWORDS: Array<[RegExp, RegExp]> = [
   [/\bvibration|\bvib\b/, /vibration/i],
   [/\bwinding\b/, /winding/i],
   [/\btorque\b|\bmotor current\b|\bcurrent\b|\bmotor power\b/, /current|torque|power/i],
   [/\boil temp/, /oil temperature/i],
   [/\boil pressure\b/, /oil.*pressure/i],
+  [/\bhood pressure\b/, /hood pressure/i],
+  [/\bseal overlap\b|\boverlap\b/, /overlap/i],
+  [/\blvdt\b|\baxial\b/, /axial/i],
   [/\bo2\b|\boxygen\b/, /O₂/],
   [/\bco\b|\bcarbon monoxide\b/, /\bCO\b/],
   [/\bshell temp|\bhot ?spot\b/, /shell.*temperature/i],
@@ -325,8 +382,6 @@ interface Vocab {
   sub: Record<string, string[]>;
   system: Record<string, string[]>;
   keywords: Array<[RegExp, string[]]>;
-  /** Keyword hits ordered by how abnormal they are (generated lists) instead of the curated order. */
-  rankKeywordHits: boolean;
 }
 
 const VOCAB = new WeakMap<PlantDefs, Vocab>();
@@ -342,20 +397,19 @@ function vocabOf(defs: PlantDefs): Vocab {
     if (c) codes.set(c, (codes.get(c) ?? 0) + 1);
   }
   const code = [...codes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
-  const kiln = defs.plant === "kiln";
-  const merge = (curated: string[] | undefined, generated: string[]) => [...new Set([...(curated ?? []), ...generated])];
-  const sub = Object.fromEntries(defs.subassemblies.map((sa) => [sa.id, merge(kiln ? KILN_ALIASES.sub[sa.id] : undefined, nameAliases(sa.name))]));
-  const system = Object.fromEntries(defs.systems.map((sy) => [sy.id, merge(kiln ? KILN_ALIASES.system[sy.id] : undefined, nameAliases(sy.name))]));
-  const keywords: Array<[RegExp, string[]]> = kiln
-    ? KILN_KEYWORD_TAGS
-    : NAME_KEYWORDS.map(([q, name]) => [q, defs.signals.filter((d) => name.test(d.name)).map((d) => d.tag)] as [RegExp, string[]]).filter(([, tags]) => tags.length > 0);
-  const v: Vocab = { code, prefixes, sub, system, keywords, rankKeywordHits: !kiln };
+  const merge = (synonyms: string[] | undefined, generated: string[]) => [...new Set([...generated, ...(synonyms ?? [])])];
+  const subSyn = uniqueSynonyms(defs.subassemblies);
+  const sysSyn = uniqueSynonyms(defs.systems);
+  const sub = Object.fromEntries(defs.subassemblies.map((sa) => [sa.id, merge(subSyn[sa.id], nameAliases(sa.name))]));
+  const system = Object.fromEntries(defs.systems.map((sy) => [sy.id, merge(sysSyn[sy.id], nameAliases(sy.name))]));
+  const keywords: Array<[RegExp, string[]]> = NAME_KEYWORDS.map(([q, name]) => [q, defs.signals.filter((d) => name.test(d.name)).map((d) => d.tag)] as [RegExp, string[]]).filter(([, tags]) => tags.length > 0);
+  const v: Vocab = { code, prefixes, sub, system, keywords };
   VOCAB.set(defs, v);
   return v;
 }
 
 /** Entities plus how strongly the question points at this machine (used to pick a machine of the plant). */
-function resolveScored(q: string, f: SimFrame): { ent: Entities; score: number } {
+function resolveScored(q: string, f: SimFrame, self?: { id?: string; name?: string }): { ent: Entities; score: number } {
   const defs = f.defs;
   const v = vocabOf(defs);
   const n = norm(q);
@@ -407,13 +461,11 @@ function resolveScored(q: string, f: SimFrame): { ent: Entities; score: number }
     for (const [re, tags] of v.keywords) {
       if (re.test(n)) {
         let scoped = ent.subs.length ? tags.filter((t) => defs.signalByTag[t]?.sub === ent.subs[0]) : tags;
-        if (v.rankKeywordHits) {
-          const rank = (t: string) => {
-            const s = f.signals[t];
-            return s ? sevRank[s.status] * 100 + Math.abs(s.z ?? 0) : -1;
-          };
-          scoped = [...scoped].sort((a, b) => rank(b) - rank(a));
-        }
+        const rank = (t: string) => {
+          const s = f.signals[t];
+          return s ? sevRank[s.status] * 100 + Math.abs(s.z ?? 0) : -1;
+        };
+        scoped = [...scoped].sort((a, b) => rank(b) - rank(a));
         for (const t of scoped) if (!ent.tags.includes(t)) ent.tags.push(t);
         if (scoped.length) score += 4;
         break;
@@ -422,8 +474,9 @@ function resolveScored(q: string, f: SimFrame): { ent: Entities; score: number }
   }
   // Sensor-name fuzzy match (token overlap with typo tolerance), only when still nothing found.
   if (!ent.tags.length) {
-    const code = v.code.toLowerCase();
-    const qw = words(n).filter((w) => w !== code);
+    // Words that only name the machine itself ("kiln", "kln", "01") say nothing about the sensor.
+    const selfWords = new Set([v.code, self?.id ?? "", self?.name ?? ""].flatMap((x) => norm(x).split(/[\s-]+/)).filter(Boolean));
+    const qw = words(n).filter((w) => !selfWords.has(w));
     if (qw.length) {
       let best: { tag: string; score: number } | null = null;
       for (const d of defs.signals) {
@@ -445,8 +498,8 @@ function resolveScored(q: string, f: SimFrame): { ent: Entities; score: number }
   return { ent, score };
 }
 
-export function resolveEntities(q: string, f: SimFrame): Entities {
-  return resolveScored(q, f).ent;
+export function resolveEntities(q: string, f: SimFrame, self?: { id?: string; name?: string }): Entities {
+  return resolveScored(q, f, self).ent;
 }
 
 /* ------------------------------------------------------------------ */
@@ -486,41 +539,91 @@ function ttlText(r: RuleState): string | null {
 }
 
 function overallLine(f: SimFrame): string {
-  return `Overall machine health is **${f.overall}%** (${f.condition.toLowerCase()}).`;
+  return `Overall health score: **${f.overall}%** (${f.condition}).`;
+}
+
+/** Status from the database record: open findings and the latest alarm event. */
+function recordStatus(ctx: AskContext, rec: MachineRecord | null): CopilotAnswer {
+  const f = ctx.frame;
+  const total = Object.keys(f.signals).length;
+  const p = f.pipeline;
+  const steps = ["Reading open problems", "Reading the machine's event log", `Reading ${total} live readings`];
+  const lines: string[] = [];
+  const evTags: string[] = [];
+  if (!rec) {
+    lines.push(`The list of problems for ${labelOf(ctx)} has not loaded yet, so I cannot say which alarms are open. ${overallLine(f)}`);
+    return { intent: "status", steps, text: lines.join("\n\n"), evidence: [], spark: null, confidence: null, actions: [{ kind: "diagnosis", label: "Open Diagnosis", ruleId: null }], focus: null };
+  }
+  const open = openFindings(rec);
+  if (!open.length) {
+    lines.push(`${labelOf(ctx)} has **no open problems**. ${overallLine(f)}`);
+    lines.push(`• ${p.valid} of ${total} readings are valid; ${p.beyond3s} are far from their expected value.`);
+    const top = mostAbnormal(f);
+    if (top) {
+      lines.push(`Furthest from its expected value: ${nm(f, top.tag)} at ${val(f, top.tag)}, still within its normal variation.`);
+      evTags.push(top.tag);
+    }
+  } else {
+    const crit = open.filter((x) => x.severity === "Critical").length;
+    const unacked = open.filter((x) => !x.acknowledgement).length;
+    lines.push(
+      `${labelOf(ctx)} needs attention: **${plural(open.length, "open problem")}** (${crit} critical, ${open.length - crit} less urgent, ${unacked} not yet seen by anyone). ${overallLine(f)}`,
+    );
+    for (const x of open.slice(0, 3)) {
+      lines.push(`• **${findingLabel(x)}** · ${x.severity}. ${sentence(x.rule?.plainWhat || x.summary)}${x.acknowledgement ? "" : " Not yet seen."}`);
+      evTags.push(...findingTags(f, x));
+    }
+    if (open[0].rule?.action) lines.push(`What to do first: ${clause(open[0].rule.plainTodo || open[0].rule.action)}.`);
+  }
+  const lastAlarm = rec.events?.find((e) => e.category === "alarm") ?? null;
+  if (lastAlarm) lines.push(`Most recent alarm: ${lastAlarm.title}${lastAlarm.description ? ` · ${sentence(lastAlarm.description)}` : "."}`);
+  const leadRule = ruleOfFinding(f, open[0]);
+  const ev = chips(f, evTags, 4);
+  return {
+    intent: "status",
+    steps,
+    text: lines.join("\n\n"),
+    evidence: ev,
+    spark: ev[0] ? spark(f, ev[0].tag) : null,
+    confidence: null,
+    actions: leadRule ? actionsFor(leadRule, { diagnosis: true }) : [{ kind: "diagnosis", label: "Open Diagnosis", ruleId: open[0]?.rule?.code ?? null }],
+    focus: open[0]?.rule ? { kind: "rule", id: open[0].rule.code } : open[0]?.measurement ? { kind: "tag", id: open[0].measurement.tag } : null,
+  };
 }
 
 function answerStatus(ctx: AskContext): CopilotAnswer {
+  if (ctx.record !== undefined) return recordStatus(ctx, ctx.record);
   const f = ctx.frame;
   const act = activeRules(f);
   const pend = pendingRules(f);
   const total = Object.keys(f.signals).length;
   const p = f.pipeline;
   const worstSubs = Object.values(f.subs).filter((s) => !isProcessSub(f, s.id)).sort((a, b) => a.health - b.health).slice(0, 3);
-  const steps = [`Reading ${total} signals`, "Comparing to reference model", `Evaluating ${f.rules.length}-rule library`, "Ranking findings"];
+  const steps = [`Reading ${total} live readings`, "Comparing each with its expected value", `Running ${f.rules.length} automatic checks`, "Ranking the problems found"];
   const lines: string[] = [];
   const evTags: string[] = [];
   if (!act.length) {
-    lines.push(`${labelOf(ctx)} is running **normally**. ${overallLine(f)} No rule is active.`);
-    lines.push(`• ${p.valid} of ${total} signals valid, ${p.beyond3s} beyond 3σ of the reference model, ${plural(p.pending, "rule")} pending.`);
-    lines.push(`• Lowest sub-assembly health: ${worstSubs.map((s) => `${subName(f, s.id)} ${s.health}%`).join(", ")}.`);
+    lines.push(`${labelOf(ctx)} is running **normally**. ${overallLine(f)} No automatic check has found a problem.`);
+    lines.push(`• ${p.valid} of ${total} readings are valid; ${p.beyond3s} are far from their expected value; ${plural(p.pending, "check")} still confirming a possible problem.`);
+    lines.push(`• Lowest part health scores: ${worstSubs.map((s) => `${subName(f, s.id)} ${s.health}%`).join(", ")}.`);
     if (pend.length) {
-      lines.push(`Early warning: **${pend[0].id} ${pend[0].name}** is building (${pend[0].persistence}/${pend[0].threshold} samples). ${pend[0].evidence}.`);
+      lines.push(`Early warning: **${ruleTitle(pend[0])}** may be starting (seen in ${pend[0].persistence} of ${pend[0].threshold} checks so far). ${pend[0].evidence}.`);
       evTags.push(...pend[0].tags);
     } else {
       const top = mostAbnormal(f);
       if (top) {
-        lines.push(`Largest deviation from model: ${nm(f, top.tag)} at ${val(f, top.tag)} (${fmtZ(top.z)}), within normal scatter.`);
+        lines.push(`Furthest from its expected value: ${nm(f, top.tag)} at ${val(f, top.tag)}, still within its normal variation.`);
         evTags.push(top.tag);
       }
     }
   } else {
     const lead = act[0];
-    lines.push(`${labelOf(ctx)} needs attention. ${overallLine(f)} **${plural(act.length, "active finding")}**${pend.length ? `, ${pend.length} pending` : ""}.`);
+    lines.push(`${labelOf(ctx)} needs attention. ${overallLine(f)} **${plural(act.length, "active problem")}**${pend.length ? `, ${pend.length} more still being confirmed` : ""}.`);
     for (const r of act.slice(0, 3)) {
-      lines.push(`• **${r.id} ${r.name}** · ${r.severity} · ${r.confidence}% confidence. ${r.evidence}${ttlText(r) ? `. Time to limit ${ttlText(r)}` : ""}.`);
+      lines.push(`• **${ruleTitle(r)}** · ${r.severity} · ${r.confidence}% sure. ${sentence(r.plainWhat || r.evidence)}${ttlText(r) ? ` Reaches its limit in ${ttlText(r)}.` : ""}`);
       evTags.push(...r.tags);
     }
-    lines.push(`Most affected: ${worstSubs.map((s) => `${subName(f, s.id)} ${s.health}%`).join(", ")}. Lead action: ${lc(lead.action)}.`);
+    lines.push(`Most affected parts: ${worstSubs.map((s) => `${subName(f, s.id)} ${s.health}%`).join(", ")}. What to do first: ${clause(ruleTodo(lead))}.`);
   }
   const lead = act[0] ?? null;
   const ev = chips(f, evTags, 4);
@@ -573,12 +676,12 @@ function nothingWrong(f: SimFrame): CopilotAnswer {
   const top = mostAbnormal(f);
   const pend = pendingRules(f);
   const p = f.pipeline;
-  const lines = [`Nothing is wrong right now. ${overallLine(f)} No rule is active and ${p.beyond3s} of ${Object.keys(f.signals).length} signals sit beyond 3σ of the reference model.`];
-  if (top) lines.push(`The most deviating signal is ${nm(f, top.tag)} at ${val(f, top.tag)} (${fmtZ(top.z)}), which is normal scatter.`);
-  if (pend.length) lines.push(`Watch item: ${pend[0].id} ${pend[0].name} is pending (${pend[0].persistence}/${pend[0].threshold} samples).`);
+  const lines = [`Nothing is wrong right now. ${overallLine(f)} No automatic check has found a problem, and ${p.beyond3s} of ${Object.keys(f.signals).length} readings are far from their expected value.`];
+  if (top) lines.push(`The reading furthest from its expected value is ${nm(f, top.tag)} at ${val(f, top.tag)}, which is within its normal variation.`);
+  if (pend.length) lines.push(`Worth watching: ${ruleTitle(pend[0])} may be starting (seen in ${pend[0].persistence} of ${pend[0].threshold} checks so far).`);
   return {
     intent: "why",
-    steps: [`Reading ${f.defs.signals.length} signals`, "Comparing to reference model", `Checking ${f.defs.rules.length} rule states`],
+    steps: [`Reading ${f.defs.signals.length} live readings`, "Comparing each with its expected value", `Going through ${f.defs.rules.length} automatic checks`],
     text: lines.join("\n\n"),
     evidence: chips(f, top ? [top.tag] : [], 3),
     spark: top ? spark(f, top.tag) : null,
@@ -599,32 +702,32 @@ function answerWhy(ctx: AskContext, ent: Entities): CopilotAnswer {
   const abnormal = !!s && (s.status !== "Normal" || Math.abs(s.z ?? 0) >= 3);
   const noRuleAtAll = !act.length && !rs.length;
   if (noRuleAtAll && !abnormal && !ent.tags.length && !ent.subs.length && !ent.systems.length) return nothingWrong(f);
-  const steps = [`Reading ${def ? def.tag : `${f.defs.signals.length} signals`} and neighbours`, "Comparing to reference model", `Ranking ${Math.max(3, rs.length + 1)} candidate causes`, "Cross-checking rule evidence"];
+  const steps = [`Reading ${def ? def.name : `${f.defs.signals.length} live readings`} and the readings near it`, "Comparing with expected values", `Ranking ${Math.max(3, rs.length + 1)} possible causes`, "Cross-checking the evidence"];
   const lines: string[] = [];
   if (s && def) {
     const dir = (s.residual ?? 0) >= 0 ? "above" : "below";
     lines.push(
-      `**${def.name}** (${def.tag}) reads **${val(f, def.tag)}**` +
-        (s.model !== null && s.z !== null ? `, ${Math.abs(s.residual ?? 0).toFixed(def.decimals)} ${def.unit} ${dir} its model value of ${s.model.toFixed(def.decimals)} (${fmtZ(s.z)}).` : ".") +
+      `**${def.name}** reads **${val(f, def.tag)}**` +
+        (s.model !== null && s.z !== null ? `, ${Math.abs(s.residual ?? 0).toFixed(def.decimals)} ${def.unit} ${dir} its expected value of ${s.model.toFixed(def.decimals)} ${def.unit}.` : ".") +
         (s.status !== "Normal" ? ` It is past its ${s.status === "Critical" ? "alarm" : "warning"} limit.` : ""),
     );
   }
   if (!abnormal && !act.length) {
-    lines.push(`This is within normal scatter: nothing indicates a problem${t.sub ? ` on ${subName(f, t.sub)}` : ""}. Sub-assembly health is ${t.sub ? `${f.subs[t.sub]?.health ?? f.overall}%` : `${f.overall}% overall`}.`);
-    if (rs.length) lines.push(`Watch item: ${rs[0].id} ${rs[0].name} is ${rs[0].status.toLowerCase()} (${rs[0].persistence}/${rs[0].threshold} samples).`);
+    lines.push(`This is within its normal variation: nothing points to a problem${t.sub ? ` on ${subName(f, t.sub)}` : ""}. ${t.sub ? `Health score of this part: ${f.subs[t.sub]?.health ?? f.overall}%` : `Overall health score: ${f.overall}%`}.`);
+    if (rs.length) lines.push(`Worth watching: ${ruleTitle(rs[0])} is ${stateWords(rs[0].status)} (seen in ${rs[0].persistence} of ${rs[0].threshold} checks).`);
   } else {
     const lead = act[0] ?? rs[0];
     if (lead) {
-      lines.push(`Ranked candidate causes:`);
+      lines.push(`Possible causes, most likely first:`);
       lines.push(
         rs
           .slice(0, 3)
-          .map((r) => `• **${r.id} ${r.name}** (${r.status.toLowerCase()}, ${r.confidence}%): ${lc(r.cause)}.`)
+          .map((r) => `• **${ruleTitle(r)}** (${stateWords(r.status)}, ${r.confidence}% sure): ${r.plainWhat ? sentence(r.plainWhat) : `${clause(r.cause)}.`}`)
           .join("\n"),
       );
-      lines.push(`Most likely: **${lead.name}**. ${lead.evidence}. If it continues: ${lc(lead.consequence)}.`);
+      lines.push(`Most likely: **${ruleTitle(lead)}**. ${lead.evidence}. If it continues: ${clause(lead.consequence)}.${lead.plainTodo ? ` What to do: ${clause(lead.plainTodo)}.` : ""}`);
     } else {
-      lines.push(`No rule has matched yet, so this is an **unclassified deviation**. Neighbouring signals: ${neighbourText(f, t.tag!)}. Keep watching; ULTRON will raise a finding once the pattern persists.`);
+      lines.push(`No automatic check matches this yet, so the cause is **not known yet**. Nearby readings: ${neighbourText(f, t.tag!)}. Keep watching; ULTRON will raise a problem if the pattern continues.`);
     }
     const infl = influencers(f, t.tag);
     if (infl) lines.push(infl);
@@ -646,8 +749,8 @@ function answerWhy(ctx: AskContext, ent: Entities): CopilotAnswer {
 function neighbourText(f: SimFrame, tag: string): string {
   const def = defOf(f, tag);
   const pool = def ? f.defs.signals.filter((d) => d.sub === def.sub && d.tag !== tag && d.type === "analog" && f.signals[d.tag]).map((d) => d.tag) : [];
-  if (!pool.length) return "none on the same sub-assembly";
-  return pool.slice(0, 3).map((t) => `${t} ${fmtZ(f.signals[t].z)}`).join(", ");
+  if (!pool.length) return "none on the same part";
+  return pool.slice(0, 3).map((t) => `${nm(f, t)} (${zWords(f.signals[t].z)})`).join(", ");
 }
 
 function pearson(a: number[], b: number[]): number {
@@ -680,12 +783,12 @@ function influencers(f: SimFrame, tag: string | null): string | null {
   }
   out.sort((a, b) => Math.abs(b.r) - Math.abs(a.r));
   if (!out.length) return null;
-  return `Strongest co-movers over the last 2 h: ${out.slice(0, 3).map((o) => `${o.tag} (r = ${o.r.toFixed(2)})`).join(", ")}. Correlation points to where to look; it is not proof of physical cause.`;
+  return `Readings that moved with it over the last 2 hours: ${out.slice(0, 3).map((o) => `${nm(f, o.tag)} (${o.r >= 0 ? "same direction" : "opposite direction"}, link ${o.r.toFixed(2)} out of 1)`).join(", ")}. Moving together shows where to look; it does not prove the cause.`;
 }
 
 function answerPredict(ctx: AskContext, ent: Entities): CopilotAnswer {
   const f = ctx.frame;
-  const steps = ["Reading signal history", "Fitting 2 h trend with damping", "Projecting against warning and alarm limits", "Checking rule time-to-limit"];
+  const steps = ["Reading the recent history", "Fitting the trend of the last 2 hours", "Projecting against the warning and alarm limits", "Checking the time left before each limit"];
   const t = ent.tags.length || ent.subs.length || ent.systems.length || ctx.focus ? resolveTarget(ctx, ent) : null;
   const ins = buildLiveInsights(f, labelOf(ctx));
   const lines: string[] = [];
@@ -710,29 +813,30 @@ function answerPredict(ctx: AskContext, ent: Entities): CopilotAnswer {
   const trend = fc?.["24h"] && fc["24h"].trend !== "stable" ? (fc["24h"].trend as string) : flatSlope ? "flat" : (slope as number) > 0 ? "rising" : "falling";
   const calm = s.status === "Normal" && Math.abs(s.z ?? 0) < 2 && !lead;
   lines.push(
-    `**${def.name}** (${tag}) is ${trend === "flat" ? "stable" : trend} at **${val(f, tag!)}**` +
+    `**${def.name}** is ${trend === "flat" ? "steady" : trend} at **${val(f, tag!)}**` +
       (slope !== null && !flatSlope && (slope > 0) === (trend === "rising") ? ` (${slope >= 0 ? "+" : "−"}${Math.abs(slope).toFixed(def.decimals + 1)} ${def.unit}/h)` : "") +
       ".",
   );
   if (s.timeToLimit && s.timeToLimit !== "stable" && !calm) {
-    lines.push(`At the current slope it reaches its limit in **${s.timeToLimit}**.`);
+    lines.push(`At the current rate it reaches its limit in **${s.timeToLimit}**.`);
   } else if (lim && def.limit && def.limit.kind !== "setpoint") {
     const lo = def.limit.kind === "lo" || (isRelativeLimit(def.limit) && lim.alarm < lim.warn);
     const room = lo ? (s.value ?? 0) - lim.warn : lim.warn - (s.value ?? 0);
-    lines.push(trend === "flat" ? `No limit crossing is projected. Warning limit ${lim.warn}${def.unit ? ` ${def.unit}` : ""} leaves ${room.toFixed(def.decimals)} ${def.unit} of headroom.` : `It is not on course to cross its warning limit (${lim.warn} ${def.unit}) within the forecast horizon.`);
+    lines.push(trend === "flat" ? `It is not expected to reach a limit. Its warning limit is ${lim.warn}${def.unit ? ` ${def.unit}` : ""}, which leaves ${room.toFixed(def.decimals)} ${def.unit} of room.` : `It is not heading for its warning limit (${lim.warn} ${def.unit}) within the forecast period.`);
   }
   if (f6 && f24) {
-    lines.push(`Forecast: **${f6.predicted.toFixed(def.decimals)} ${def.unit}** in 6 h and **${f24.predicted.toFixed(def.decimals)} ${def.unit}** in 24 h (${f24.deltaPct >= 0 ? "+" : "−"}${Math.abs(f24.deltaPct).toFixed(1)}%).`);
+    lines.push(`Expected value: **${f6.predicted.toFixed(def.decimals)} ${def.unit}** in 6 hours and **${f24.predicted.toFixed(def.decimals)} ${def.unit}** in 24 hours (${f24.deltaPct >= 0 ? "+" : "−"}${Math.abs(f24.deltaPct).toFixed(1)}%).`);
   }
   if (lead) {
-    lines.push(`Linked finding: **${lead.id} ${lead.name}** (${lead.status.toLowerCase()}${ttlText(lead) ? `, time to limit ${ttlText(lead)}` : ""}). Consequence: ${lc(lead.consequence)}.`);
+    lines.push(`Related problem: **${ruleTitle(lead)}** (${stateWords(lead.status)}${ttlText(lead) ? `, reaches its limit in ${ttlText(lead)}` : ""}). If nobody acts: ${clause(lead.consequence)}.`);
   }
   if (!t && !lead) {
-    const rl0 = ins.prognosis.rul.slice().sort((a, b) => a.hours - b.hours)[0];
-    lines.push(`Plant-wide: no rule is active and nothing is projected to reach a limit within 24 h. Shortest remaining useful life is ${rl0 ? `${rl0.name}, about ${rl0.dueLabel}` : "long"}.`);
+    // Only components with an estimate (a measurement trending toward a limit) have a remaining life.
+    const rl0 = ins.prognosis.rul.flatMap((r) => (r.hours === null ? [] : [{ r, h: r.hours }])).sort((a, b) => a.h - b.h)[0]?.r;
+    lines.push(`Across the machine: no automatic check has found a problem and nothing is expected to reach a limit within 24 hours. ${rl0 ? `The part with the shortest expected remaining life is ${rl0.name}, about ${rl0.dueLabel}.` : "No reading is moving toward a limit, so no remaining life can be estimated."}`);
   } else if (!t) {
     const rl = ins.prognosis.rul.filter((r) => r.status !== "Normal").slice(0, 2);
-    if (rl.length) lines.push(rl.map((r) => `• ${r.name}: ~${r.dueLabel} remaining (${r.confidence}% confidence)`).join("\n"));
+    if (rl.length) lines.push(rl.map((r) => (r.hours === null ? `• ${r.name}: ${r.dueLabel}` : `• ${r.name}: about ${r.dueLabel} left${r.confidence !== null ? ` (${r.confidence}% sure)` : ""}`)).join("\n"));
   }
   return {
     intent: "predict",
@@ -748,7 +852,7 @@ function answerPredict(ctx: AskContext, ent: Entities): CopilotAnswer {
 
 function answerRecommend(ctx: AskContext, ent: Entities): CopilotAnswer {
   const f = ctx.frame;
-  const steps = ["Collecting active and pending findings", "Ranking by severity and time to limit", "Selecting prescriptive actions"];
+  const steps = ["Collecting active and possible problems", "Ranking by urgency and time left", "Choosing what to do"];
   let rs = activeRules(f);
   const t = ent.tags.length || ent.subs.length || ent.systems.length ? resolveTarget(ctx, ent) : null;
   if (t && (t.tag || t.sub)) {
@@ -757,21 +861,21 @@ function answerRecommend(ctx: AskContext, ent: Entities): CopilotAnswer {
   }
   if (!rs.length) {
     const pend = pendingRules(f);
-    const lines = [`No action is required. ${overallLine(f)} No rule is active.`];
-    if (pend.length) lines.push(`Keep an eye on **${pend[0].id} ${pend[0].name}** (${pend[0].persistence}/${pend[0].threshold} samples). If it confirms: ${lc(pend[0].action)}.`);
-    else lines.push(`Routine only: continue scheduled lubrication and walk-down inspections. Lowest sub-assembly health is ${Math.min(...Object.values(f.subs).filter((s) => !isProcessSub(f, s.id)).map((s) => s.health))}%.`);
+    const lines = [`Nothing needs to be done now. ${overallLine(f)} No automatic check has found a problem.`];
+    if (pend.length) lines.push(`Keep an eye on **${ruleTitle(pend[0])}** (seen in ${pend[0].persistence} of ${pend[0].threshold} checks so far). If it is confirmed: ${clause(ruleTodo(pend[0]))}.`);
+    else lines.push(`Only routine work is needed: keep up the planned lubrication and inspection rounds. The lowest part health score is ${Math.min(...Object.values(f.subs).filter((s) => !isProcessSub(f, s.id)).map((s) => s.health))}%.`);
     return { intent: "recommend", steps, text: lines.join("\n\n"), evidence: chips(f, pend[0]?.tags ?? [], 3), spark: pend[0] ? spark(f, pend[0].tags[0]) : null, confidence: 94, actions: [{ kind: "diagnosis", label: "Open Diagnosis", ruleId: null }], focus: pend[0] ? { kind: "rule", id: pend[0].id } : null };
   }
   const lead = rs[0];
-  const lines = [`Recommended order of work (${plural(rs.length, "finding")}):`];
+  const lines = [`Suggested order of work (${plural(rs.length, "problem")}):`];
   lines.push(
     rs
       .slice(0, 4)
-      .map((r) => `• **${r.priority} · ${r.id} ${r.name}**: ${lc(r.action)}${ttlText(r) ? ` (limit in ${ttlText(r)})` : ""}.`)
+      .map((r) => `• **Priority ${r.priority.replace(/^P/, "")} · ${ruleTitle(r)}**: ${clause(ruleTodo(r))}${ttlText(r) ? ` (reaches its limit in ${ttlText(r)})` : ""}.`)
       .join("\n"),
   );
-  lines.push(`Do first: ${lc(lead.action)}. Reason: ${lead.evidence}. Leaving it risks ${lc(lead.consequence)}.`);
-  if (isDq(lead)) lines.push("This is an instrument finding: machine health is unaffected, so it can wait for the next walk-down.");
+  lines.push(`Do first: ${clause(ruleTodo(lead))}. ${lead.plainWhat ? sentence(lead.plainWhat) : `Why: ${lead.evidence}. If nobody acts: ${clause(lead.consequence)}.`}`);
+  if (isDq(lead)) lines.push("This is a problem with a sensor, not with the machine itself, so it can wait for the next inspection round.");
   return {
     intent: "recommend",
     steps,
@@ -790,17 +894,25 @@ function answerRule(ctx: AskContext, ent: Entities): CopilotAnswer {
   const def = f.defs.ruleById[id];
   const r = f.rules.find((x) => x.id === id);
   if (!def || !r) return answerStatus(ctx);
-  const steps = [`Loading ${id} definition`, "Reading live inputs", "Checking persistence and hysteresis"];
-  const lines = [`**${id} · ${def.name}** (${def.category}). Logic: ${def.logic}.`];
+  const steps = [`Loading the check "${ruleTitle(def)}"`, "Reading its live inputs", "Checking how long the pattern has lasted"];
+  const lines = [`**${ruleTitle(def)}**${def.plainWhat ? `. ${def.plainWhat}` : ""}`, `Technical check: ${def.name} (${id}, ${def.category}). How it decides: ${def.logic}.`];
   if (r.status === "ACTIVE") {
-    lines.push(`State: **ACTIVE** (${r.severity}, ${r.confidence}% confidence${r.since !== null ? `, confirmed ${formatDuration(f.t - r.since)} ago` : ""}). ${r.evidence}.`);
+    lines.push(`Right now: **problem found** (${r.severity}, ${r.confidence}% sure${r.since !== null ? `, confirmed ${formatDuration(f.t - r.since)} ago` : ""}). ${r.evidence}.`);
   } else if (r.status === "PENDING") {
-    lines.push(`State: **PENDING**, ${r.persistence} of ${r.threshold} confirming samples. ${r.evidence}.`);
+    lines.push(`Right now: **possible problem, still being confirmed** (seen in ${r.persistence} of ${r.threshold} checks). ${r.evidence}.`);
   } else {
-    lines.push(`State: **QUIET**. Its inputs currently follow the model, so it is not firing.`);
+    lines.push(`Right now: **no problem**. Its inputs match their expected values.`);
   }
-  lines.push(`• Likely cause: ${lc(def.cause)}.\n• If ignored: ${lc(def.consequence)}.\n• Action: ${lc(def.action)}.`);
-  if (r.status !== "QUIET" && ttlText(r)) lines.push(`Time to limit: ${ttlText(r)}.`);
+  if (ctx.record) {
+    const rec = ctx.record.findings.find((x) => x.rule?.code === id && x.clearedAt === null);
+    lines.push(
+      rec
+        ? `Problem record: **open** (${rec.severity}), ${rec.acknowledgement ? "seen" : "not yet seen"}, cause: ${causeWords(rec)}.`
+        : "Problem record: no open problem for this check.",
+    );
+  }
+  lines.push(`• Likely cause: ${clause(def.cause)}.\n• If nobody acts: ${clause(def.consequence)}.\n• What to do: ${clause(ruleTodo(def))}.`);
+  if (r.status !== "QUIET" && ttlText(r)) lines.push(`Time until it reaches its limit: ${ttlText(r)}.`);
   const inputs = r.tags.length ? r.tags : def.inputs;
   return {
     intent: "rule",
@@ -816,7 +928,7 @@ function answerRule(ctx: AskContext, ent: Entities): CopilotAnswer {
 
 function answerCompare(ctx: AskContext, ent: Entities): CopilotAnswer {
   const f = ctx.frame;
-  const steps = ["Reading both histories", "Computing correlation over 2 h", "Comparing deviation from model"];
+  const steps = ["Reading both histories", "Checking how closely they moved together over 2 hours", "Comparing each with its expected value"];
   const tags = [...ent.tags];
   for (const sub of ent.subs) {
     if (tags.length >= 2) break;
@@ -842,21 +954,21 @@ function answerCompare(ctx: AskContext, ent: Entities): CopilotAnswer {
   const db = defOf(f, b);
   const lines: string[] = [];
   if (!da || !db || !f.signals[a] || !f.signals[b]) {
-    lines.push(`${!da || !f.signals[a] ? a : b} is not a live signal of ${labelOf(ctx)}.`);
+    lines.push(`${!da || !f.signals[a] ? a : b} is not a live reading on ${labelOf(ctx)}.`);
   } else if (da.type !== "analog" || db.type !== "analog") {
-    lines.push(`Correlation needs two analog signals; ${da.type !== "analog" ? a : b} is a state signal currently **${f.signals[da.type !== "analog" ? a : b].display}**.`);
+    lines.push(`I can only compare two measured values; ${da.type !== "analog" ? a : b} is an on/off reading, currently **${f.signals[da.type !== "analog" ? a : b].display}**.`);
   } else {
     const r = pearson((f.history[a] ?? []).slice(-120), (f.history[b] ?? []).slice(-120));
     const strength = Math.abs(r) > 0.8 ? "strongly" : Math.abs(r) > 0.5 ? "moderately" : "weakly";
-    lines.push(`Over the last 2 h **${da.name}** and **${db.name}** are ${strength} ${r >= 0 ? "positively" : "negatively"} correlated (r = ${r.toFixed(2)}).`);
-    lines.push(`• ${a}: ${val(f, a)} (${fmtZ(f.signals[a].z)} vs model)\n• ${b}: ${val(f, b)} (${fmtZ(f.signals[b].z)} vs model)`);
+    lines.push(`Over the last 2 hours **${da.name}** and **${db.name}** ${r >= 0 ? "rose and fell together" : "moved in opposite directions"}, ${strength} linked (link ${r.toFixed(2)} out of 1).`);
+    lines.push(`• ${da.name}: ${val(f, a)} (${zWords(f.signals[a].z)})\n• ${db.name}: ${val(f, b)} (${zWords(f.signals[b].z)})`);
     const za = Math.abs(f.signals[a].z ?? 0);
     const zb = Math.abs(f.signals[b].z ?? 0);
     const shared = f.rules.find((x) => x.status !== "QUIET" && x.tags.includes(a) && x.tags.includes(b));
-    if (shared) lines.push(`Both are evidence for **${shared.id} ${shared.name}**, so a common cause is likely.`);
-    else if (za >= 3 && zb < 2) lines.push(`Only ${a} is deviating, so the effect is local to that sensor's area rather than shared.`);
-    else if (zb >= 3 && za < 2) lines.push(`Only ${b} is deviating, so the effect is local to that sensor's area rather than shared.`);
-    else if (za < 2 && zb < 2) lines.push("Both follow their reference model; the relationship is normal process coupling.");
+    if (shared) lines.push(`Both point to **${ruleTitle(shared)}**, so they likely share a cause.`);
+    else if (za >= 3 && zb < 2) lines.push(`Only ${da.name} is away from its expected value, so the effect is local to that sensor's area, not shared.`);
+    else if (zb >= 3 && za < 2) lines.push(`Only ${db.name} is away from its expected value, so the effect is local to that sensor's area, not shared.`);
+    else if (za < 2 && zb < 2) lines.push("Both match their expected values; they move together the way the process normally does.");
   }
   return {
     intent: "compare",
@@ -872,7 +984,7 @@ function answerCompare(ctx: AskContext, ent: Entities): CopilotAnswer {
 
 function answerSensorFault(ctx: AskContext, ent: Entities): CopilotAnswer {
   const f = ctx.frame;
-  const steps = ["Reading validation flags", "Checking flat-line and range tests", "Comparing against redundant signals", "Reviewing R-DQ-01 / R-DQ-02"];
+  const steps = ["Reading the sensor quality flags", "Checking for stuck or out-of-range readings", "Comparing with sensors that measure the same thing", "Reviewing the sensor-quality checks"];
   const t = ent.tags.length || ent.subs.length || ctx.focus ? resolveTarget(ctx, ent) : null;
   const dq = f.rules.filter((r) => isDq(r) && r.status !== "QUIET");
   const bad = Object.values(f.signals).filter((s) => s.quality !== "Good");
@@ -887,24 +999,24 @@ function answerSensorFault(ctx: AskContext, ent: Entities): CopilotAnswer {
     const mine = dq.filter((r) => r.tags.includes(tagged));
     lead = mine[0] ?? null;
     if (s.quality !== "Good" || mine.length) {
-      lines.push(`**Yes, ${tagged} looks like a sensor problem.** Quality flag: **${s.quality}**${s.qualityNote ? ` (${s.qualityNote})` : ""}.`);
-      for (const r of mine) lines.push(`• ${r.id} ${r.name} is ${r.status.toLowerCase()}: ${r.evidence}.`);
-      lines.push(`The model is substituting witness estimates. Next: ${lc(lead ? lead.action : "walk down the instrument and its cabling")}.`);
+      lines.push(`**Yes, ${def.name} looks like a sensor problem.** Quality: **${s.quality}**${s.qualityNote ? ` (${s.qualityNote})` : ""}.`);
+      for (const r of mine) lines.push(`• ${ruleTitle(r)} is ${stateWords(r.status)}: ${r.evidence}.`);
+      lines.push(`ULTRON is using an estimate from related sensors in its place. Next: ${clause(lead ? ruleTodo(lead) : "send someone to check the sensor and its cabling")}.`);
     } else {
       const sameSub = f.defs.signals.filter((d) => d.sub === def.sub && d.tag !== tagged && d.type === "analog");
       const agree = sameSub.filter((d) => Math.abs(f.signals[d.tag]?.z ?? 0) >= 2.5);
-      lines.push(`**No sign of a sensor fault on ${tagged}.** Quality is **Good**, no flat-line, range or jump test has tripped, and no data-quality rule is active for it.`);
+      lines.push(`**No sign of a sensor fault on ${def.name}.** Quality is **Good**: the reading is not stuck, not out of range, has not jumped, and no sensor-quality check has flagged it.`);
       if (Math.abs(s.z ?? 0) >= 3) {
-        lines.push(agree.length ? `Its deviation (${fmtZ(s.z)}) is corroborated by ${agree.slice(0, 3).map((d) => d.tag).join(", ")}, so it is a **real process change**, not an instrument error.` : `Its deviation (${fmtZ(s.z)}) has no corroborating neighbour yet; keep watching for a drift or step pattern.`);
-      } else lines.push(`Reading ${val(f, tagged)} follows the model (${fmtZ(s.z)}).`);
+        lines.push(agree.length ? `It is ${zWords(s.z)}, and nearby sensors (${agree.slice(0, 3).map((d) => d.name).join(", ")}) show the same, so this is a **real change in the process**, not a sensor error.` : `It is ${zWords(s.z)}, but no nearby sensor shows the same yet; keep watching for a slow drift or a sudden step.`);
+      } else lines.push(`Its reading of ${val(f, tagged)} is ${zWords(s.z)}.`);
     }
   } else {
     if (!bad.length && !dq.length) {
-      lines.push(`**No sensor faults detected.** All ${Object.keys(f.signals).length} signals have **Good** quality; ${f.pipeline.held} held, ${f.pipeline.invalid} invalid, ${f.pipeline.suspect} suspect. R-DQ-01 and R-DQ-02 are quiet.`);
+      lines.push(`**No sensor faults found.** All ${Object.keys(f.signals).length} readings have **Good** quality (${f.pipeline.held} held at their last value, ${f.pipeline.invalid} invalid, ${f.pipeline.suspect} doubtful). The sensor-quality checks are quiet.`);
     } else {
-      lines.push(`**${plural(bad.length, "signal")} flagged by validation** (${f.pipeline.invalid} invalid, ${f.pipeline.suspect} suspect, ${f.pipeline.held} held).`);
-      lines.push(bad.slice(0, 5).map((s) => `• ${s.tag} ${nm(f, s.tag)}: ${s.quality}${s.qualityNote ? `, ${s.qualityNote}` : ""}`).join("\n"));
-      for (const r of dq.slice(0, 2)) lines.push(`${r.id} ${r.name} is ${r.status.toLowerCase()}. ${r.evidence}. Action: ${lc(r.action)}.`);
+      lines.push(`**${plural(bad.length, "reading")} flagged as unreliable** (${f.pipeline.invalid} invalid, ${f.pipeline.suspect} doubtful, ${f.pipeline.held} held at their last value).`);
+      lines.push(bad.slice(0, 5).map((s) => `• ${nm(f, s.tag)}: ${s.quality}${s.qualityNote ? `, ${s.qualityNote}` : ""}`).join("\n"));
+      for (const r of dq.slice(0, 2)) lines.push(`${ruleTitle(r)} is ${stateWords(r.status)}. ${r.evidence}. What to do: ${clause(ruleTodo(r))}.`);
       evTags = bad.map((s) => s.tag);
       lead = dq[0] ?? null;
     }
@@ -924,7 +1036,7 @@ function answerSensorFault(ctx: AskContext, ent: Entities): CopilotAnswer {
 
 function answerHealth(ctx: AskContext, ent: Entities): CopilotAnswer {
   const f = ctx.frame;
-  const steps = ["Reading sub-assembly signals", "Scoring against reference model", "Checking related rules"];
+  const steps = ["Reading the part's sensors", "Comparing with expected values", "Checking the related automatic checks"];
   const subId = ent.subs[0] ?? (ctx.focus?.kind === "sub" ? ctx.focus.id : null);
   const lines: string[] = [];
   let tags: string[] = [];
@@ -934,24 +1046,24 @@ function answerHealth(ctx: AskContext, ent: Entities): CopilotAnswer {
     const sys = f.defs.systems.find((x) => x.id === ent.systems[0])!;
     const cell = f.systems[sys.id];
     const subs = subsOfSystem(f, sys.id).map((id) => f.subs[id]).filter(Boolean).sort((a, b) => a.health - b.health);
-    lines.push(cell ? `**${sys.name}** health is **${cell.health}%** (${cell.status.toLowerCase()}).` : `**${sys.name}** is process context and carries no health score.`);
-    lines.push(subs.map((s) => `• ${subName(f, s.id)}: ${s.health}% ${s.status === "Normal" ? "" : `(${s.status.toLowerCase()})`}`).join("\n"));
+    lines.push(cell ? `**${sys.name}** health score: **${cell.health}%** (${cell.status}).` : `**${sys.name}** describes the process, not machine wear, so it has no health score.`);
+    lines.push(subs.map((s) => `• ${subName(f, s.id)}: ${s.health}% ${s.status === "Normal" ? "" : `(${s.status})`}`).join("\n"));
     const rs = f.rules.filter((r) => r.status !== "QUIET" && r.system === sys.id).sort((a, b) => sevRank[b.severity] - sevRank[a.severity]);
     lead = rs[0] ?? null;
     if (lead) {
-      lines.push(`Driving it: **${lead.id} ${lead.name}**. ${lead.evidence}.`);
+      lines.push(`Main reason: **${ruleTitle(lead)}**. ${lead.plainWhat ? sentence(lead.plainWhat) : `${lead.evidence}.`}`);
       tags = lead.tags;
-    } else lines.push("No finding is open on this system.");
+    } else lines.push("No problem is open on this system.");
     focus = lead ? { kind: "rule", id: lead.id } : null;
   } else if (subId && f.subs[subId]) {
     const cell = f.subs[subId];
     const sigs = f.defs.signals.filter((d) => d.sub === subId && d.type === "analog");
     const worst = sigs.map((d) => f.signals[d.tag]).filter(Boolean).sort((a, b) => Math.abs(b.z ?? 0) - Math.abs(a.z ?? 0));
-    lines.push(`**${subName(f, subId)}** health is **${cell.health}%** (${cell.status === "Normal" ? "normal" : cell.status.toLowerCase()}), from ${sigs.length} analog signals.`);
-    lines.push(worst.slice(0, 3).map((s) => `• ${s.tag} ${nm(f, s.tag)}: ${val(f, s.tag)} (${fmtZ(s.z)})`).join("\n"));
+    lines.push(`**${subName(f, subId)}** health score: **${cell.health}%** (${cell.status}), based on ${plural(sigs.length, "measured reading")}.`);
+    lines.push(worst.slice(0, 3).map((s) => `• ${nm(f, s.tag)}: ${val(f, s.tag)} (${zWords(s.z)})`).join("\n"));
     const rs = rulesFor(f, null, subId);
     lead = rs[0] ?? null;
-    lines.push(lead ? `Open finding: **${lead.id} ${lead.name}** (${lead.status.toLowerCase()}). ${lead.evidence}. Action: ${lc(lead.action)}.` : "No rule is open for this sub-assembly; every signal follows its model.");
+    lines.push(lead ? `Open problem: **${ruleTitle(lead)}** (${stateWords(lead.status)}). ${lead.evidence}. What to do: ${clause(ruleTodo(lead))}.` : "No automatic check has flagged this part; every reading matches its expected value.");
     tags = worst.slice(0, 3).map((s) => s.tag);
     focus = { kind: "sub", id: subId };
   } else if (ent.tags.length) {
@@ -969,36 +1081,24 @@ function answerHealth(ctx: AskContext, ent: Entities): CopilotAnswer {
   };
 }
 
-const helpIntro = (ctx: AskContext) => `I am the ULTRON Copilot for ${labelOf(ctx)}. I answer from the live plant, so every number is current. `;
+const helpIntro = (ctx: AskContext) => `I am AssetIQ, the assistant for ${labelOf(ctx)}. I answer from live plant data, so every number is current. `;
 
-/** Example questions built from the machine's definitions (the kiln keeps its curated set). */
+/** Example questions built from the machine's definitions. */
 function helpExamples(f: SimFrame): string {
-  if (f.defs.plant === "kiln") {
-    return (
-      "• **Status**: \"How is the plant?\" or \"Any early warnings?\"\n" +
-      "• **Why**: \"Why is gearbox vibration high?\" or \"Why is TMP-KLN-05 abnormal?\"\n" +
-      "• **Predict**: \"When will the winding temperature hit its limit?\"\n" +
-      "• **Recommend**: \"What should I do first?\"\n" +
-      "• **Explain a rule**: \"Explain R-DRV-08\"\n" +
-      "• **Compare**: \"Compare VIB-KLN-01 and VIB-KLN-02\"\n" +
-      "• **Sensor trust**: \"Is TMP-KLN-21 a sensor fault?\"\n" +
-      "• **Health**: \"How is the thrust system?\""
-    );
-  }
   const d = f.defs;
   const analog = d.signals.filter((s) => s.type === "analog" && f.signals[s.tag]);
   const limited = analog.find((s) => s.limit && s.limit.kind !== "setpoint") ?? analog[0];
   const rule = d.rules.find((r) => isConditionRule(r)) ?? d.rules[0];
   const [a, b] = comparePair(f);
   const sys = d.systems.find((s) => s.scored) ?? d.systems[0];
-  const lines = ["• **Status**: \"How is the plant?\" or \"Any early warnings?\""];
-  if (analog[0]) lines.push(`• **Why**: "Why is ${analog[0].tag} abnormal?"`);
-  if (limited) lines.push(`• **Predict**: "When will ${lcName(limited.name)} hit its limit?"`);
-  lines.push("• **Recommend**: \"What should I do first?\"");
-  if (rule) lines.push(`• **Explain a rule**: "Explain ${rule.id}"`);
-  if (a && b) lines.push(`• **Compare**: "Compare ${a} and ${b}"`);
-  if (analog[0]) lines.push(`• **Sensor trust**: "Is ${(limited ?? analog[0]).tag} a sensor fault?"`);
-  if (sys) lines.push(`• **Health**: "How is the ${lcName(sys.name)}?"`);
+  const lines = ["• **How things are**: \"How is the plant?\" or \"Any early warnings?\""];
+  if (analog[0]) lines.push(`• **Why something is off**: "Why is ${analog[0].tag} abnormal?"`);
+  if (limited) lines.push(`• **What comes next**: "When will ${lcName(limited.name)} hit its limit?"`);
+  lines.push("• **What to do**: \"What should I do first?\"");
+  if (rule) lines.push(`• **Explain an automatic check**: "Explain ${rule.id}"`);
+  if (a && b) lines.push(`• **Compare two readings**: "Compare ${a} and ${b}"`);
+  if (analog[0]) lines.push(`• **Can I trust a sensor**: "Is ${(limited ?? analog[0]).tag} a sensor fault?"`);
+  if (sys) lines.push(`• **Health of a part**: "How is the ${lcName(sys.name)}?"`);
   return lines.join("\n");
 }
 
@@ -1015,17 +1115,16 @@ function comparePair(f: SimFrame): string[] {
 }
 
 function compareHint(f: SimFrame): string {
-  if (f.defs.plant === "kiln") return `I need two sensors to compare. Try "Compare VIB-KLN-01 and TMP-KLN-21" or name two sub-assemblies such as "gearbox vs main motor".`;
   const [a, b] = comparePair(f);
   const subs = f.defs.subassemblies.filter((s) => !f.defs.processSystems.includes(s.system));
   const pair = a && b ? `Try "Compare ${a} and ${b}"` : "Name two sensors";
-  return `I need two sensors to compare. ${pair}${subs.length >= 2 ? ` or name two sub-assemblies such as "${lcName(subs[0].name)} vs ${lcName(subs[1].name)}"` : ""}.`;
+  return `I need two sensors to compare. ${pair}${subs.length >= 2 ? ` or name two parts such as "${lcName(subs[0].name)} vs ${lcName(subs[1].name)}"` : ""}.`;
 }
 
 function answerHelp(ctx: AskContext): CopilotAnswer {
   return {
     intent: "help",
-    steps: ["Loading capabilities"],
+    steps: ["Listing what I can answer"],
     text: `${helpIntro(ctx)}You can ask me:\n\n${helpExamples(ctx.frame)}`,
     evidence: [],
     spark: null,
@@ -1038,7 +1137,7 @@ function answerHelp(ctx: AskContext): CopilotAnswer {
 function answerFallback(ctx: AskContext): CopilotAnswer {
   const h = answerHelp(ctx);
   const intro = helpIntro(ctx);
-  return { ...h, intent: "fallback", text: `I could not map that to a plant question. ${overallLine(ctx.frame)}\n\n` + (h.text.startsWith(intro) ? h.text.slice(intro.length) : h.text) };
+  return { ...h, intent: "fallback", text: `I did not understand that question. ${overallLine(ctx.frame)}\n\n` + (h.text.startsWith(intro) ? h.text.slice(intro.length) : h.text) };
 }
 
 /* ------------------------------------------------------------------ */
@@ -1113,7 +1212,7 @@ function askPlant(question: string, context: AskContext, plant: PlantMachine[], 
   const primaryId = context.machineId ?? plant[0].id;
   const names = machineScores(question, plant);
   const scored = plant.map((m) => {
-    const r = resolveScored(question, m.frame);
+    const r = resolveScored(question, m.frame, m);
     return { m, ent: r.ent, score: r.score + (names.get(m.id) ?? 0) };
   });
   const primary = scored.find((x) => x.m.id === primaryId) ?? scored[0];
@@ -1123,7 +1222,8 @@ function askPlant(question: string, context: AskContext, plant: PlantMachine[], 
   const focusId = context.focus?.machineId ?? primaryId;
   if (pronoun && best === primary && primary.score === 0) best = scored.find((x) => x.m.id === focusId) ?? best;
   const m = best.m;
-  const ctx: AskContext = { frame: m.frame, machineId: m.id, focus: pronoun && focusId === m.id ? context.focus : null };
+  const record = m.record !== undefined ? m.record : m.id === primaryId ? context.record : undefined;
+  const ctx: AskContext = { frame: m.frame, machineId: m.id, focus: pronoun && focusId === m.id ? context.focus : null, record };
   let intent = classify(question, best.ent);
   // "the cooler" names a machine and nothing else (at most a sensor-name echo of the
   // machine name): answer with that machine's status.
@@ -1141,21 +1241,41 @@ export function ask(question: string, context: AskContext): CopilotAnswer {
   const pronoun = PRONOUN.test(norm(question));
   if (context.plant && context.plant.length > 1) return askPlant(question, context, context.plant, pronoun);
   const ctx: AskContext = pronoun ? context : { ...context, focus: null };
-  return answerFor(question, ctx, resolveEntities(question, context.frame));
+  const self = context.plant?.find((m) => m.id === context.machineId) ?? { id: context.machineId };
+  return answerFor(question, ctx, resolveEntities(question, context.frame, self));
 }
 
-/** Pre-written insight offered when a rule newly becomes ACTIVE. */
-export function proactiveInsight(rule: RuleState, ctx: AskContext): CopilotAnswer {
+/** Insight offered when the server evaluation opens a new finding. */
+export function findingInsight(x: FindingDto, ctx: AskContext): CopilotAnswer {
   const f = ctx.frame;
-  const a = answerRule({ ...ctx, focus: null }, { rules: [rule.id], tags: [], subs: [], systems: [] });
-  const lead = rule.tags.find((x) => isAnalog(f, x));
-  const intro = `**New finding: ${rule.id} ${rule.name}** (${rule.severity}). ${rule.evidence}.${ttlText(rule) ? ` Time to limit ${ttlText(rule)}.` : ""} ${overallLine(f)}`;
-  return { ...a, intent: "rule", steps: ["Rule newly confirmed", "Reading live evidence", "Preparing recommendation"], text: `${intro}\n\nLikely cause: ${lc(rule.cause)}. Recommended: ${lc(rule.action)}.`, spark: lead ? spark(f, lead) : null };
+  const code = x.rule?.code ?? null;
+  const def = code ? f.defs.ruleById[code] : undefined;
+  const rule = ruleOfFinding(f, x);
+  const tags = findingTags(f, x);
+  const lead = tags.find((t) => isAnalog(f, t));
+  const intro = `**New problem: ${findingLabel(x)}** (${x.severity}, ${lcName(x.typeName)}). ${sentence(x.rule?.plainWhat || x.summary)} ${overallLine(f)}`;
+  const next = x.rule?.plainTodo
+    ? `What to do: ${sentence(x.rule.plainTodo)}`
+    : [def?.cause ? `Likely cause: ${clause(def.cause)}.` : null, x.rule?.action ? `What to do: ${clause(x.rule.action)}.` : null].filter(Boolean).join(" ");
+  return {
+    intent: "rule",
+    steps: ["A problem was opened by the automatic checks", "Reading the live evidence", "Preparing what to do"],
+    text: next ? `${intro}\n\n${next}` : intro,
+    evidence: chips(f, tags, 5),
+    spark: lead ? spark(f, lead) : null,
+    confidence: null,
+    actions: rule ? actionsFor(rule, { diagnosis: true }) : [{ kind: "diagnosis", label: "Open Diagnosis", ruleId: code }],
+    focus: code ? { kind: "rule", id: code } : x.measurement ? { kind: "tag", id: x.measurement.tag } : null,
+    machineId: ctx.machineId,
+  };
 }
 
-/** Suggested prompts that follow the plant state. */
-export function suggestions(f: SimFrame, focus: Focus): string[] {
-  const act = activeRules(f);
+/** Suggested prompts that follow the plant state (open findings from the record when it is given). */
+export function suggestions(f: SimFrame, focus: Focus, record?: MachineRecord | null): string[] {
+  const act =
+    record === undefined
+      ? activeRules(f)
+      : (record ? openFindings(record) : []).map((x) => ruleOfFinding(f, x)).filter((r): r is RuleState => r !== null);
   const pend = pendingRules(f);
   const out: string[] = [];
   if (act.length) {

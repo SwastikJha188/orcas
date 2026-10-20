@@ -1,156 +1,132 @@
 /**
- * Sheet F-1 — FSL-01 · Feed silo — Silo and extraction gate.
+ * Sheet F-1 — FSL-01 · Feed silo — Silo bottom: six air slides and outlet gates.
  *
- * Composition of PDF page 3: the raw-meal feed silo on four steel legs (two
- * seen) with V-bracing, conical roof with handrail, radar level transmitter,
- * bin-vent filter and relief valve; shell cut-away showing the meal bed; caged
- * ladder on the left; aeration air header from sheet F-2 into the cone's
- * aeration ring and pads; extraction slide gate with actuator and limit-switch
- * cap; air slide out to the kiln feed bin (F-3).
+ * Panel "SILO BOTTOM: SIX AIR SLIDES AND OUTLET GATES" of the machine group
+ * images, page 1 (panel box 42, 91.5 → 547.5, 540 in page units). Left: the
+ * silo and the kiln feed bin in elevation (caged ladder, roof with handrail
+ * and radar, meal window, cone with the six slide streams to the gate row,
+ * collecting hopper, chute, bin on its braced legs). Right: plan view of the
+ * silo bottom with the six radial air slides, their outlet gates around the
+ * central collecting cone.
+ *
+ * Units: page units of the group-image page minus the panel origin.
  */
 import React from "react";
-import { Bolt, CornerBolts, GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
-import { AirSlide, Ladder, Pipe } from "../../drawings/fkp-parts";
+import { GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
+import { Ladder } from "../../drawings/fkp-parts";
 import type { LineSheetArt } from "../types";
-import { Arrow, BoltRow, Bracing, ButterflyValve, ConeRoof, InChevrons, Leg, RadarLevel, SlideGate, Vessel } from "./parts-f";
+import { ConeRoof, Leg, RadarLevel, Vessel } from "./parts-f";
+import { FlowArrow, MealDashes } from "./parts-f2";
 
-const W = 824;
-const H = 704;
+const W = 505.5;
+const H = 448.5;
+const GROUND = 413;
 
-const GROUND = 660;
-const SX0 = 218;
-const SX1 = 578;
-const SCX = 398;
-const TOP = 188;
-const RING = 424;
-const CONE_BOT = 570;
-const OUT_W = 44;
-const AIR_Y = 525;
-/** Left cone edge at height y. */
-const coneL = (y: number) => SX0 + 4 + ((SCX - OUT_W / 2 - SX0 - 4) * (y - RING - 9)) / (CONE_BOT - RING - 9);
+/** Plan view centre and radius of the silo bottom. */
+const PX = 336.5;
+const PY = 169.5;
 
-function Structure() {
+function Elevation() {
+  const gates = [88.5, 104.5, 120.5, 136.5, 152.5, 168.5];
   return (
     <g>
-      {/* caged access ladder up to the roof landing */}
-      <Ladder x={188} y1={143} y2={GROUND} w={12} cageFrom={420} side={-1} />
-      <rect x={184} y={168} width={40} height={4} rx={1} {...PAINT.raised} />
-      <line x1={184} x2={184} y1={168} y2={150} stroke={MX.edge} strokeWidth={1.1} />
-      <line x1={184} x2={204} y1={150} y2={150} stroke={MX.edge} strokeWidth={1.3} />
-      {/* legs and bracing behind the cone */}
-      <Leg x={240} y1={430} y2={GROUND} w={8} />
-      <Leg x={549} y1={430} y2={GROUND} w={8} />
-      <Bracing
-        lines={[
-          [248, 557, SCX, 652],
-          [549, 557, SCX, 652],
-          [248, 470, 549, 470],
-        ]}
-      />
-      {[248, 549].map((x) => (
-        <path key={x} d={x < SCX ? `M ${x} 434 h 10 L ${x} 452 Z` : `M ${x} 434 h -10 L ${x} 452 Z`} {...PAINT.raised} />
+      <Ladder x={47} y1={76} y2={GROUND} w={6} />
+      {/* silo legs and the bin legs with V-bracing */}
+      <Leg x={70} y1={181} y2={GROUND} w={5} />
+      <Leg x={182.5} y1={181} y2={GROUND} w={5} />
+      {[
+        [96, 340, 129, 404],
+        [162.5, 340, 129, 404],
+      ].map(([a, b, c, d]) => (
+        <line key={a} x1={a} y1={b} x2={c} y2={d} {...PAINT.hair} />
       ))}
-    </g>
-  );
-}
+      <Leg x={93.5} y1={333} y2={GROUND} w={5} />
+      <Leg x={160} y1={333} y2={GROUND} w={5} />
 
-function Silo() {
-  return (
-    <g>
-      {/* roof equipment behind the handrail line: bin-vent filter, relief valve */}
-      <rect x={268} y={138} width={34} height={36} rx={4} {...PAINT.body} />
-      {[146, 154, 162].map((y) => (
-        <line key={y} x1={272} x2={298} y1={y} y2={y} {...PAINT.hair} />
-      ))}
-      <rect x={264} y={133} width={42} height={6} rx={2} {...PAINT.raised} />
-      <rect x={276} y={124} width={18} height={10} rx={3} {...PAINT.raised} />
-      <rect x={512} y={160} width={14} height={14} rx={3} {...PAINT.body} />
-      <rect x={509} y={156} width={20} height={5} rx={2} {...PAINT.raised} />
-
-      <ConeRoof x0={SX0} x1={SX1} y={TOP} peak={156} rail={20} step={24} />
-      <RadarLevel x={SCX} roof={157} headY={121} />
-
-      <Vessel x0={SX0} x1={SX1} top={TOP} ring={RING} coneBot={CONE_BOT} outW={OUT_W} seams={[236, 284, 332, 380]} win={[272, 241, 252, 119]} level={290} flangeH={10} bolts={20} />
-
-      {/* shell manway, lower right */}
-      <rect x={532} y={382} width={30} height={32} rx={5} {...PAINT.raised} />
-      <rect x={537} y={387} width={20} height={22} rx={3} fill="none" stroke={MX.fine} strokeWidth={1} />
-      <CornerBolts x={532} y={382} w={30} h={32} inset={3.5} r={1.1} />
-      <rect x={526} y={392} width={6} height={12} rx={1.5} {...PAINT.shaft} />
-
-      {/* aeration ring main and fluidising pads on the cone */}
-      <rect x={coneL(AIR_Y) - 2} y={AIR_Y - 5} width={2 * (SCX - coneL(AIR_Y)) + 4} height={10} rx={4} {...PAINT.cylinder} />
-      {[0.25, 0.5, 0.75].map((f) => {
-        const x = coneL(AIR_Y) + f * 2 * (SCX - coneL(AIR_Y));
-        return (
-          <g key={f}>
-            <rect x={x - 1.5} y={AIR_Y + 5} width={3} height={12} {...PAINT.shaft} />
-            <rect x={x - 8} y={AIR_Y + 16} width={16} height={6} rx={2} {...PAINT.raised} />
-          </g>
-        );
-      })}
-      {[478, 500].map((y) => {
-        const half = SCX - coneL(y) - 14;
-        return (
-          <g key={y}>
-            {[-1, 1].map((s) => (
-              <rect key={s} x={SCX + s * half * 0.6 - 7} y={y - 2.5} width={14} height={5} rx={2} {...PAINT.recess} />
-            ))}
-          </g>
-        );
-      })}
-
-      <MachineLabel x={397} y={325} size={13.5} tone="ink">
+      {/* silo: roof, radar, shell with the meal window, cone */}
+      <ConeRoof x0={61.5} x1={195} y={89} peak={75} rail={12} step={14} />
+      <RadarLevel x={128.2} roof={77} headY={57.3} s={0.62} />
+      <Vessel x0={61.5} x1={195} top={89} ring={175} coneBot={235} outW={98.5} seams={[106, 158]} win={[82.5, 109, 92.5, 43.5]} level={127.5} flangeH={6.5} bolts={14} />
+      <MachineLabel x={128.5} y={141} size={5.6} tone="ink">
         RAW-MEAL FEED SILO
       </MachineLabel>
+      {/* one meal stream per air slide down the cone to its gate */}
+      {gates.map((gx, i) => (
+        <line key={gx} x1={66 + i * 25} y1={184} x2={gx} y2={234} stroke={MX.material} strokeWidth={1.1} opacity={0.8} />
+      ))}
+      {/* outlet gate row */}
+      {gates.map((gx) => (
+        <g key={gx}>
+          <rect x={gx - 6} y={236.5} width={12} height={8} rx={1.5} {...PAINT.body} />
+          <rect x={gx - 3.5} y={239.7} width={7} height={1.6} {...PAINT.material} />
+        </g>
+      ))}
+
+      {/* collecting hopper, chute into the bin */}
+      <path d="M 80 248 L 178.5 248 L 136.5 270 L 121.5 270 Z" {...PAINT.cylinderV} />
+      <rect x={78} y={245.5} width={102.5} height={4} rx={1.2} {...PAINT.raised} />
+      <rect x={121.5} y={270} width={15} height={17.5} rx={1.5} {...PAINT.body} />
+      <FlowArrow x1={129} y1={272} x2={129} y2={285} head={5} w={1.4} />
+
+      {/* kiln feed bin */}
+      <path d="M 95 334 L 162.5 334 L 132.5 357.5 L 125.5 357.5 Z" {...PAINT.cylinderV} />
+      <rect x={89} y={292.5} width={79.5} height={35.5} rx={1.5} {...PAINT.cylinderV} />
+      {[300, 306].map((y) => (
+        <line key={y} x1={91} x2={166.5} y1={y} y2={y} stroke={MX.fine} strokeWidth={0.8} />
+      ))}
+      <line x1={91} x2={166.5} y1={322} y2={322} stroke={MX.fine} strokeWidth={0.8} />
+      <rect x={86} y={288.5} width={85.5} height={4.5} rx={1.2} {...PAINT.raised} />
+      <rect x={85} y={328} width={87.5} height={6} rx={1.5} {...PAINT.raised} />
+      <MachineLabel x={128.5} y={316} size={4.6} tone="ink">
+        KILN FEED BIN
+      </MachineLabel>
+      <MachineLabel x={129} y={428} size={5.4}>
+        SILO + KILN FEED BIN (ELEVATION)
+      </MachineLabel>
     </g>
   );
 }
 
-function AerationAir() {
+function PlanView() {
+  const slides = [1, 2, 3, 4, 5, 6].map((n) => {
+    const a = ((-60 + (n - 1) * 60) * Math.PI) / 180;
+    return { n, a, deg: -60 + (n - 1) * 60 };
+  });
   return (
     <g>
-      <Pipe pts={[[40, AIR_Y], [coneL(AIR_Y) + 2, AIR_Y]]} d={15} elbows={false} flanges={[[120, AIR_Y], [coneL(AIR_Y) - 6, AIR_Y]]} />
-      <ButterflyValve x={262} y={AIR_Y} d={15} />
-      {[120, coneL(AIR_Y) - 6].map((x) => (
-        <g key={x}>
-          <Bolt x={x} y={AIR_Y - 9} r={0.9} />
-          <Bolt x={x} y={AIR_Y + 9} r={0.9} />
-        </g>
-      ))}
-      <InChevrons x={22} y={AIR_Y} />
-      <MachineLabel x={18} y={501.3} anchor="start" size={9.8}>
-        AERATION AIR (SHEET F-2)
+      <MachineLabel x={PX} y={65.5} size={5.4}>
+        PLAN VIEW OF THE SILO BOTTOM
       </MachineLabel>
-    </g>
-  );
-}
-
-function GateAndSlide() {
-  return (
-    <g>
-      {/* gate outlet spout into the air slide */}
-      <rect x={385} y={616} width={26} height={12} rx={2} {...PAINT.body} />
-      <AirSlide x1={378} y1={632} x2={784} y2={646} d={17} />
-      <rect x={781} y={634} width={6} height={22} rx={1.5} transform="rotate(2 784 646)" {...PAINT.raised} />
-      {/* slide supports and air-box connection */}
-      {[612, 732].map((x) => (
-        <g key={x}>
-          <rect x={x - 3} y={648} width={6} height={GROUND - 648} {...PAINT.body} />
-          <rect x={x - 7} y={GROUND - 3} width={14} height={3} rx={1} {...PAINT.raised} />
-        </g>
-      ))}
-      <SlideGate body={[359, 571, 78, 47]} act={[440, 578, 55, 34]} cap={[477.5, 595]} capR={10} />
-      <BoltRow x1={364} x2={432} y={573.5} n={7} r={1} />
-      <Arrow x1={750} y1={600} x2={797} y2={600} />
-      <MachineLabel x={596.5} y={583.8} anchor="start" size={9.8}>
-        TO KILN FEED BIN (F-3)
-      </MachineLabel>
-      <MachineLabel x={615.5} y={606.3} anchor="start" size={9.8}>
-        AIR SLIDE
-      </MachineLabel>
-      <MachineLabel x={339.5} y={682.8} anchor="start" size={9.8}>
-        EXTRACTION GATE
+      <circle cx={PX} cy={PY} r={91} {...PAINT.body} />
+      <circle cx={PX} cy={PY} r={86} fill="none" stroke={MX.fine} strokeWidth={0.8} />
+      {slides.map(({ n, a, deg }) => {
+        const sx = PX + Math.cos(a) * 69;
+        const sy = PY + Math.sin(a) * 69;
+        const gx = PX + Math.cos(a) * 42;
+        const gy = PY + Math.sin(a) * 42;
+        return (
+          <g key={n}>
+            {/* air slide (radial), dashed meal line, number */}
+            <g transform={`rotate(${deg} ${sx} ${sy})`}>
+              <rect x={sx - 17.5} y={sy - 5.5} width={35} height={11} rx={1.5} fill={MX.deep} stroke={MX.edge} strokeWidth={1.2} />
+              <MealDashes x1={sx - 13} y1={sy} x2={sx + 13} y2={sy} dash={3.5} gap={2} />
+            </g>
+            <MachineLabel x={sx} y={sy + 2} size={4.6}>
+              {String(n)}
+            </MachineLabel>
+            {/* outlet gate at the slide's inner end */}
+            <g transform={`rotate(${deg} ${gx} ${gy})`}>
+              <rect x={gx - 6} y={gy - 7} width={12} height={14} rx={2} {...PAINT.body} />
+              <rect x={gx - 1.2} y={gy - 4.5} width={2.4} height={9} {...PAINT.material} />
+            </g>
+          </g>
+        );
+      })}
+      {/* central collecting cone */}
+      <circle cx={PX} cy={PY} r={18} {...PAINT.raised} />
+      <circle cx={PX} cy={PY} r={12} fill="none" stroke={MX.fine} strokeWidth={0.8} />
+      <MachineLabel x={PX} y={PY + 1.6} size={3.6}>
+        COLLECT
       </MachineLabel>
     </g>
   );
@@ -159,28 +135,33 @@ function GateAndSlide() {
 function Art() {
   return (
     <g>
-      <GroundLine x1={22} x2={804} y={GROUND} />
-      <Structure />
-      <Silo />
-      <AerationAir />
-      <GateAndSlide />
-      <MachineLabel x={173} y={134} anchor="start" size={8.2}>
-        LADDER
-      </MachineLabel>
+      <GroundLine x1={22.5} x2={482.5} y={GROUND} />
+      <Elevation />
+      <PlanView />
     </g>
   );
 }
 
-/** Pad centre per point (sheet units), as on PDF page 3. */
+/** Pad centre per point: PDF pad centres (radar head, and each gate's limit-switch head in the plan view). */
 const pads: LineSheetArt["pads"] = {
-  "LEV-FSL-01": [398, 120.5],
-  "STS-FSL-01": [477.5, 595],
+  "LEV-FSL-01": [128.2, 57.3],
+  "POS-FSL-01": [357.8, 133],
+  "POS-FSL-02": [378.5, 169],
+  "POS-FSL-03": [357.8, 205],
+  "POS-FSL-04": [316, 205],
+  "POS-FSL-05": [295, 169],
+  "POS-FSL-06": [316, 133],
 };
 
-/** Tag chip centre per point, as on PDF page 3. */
-const chips: NonNullable<LineSheetArt["chips"]> = {
-  "LEV-FSL-01": [468.5, 90.5],
-  "STS-FSL-01": [555.5, 558],
+/** Plates run outward from the plan view: gates 1–3 to the right, 4–6 to the left, as the PDF chips. */
+const callouts: LineSheetArt["callouts"] = {
+  "LEV-FSL-01": [145, 57.3, "start"],
+  "POS-FSL-01": [372, 133, "start"],
+  "POS-FSL-02": [393, 169, "start"],
+  "POS-FSL-03": [372, 205, "start"],
+  "POS-FSL-04": [300, 205, "end"],
+  "POS-FSL-05": [280, 169, "end"],
+  "POS-FSL-06": [300, 133, "end"],
 };
 
-export const sheet: LineSheetArt = { id: "F-1", ready: true, width: W, height: H, Art, pads, chips };
+export const sheet: LineSheetArt = { id: "F-1", ready: true, width: W, height: H, Art, pads, callouts };

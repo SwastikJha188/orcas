@@ -6,7 +6,10 @@ import type { MachineRackInfo } from "./rack-data";
 import type { KilnSimulation } from "./kiln-seals-simulation";
 import { useMachineRackUnits } from "./use-machine-rack-units";
 import { applyRackLive, applyRackMqtt, applyRackSimulation } from "./rack-simulation";
-import { useMachineCatalog } from "./use-machine-catalog";
+import { useMachineCatalog, useMachineMeasurements } from "./use-machine-catalog";
+import { useApi } from "@/lib/api-cache";
+import type { EdgeRegistry } from "@/types/edge";
+import { rackSpecFrom } from "./rack-spec";
 import { useMachineAcquisition } from "./acquisition/use-machine-acquisition";
 import { STATE_TONE, buildRackModel, type ChannelRow, type RackModel } from "./rack-model";
 import {
@@ -20,7 +23,7 @@ import {
 import { Empty, KpiStrip, PageHeader, Section, SectionIndex, type KpiItem, type PageMetaItem, type SectionIndexItem } from "./analysis/an-ui";
 import type { Tone } from "./assets-shell-ui";
 import { focusSensorOn } from "./sensor-focus";
-import { D4_REQUIRED_TARGET_PCT, PYRO_PROPOSED_RACK, requiredAvailability } from "./sensors-model";
+import { D4_REQUIRED_TARGET_PCT, requiredAvailability } from "./sensors-model";
 import { PillButton } from "@/components/ui";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { isKilnMachine, useKilnSimulationFor } from "@/providers/kiln-simulation-context";
@@ -58,11 +61,11 @@ export interface RackViewProps {
 export const RACK_SECTION_KEY = "ultron.rack.section";
 
 const SECTIONS = [
-  { id: "rack-chassis", label: "Chassis" },
+  { id: "rack-chassis", label: "Card frame" },
   { id: "rack-slots", label: "Slots" },
-  { id: "rack-channels", label: "Channels" },
-  { id: "rack-cabinet", label: "Cabinet & sync" },
-  { id: "rack-calculated", label: "Calculated" },
+  { id: "rack-channels", label: "Inputs" },
+  { id: "rack-cabinet", label: "Cabinet and clock" },
+  { id: "rack-calculated", label: "Calculated values" },
 ] as const;
 
 /* ------------------------------------------------------------------
@@ -124,6 +127,10 @@ export function RackView({ machine, simulation }: RackViewProps) {
   const { racks, isLoading, isError } = useMachineRackUnits(machine);
   const acq = useMachineAcquisition(machine.id);
   const catalog = useMachineCatalog(machine);
+  const measurements = useMachineMeasurements(machine.id);
+  // Edge registry: the gateway / source / card record the cabinet is compared against.
+  const registry = useApi<EdgeRegistry>("/api/edge");
+  const spec = useMemo(() => rackSpecFrom(registry.data, machine.id), [registry.data, machine.id]);
   const links = useRackLinks(machine.id);
   const tz = useSiteTimeZone({ machineId: machine.id });
   const sealFleet = isKilnMachine(machine.id);
@@ -142,8 +149,9 @@ export function RackView({ machine, simulation }: RackViewProps) {
         acq: acq.data,
         frame: sim?.frame,
         catalog: catalog.sensors,
+        measurements: measurements.byTag,
       }),
-    [machine.id, liveRacks, acq.data, sim?.frame, catalog.sensors],
+    [machine.id, liveRacks, acq.data, sim?.frame, catalog.sensors, measurements.byTag],
   );
 
   const [pickedRackId, setPickedRackId] = useState<string | null>(null);
@@ -151,7 +159,7 @@ export function RackView({ machine, simulation }: RackViewProps) {
   const [mapFilter, setMapFilter] = useState<string>("all");
 
   const heartbeatOf = useCallback(
-    (iso: string | null) => (iso ? `${formatLocalTime(iso, { date: true, timeZone: tz.timeZone })} · ${tz.label}` : "No heartbeat recorded"),
+    (iso: string | null) => (iso ? `${formatLocalTime(iso, { date: true, timeZone: tz.timeZone })} · ${tz.label}` : "No sign of life recorded"),
     [tz.timeZone, tz.label],
   );
 
@@ -168,7 +176,7 @@ export function RackView({ machine, simulation }: RackViewProps) {
       <div className="ast-root pg-frame pg-analysis pg-rack" aria-label="Rack">
         {header()}
         <section className="ast-card" role="status" aria-live="polite">
-          <Empty title={`Loading acquisition hardware for ${machine.id}…`} />
+          <Empty title={`Loading the rack for ${machine.name}…`} />
         </section>
       </div>
     );
@@ -185,8 +193,8 @@ export function RackView({ machine, simulation }: RackViewProps) {
           </PillButton>,
         )}
         <section className="ast-card" role={isError ? "alert" : "status"}>
-          <Empty title={isError ? "Rack data unavailable. Retry." : `No acquisition hardware mapped to ${machine.id}.`}>
-            {isError ? null : "Map gateway channels to this machine in Devices."}
+          <Empty title={isError ? "Could not load the cabinet data. Try again." : `No rack is linked to ${machine.name}.`}>
+            {isError ? null : "Link this machine's sensor inputs to it on the Devices page."}
           </Empty>
         </section>
       </div>
@@ -212,8 +220,8 @@ export function RackView({ machine, simulation }: RackViewProps) {
   const lastSeen = model.link.gateway?.lastSeenAt ?? null;
   // Pyro line: the gateway is simulated; say so rather than imply a live link.
   const proposed = model.proposed;
-  const heartbeat = lastSeen ? heartbeatOf(lastSeen) : proposed ? "Simulated gateway · no heartbeat" : "No heartbeat";
-  const required = requiredAvailability(sim?.frame);
+  const heartbeat = lastSeen ? heartbeatOf(lastSeen) : "No sign of life received";
+  const required = requiredAvailability(sim?.frame, measurements.byTag);
   const tones = sectionTones(model);
   const sections = SECTIONS.filter((s) => s.id !== "rack-calculated" || model.calculated.length > 0);
   const index: SectionIndexItem[] = sections.map((s) => ({ id: s.id, label: s.label, tone: tones[s.id] }));
@@ -222,34 +230,34 @@ export function RackView({ machine, simulation }: RackViewProps) {
   const faults = model.signal.bad + model.signal.warn;
   const kpis: KpiItem[] = [
     {
-      label: proposed ? "Slots proposed" : "Slots fitted",
+      label: proposed ? "Slots planned" : "Slots in use",
       value: String(model.cards),
-      unit: `/ ${model.positions}`,
-      foot: `${model.chassisCount} chassis · ${model.positions - model.cards} ${proposed ? "unallocated" : "spare"}`,
+      unit: `of ${model.positions}`,
+      foot: `${model.chassisCount} card frame${model.chassisCount === 1 ? "" : "s"} · ${model.positions - model.cards} ${proposed ? "not planned yet" : "spare"}`,
     },
     {
-      label: proposed ? "Channels allocated" : "Sensors wired",
+      label: proposed ? "Inputs planned" : "Sensors wired",
       value: String(model.rows.length),
-      unit: model.catalogTotal ? `/ ${model.catalogTotal}` : undefined,
+      unit: model.catalogTotal ? `of ${model.catalogTotal}` : undefined,
       tone: model.unwired.length ? "warn" : undefined,
       foot: model.catalogTotal
-        ? `${model.catalogTotal} in catalog · ${model.calculated.length} calculated${model.manual.length ? ` · ${model.manual.length} manual` : ""} · ${model.unwired.length} ${proposed ? "not allocated" : "not wired"}`
+        ? `${model.catalogTotal} sensors in all · ${model.calculated.length} calculated${model.manual.length ? ` · ${model.manual.length} typed in by hand` : ""} · ${model.unwired.length} ${proposed ? "not planned yet" : "not wired yet"}`
         : catalog.isLoading
-          ? "Loading catalog…"
+          ? "Loading sensors…"
           : `${model.calculated.length} calculated`,
     },
     {
-      label: "Signal faults",
+      label: "Doubtful readings",
       value: String(faults),
       tone: model.signal.bad ? "bad" : faults ? "warn" : required && required.pct < D4_REQUIRED_TARGET_PCT ? "warn" : undefined,
-      foot: `${model.signal.bad} invalid · ${model.signal.warn} suspect${required ? ` · Required ${required.pct} % valid (≥ ${D4_REQUIRED_TARGET_PCT} %, D4 Table 11.1)` : ""}`,
+      foot: `${model.signal.bad} not usable · ${model.signal.warn} may be wrong${required ? ` · must-have sensors ${required.pct} % good (target ${D4_REQUIRED_TARGET_PCT} %, D4 Table 11.1)` : ""}`,
     },
     {
       label: "Clock",
-      value: model.record.ptp.mode,
+      value: PTP_WORD[model.record.ptp.mode] ?? model.record.ptp.mode,
       text: true,
       tone: alertTone(STATE_TONE[model.record.ptp.state]),
-      foot: model.record.ptp.latencyMs !== null ? `PTP path delay ${model.record.ptp.latencyMs} ms` : "no clock record",
+      foot: model.record.ptp.latencyMs !== null ? `time signal delay ${model.record.ptp.latencyMs} ms (PTP)` : "no clock record",
     },
   ];
 
@@ -259,33 +267,33 @@ export function RackView({ machine, simulation }: RackViewProps) {
         { label: stateLabel, tone: model.state === "empty" || model.state === "ok" ? undefined : STATE_TONE[model.state] },
         [
           { label: "Gateway", value: `${model.link.code} · ${model.link.label}` },
-          { label: "Sources", value: liveRacks.map((r) => r.code).filter((c, i, a) => a.indexOf(c) === i).join(" · ") },
+          { label: "Cabinets", value: liveRacks.map((r) => r.code).filter((c, i, a) => a.indexOf(c) === i).join(" · ") },
           {
             label: "Sensors",
             value: model.catalogTotal
-              ? `${model.catalogTotal} · ${model.rows.length} ${proposed ? "allocated (proposed)" : "wired"} + ${model.calculated.length} calc.${model.manual.length ? ` + ${model.manual.length} manual` : ""}${model.unwired.length ? ` + ${model.unwired.length} ${proposed ? "unallocated" : "unwired"}` : ""}`
-              : `${model.rows.length} ${proposed ? "allocated (proposed)" : "wired"}`,
+              ? `${model.catalogTotal} in all · ${model.rows.length} ${proposed ? "planned" : "wired"}, ${model.calculated.length} calculated${model.manual.length ? `, ${model.manual.length} typed in by hand` : ""}${model.unwired.length ? `, ${model.unwired.length} ${proposed ? "not planned yet" : "not wired yet"}` : ""}`
+              : `${model.rows.length} ${proposed ? "planned" : "wired"}`,
           },
-          lastSeen || proposed ? { label: "Heartbeat", value: heartbeat } : null,
+          lastSeen || proposed ? { label: "Last sign of life", value: heartbeat } : null,
         ],
         <PillButton variant="secondary" onClick={() => links.devices(model.link.gateway ? `gw:${model.link.gateway.id}` : undefined)}>
-          Open in Devices
+          Network devices
         </PillButton>,
       )}
 
-      {proposed && (
+      {proposed && spec?.notes && (
         <p className="ast-caption" role="note">
-          {PYRO_PROPOSED_RACK}
+          {spec.notes}
         </p>
       )}
 
       {acq.error && acq.data && (
         <p className="ast-caption" role="status">
-          Gateway reading unavailable. Showing the previous reading.
+          Could not reach the gateway. Showing the previous reading.
         </p>
       )}
 
-      <KpiStrip page items={kpis} label="Acquisition hardware" />
+      <KpiStrip page items={kpis} label="Rack" />
 
       <SectionIndex items={index} label="Rack sections" pendingKey={RACK_SECTION_KEY} />
 
@@ -332,7 +340,7 @@ export function RackView({ machine, simulation }: RackViewProps) {
                 links={links}
               />
             )}
-            {s.id === "rack-cabinet" && <RackCabinetSync model={model} machineId={machine.id} heartbeat={heartbeat} links={links} />}
+            {s.id === "rack-cabinet" && <RackCabinetSync model={model} spec={spec} heartbeat={heartbeat} links={links} />}
             {s.id === "rack-calculated" && <RackCalculatedSignals model={model} links={links} />}
           </Section>
         ))}
@@ -341,4 +349,6 @@ export function RackView({ machine, simulation }: RackViewProps) {
   );
 }
 
-const stateSeverityLabel = (s: "warn" | "bad") => (s === "bad" ? "Critical" : "Advisory");
+const stateSeverityLabel = (s: "warn" | "bad") => (s === "bad" ? "Critical" : "Alert");
+/** Everyday words for the cabinet clock state. */
+const PTP_WORD: Record<string, string> = { Locked: "In sync", Holdover: "Running on its own", "As recorded": "As recorded", "Not reported": "Not reported" };

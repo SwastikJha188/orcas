@@ -1,15 +1,15 @@
 import { query } from "@/server/db";
-import { createWorkOrder, listWorkOrders } from "@/server/services/ops-service";
+import { createWorkOrder, isPriority, listWorkOrders, resolvePriority } from "@/server/services/ops-service";
 import {
-  MAINTENANCE_MACHINE_IDS,
   RECORD_SELECT,
   documentsFor,
   ensureTables as ensureChecklistTables,
+  getVocabulary,
   hasMaintenanceChecklist,
   machineChecklist,
+  maintenanceMachineIds,
   mapRecord,
 } from "@/server/services/maintenance-service";
-import { routeOf } from "@/lib/maintenance";
 import {
   PAUSED,
   READINESS_KEYS,
@@ -22,9 +22,8 @@ import {
   transitionBlocker,
   transitionsFrom,
 } from "@/lib/pms";
-import { PYRO_MACHINE_BY_ID } from "@/lib/pyro-sim/signals";
-import { VPC_MACHINE_BY_ID } from "@/lib/vpc-sim/signals";
 import type { ChecklistKind } from "@/types/maintenance";
+import type { MaintenanceTypeId } from "@/types/maintenance-types";
 import {
   PLAN_STATES,
   type PlanState,
@@ -126,10 +125,11 @@ type Row = Record<string, unknown>;
 const iso = (v: unknown) => (v === null || v === undefined ? null : new Date(v as string).toISOString());
 const text = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
 
-function machineCode(machineId: string): string {
-  const m = PYRO_MACHINE_BY_ID[machineId] ?? VPC_MACHINE_BY_ID[machineId];
-  if (!m || !hasMaintenanceChecklist(machineId)) throw new PmsInputError(`No planned maintenance for ${machineId}`);
-  return m.code;
+/** The machine's short equipment code (machines.code); only machines with checklists have planned maintenance. */
+async function machineCode(machineId: string): Promise<string> {
+  const res = await query<{ code: string }>("SELECT code FROM machines WHERE id = $1", [machineId]);
+  if (!res.rows[0] || !(await hasMaintenanceChecklist(machineId))) throw new PmsInputError(`No planned maintenance for ${machineId}`);
+  return res.rows[0].code;
 }
 
 async function canApprove(userId: string | null): Promise<boolean> {
@@ -163,7 +163,9 @@ async function logEvent(e: {
 type PlanBase = Omit<PmsPlan, "state" | "activatedAt" | "approvedBy" | "approvedAt">;
 
 async function buildPlans(machineId: string): Promise<PlanBase[]> {
-  const code = machineCode(machineId);
+  const code = await machineCode(machineId);
+  const vocab = await getVocabulary();
+  const routeOf = new Map(vocab.routes.map((r) => [r.id, r]));
   const out: PlanBase[] = [];
   for (const kind of ["equipment", "sensor"] as ChecklistKind[]) {
     const { units } = await machineChecklist(machineId, kind);
@@ -171,7 +173,7 @@ async function buildPlans(machineId: string): Promise<PlanBase[]> {
       const byRoute = new Map<string, { sections: Set<string>; tasks: PlanTask[] }>();
       for (const gr of unit.groups)
         for (const t of gr.tasks) {
-          const route = routeOf(t);
+          const route = t.route;
           let b = byRoute.get(route);
           if (!b) byRoute.set(route, (b = { sections: new Set(), tasks: [] }));
           b.sections.add(gr.num);
@@ -180,13 +182,18 @@ async function buildPlans(machineId: string): Promise<PlanBase[]> {
       for (const [route, b] of byRoute) {
         const verifyOnly = b.tasks.every((t) => t.scope === "VERIFY");
         const defaultState: PlanState = route === "site" || unit.conditional || verifyOnly ? "Site verify" : "Provisional";
+        const r = routeOf.get(route);
+        if (!r) throw new PmsInputError(`Round ${route} is not defined`);
         out.push({
-          id: planId(code, kind, unit.code, route as Parameters<typeof planId>[3]),
+          id: planId(code, kind, unit.code, r.planCode),
           machineId,
           kind,
           unitCode: unit.code,
           unitTitle: unit.title,
           route,
+          routeLabel: r.label,
+          intervalHours: r.intervalHours,
+          trigger: r.trigger,
           sections: [...b.sections],
           tasks: b.tasks,
           defaultState,
@@ -269,7 +276,7 @@ function readinessOf(v: unknown): Readiness {
 }
 
 async function workOrdersFor(machineId: string): Promise<PmsWorkOrder[]> {
-  const [wos, meta, sources] = await Promise.all([
+  const [wos, meta, sources, jobs, checks] = await Promise.all([
     listWorkOrders(machineId),
     query(
       `SELECT s.* FROM maintenance_wo_stages s JOIN work_orders wo ON wo.id = s.work_order_id WHERE wo.machine_id = $1`,
@@ -279,15 +286,27 @@ async function workOrdersFor(machineId: string): Promise<PmsWorkOrder[]> {
       "SELECT work_order_id, task_id FROM maintenance_records WHERE machine_id = $1 AND work_order_id IS NOT NULL",
       [machineId],
     ),
+    query<{ work_order_id: number; type_id: MaintenanceTypeId; component_id: string | null }>(
+      "SELECT j.work_order_id, j.type_id, j.component_id FROM maintenance_job_sources j JOIN work_orders wo ON wo.id = j.work_order_id WHERE wo.machine_id = $1",
+      [machineId],
+    ),
+    query<{ work_order_id: number; id: number }>(
+      "SELECT ac.work_order_id, ac.id FROM alert_checks ac JOIN work_orders wo ON wo.id = ac.work_order_id WHERE wo.machine_id = $1",
+      [machineId],
+    ),
   ]);
   const byId = new Map(meta.rows.map((r) => [Number(r.work_order_id), r]));
   const fromTask = new Map(sources.rows.map((r) => [Number(r.work_order_id), String(r.task_id)]));
+  const jobOf = new Map(jobs.rows.map((r) => [Number(r.work_order_id), r]));
+  const checkOf = new Map(checks.rows.map((r) => [Number(r.work_order_id), Number(r.id)]));
   return wos.map((w) => {
     const m = byId.get(w.id);
     // A status changed outside planned maintenance (Diagnosis, the ops loop) wins over a stale stage.
     const saved = m && isStage(m.stage) ? (m.stage as WoStage) : null;
     const stage = saved && statusForStage(saved) === w.status ? saved : stageForStatus(w.status);
     const task = fromTask.get(w.id) ?? null;
+    const job = jobOf.get(w.id);
+    const checkId = checkOf.get(w.id) ?? null;
     return {
       id: w.id,
       machineId: w.machineId,
@@ -311,6 +330,10 @@ async function workOrdersFor(machineId: string): Promise<PmsWorkOrder[]> {
       asLeft: (m?.as_left as string) ?? null,
       readiness: readinessOf(m?.readiness),
       source: w.ruleId ? { kind: "finding", ref: w.ruleId } : task ? { kind: "inspection", ref: task } : { kind: "manual", ref: null },
+      // Recorded type first; an inspection defect is preventive, a check or a sensor finding predictive.
+      maintenanceType: job?.type_id ?? (task ? "preventive" : checkId !== null || w.ruleId ? "predictive" : null),
+      partId: job?.component_id ?? null,
+      checkId,
     };
   });
 }
@@ -342,7 +365,7 @@ async function saveMeta(wo: PmsWorkOrder): Promise<void> {
  */
 export async function proposeRequest(input: Record<string, unknown>, userId: string | null): Promise<PmsWorkOrder> {
   const machineId = text(input.machineId, 64) ?? "";
-  machineCode(machineId);
+  await machineCode(machineId);
   const ruleId = text(input.ruleId, 64);
   const title = text(input.title, 255);
   if (!title) throw new PmsInputError("Describe the work requested");
@@ -354,7 +377,7 @@ export async function proposeRequest(input: Record<string, unknown>, userId: str
       return open;
     }
   }
-  const priority = ["P1", "P2", "P3", "P4"].includes(input.priority as string) ? (input.priority as string) : "P3";
+  const priority = await resolvePriority(input.priority);
   const wo = await createWorkOrder({
     machineId,
     ruleId,
@@ -367,12 +390,32 @@ export async function proposeRequest(input: Record<string, unknown>, userId: str
     simTime: typeof input.simTime === "number" ? input.simTime : null,
   });
   const workMode: WorkMode | null = input.workMode === "Isolate" || input.workMode === "Run" ? input.workMode : null;
+  // A job an engineer plans with a date goes straight to planning when they may approve work; otherwise it is reviewed first.
+  const startAt = typeof input.plannedStart === "string" && input.plannedStart ? Date.parse(input.plannedStart) : NaN;
+  const plannedStart = Number.isFinite(startAt) ? new Date(startAt).toISOString() : null;
+  const hours = Number(input.estimateHours);
+  const estimateHours = input.estimateHours === null || input.estimateHours === undefined || input.estimateHours === "" || !Number.isFinite(hours) || hours <= 0 ? null : Math.min(hours, 2000);
+  const stage: WoStage = plannedStart && (await canApprove(userId)) ? "planning" : "awaiting_review";
   await query(
-    `INSERT INTO maintenance_wo_stages (work_order_id, stage, work_mode, readiness) VALUES ($1, 'awaiting_review', $2, $3)
+    `INSERT INTO maintenance_wo_stages (work_order_id, stage, work_mode, planned_start, estimate_hours, readiness) VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (work_order_id) DO NOTHING`,
-    [wo.id, workMode, JSON.stringify(emptyReadiness())],
+    [wo.id, stage, workMode, plannedStart, estimateHours, JSON.stringify(emptyReadiness())],
   );
-  await logEvent({ machineId, workOrderId: wo.id, action: "create", to: "awaiting_review", reason: ruleId ? `From finding ${ruleId}` : "Manual request", userId });
+  const type = input.type === "preventive" || input.type === "predictive" || input.type === "proactive" ? input.type : null;
+  if (type)
+    await query(
+      `INSERT INTO maintenance_job_sources (work_order_id, type_id, component_id, subassembly_ref_id) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (work_order_id) DO NOTHING`,
+      [wo.id, type, text(input.componentId, 32), text(input.subassemblyRefId, 64)],
+    );
+  await logEvent({
+    machineId,
+    workOrderId: wo.id,
+    action: "create",
+    to: stage,
+    reason: ruleId ? `From finding ${ruleId}` : plannedStart ? "Planned by an engineer" : "Manual request",
+    userId,
+  });
   return oneWorkOrder(wo.id);
 }
 
@@ -448,7 +491,7 @@ export async function updateWorkOrderDetails(id: number, input: Record<string, u
     next.asLeft = text(input.asLeft, 4000);
     changed.push("as-left recorded");
   }
-  if (input.priority !== undefined && ["P1", "P2", "P3", "P4"].includes(input.priority as string) && input.priority !== wo.priority) {
+  if (input.priority !== undefined && input.priority !== wo.priority && (await isPriority(input.priority))) {
     await query("UPDATE work_orders SET priority = $2, updated_at = NOW() WHERE id = $1", [id, input.priority]);
     changed.push(`priority: ${input.priority}`);
   }
@@ -475,7 +518,7 @@ export async function updateWorkOrderDetails(id: number, input: Record<string, u
 /* ------------------------------------------------------------ snapshot */
 
 export async function getPms(machineId: string, userId: string | null, approveKnown?: boolean): Promise<PmsSnapshot> {
-  machineCode(machineId);
+  await machineCode(machineId);
   await ensureTables();
   const [plans, workOrders, records, events, approve] = await Promise.all([
     plansFor(machineId),
@@ -491,7 +534,7 @@ export async function getPms(machineId: string, userId: string | null, approveKn
   ]);
   return {
     machineId,
-    documents: documentsFor(machineId),
+    documents: await documentsFor(machineId),
     plans,
     workOrders,
     records: records.rows.map(mapRecord),
@@ -517,8 +560,13 @@ export async function getPms(machineId: string, userId: string | null, approveKn
 export async function getPmsLine(userId: string | null): Promise<PmsLine> {
   await ensureTables();
   const approve = await canApprove(userId);
-  let targetIds = MAINTENANCE_MACHINE_IDS;
-  if (userId) {
+  const all = await maintenanceMachineIds();
+  let targetIds = all;
+  const allPlants = userId
+    ? Boolean((await query<{ all_plants: boolean }>("SELECT r.all_plants FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = $1", [userId])).rows[0]?.all_plants)
+    : false;
+  // An all-plants role (super administrator) sees every machine.
+  if (userId && !allPlants) {
     const scoped = await query<{ id: string }>(
       `SELECT m.id FROM machines m
          JOIN user_plant_access upa ON upa.plant_id = m.plant_id
@@ -526,8 +574,8 @@ export async function getPmsLine(userId: string | null): Promise<PmsLine> {
       [userId],
     );
     const allowed = new Set(scoped.rows.map((r) => String(r.id)));
-    const filtered = MAINTENANCE_MACHINE_IDS.filter((id) => allowed.has(id));
-    if (filtered.length > 0) targetIds = filtered;
+    // Only the machines of the user's plants: an account with none sees none.
+    targetIds = all.filter((id) => allowed.has(id));
   }
   const snapshots = await Promise.all(targetIds.map((id) => getPms(id, userId, approve)));
   return { snapshots, canApprove: approve };

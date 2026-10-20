@@ -345,6 +345,7 @@ export class FleetStore {
         alertActive: over(r.alert),
         dangerActive: over(r.danger),
         updatedAt: now,
+        sampledAt: r.at !== null && Number.isFinite(r.at) ? new Date(r.at).toISOString() : null,
       });
     }
   }
@@ -561,6 +562,8 @@ export class FleetStore {
       alertActive: isActive(slot.alert_state, slot.alert_status) || slot.alert_status_code === 1,
       dangerActive: isActive(slot.danger_state, slot.danger_status) || slot.danger_status_code === 1,
       updatedAt: now,
+      // The gateway stamps the telemetry message when it read the rack.
+      sampledAt: msg.created_at ?? null,
     });
   }
 }

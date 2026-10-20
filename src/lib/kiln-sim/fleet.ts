@@ -12,10 +12,19 @@ export interface KilnFleetMember {
   profile: StoryProfile;
 }
 
-export const KILN_FLEET: ReadonlyArray<KilnFleetMember> = [
-  { machineId: "KLN-01", seed: 20261012, profile: "advisory" },
-  { machineId: "KLN-02", seed: 20261013, profile: "critical" },
-  { machineId: "KLN-03", seed: 20261014, profile: "healthy" },
-];
+/**
+ * The simulated kiln-seal machines, from the database (`machine_simulations`,
+ * engine "kiln"), filled by `applyEngineConfig` before any engine runs.
+ */
+const fleet: KilnFleetMember[] = [];
+const ids = new Set<string>();
 
-export const KILN_FLEET_IDS: ReadonlySet<string> = new Set(KILN_FLEET.map((k) => k.machineId));
+export const KILN_FLEET: ReadonlyArray<KilnFleetMember> = fleet;
+export const KILN_FLEET_IDS: ReadonlySet<string> = ids;
+
+/** Replaces the fleet in place (every importer sees the new members). */
+export function setKilnFleet(members: KilnFleetMember[]): void {
+  fleet.splice(0, fleet.length, ...members);
+  ids.clear();
+  for (const m of members) ids.add(m.machineId);
+}

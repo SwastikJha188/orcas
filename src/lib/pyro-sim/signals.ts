@@ -1,21 +1,24 @@
 /**
  * Pyro line (FSL-01 … CSL-01) signal catalog for the live demonstration.
  *
- * Source: D4-OSW-PE-PYR Rev. 02 — eight machine groups (run here as six machines:
- * FSL-01 + KFS-01 = feed system FED-01, HMR-01 + CSL-01 = clinker transport CCT-01), 161 online entries
- * (Tables 5.1c–5.8c, verbatim in `spec.ts`), two manual records (Table 6.4)
- * and the 11 ULTRON machine diagrams. The D4 states that no warning / alarm
- * set-point is approved (§7.2); the ranges and limits below are demo values
- * chosen from typical cement-plant practice for a ~5,000 t/d six-stage
- * preheater kiln without calciner firing, so the simulation has something to
- * judge against. They are not field specifications.
+ * Source: the OSW-PE-SNL-PYR-01 Rev. 00 sensor list (19 Oct 2026, `sensor-list.ts`):
+ * nine machine groups run here as six machines (FSL-01 + KFS-01 = feed system
+ * FED-01, PHC-01 + main baghouse BGH-01 = preheater PHC-01, HMR-01 + CSL-01 =
+ * clinker transport CCT-01), 223 online signals and two manual records. It builds
+ * on D4-OSW-PE-PYR Rev. 02 (verbatim in `spec.ts`), which states that no warning /
+ * alarm set-point is approved (§7.2); the sensor list gives none either, so the
+ * ranges and limits below are demo values chosen from typical cement-plant practice
+ * for a ~5,000 t/d six-stage preheater kiln with calciner, so the simulation has
+ * something to judge against. They are not field specifications.
  *
  * Pure data, no React and no server imports.
  */
+import { PYRO_SENSOR_LIST, PYRO_SENSOR_LIST_BY_TAG } from "./sensor-list";
 import type { LimitRule, Severity } from "../kiln-sim/signals";
 import { PYRO_SPEC } from "./spec";
 import { applyD5Limits } from "./limits";
 import { applySensorMeta } from "./sensor-meta";
+import { CLR_BASE } from "./shared";
 
 export type { LimitRule, Severity };
 
@@ -148,7 +151,7 @@ export const PYRO_MACHINES: PyroMachineDef[] = [
     majorParts: "Cyclones and cones, gas ducts and meal pipes, riser, exit-gas analyser, ID fan bearings, inlet damper and motor.",
     intent: "Stage heat / draft profile, cone blockage and riser build-up, exit-gas O₂ / CO and ID fan condition.",
     limitations: [
-      "D5 Table 5.3.1 / §3.1 place 890–920 °C on the meal to the kiln (TMP-PHC-07, plant value to confirm, D5 Table 13.1 row 2); the C6 gas outlet TMP-PHC-06 runs about 20 K hotter (≈ 925 °C, demo). MOM HOLD (Table B.1 1.2.1): stage identities stay on HOLD; the C1–C6 tap mapping is not confirmed.",
+      "D5 Table 5.3.1 / §3.1 place 890–920 °C on the meal to the kiln (TMP-PHC-07, plant value to confirm, D5 Table 13.1 row 2); the C6 gas outlet TMP-PHC-06 runs about 20 K hotter (OSW-PE-SNL-PYR-01 Rev. 01 nominals: meal 830–870 °C, C6 860–890 °C; running ≈ 850 / 866 °C). MOM HOLD (Table B.1 1.2.1): stage identities stay on HOLD; the C1–C6 tap mapping is not confirmed.",
       "MOM HOLD (Table B.1 1.2.2): PRS-PHC-01…09 purge / port HOLD. Tap purge air and port positions are not confirmed, so a draft or cone-pressure change cannot yet be separated from a blocked or unpurged tap.",
     ],
   },
@@ -236,7 +239,8 @@ export const PYRO_MACHINES: PyroMachineDef[] = [
 export const PYRO_MACHINE_IDS: ReadonlySet<string> = new Set(PYRO_MACHINES.map((m) => m.id));
 export const PYRO_MACHINE_BY_ID: Record<string, PyroMachineDef> = Object.fromEntries(PYRO_MACHINES.map((m) => [m.id, m]));
 /** D4 asset codes run as one machine: the feed system and the clinker transport. */
-const MERGED: Record<string, string> = { "FSL-01": "FED-01", "KFS-01": "FED-01", "HMR-01": "CCT-01", "CSL-01": "CCT-01" };
+// The main baghouse (BGH-01, OSW-PE-SNL-PYR-01) is drawn and run with the preheater it dedusts.
+const MERGED: Record<string, string> = { "FSL-01": "FED-01", "KFS-01": "FED-01", "BGH-01": "PHC-01", "HMR-01": "CCT-01", "CSL-01": "CCT-01" };
 /** Catalog machine id of a D4 asset code ("KLN-01" → "PYR-KLN-01", "KFS-01" → "PYR-FED-01"). */
 export const idOf = (code: string) => `PYR-${MERGED[code] ?? code}`;
 
@@ -250,11 +254,13 @@ const sub = (machine: string, system: string, id: string, name: string): PyroSub
 export const PYRO_SYSTEMS: PyroSystemDef[] = [
   sys("FSL-01", "SIL-FSL-01", "Silo & extraction"),
   sys("FSL-01", "AER-FSL-01", "Aeration"),
+  sys("FSL-01", "DCL-FSL-01", "Silo dust collector"),
   sys("KFS-01", "BIN-KFS-01", "Feed bin & dosing"),
   sys("KFS-01", "ELV-KFS-01", "Bucket elevator"),
   sys("PHC-01", "CYC-PHC-01", "Cyclone tower & riser"),
   sys("PHC-01", "IDF-PHC-01", "ID fan"),
   sys("PHC-01", "PRC-PHC-01", "Exit gas", false),
+  sys("BGH-01", "BAG-BGH-01", "Main baghouse"),
   sys("KLN-01", "DRV-KLN-01", "Drive train"),
   sys("KLN-01", "SUP-KLN-01", "Supports, tyres & thrust"),
   sys("KLN-01", "SHL-KLN-01", "Shell, inlet & outlet"),
@@ -269,16 +275,21 @@ export const PYRO_SYSTEMS: PyroSystemDef[] = [
 ];
 
 export const PYRO_SUBASSEMBLIES: PyroSubDef[] = [
-  sub("FSL-01", "SIL-FSL-01", "fsl-silo", "Silo & outlet gate"),
-  sub("FSL-01", "AER-FSL-01", "fsl-aeration", "Aeration blower & header"),
-  sub("KFS-01", "BIN-KFS-01", "kfs-bin", "Kiln feed bin"),
-  sub("KFS-01", "BIN-KFS-01", "kfs-dosing", "Dosing gate, air slide & flow meter"),
-  sub("KFS-01", "ELV-KFS-01", "kfs-elevator", "Bucket elevator head drive"),
+  sub("FSL-01", "SIL-FSL-01", "fsl-silo", "Silo bottom: air slides & gates"),
+  sub("FSL-01", "AER-FSL-01", "fsl-aeration", "Aeration blowers, header & purge"),
+  sub("FSL-01", "DCL-FSL-01", "fsl-dc", "Silo dust collector & fan"),
+  sub("KFS-01", "BIN-KFS-01", "kfs-bin", "Kiln feed bin, load cells & dust collector"),
+  sub("KFS-01", "BIN-KFS-01", "kfs-dosing", "Bin discharge: blower, air slides & gates"),
+  sub("KFS-01", "BIN-KFS-01", "kfs-sfm", "Solid-flow meters A / B & common air slide"),
+  sub("KFS-01", "ELV-KFS-01", "kfs-elevator", "Bucket elevator"),
   sub("PHC-01", "CYC-PHC-01", "phc-upper", "Cyclones C1–C3"),
   sub("PHC-01", "CYC-PHC-01", "phc-lower", "Cyclones C4–C6"),
   sub("PHC-01", "CYC-PHC-01", "phc-riser", "Riser & hot meal"),
+  sub("PHC-01", "CYC-PHC-01", "phc-calciner", "Calciner outlet & meal split"),
   sub("PHC-01", "IDF-PHC-01", "phc-idfan", "ID fan & motor"),
   sub("PHC-01", "PRC-PHC-01", "phc-exitgas", "Exit-gas analyser"),
+  sub("BGH-01", "BAG-BGH-01", "bgh-bags", "Bags, hoppers, inlet & stack"),
+  sub("BGH-01", "BAG-BGH-01", "bgh-fan", "Baghouse fan & motor"),
   sub("KLN-01", "DRV-KLN-01", "kln-motor", "Main motor"),
   sub("KLN-01", "DRV-KLN-01", "kln-gearbox", "Main gearbox"),
   sub("KLN-01", "DRV-KLN-01", "kln-lube", "Gearbox lubrication"),
@@ -295,6 +306,7 @@ export const PYRO_SUBASSEMBLIES: PyroSubDef[] = [
   sub("BRN-01", "FLM-BRN-01", "brn-pafan", "Primary-air fan"),
   sub("BRN-01", "COL-BRN-01", "brn-coalbin", "Fine-coal bin"),
   sub("BRN-01", "COL-BRN-01", "brn-coalfeed", "Coal feeder & conveying blower"),
+  sub("BRN-01", "COL-BRN-01", "brn-calciner", "Calciner firing & tertiary air"),
   sub("CLR-01", "GRT-CLR-01", "clr-hot", "Compartments 1–3 (hot zone)"),
   sub("CLR-01", "GRT-CLR-01", "clr-cold", "Compartments 4–6"),
   sub("CLR-01", "GRT-CLR-01", "clr-drive", "Grate drive & HPU"),
@@ -418,12 +430,20 @@ function state(tag: string, name: string, subId: string, normal: string, warn: s
   };
 }
 
-/** Under-grate compartment pressure: band at ±25 % (alert) / ±40 % (danger) of nominal. */
-function compartment(n: number, base: number, subId: string): PyroSignalDef {
+/**
+ * Under-grate compartment pressure: band at ±25 % (alert) / ±40 % (danger) of nominal, or the plant document's
+ * set-points and nominal band when given (OSW-PE-SNL-PYR-01 Rev. 01, mmWG converted to mbar).
+ */
+function compartment(n: number, base: number, subId: string, doc?: { limit: LimitRule; normal: string }): PyroSignalDef {
   return analog(`PRS-CLR-0${n}`, `Compartment ${n} under-grate pressure`, "mbar", subId, base, base * 0.011, {
-    limit: band(+(base * 0.75).toFixed(0), +(base * 1.28).toFixed(0), +(base * 0.6).toFixed(0), +(base * 1.45).toFixed(0)),
-    normal: `${Math.round(base * 0.88)}–${Math.round(base * 1.12)}`,
+    limit: doc?.limit ?? band(+(base * 0.75).toFixed(0), +(base * 1.28).toFixed(0), +(base * 0.6).toFixed(0), +(base * 1.45).toFixed(0)),
+    normal: doc?.normal ?? `${Math.round(base * 0.88)}–${Math.round(base * 1.12)}`,
   });
+}
+
+/** Motor stator winding RTD (insulation class F assumed until the nameplate is confirmed). */
+function winding(tag: string, name: string, subId: string, base: number): PyroSignalDef {
+  return analog(tag, name, "°C", subId, base, 0.8, { limit: hi(135, 155), normal: `${Math.round(base - 20)}–${Math.round(base + 15)}`, instrument: "Pt100 stator winding RTD" });
 }
 
 const BEARING_HI = hi(85, 95);
@@ -433,20 +453,34 @@ const VIB_HI = hi(4.5, 7.1);
 export const PYRO_SIGNALS: PyroSignalDef[] = [
   // ------------------------------------------------------------- FSL-01
   analog("LEV-FSL-01", "Raw-meal silo level", "%", "fsl-silo", 62, 0.25, { limit: band(25, 92, 15, 96), normal: "40–85" }),
-  state("STS-FSL-01", "Silo extraction gate", "fsl-silo", "OPEN", ["TRAVELLING"], ["CLOSED", "FAULT"]),
+  ...[1, 2, 3, 4, 5, 6].map((n) => state(`POS-FSL-0${n}`, `Air slide ${n} outlet gate open / closed`, "fsl-silo", "OPEN", ["TRAVELLING", "CLOSED"], ["FAULT"], "Limit switches (open / closed)")),
+  state("STS-FSL-03", "Air-slide purge sequence step", "fsl-aeration", "SEQUENCE RUN", ["HOLD"], ["FAULT"], "PLC / DCS status"),
+  winding("TMP-FSL-01", "Aeration blower motor winding temperature", "fsl-aeration", 84),
+  analog("PRS-FSL-02", "Silo dust collector differential pressure", "mbar", "fsl-dc", 11.5, 0.15, { limit: hi(18, 22), normal: "8–15", instrument: "Differential-pressure transmitter" }),
+  analog("ELE-FSL-02", "Silo dust-collector fan motor current", "A", "fsl-dc", 34, 0.4, { limit: hi(41, 46), normal: "30–38" }),
   analog("PRS-FSL-01", "Aeration header pressure", "mbar", "fsl-aeration", 420, 3, { dec: 0, limit: band(340, 540, 290, 600), normal: "380–480" }),
   analog("ELE-FSL-01", "Aeration blower motor current", "A", "fsl-aeration", 66, 0.6, { limit: hi(80, 88), normal: "58–74" }),
   state("STS-FSL-02", "Aeration blower duty / standby", "fsl-aeration", "DUTY RUN", ["STANDBY RUN"], ["NOT AVAILABLE"]),
 
   // ------------------------------------------------------------- KFS-01
-  analog("LEV-KFS-01", "Kiln feed bin level", "%", "kfs-bin", 58, 0.35, { limit: band(30, 85, 20, 92), normal: "45–70" }),
-  state("LEV-KFS-02", "Feed bin high-level switch", "kfs-bin", "CLEAR", ["HIGH"]),
-  state("LEV-KFS-03", "Feed bin low-level switch", "kfs-bin", "CLEAR", [], ["LOW"]),
-  analog("WGT-KFS-01", "Feed bin weight", "t", "kfs-bin", 70, 0.35, { limit: band(36, 102, 24, 110), normal: "55–85" }),
-  analog("POS-KFS-01", "Dosing gate position", "%", "kfs-dosing", 47, 0.3, { limit: band(15, 85, 8, 95), normal: "35–60" }),
-  analog("PRS-KFS-01", "Air-slide aeration chamber pressure", "mbar", "kfs-dosing", 52, 0.6, { limit: band(38, 72, 30, 85), normal: "40–65" }),
-  analog("FLO-KFS-01", "Kiln feed mass flow", "t/h", "kfs-dosing", 330, 1.1, { dec: 0, limit: sp(5, 10), normal: "310–350" }),
-  analog("PRS-KFS-02", "Solid-flow meter interface pressure", "mbar", "kfs-dosing", 12, 0.25, { limit: band(5, 20, undefined, 28), normal: "8–16" }),
+  // Kiln feed bin on three load cells, no level sensor (plant confirmation 19 Oct 2026): bin weight = sum of the cells.
+  ...[1, 2, 3].map((n) => analog(`WGT-KFS-0${n}`, `Kiln feed bin load cell ${n} (weight)`, "t", "kfs-bin", 23.3, 0.15, { limit: band(12, 34, 8, 36.5), normal: "18–28", instrument: "Load cell" })),
+  analog("PRS-KFS-05", "Feed-bin dust collector differential pressure", "mbar", "kfs-bin", 10, 0.15, { limit: hi(18, 22), normal: "7–13", instrument: "Differential-pressure transmitter" }),
+  analog("ELE-KFS-03", "Feed-bin dust-collector fan motor current", "A", "kfs-bin", 22, 0.3, { limit: hi(27, 30), normal: "19–25" }),
+  state("POS-KFS-01", "Discharge gate A open / closed", "kfs-dosing", "OPEN", ["TRAVELLING", "CLOSED"], ["FAULT"], "Limit switches (open / closed)"),
+  state("POS-KFS-02", "Discharge gate B open / closed", "kfs-dosing", "OPEN", ["TRAVELLING", "CLOSED"], ["FAULT"], "Limit switches (open / closed)"),
+  analog("PRS-KFS-01", "Air-slide air pressure at bin bottom (P1, slides A + B)", "mbar", "kfs-dosing", 39.2, 0.45, { limit: band(19.6, 63.7, 14.7, 78.5), normal: "29–49", instrument: "Pressure transmitter" }),
+  state("STS-KFS-01", "Bin air-slide blower running status", "kfs-dosing", "RUNNING", [], ["STOPPED", "TRIPPED"], "PLC / DCS status"),
+  analog("ELE-KFS-02", "Bin air-slide blower motor current", "A", "kfs-dosing", 38, 0.4, { limit: hi(46, 52), normal: "33–43" }),
+  // Two solid-flow meters in parallel (slides A and B), each about half the kiln feed; kiln feed = A + B.
+  analog("FLO-KFS-01", "Kiln feed mass flow, SFM A", "t/h", "kfs-sfm", 165, 0.8, { dec: 0, limit: sp(5, 10), normal: "155–175", instrument: "Solid-flow meter (impact plate)" }),
+  analog("PRS-KFS-02", "SFM A pressure (P2)", "mbar", "kfs-sfm", 0, 0.1, { dec: 2, limit: band(undefined, 1.96, undefined, 3.92), normal: "−0.49 … +0.49", instrument: "Pressure transmitter" }),
+  analog("FLO-KFS-02", "Kiln feed mass flow, SFM B", "t/h", "kfs-sfm", 165, 0.8, { dec: 0, limit: sp(5, 10), normal: "155–175", instrument: "Solid-flow meter (impact plate)" }),
+  analog("PRS-KFS-06", "SFM B pressure (P3)", "mbar", "kfs-sfm", 0, 0.1, { dec: 2, limit: band(undefined, 1.96, undefined, 3.92), normal: "−0.49 … +0.49", instrument: "Pressure transmitter" }),
+  analog("PRS-KFS-04", "Common air slide SFM A/B → elevator pressure", "mbar", "kfs-sfm", 45, 0.5, { limit: band(32, 62, 25, 72), normal: "38–55", instrument: "Pressure transmitter" }),
+  state("LEV-KFS-04", "Elevator boot material build-up level", "kfs-elevator", "CLEAR", [], ["HIGH"], "Level switch"),
+  state("LIM-KFS-01", "Elevator belt sway / misalignment switch", "kfs-elevator", "OK", [], ["SWAY"], "Belt-sway switch"),
+  winding("TMP-KFS-02", "Bucket elevator head motor winding temperature", "kfs-elevator", 86),
   analog("ELE-KFS-01", "Bucket elevator motor current", "A", "kfs-elevator", 118, 1, { dec: 0, limit: hi(148, 162), normal: "105–130" }),
   analog("VIB-KFS-01", "Elevator head drive vibration", "mm/s RMS", "kfs-elevator", 1.8, 0.07, { dec: 2, limit: VIB_HI, normal: "0.8–2.8" }),
   analog("TMP-KFS-01", "Elevator head bearing temperature", "°C", "kfs-elevator", 58, 0.5, { limit: BEARING_HI, normal: "45–70" }),
@@ -461,16 +495,17 @@ export const PYRO_SIGNALS: PyroSignalDef[] = [
   analog("PRS-PHC-03", "C3 stage draft", "mbar", "phc-upper", -40, 0.4, { limit: band(-50, -31), normal: "−35 … −45" }),
   analog("TMP-PHC-04", "C4 gas outlet temperature", "°C", "phc-lower", 775, 3, { dec: 0, limit: band(715, 815, undefined, 845), normal: "750–800" }),
   analog("PRS-PHC-04", "C4 stage draft", "mbar", "phc-lower", -30, 0.35, { limit: band(-38, -22), normal: "−26 … −34" }),
-  analog("PRS-PHC-07", "C4 cone pressure (purged tap)", "mbar", "phc-lower", -24, 0.4, { limit: hi(-12, -5), normal: "−20 … −28" }),
-  analog("TMP-PHC-05", "C5 gas outlet temperature", "°C", "phc-lower", 865, 3, { dec: 0, limit: band(815, 910, undefined, 940), normal: "840–890" }),
+  analog("PRS-PHC-07", "C4 cone pressure (purged tap)", "mbar", "phc-lower", -5.9, 0.1, { limit: band(-11.77, -0.98, undefined, 0.98), normal: "−2.9 … −7.8" }),
+  analog("TMP-PHC-05", "C5 gas outlet temperature", "°C", "phc-lower", 832, 3, { dec: 0, limit: band(790, 890, undefined, 920), normal: "820–860" }),
   analog("PRS-PHC-05", "C5 stage draft", "mbar", "phc-lower", -21, 0.3, { limit: band(-27, -15), normal: "−18 … −24" }),
-  analog("PRS-PHC-08", "C5 cone pressure (purged tap)", "mbar", "phc-lower", -16, 0.35, { limit: hi(-8, -3), normal: "−13 … −19" }),
-  // D5 5.3.1: meal to kiln 890–920 °C (TMP-PHC-07); the C6 gas outlet runs ≈ 20 K above the meal (stage identities on HOLD, MOM 1.2.1).
-  analog("TMP-PHC-06", "C6 gas outlet temperature", "°C", "phc-lower", 925, 3.5, { dec: 0, limit: band(860, 950, undefined, 980), normal: "905–945" }),
-  analog("PRS-PHC-06", "C6 / riser draft", "mbar", "phc-lower", -9, 0.2, { limit: band(-13, -5, undefined, -3), normal: "−7.5 … −10.5" }),
+  analog("PRS-PHC-08", "C5 cone pressure (purged tap)", "mbar", "phc-lower", -4.9, 0.1, { limit: band(-11.77, -0.98, undefined, 0.98), normal: "−2.9 … −7.8" }),
+  // OSW-PE-SNL-PYR-01 Rev. 01: meal to kiln 830–870 °C (TMP-PHC-07); the C6 gas outlet runs ≈ 20 K above the meal and ≈ 20 K
+  // below the riser gas (stage identities on HOLD, MOM 1.2.1).
+  analog("TMP-PHC-06", "C6 gas outlet temperature", "°C", "phc-lower", 866, 3, { dec: 0, limit: band(830, 920, undefined, 950), normal: "860–890" }),
+  analog("PRS-PHC-06", "C6 / riser draft", "mbar", "phc-lower", -11.2, 0.2, { limit: band(-17.65, -3.92, undefined, -1.96), normal: "−5.9 … −11.8" }),
   analog("PRS-PHC-09", "C6 cone pressure (purged tap)", "mbar", "phc-lower", -7, 0.25, { limit: hi(-3, -1), normal: "−5.5 … −8.5" }),
-  analog("TMP-PHC-08", "Kiln riser duct gas temperature", "°C", "phc-riser", 1060, 4, { dec: 0, limit: band(990, 1110, undefined, 1150), normal: "1,030–1,090" }),
-  analog("TMP-PHC-07", "Hot meal temperature to kiln", "°C", "phc-riser", 905, 3, { dec: 0, limit: band(800, 900, 760), normal: "890–920" }),
+  analog("TMP-PHC-08", "Kiln riser duct gas temperature", "°C", "phc-riser", 892, 3.4, { dec: 0, limit: band(850, 920, 830, 950), normal: "870–900" }),
+  analog("TMP-PHC-07", "Hot meal temperature to kiln", "°C", "phc-riser", 850, 3, { dec: 0, limit: band(800, 900, 780, 930), normal: "830–870" }),
   analog("GAS-PHC-01", "Preheater exit O₂", "vol%", "phc-exitgas", 3.6, 0.06, { dec: 2, limit: band(2.2, 5.8, 1.4, 7), normal: "3.0–4.5" }),
   analog("GAS-PHC-02", "Preheater exit CO", "ppm", "phc-exitgas", 300, 18, { dec: 0, limit: hi(1200, 2500), normal: "< 600" }),
   analog("CAL-PHC-01", "Preheater false-air rise (exit − inlet O₂)", "vol%", "phc-exitgas", 1.2, 0.08, { dec: 2, limit: hi(2.0, 2.8), normal: "0.8–1.5", calculated: true, instrument: "Gateway calculation (not a D4 entry)" }),
@@ -481,6 +516,25 @@ export const PYRO_SIGNALS: PyroSignalDef[] = [
   analog("TMP-PHC-10", "ID fan NDE bearing temperature", "°C", "phc-idfan", 63, 0.5, { limit: BEARING_HI, normal: "50–74" }),
   analog("ELE-PHC-01", "ID fan motor power", "kW", "phc-idfan", 1850, 9, { dec: 0, limit: hi(2250, 2450), normal: "1,700–2,050" }),
   analog("SPD-PHC-01", "ID fan speed", "rpm", "phc-idfan", 890, 1.2, { dec: 0, limit: band(700, 975, undefined, 995), normal: "850–930" }),
+  winding("TMP-PHC-11", "ID fan motor winding temperature", "phc-idfan", 96),
+  analog("PRS-PHC-10", "Calciner outlet draft", "mbar", "phc-calciner", -11, 0.2, { limit: band(-15, -7, undefined, -4), normal: "−9 … −13", instrument: "Pressure transmitter" }),
+  analog("GAS-PHC-03", "Calciner outlet O₂", "vol%", "phc-calciner", 2.0, 0.06, { dec: 2, limit: band(1.0, 4.0, 0.5), normal: "1.5–3.0", instrument: "Extractive gas analyser" }),
+  analog("GAS-PHC-04", "Calciner outlet CO", "ppm", "phc-calciner", 450, 25, { dec: 0, limit: hi(2500, 4500), normal: "< 1,000", instrument: "Extractive gas analyser" }),
+  analog("POS-PHC-02", "C5 meal-split gate position (calciner / riser)", "%", "phc-calciner", 70, 0.2, { limit: band(20, 95, 5, 99.5), normal: "60–80", instrument: "Actuator position feedback" }),
+
+  // ------------------------------------------------------------- BGH-01 (main baghouse, run with PHC-01)
+  state("STS-BGH-01", "Pulse-cleaning controller status", "bgh-bags", "CLEANING", ["PAUSED"], ["FAULT"], "PLC / DCS status"),
+  analog("TMP-BGH-02", "Baghouse inlet gas temperature (bag protection)", "°C", "bgh-bags", 175, 1.5, { dec: 0, limit: hi(220, 240), normal: "150–200", instrument: "Thermocouple" }),
+  analog("PRS-BGH-02", "Baghouse inlet draft", "mbar", "bgh-bags", -18, 0.25, { limit: band(-26, -11, undefined, -6), normal: "−15 … −21", instrument: "Pressure transmitter" }),
+  analog("PRS-BGH-01", "Baghouse differential pressure across bags", "mbar", "bgh-bags", 14, 0.2, { limit: hi(20, 25), normal: "10–17", instrument: "Differential-pressure transmitter" }),
+  state("LEV-BGH-01", "Baghouse dust-hopper level", "bgh-bags", "NORMAL", [], ["HIGH"], "Level switch (status)"),
+  analog("ELE-BGH-02", "Dust-discharge airlock / screw motor current", "A", "bgh-bags", 9.5, 0.12, { limit: hi(12, 14), normal: "8–11" }),
+  analog("GAS-BGH-01", "Stack dust (existing CEMS, read-only)", "mg/Nm³", "bgh-bags", 12, 0.6, { dec: 1, limit: hi(25, 30), normal: "< 20", instrument: "CEMS (read-only link)" }),
+  analog("VIB-BGH-01", "Baghouse fan bearing vibration", "mm/s RMS", "bgh-fan", 2.1, 0.08, { dec: 2, limit: VIB_HI, normal: "1.0–3.0", instrument: "IEPE accelerometer" }),
+  analog("TMP-BGH-01", "Baghouse fan bearing temperature", "°C", "bgh-fan", 62, 0.5, { limit: BEARING_HI, normal: "50–72" }),
+  analog("ELE-BGH-01", "Baghouse fan motor current", "A", "bgh-fan", 310, 2, { dec: 0, limit: hi(360, 390), normal: "285–335" }),
+  analog("SPD-BGH-01", "Baghouse fan speed", "rpm", "bgh-fan", 980, 1.2, { dec: 0, limit: band(800, 1010, undefined, 1030), normal: "950–1,000" }),
+  winding("TMP-BGH-03", "Baghouse fan motor winding temperature", "bgh-fan", 92),
 
   // ------------------------------------------------------------- KLN-01 · drive train
   analog("TMP-KLN-21", "Main motor winding temperature", "°C", "kln-motor", 92, 1.2, { limit: hi(130, 140), normal: "70–110" }),
@@ -504,6 +558,7 @@ export const PYRO_SIGNALS: PyroSignalDef[] = [
   state("STS-KLN-05", "Girth-gear spray controller", "kln-girth", "OK", [], ["FAULT"]),
   ...[1, 2, 3, 4, 5, 6].map((n) => state(`PRX-KLN-0${n}`, `Spray circuit ${n} metering cycle (HOLD)`, "kln-girth", "CYCLING", [], ["NO CYCLE"], "Divider-cycle proof")),
   analog("VIB-KLN-04", "Pinion vibration, girth-gear side", "mm/s RMS", "kln-girth", 2.33, 0.1, { dec: 2, limit: hi(5.6, 9.0), normal: "0.5–3.5" }),
+  state("STS-KLN-12", "Main-drive health and motor cooling fans (DCS)", "kln-motor", "OK", ["COOLING FAN OFF"], ["FAULT"], "PLC / DCS status"),
 
   // ------------------------------------------------------------- KLN-01 · supports, tyres, thrust
   ...([
@@ -520,12 +575,14 @@ export const PYRO_SIGNALS: PyroSignalDef[] = [
     analog(`MIG-KLN-0${n}`, `Tyre ${n} migration (tyre–shell slip)`, "mm/rev", subId, mig, 0.12, { limit: band(4, 16, 2, 22), normal: "6–13", instrument: "Tyre-shell slip pickup" }),
   ]),
   analog("POS-KLN-01", "Kiln axial position (thrust LVDT)", "mm", "kln-thrust", -3, 0.45, { limit: { kind: "abs", warn: 30, alarm: 40 }, normal: "± 20" }),
+  ...[1, 2, 3].map((n) => analog(`TMP-KLN-${27 + n}`, `Tyre ${n} temperature (DCS read-only)`, "°C", `kln-st${n}`, [250, 215, 250][n - 1], 1.2, { dec: 0, limit: hi(350, 400), normal: "200–300", instrument: "DCS read-only temperature" })),
   state("POS-KLN-02", "Thrust travel limit switches", "kln-thrust", "CLEAR", [], ["LIMIT"]),
   analog("PRS-KLN-07", "Thrust hydraulic pressure", "bar", "kln-thrust", 86, 1.6, { dec: 0, limit: band(30, 150, 20, 180), normal: "40–120" }),
 
   // ------------------------------------------------------------- KLN-01 · shell, inlet, outlet
   analog("TMP-KLN-13", "Kiln inlet gas temperature", "°C", "kln-inlet", 1080, 4, { dec: 0, limit: band(980, 1180, undefined, 1230), normal: "1,040–1,120" }),
-  analog("PRS-KLN-01", "Kiln inlet draft", "mbar", "kln-inlet", -3.6, 0.06, { dec: 2, limit: hi(-1.5, -0.5), normal: "−2.5 … −5.0" }),
+  // OSW-PE-SNL-PYR-01 Rev. 01 nominal −7.8 … −14.7 mbar; held at −8.8 so the C6 / riser draft (−11.2, nominal −5.9 … −11.8) stays deeper.
+  analog("PRS-KLN-01", "Kiln inlet draft", "mbar", "kln-inlet", -8.8, 0.15, { dec: 2, limit: band(-19.6, -4.9, undefined, -1.96), normal: "−7.8 … −14.7" }),
   analog("GAS-KLN-01", "Kiln inlet O₂", "vol%", "kln-inlet", 2.4, 0.06, { dec: 2, limit: band(1.0, 5.0, 0.5), normal: "1.5–3.5" }),
   analog("GAS-KLN-02", "Kiln inlet CO", "ppm", "kln-inlet", 420, 25, { dec: 0, limit: hi(3000, 5000), normal: "< 1,000" }),
   analog("GAS-KLN-03", "Kiln inlet NOₓ", "ppm", "kln-inlet", 950, 20, { dec: 0, limit: band(400, 1700, undefined, 2100), normal: "700–1,300" }),
@@ -538,7 +595,7 @@ export const PYRO_SIGNALS: PyroSignalDef[] = [
     limit: lo(90, 80),
     normal: "≥ 95",
     instrument: "IR shell scanner (K-K33 status + temperature map)",
-    scanResolution: "Map every 10 min, values every 1 min (simulated); axial / angular resolution not yet captured — pending D5 (MOM 1.10.1)",
+    scanResolution: "Map every 10 min, values every 1 min; axial / angular resolution not yet captured — pending D5 (MOM 1.10.1)",
   }),
   analog("CAL-KLN-03", "Shell temperature map maximum (K-K33 STS-KLN-08 / CAL-KLN-03)", "°C", "kln-shell", 326, 2.5, {
     dec: 0,
@@ -548,22 +605,24 @@ export const PYRO_SIGNALS: PyroSignalDef[] = [
     point: "K-K33",
     instrument: "IR shell scanner map maximum (D4 K-K33, R?, Required, scanner data)",
   }),
+  state("STS-KLN-13", "Shell cooling fans status (DCS)", "kln-shell", "RUNNING", ["STANDBY"], ["FAULT"], "PLC / DCS status"),
   analog("MAN-KLN-01", "Handheld shell scan, 52 m zone", "°C", "kln-shell", 318, 0, { dec: 0, limit: hi(380, 420), normal: "250–340", manual: true, point: "Handheld" }),
-  analog("TMP-KLN-14", "Burning-zone temperature (pyrometer)", "°C", "kln-outlet", 1450, 5, { dec: 0, limit: band(1350, 1550, 1300, 1600), normal: "1,400–1,500", instrument: "Two-colour pyrometer" }),
+  analog("TMP-KLN-14", "Burning-zone temperature (pyrometer)", "°C", "kln-outlet", 1300, 5, { dec: 0, limit: band(1200, 1400, 1150, 1450), normal: "1,250–1,350", instrument: "Two-colour pyrometer" }),
   analog("TMP-KLN-27", "Kiln hood temperature", "°C", "kln-outlet", 1030, 4, { dec: 0, limit: band(880, 1150, undefined, 1220), normal: "960–1,100" }),
-  analog("PRS-KLN-03", "Kiln hood pressure", "mbar", "kln-outlet", -0.3, 0.025, { dec: 2, limit: hi(0, 0.3), normal: "−0.1 … −0.5" }),
-  analog("TMP-KLN-25", "Outlet sector-plate cooling-air temperature", "°C", "kln-outlet", 42, 0.4, { limit: hi(65, 80), normal: "35–55" }),
-  analog("TMP-KLN-26", "Cooling shroud (cow shell) surface temperature", "°C", "kln-outlet", 185, 1.5, { dec: 0, limit: hi(250, 290), normal: "150–220" }),
+  analog("PRS-KLN-03", "Kiln hood pressure", "mbar", "kln-outlet", -0.147, 0.012, { dec: 3, limit: band(-0.49, 0, undefined, 0.098), normal: "−0.098 … −0.196" }),
+  analog("TMP-KLN-25", "Outlet sector-plate cooling-air temperature", "°C", "kln-outlet", 90, 1, { limit: hi(150, 180), normal: "60–120" }),
+  analog("TMP-KLN-26", "Cooling shroud (cow shell) surface temperature", "°C", "kln-outlet", 250, 2, { dec: 0, limit: hi(350, 400), normal: "200–300" }),
 
   // ------------------------------------------------------------- BRN-01
   state("CAM-BRN-01", "Flame-view camera feed (operator visual evidence)", "brn-burner", "FEED LIVE", [], ["FEED LOST"], "Protected flame camera (video stream)"),
-  analog("PRS-BRN-01", "Swirl (helical) air pressure", "mbar", "brn-burner", 165, 1.2, { dec: 0, limit: band(135, 200, 115, 220), normal: "150–180" }),
-  analog("PRS-BRN-02", "Axial (jet) air pressure", "mbar", "brn-burner", 235, 1.5, { dec: 0, limit: band(195, 280, 170, 300), normal: "215–255" }),
-  analog("TMP-BRN-02", "Secondary air temperature", "°C", "brn-burner", 990, 5, { dec: 0, limit: band(850, 1150, 780, 1220), normal: "930–1,050" }),
-  analog("PRS-BRN-03", "Primary-air header pressure", "mbar", "brn-pafan", 255, 1.5, { dec: 0, limit: band(215, 300, 190, 320), normal: "235–275" }),
+  analog("PRS-BRN-01", "Swirl (helical) air pressure", "mbar", "brn-burner", 65, 0.5, { dec: 0, limit: band(20, 150, undefined, 200), normal: "30–100" }),
+  analog("PRS-BRN-02", "Axial (jet) air pressure", "mbar", "brn-burner", 625, 4, { dec: 0, limit: band(450, 800, undefined, 900), normal: "550–700" }),
+  analog("TMP-BRN-02", "Secondary air temperature", "°C", "brn-burner", 1100, 5, { dec: 0, limit: band(950, 1200, undefined, 1250), normal: "1,050–1,150" }),
+  analog("PRS-BRN-03", "Primary-air header pressure", "mbar", "brn-pafan", 675, 4, { dec: 0, limit: band(500, 850, 400, 950), normal: "600–750" }),
   analog("VIB-BRN-01", "Primary-air fan vibration", "mm/s RMS", "brn-pafan", 1.9, 0.07, { dec: 2, limit: VIB_HI, normal: "1.0–2.8" }),
   analog("TMP-BRN-01", "Primary-air fan bearing temperature", "°C", "brn-pafan", 60, 0.5, { limit: BEARING_HI, normal: "48–70" }),
   analog("ELE-BRN-01", "Primary-air fan motor current", "A", "brn-pafan", 142, 1, { dec: 0, limit: hi(170, 185), normal: "130–155" }),
+  winding("TMP-BRN-05", "Primary-air fan motor winding temperature", "brn-pafan", 88),
   analog("TMP-BRN-04", "Fine-coal bin temperature", "°C", "brn-coalbin", 56, 0.3, { limit: hi(70, 80), normal: "45–62" }),
   // D4 unit "vol%/ppm": ppm if the species is CO, vol% if CO₂ (EHS HOLD, MOM 1.13.1). Simulated values follow a CO-type ppm scale.
   analog("GAS-BRN-01", "Fine-coal bin CO / CO₂ indication (species pending)", "ppm / vol%", "brn-coalbin", 18, 2, { dec: 0, limit: hi(80, 200), normal: "< 40" }),
@@ -572,15 +631,21 @@ export const PYRO_SIGNALS: PyroSignalDef[] = [
   analog("PRS-BRN-04", "Coal conveying line pressure", "mbar", "brn-coalfeed", 410, 4, { dec: 0, limit: band(300, 540, 250, 620), normal: "370–450" }),
   analog("VIB-BRN-02", "Coal conveying blower vibration", "mm/s RMS", "brn-coalfeed", 2.6, 0.09, { dec: 2, limit: hi(6.3, 9.0), normal: "1.5–3.5" }),
   analog("ELE-BRN-02", "Coal conveying blower current", "A", "brn-coalfeed", 205, 1.5, { dec: 0, limit: hi(245, 265), normal: "190–220" }),
+  winding("TMP-BRN-06", "Coal conveying blower motor winding temperature", "brn-coalfeed", 92),
+  // Calciner firing and tertiary air (sheet P-5; firing belongs to the burner group).
+  analog("FLO-BRN-02", "Calciner coal mass flow", "t/h", "brn-calciner", 14.5, 0.08, { dec: 2, limit: band(11.5, 17.5, 9.5, 19.5), normal: "13–16", instrument: "Mass-flow meter" }),
+  analog("POS-BRN-01", "Tertiary-air damper position", "%", "brn-calciner", 65, 0.2, { limit: band(20, 92, 5, 99.5), normal: "55–75", instrument: "Actuator / LVDT / DI" }),
+  analog("TMP-BRN-03", "Tertiary-air temperature", "°C", "brn-calciner", 880, 4, { dec: 0, limit: band(720, 980, 650, 1040), normal: "820–940", instrument: "Thermocouple / DCS" }),
+  analog("PRS-BRN-05", "Tertiary-air duct pressure", "mbar", "brn-calciner", -3.43, 0.06, { dec: 2, limit: band(-7.85, -0.49, undefined, 0.49), normal: "−2.0 … −4.9", instrument: "Pressure transmitter" }),
   analog("CAL-BRN-01", "Coal-to-feed ratio", "%", "brn-coalfeed", 3.18, 0.025, { dec: 2, limit: band(2.9, 3.5, undefined, 3.8), normal: "3.0–3.4", calculated: true, instrument: "Gateway calculation (not a D4 entry)" }),
 
   // ------------------------------------------------------------- CLR-01
-  compartment(1, 78, "clr-hot"),
-  compartment(2, 66, "clr-hot"),
-  compartment(3, 55, "clr-hot"),
-  compartment(4, 44, "clr-cold"),
-  compartment(5, 37, "clr-cold"),
-  compartment(6, 31, "clr-cold"),
+  compartment(1, CLR_BASE[0], "clr-hot"),
+  compartment(2, CLR_BASE[1], "clr-hot", { limit: band(37.3, 70.6, undefined, 78.5), normal: "49–64" }),
+  compartment(3, CLR_BASE[2], "clr-hot", { limit: band(29.4, 60.8, undefined, 68.6), normal: "39–54" }),
+  compartment(4, CLR_BASE[3], "clr-cold"),
+  compartment(5, CLR_BASE[4], "clr-cold", { limit: band(17.7, 41.2, undefined, 47.1), normal: "25–34" }),
+  compartment(6, CLR_BASE[5], "clr-cold", { limit: band(9.8, 29.4, undefined, 34.3), normal: "15–25" }),
   ...([1, 2, 3] as const).flatMap((n) => [
     analog(`TMP-CLR-0${n}`, `Cooling fan ${n} bearing temperature`, "°C", "clr-fans13", 56, 0.5, { limit: BEARING_HI, normal: "45–68" }),
     analog(`VIB-CLR-0${n}`, `Cooling fan ${n} vibration`, "mm/s RMS", "clr-fans13", [2.1, 2.4, 1.9][n - 1], 0.08, { dec: 2, limit: VIB_HI, normal: "1.0–3.2" }),
@@ -598,6 +663,17 @@ export const PYRO_SIGNALS: PyroSignalDef[] = [
       normal: `${Math.round([148, 126, 104][n - 4] * 0.9)}–${Math.round([148, 126, 104][n - 4] * 1.08)}`,
     }),
   ]),
+  ...[1, 2, 3, 4, 5, 6].map((n) =>
+    // Hoppers 3–6 at the OSW-PE-SNL-PYR-01 Rev. 01 nominal mid-point (80–150 °C, H 250 / HH 350).
+    analog(`TMP-CLR-${10 + n}`, `Under-grate hopper ${n} temperature (DCS read-only)`, "°C", n <= 3 ? "clr-hot" : "clr-cold", [95, 86, 115, 115, 115, 115][n - 1], 1, {
+      dec: 0,
+      limit: n <= 2 ? hi(150, 200) : hi(250, 350),
+      normal: n <= 2 ? "70–120" : "80–150",
+      instrument: "DCS read-only temperature",
+    }),
+  ),
+  ...[1, 2, 3, 4, 5, 6].map((n) => winding(`TMP-CLR-${16 + n}`, `Cooling fan ${n} motor winding temperature`, n <= 3 ? "clr-fans13" : "clr-fans46", 86)),
+  state("STS-CLR-01", "Cooler grease-lube pumps status (DCS)", "clr-drive", "RUNNING", ["LOW GREASE"], ["FAULT"], "PLC / DCS status"),
   analog("SPD-CLR-01", "Grate stroke rate", "stroke/min", "clr-drive", 10.5, 0.08, { limit: band(6, 17, 4, 20), normal: "8–14" }),
   analog("PRS-CLR-07", "Grate hydraulic working pressure", "bar", "clr-drive", 118, 1.2, { dec: 0, limit: band(70, 175, undefined, 205), normal: "95–140" }),
   analog("TMP-CLR-07", "Grate hydraulic oil temperature", "°C", "clr-drive", 48, 0.4, { limit: hi(62, 72), normal: "40–55" }),
@@ -606,6 +682,7 @@ export const PYRO_SIGNALS: PyroSignalDef[] = [
   analog("VIB-CLR-07", "Vent fan vibration", "mm/s RMS", "clr-vent", 2.2, 0.08, { dec: 2, limit: VIB_HI, normal: "1.0–3.2" }),
   analog("TMP-CLR-10", "Vent fan bearing temperature", "°C", "clr-vent", 64, 0.5, { limit: BEARING_HI, normal: "50–74" }),
   analog("ELE-CLR-07", "Vent fan motor current", "A", "clr-vent", 385, 2.5, { dec: 0, limit: hi(440, 470), normal: "350–410" }),
+  winding("TMP-CLR-23", "Vent fan motor winding temperature", "clr-vent", 94),
 
   // ------------------------------------------------------------- HMR-01
   analog("TMP-HMR-03", "Crusher motor winding temperature", "°C", "hmr-motor", 82, 0.8, { limit: hi(130, 140), normal: "65–100" }),
@@ -620,6 +697,7 @@ export const PYRO_SIGNALS: PyroSignalDef[] = [
   analog("VIB-CSL-01", "Pan conveyor drive vibration", "mm/s RMS", "csl-conveyor", 1.9, 0.07, { dec: 2, limit: VIB_HI, normal: "1.0–2.8" }),
   analog("ELE-CSL-01", "Pan conveyor motor current", "A", "csl-conveyor", 74, 0.8, { dec: 0, limit: hi(95, 108), normal: "65–85" }),
   analog("SPD-CSL-01", "Pan conveyor chain speed (tail shaft)", "rpm", "csl-conveyor", 6.2, 0.02, { dec: 2, limit: band(5.6, undefined, 4.0), normal: "6.0–6.4" }),
+  winding("TMP-CSL-02", "Pan conveyor motor winding temperature", "csl-conveyor", 80),
   analog("PRS-CSL-01", "Silo baghouse differential pressure", "mbar", "csl-silo", 12.5, 0.15, { limit: hi(18, 22), normal: "9–15" }),
   analog("ELE-CSL-02", "Dust collector fan motor current", "A", "csl-silo", 58, 0.5, { limit: band(42, 70, 30, 78), normal: "52–64" }),
   analog("LEV-CSL-01", "Clinker silo level", "%", "csl-silo", 56, 0.2, { limit: band(12, 88, undefined, 94), normal: "30–80" }),
@@ -644,7 +722,11 @@ export const isOnline = (s: PyroSignalDef) => s.origin === "online";
   const missing = Object.keys(PYRO_SPEC).filter((t) => !PYRO_SIGNAL_BY_TAG[t]);
   const extra = online.filter((s) => !PYRO_SPEC[s.tag]).map((s) => s.tag);
   const wrongMachine = online.filter((s) => idOf(PYRO_SPEC[s.tag]?.machine ?? "") !== s.machine).map((s) => s.tag);
-  if (online.length !== 161 || missing.length || extra.length || wrongMachine.length || new Set(PYRO_SIGNALS.map((s) => s.tag)).size !== PYRO_SIGNALS.length) {
-    throw new Error(`pyro catalog drift: online ${online.length}, missing ${missing}, extra ${extra}, machine ${wrongMachine}`);
+  // The sensor list (OSW-PE-SNL-PYR-01 Rev. 00) is the register of record: 223 online + 2 manual points.
+  const listed = PYRO_SENSOR_LIST.filter((e) => e.status !== "MANUAL").map((e) => e.tag);
+  const notListed = online.filter((s) => !PYRO_SENSOR_LIST_BY_TAG[s.tag]).map((s) => s.tag);
+  const unbuilt = listed.filter((t) => !PYRO_SIGNAL_BY_TAG[t]);
+  if (online.length !== 223 || missing.length || extra.length || wrongMachine.length || notListed.length || unbuilt.length || new Set(PYRO_SIGNALS.map((s) => s.tag)).size !== PYRO_SIGNALS.length) {
+    throw new Error(`pyro catalog drift: online ${online.length}, missing ${missing}, extra ${extra}, machine ${wrongMachine}, not listed ${notListed}, unbuilt ${unbuilt}`);
   }
 }

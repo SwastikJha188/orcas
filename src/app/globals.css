@@ -9,11 +9,11 @@
   --radius-md: 4px;
   --radius-lg: 6px;
   --corner-sm: 2px;
+  --corner-row: 2px;
+  --corner-card: 4px;
   --corner-shell: 4px;
   --corner-intersection: 0px;
-  --corner-card: 4px;
   --corner-pill: 4px;
-  --corner-row: 2px;
 
   /* Emil Kowalski Motion Tokens */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
@@ -220,7 +220,7 @@ button, input, select, textarea { font-family: inherit; font-feature-settings: i
 }
 
 .brand-logo {
-  height: 18px;
+  height: 21px;
   width: auto;
   display: block;
 }
@@ -228,18 +228,22 @@ button, input, select, textarea { font-family: inherit; font-feature-settings: i
 html:not([data-theme="light"]) .brand-logo-light { display: none; }
 html[data-theme="light"] .brand-logo-dark { display: none; }
 
+/* Top bar right cluster: switchers, gateway pill, theme toggle on one centre line. */
+.cp-topbar-actions { display: inline-flex; align-items: center; gap: 6px; }
+
 /* Navbar gateway status indicator: green when all active, red when not */
 .navbar-gw-status {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 5px 12px;
+  block-size: 32px;
+  padding: 0 12px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
   background: var(--bg-surface);
-  font-family: var(--font-mono);
-  font-size: var(--fs-sm);
-  font-weight: 600;
+  font-size: var(--fs-md);
+  font-weight: 500;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), transform 60ms var(--ease-out);
@@ -282,7 +286,7 @@ html[data-theme="light"] .brand-logo-dark { display: none; }
 
 /* Phone top bar: the gateway pill shrinks to its status dot (title keeps the meaning). */
 @media (max-width: 600px) {
-  .navbar-gw-status { padding: 0; inline-size: 32px; block-size: 32px; justify-content: center; }
+  .navbar-gw-status { padding: 0; inline-size: 44px; block-size: 44px; min-width: 44px; min-height: 44px; justify-content: center; }
   .navbar-gw-label { display: none; }
 }
 
@@ -318,7 +322,6 @@ html[data-theme="light"] .brand-logo-dark { display: none; }
   width: 100%;
 }
 
-.nav-rail-footer .cp-launcher,
 .nav-rail-footer .theme-toggle {
   inline-size: 40px;
   block-size: 40px;
@@ -326,7 +329,6 @@ html[data-theme="light"] .brand-logo-dark { display: none; }
   border-color: transparent;
 }
 
-.nav-rail-footer .cp-launcher:hover,
 .nav-rail-footer .theme-toggle:hover {
   background: var(--bg-surface-elevated);
   border-color: var(--border-hover);
@@ -524,7 +526,7 @@ html[data-theme="light"] .brand-logo-dark { display: none; }
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--fs-base);
   font-weight: 500;
   line-height: 1;
   cursor: pointer;
@@ -818,11 +820,11 @@ html[data-theme="light"] .brand-logo-dark { display: none; }
   min-width: 0;
   height: 100%;
   max-height: 100%;
-  padding: 14px 28px 32px 28px;
+  padding: 10px 16px 24px 16px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   background: var(--workspace-bg);
 }
 
@@ -832,21 +834,6 @@ html[data-theme="light"] .brand-logo-dark { display: none; }
 .assets-machine-workspace::-webkit-scrollbar-thumb {
   background: var(--dx-track);
   border-radius: 2px;
-}
-
-.machine-tabs-bar {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  max-width: 100%;
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-
-/* Views inside a grouped tab (Health, Sensors) sit at the end of the tab row. */
-.machine-tabs-bar > .machine-views-nav {
-  margin-inline-start: auto;
 }
 
 .subpage-content {
@@ -955,6 +942,9 @@ html[data-theme="light"] {
   --mx-material: #9a7a3c;
   --mx-material-hi: #b39352;
   --mx-material-deep: #5e4415;
+  /* Process flow lines of the stage overviews: hot gas, air (material uses --mx-material). */
+  --mx-flow-gas: #c97b66;
+  --mx-flow-air: #7ea3c4;
   --mx-pad-panel: #0c0d0e;
   --mx-pad-dot: #e6edf3;
   --mx-canvas: #0c0d0e;
@@ -996,6 +986,8 @@ html[data-theme="light"] {
   --mx-material: #c69d4f;
   --mx-material-hi: #dcbb73;
   --mx-material-deep: #a57427;
+  --mx-flow-gas: #b9573f;
+  --mx-flow-air: #4c7ca8;
   --mx-pad-panel: #ffffff;
   --mx-pad-dot: #ffffff;
   --mx-canvas: #f6f8fa;
@@ -1037,7 +1029,7 @@ html[data-theme="light"] {
   height: auto;
 }
 
-/* Viewport Chrome (HUD overlays, 2D X/Y gizmo, zoom bar) */
+/* Viewport Chrome (HUD overlays, zoom bar) */
 .mx-vp {
   position: relative;
   width: 100%;
@@ -1142,15 +1134,6 @@ html[data-theme="light"] {
   border-left: 1px solid var(--mx-hud-border);
   font-family: var(--font-ui);
   color: var(--dx-ink);
-}
-
-.mx-vp-gizmo {
-  position: absolute;
-  left: 10px;
-  bottom: 8px;
-  z-index: 4;
-  pointer-events: none;
-  opacity: 0.85;
 }
 
 /* Shell thermal scale (°C stops 150 → 520). A measurement scale, identical in

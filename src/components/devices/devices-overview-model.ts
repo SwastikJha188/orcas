@@ -34,11 +34,11 @@ export type Layer = "broker" | "gateway" | "source" | "card" | "point";
 export const LAYERS: Layer[] = ["broker", "gateway", "source", "card", "point"];
 
 export const LAYER_LABEL: Record<Layer, string> = {
-  broker: "Broker",
-  gateway: "Gateway",
-  source: "Source",
-  card: "Card",
-  point: "Point",
+  broker: "Data connection",
+  gateway: "Data collector",
+  source: "Device",
+  card: "Sensor card",
+  point: "Reading point",
 };
 
 const BROKER_LINK: Record<BrokerState, LinkStatus> = {
@@ -56,9 +56,9 @@ export function brokerStatus(ix: EdgeIndex, b: EdgeBroker): LinkStatus {
 }
 
 export function brokerReason(ix: EdgeIndex, b: EdgeBroker): string | null {
-  if (!b.enabled) return "Broker disabled";
+  if (!b.enabled) return "Data connection switched off";
   const s = ix.brokerState.get(b.id);
-  if (!s) return "Runtime has not loaded this broker yet";
+  if (!s) return "This data connection has not started yet";
   if (s.state === "connected") return null;
   return s.lastError ?? (s.state === "connecting" ? "Connecting" : s.state === "reconnecting" ? "Reconnecting" : "Not connected");
 }
@@ -138,6 +138,13 @@ function single(status: LinkStatus): LinkCounts {
   return c;
 }
 
+function cleanMachineName(raw: string): string {
+  return raw
+    .replace(/\s*\([A-Z0-9-]+\)\s*$/, "")
+    .replace(/\s+[A-Z]{2,4}-\d{2,3}\s*$/, "")
+    .trim();
+}
+
 export function buildLane(ix: EdgeIndex, gw: EdgeGateway): Lane {
   const broker = gw.brokerId ? (ix.brokers.get(gw.brokerId) ?? null) : null;
   const bStatus: LinkStatus = broker ? brokerStatus(ix, broker) : "waiting";
@@ -154,21 +161,27 @@ export function buildLane(ix: EdgeIndex, gw: EdgeGateway): Lane {
   for (const s of sources) {
     const sl = sourceLink(ix, s);
     srcCounts[sl.status] += 1;
-    if (sl.status !== "online" && sl.reason && !firstReason) firstReason = { layer: "source", text: `${s.code}: ${sl.reason}` };
+    if (sl.status !== "online" && sl.reason && !firstReason) firstReason = { layer: "source", text: `${s.name || s.code}: ${sl.reason}` };
     for (const c of sourceCards(ix, s)) {
       if (!c.config && !c.detected) continue;
       cardCounts[cardLink(sl.status, c.detected, c.config?.enabled ?? true)] += 1;
     }
     for (const p of pointsOf(ix, s.id)) {
       ptCounts[pointLink(pointReading(ix, p))] += 1;
-      if (p.machineId) machines.set(p.machineId, ix.registry.machines.find((m) => m.id === p.machineId)?.name ?? p.machineId);
+      if (p.machineId) {
+        const rawName = ix.registry.machines.find((m) => m.id === p.machineId)?.name ?? p.machineId;
+        machines.set(p.machineId, cleanMachineName(rawName));
+      }
     }
-    if (s.machineId && !machines.has(s.machineId)) machines.set(s.machineId, ix.registry.machines.find((m) => m.id === s.machineId)?.name ?? s.machineId);
+    if (s.machineId && !machines.has(s.machineId)) {
+      const rawName = ix.registry.machines.find((m) => m.id === s.machineId)?.name ?? s.machineId;
+      machines.set(s.machineId, cleanMachineName(rawName));
+    }
   }
 
   const cells: Record<Layer, LayerCell> = {
     broker: cell(single(bStatus), broker?.name ?? "Unassigned"),
-    gateway: cell(single(gLink.status), gw.code),
+    gateway: cell(single(gLink.status), gw.name || gw.code),
     source: cell(srcCounts),
     card: cell(cardCounts),
     point: cell(ptCounts),
@@ -190,13 +203,13 @@ export function buildLane(ix: EdgeIndex, gw: EdgeGateway): Lane {
 
   let reason: string | null = null;
   if (gLink.status === "disabled") reason = gLink.reason;
-  else if (breakAt === "broker") reason = broker ? brokerReason(ix, broker) : "Not assigned to a broker";
+  else if (breakAt === "broker") reason = broker ? brokerReason(ix, broker) : "Not linked to a data connection";
   else if (breakAt === "gateway") reason = gLink.reason;
-  else if (breakAt === "source") reason = firstReason?.text ?? (sources.length === 0 ? "No sources registered" : "No source reporting");
-  else if (breakAt === "card") reason = cells.card.total === 0 ? "No cards registered or reported" : "No card reporting";
-  else if (breakAt === "point") reason = cells.point.total === 0 ? "No points mapped" : "No point has a current reading";
+  else if (breakAt === "source") reason = firstReason?.text ?? (sources.length === 0 ? "No devices registered" : "No device is sending data");
+  else if (breakAt === "card") reason = cells.card.total === 0 ? "No sensor cards registered or seen" : "No sensor card is sending data";
+  else if (breakAt === "point") reason = cells.point.total === 0 ? "No reading points linked to a machine" : "No reading point has a current value";
   else if (degradedAt === "source" && firstReason) reason = firstReason.text;
-  else if (degradedAt) reason = `Some ${LAYER_LABEL[degradedAt].toLowerCase()}s not reporting`;
+  else if (degradedAt) reason = `Some ${LAYER_LABEL[degradedAt].toLowerCase()}s are not sending data`;
 
   const tone: Tone = gLink.status === "disabled" ? "idle" : breakAt ? (breakAt === "point" && cells.point.total === 0 ? "warn" : "bad") : degradedAt ? "warn" : "good";
 
@@ -307,10 +320,10 @@ export function breakRows(ix: EdgeIndex): BreakRow[] {
         key: `g:${g.id}`,
         layer: "gateway",
         name: g.code,
-        path: broker?.name ?? "No broker",
+        path: broker?.name ?? "No data connection",
         status: gl.status,
         tone: LINK_TONE[gl.status],
-        reason: gl.reason ?? "Not reporting",
+        reason: gl.reason ?? "Not sending data",
         lastSeenAt: gl.lastSeenAt,
         target: { kind: "hierarchy", key: `gw:${g.id}` },
       });
@@ -327,7 +340,7 @@ export function breakRows(ix: EdgeIndex): BreakRow[] {
           path: `${g.code} › ${s.code}`,
           status: sl.status,
           tone: LINK_TONE[sl.status],
-          reason: sl.reason ?? "Not reporting",
+          reason: sl.reason ?? "Not sending data",
           lastSeenAt: sl.lastSeenAt,
           target: { kind: "hierarchy", key: `src:${s.id}` },
         });
@@ -345,7 +358,7 @@ export function breakRows(ix: EdgeIndex): BreakRow[] {
           path: `${g.code} › ${s.code} › card ${p.slot} › ch ${p.channel}`,
           status: pl,
           tone: LINK_TONE[pl],
-          reason: r.status === "stale" ? "Reading invalid or not fresh" : "Channel not heard on the wire",
+          reason: r.status === "stale" ? "Reading is invalid or too old" : "No message has arrived for this reading",
           lastSeenAt: r.updatedAt,
           target: { kind: "hierarchy", key: `card:${s.id}/${p.slot}` },
         });
@@ -371,7 +384,8 @@ export function pointRows(ix: EdgeIndex): PointRow[] {
     const gateway = source ? (ix.gateways.get(source.gatewayId) ?? null) : null;
     const reading = pointReading(ix, p);
     const mid = p.machineId;
-    const machine = mid ? { id: mid, name: ix.registry.machines.find((m) => m.id === mid)?.name ?? mid } : null;
+    const rawName = mid ? (ix.registry.machines.find((m) => m.id === mid)?.name ?? mid) : null;
+    const machine = mid && rawName ? { id: mid, name: cleanMachineName(rawName) } : null;
     return { point: p, source, gateway, reading, link: pointLink(reading), machine };
   });
 }

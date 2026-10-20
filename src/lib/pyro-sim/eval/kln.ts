@@ -7,7 +7,7 @@
  * the thermal-map processing of D5 Table 9.5 (`c.thermal`), plus the
  * rule-like sensor working checks of D5 Table 5.4.6 (R-KLN-20).
  *
- * Persistence is the engine's (D5 §9.4.5): Advisory after 3 samples, a state
+ * Persistence is the engine's (D5 §9.4.5): Alert after 3 samples, a state
  * rule after 2, Critical after 1; `stateRule` marks urgent evidence (switches,
  * hood pressure, travel limit) that a transient must not hold back.
  */
@@ -75,7 +75,7 @@ export function evalKln(c: EvalContext): void {
       const band = mig.v < 4 || mig.v > 16 ? ` — outside the 4–16 mm/rev band${mig.v <= 2 || mig.v >= 22 ? ", far outside (would be critical once the OEM pickup and baseline are approved)" : ""}` : "";
       // MIG-KLN-01…03 are an OEM pickup HOLD (MOM 1.4.1): advisory evidence only.
       H(M, "SW-KLN-01", {
-        severity: "Advisory",
+        severity: "Alert",
         evidence: `Tyre ${mig.n} migration ${mig.v.toFixed(1)} mm/rev, ${fmtSigned(mig.r)} mm/rev from the demo hot baseline (${mig.r < 0 || mig.v < 4 ? "tyre tight" : "tyre loose"}) at ${speed.toFixed(2)} rpm, tyre-zone shell ${tyreShell.toFixed(0)} °C${band}`,
         tags: [mig.tag, "SPD-KLN-01"],
         subs: [`kln-st${mig.n}`],
@@ -99,7 +99,7 @@ export function evalKln(c: EvalContext): void {
     const worst = missed.reduce((a, b) => Math.max(a, b.missed), 0);
     // PRX-KLN-01…06 are HOLD channels (no approved OEM metering proof): advisory evidence only.
     H(M, "SW-KLN-02", {
-      severity: "Advisory",
+      severity: "Alert",
       evidence: `${ctrl === "FAULT" ? "Spray controller FAULT" : `${missed.map((x) => `Circuit ${x.tag.slice(-1)} silent ${x.min} min (${x.missed} missed cycle${x.missed > 1 ? "s" : ""})`).join(", ")} while the other circuits pulse (HOLD channels)`} · pinion vibration ×${rt.toFixed(2)} model${ctrl === "FAULT" || worst >= 2 ? " — would be critical (≥ 2 missed cycles) once metering proof is approved" : ""}`,
       tags: ["STS-KLN-05", ...silent, "VIB-KLN-04"],
       stateRule: true,
@@ -116,7 +116,7 @@ export function evalKln(c: EvalContext): void {
       if (r10 >= 1.4 && steadyTorque) {
         const v = measured["VIB-KLN-04"];
         H(M, "R-KLN-13", {
-          severity: v >= VIB_ALARM ? "Critical" : "Advisory",
+          severity: v >= VIB_ALARM ? "Critical" : "Alert",
           evidence: `Pinion vibration ${v.toFixed(2)} mm/s, ×${r10.toFixed(2)} its load-corrected model (10-sample mean) at steady torque ${measured["ELE-KLN-01"].toFixed(0)} % (${fmtZ(zm("ELE-KLN-01"))}) · all six spray circuits pulsing, controller OK · rising ${fmtSigned(ratePerH("VIB-KLN-04", 60), 2)} mm/s per h`,
           tags: ["VIB-KLN-04", "ELE-KLN-01", "STS-KLN-05"],
           subs: ["kln-girth"],
@@ -142,7 +142,7 @@ export function evalKln(c: EvalContext): void {
           `Handheld ${worst!.hand.toFixed(0)} °C vs scanner ${worst!.scan!.toFixed(0)} °C at ${worst!.m} m · ${worst!.angle}° (${fmtSigned(worst!.gap!, 0)} K, emissivity ${HANDHELD_EMISSIVITY.toFixed(2)} / ${SCANNER_EMISSIVITY.toFixed(2)} matched), round ${clockLabel(hand!.at)}, steady running kiln`,
         );
       H(M, "SW-KLN-03", {
-        severity: cov5 < SHELL_COVERAGE_ALARM ? "Critical" : "Advisory",
+        severity: cov5 < SHELL_COVERAGE_ALARM ? "Critical" : "Alert",
         evidence: `${parts.join(" · ")} — cleaning advisory`,
         tags: ["STS-KLN-08", "CAL-KLN-03", "MAN-KLN-01"],
         stateRule: true,
@@ -178,7 +178,7 @@ export function evalKln(c: EvalContext): void {
       const near = hand?.points?.find((p) => Math.abs(p.m - th.hotPos) <= 2);
       const handTxt = near && t - hand!.at <= HANDHELD_VALID ? ` · handheld ${near.m} m · ${near.angle}° ${near.hand.toFixed(0)} °C (${clockLabel(hand!.at)})` : "";
       H(M, "SW-KLN-04", {
-        severity: max >= SHELL_DANGER || (max >= SHELL_ALERT && shellRate > SHELL_RATE_WARN) ? "Critical" : "Advisory",
+        severity: max >= SHELL_DANGER || (max >= SHELL_ALERT && shellRate > SHELL_RATE_WARN) ? "Critical" : "Alert",
         evidence: `Shell max ${max.toFixed(0)} °C at ${th.hotPos.toFixed(1)} m · ${th.hotAngle}°, model ${th.hotModel.toFixed(0)} °C there: ${fmtSigned(r, 0)} K (D5 ≥ +${SHELL_HOT_DELTA} K or > ${SHELL_RATE_WARN} K/h) · local: ${th.hotSpread.toFixed(0)} K above its section mean, ${grad.toFixed(1)} K/m axial · rising ${fmtSigned(shellRate, 0)} K/h · ${th.areaAboveAlert.toFixed(1)} m² ≥ ${SHELL_ALERT} °C${dA}${ttd} · ${bzTxt}${bz !== null && bz > 25 ? " (hotter flame: coating loss likely)" : " (flame on model: lining loss likely)"}${handTxt}`,
         tags: ["CAL-KLN-03", "STS-KLN-08", "MAN-KLN-01", "TMP-KLN-14"],
         subs: ["kln-shell"],
@@ -205,7 +205,7 @@ export function evalKln(c: EvalContext): void {
     let bandMax = -Infinity;
     for (let i = Math.round(wb.from * 2); i <= Math.round(wb.to * 2); i++) bandMax = Math.max(bandMax, shellProfile[i]);
     H(M, "R-KLN-19", {
-      severity: bandMax >= SHELL_ALERT ? "Critical" : "Advisory",
+      severity: bandMax >= SHELL_ALERT ? "Critical" : "Alert",
       evidence: `Warm band ${wb.from.toFixed(1)}–${wb.to.toFixed(1)} m ${fmtSigned(wb.residual, 0)} K above the model around the whole circumference (broad, not a local spot), band max ${bandMax.toFixed(0)} °C${dHour === null ? "" : `, ${fmtSigned(dHour, 0)} K in the last hour`} · ${bzTxt} · burner air pressures on model (not flame impingement)`,
       tags: ["CAL-KLN-03", "STS-KLN-08", "TMP-KLN-14"],
       subs: ["kln-shell"],
@@ -217,7 +217,7 @@ export function evalKln(c: EvalContext): void {
   if (cb && good("ELE-KLN-01") && zm("ELE-KLN-01") > 3) {
     const tq = measured["ELE-KLN-01"];
     H(M, "R-KLN-14", {
-      severity: ratio("ELE-KLN-01") >= 1.2 || tq >= 90 ? "Critical" : "Advisory",
+      severity: ratio("ELE-KLN-01") >= 1.2 || tq >= 90 ? "Critical" : "Alert",
       evidence: `Cold band ${cb.from.toFixed(1)}–${cb.to.toFixed(1)} m ${fmtSigned(cb.residual, 0)} K below the model across the whole circumference (transition zone) · torque ${tq.toFixed(0)} % (${fmtZ(zm("ELE-KLN-01"))}, ×${ratio("ELE-KLN-01").toFixed(2)} model) · winding ${fmtSigned(res("TMP-KLN-21"))} K, oil ${fmtSigned(res("TMP-KLN-15"))} K following the load`,
       tags: ["CAL-KLN-03", "STS-KLN-08", "ELE-KLN-01"],
       subs: ["kln-shell", "kln-motor"],
@@ -227,7 +227,7 @@ export function evalKln(c: EvalContext): void {
   if (!cb && good("ELE-KLN-01", "TMP-KLN-21", "TMP-KLN-15") && zm("ELE-KLN-01", 5) > 4 && res("TMP-KLN-21") > 4 && res("TMP-KLN-15") > 1.5) {
     const tq = measured["ELE-KLN-01"];
     H(M, "R-KLN-10", {
-      severity: ratio("ELE-KLN-01") >= 1.2 || tq >= 90 || measured["TMP-KLN-21"] >= 130 ? "Critical" : "Advisory",
+      severity: ratio("ELE-KLN-01") >= 1.2 || tq >= 90 || measured["TMP-KLN-21"] >= 130 ? "Critical" : "Alert",
       evidence: `Torque ${tq.toFixed(0)} % (${fmtZ(zm("ELE-KLN-01", 5))}, ×${ratio("ELE-KLN-01").toFixed(2)} model) with winding +${res("TMP-KLN-21").toFixed(1)} K and oil +${res("TMP-KLN-15").toFixed(1)} K following · ${scanOk ? `no cold band on the shell map (30–36 m ${fmtSigned(c.shellResMean(30, 36), 0)} K)` : "shell map not valid: a ring cannot be ruled out"}`,
       tags: ["ELE-KLN-01", "TMP-KLN-21", "TMP-KLN-15"],
       subs: ["kln-motor", "kln-gearbox"],
@@ -273,7 +273,7 @@ export function evalKln(c: EvalContext): void {
       const urgent = noFlowConfirmed || (low && pressLow);
       const crit = urgent || p <= 1.2 || measured["PRS-KLN-05"] >= 1.4 || measured["TMP-KLN-15"] >= 85 || (fe !== null && fe >= 120);
       H(M, "SW-KLN-05", {
-        severity: crit ? "Critical" : "Advisory",
+        severity: crit ? "Critical" : "Alert",
         evidence: parts.join(" · "),
         tags: ["PRS-KLN-05", "PRS-KLN-04", "TMP-KLN-15", "FLO-KLN-05", "LEV-KLN-01", "LAB-KLN-01"],
         stateRule: noFlowConfirmed || low,
@@ -295,8 +295,8 @@ export function evalKln(c: EvalContext): void {
       good("PRS-KLN-01") ? `inlet draft ${fmtSigned(res("PRS-KLN-01"), 2)} mbar vs model` : "inlet draft not valid",
     ].join(", ");
     H(M, "SW-KLN-06", {
-      severity: fa >= 1.0 ? "Critical" : "Advisory",
-      evidence: `O₂ +${res("GAS-KLN-01").toFixed(2)} vol% above the feed- and coal-normalised model (feed ${measured["FLO-KFS-01"].toFixed(0)} t/h, coal ${measured["FLO-BRN-01"].toFixed(2)} t/h, both steady) with inlet ${Math.abs(res("TMP-KLN-13")).toFixed(0)} K below · false-air index ${fa.toFixed(2)} · analyser OK · context: ${ctx}`,
+      severity: fa >= 1.0 ? "Critical" : "Alert",
+      evidence: `O₂ +${res("GAS-KLN-01").toFixed(2)} vol% above the feed- and coal-normalised model (feed ${(measured["FLO-KFS-01"] + measured["FLO-KFS-02"]).toFixed(0)} t/h, coal ${measured["FLO-BRN-01"].toFixed(2)} t/h, both steady) with inlet ${Math.abs(res("TMP-KLN-13")).toFixed(0)} K below · false-air index ${fa.toFixed(2)} · analyser OK · context: ${ctx}`,
       tags: ["GAS-KLN-01", "TMP-KLN-13", "PRS-KLN-01", "CAL-KLN-06", "GAS-KLN-02", "GAS-KLN-03"],
       lead: { tag: "CAL-KLN-06", target: fa < 0.5 ? 0.5 : 1.0 },
     });
@@ -324,7 +324,7 @@ export function evalKln(c: EvalContext): void {
       const low = states[best.lev] === "LOW LEVEL";
       const rate = ratePerH(best.tag);
       H(M, "R-KLN-07", {
-        severity: low || rate > 10 || best.r > 14 || measured[best.tag] >= 75 ? "Critical" : "Advisory",
+        severity: low || rate > 10 || best.r > 14 || measured[best.tag] >= 75 ? "Critical" : "Alert",
         evidence: `${best.tag} +${best.r.toFixed(1)} K above model, heating ${fmtSigned(rate, 1)} K/h, its pair follows · oil bath ${states[best.lev]} · thrust ${fmtSigned(thrustRise, 1)} bar vs model (not skew)`,
         tags: [best.tag, best.lev],
         subs: [best.st.sub],
@@ -346,7 +346,7 @@ export function evalKln(c: EvalContext): void {
       skew = true;
       const hot = best.split > 0 ? best.a : best.b;
       H(M, "R-KLN-15", {
-        severity: Math.abs(best.split) > 20 || measured[hot] >= BEARING_LIMIT ? "Critical" : "Advisory",
+        severity: Math.abs(best.split) > 20 || measured[hot] >= BEARING_LIMIT ? "Critical" : "Alert",
         evidence: `Station ${best.st.n} roller bearings ${best.a} / ${best.b} split ${Math.abs(best.split).toFixed(1)} K (> 10 K, ${hot} hotter) with both oil baths OK · thrust pressure ${measured["PRS-KLN-07"].toFixed(0)} bar, ${fmtSigned(thrustRise, 1)} bar above model over 30 min · axial ${measured["POS-KLN-01"].toFixed(1)} mm`,
         tags: [best.a, best.b, "PRS-KLN-07", "POS-KLN-01"],
         subs: [best.st.sub, "kln-thrust"],
@@ -367,7 +367,7 @@ export function evalKln(c: EvalContext): void {
       if (!others.length || !others.every((o) => o.mean < 2)) continue;
       const hottest = m.tags.reduce((a, b) => (measured[b] > measured[a] ? b : a));
       H(M, "R-KLN-16", {
-        severity: m.mean > 15 || measured[hottest] >= BEARING_LIMIT ? "Critical" : "Advisory",
+        severity: m.mean > 15 || measured[hottest] >= BEARING_LIMIT ? "Critical" : "Alert",
         evidence: `All four station ${m.st.n} bearings warming: ${m.tags.map((tg, k) => `${tg.slice(-2)} ${fmtSigned(m.r[k])}`).join(", ")} K (mean ${fmtSigned(m.mean)} K) while stations ${others.map((o) => `${o.st.n} ${fmtSigned(o.mean)} K`).join(", ")} follow the model (ambient ${c.drivers.ambient.toFixed(1)} °C, speed in the model)`,
         tags: m.tags,
         subs: [m.st.sub],
@@ -399,7 +399,7 @@ export function evalKln(c: EvalContext): void {
     if (best) {
       const v = measured[best.vib];
       H(M, "R-KLN-08", {
-        severity: v >= VIB_ALARM || measured[best.tmp] >= BEARING_LIMIT ? "Critical" : "Advisory",
+        severity: v >= VIB_ALARM || measured[best.tmp] >= BEARING_LIMIT ? "Critical" : "Alert",
         evidence: `${best.label} vibration ${v.toFixed(2)} mm/s, ×${best.rt.toFixed(2)} its load-corrected model, with ${best.tmp} +${best.dt.toFixed(1)} K (two independent signals)${v >= VIB_WARN ? ` · ≥ ${VIB_WARN} mm/s` : ""}`,
         tags: [best.vib, best.tmp],
         subs: [best.sub],
@@ -414,7 +414,7 @@ export function evalKln(c: EvalContext): void {
         const v = Math.max(measured["VIB-KLN-01"], measured["VIB-KLN-02"]);
         const lead = measured["VIB-KLN-01"] >= measured["VIB-KLN-02"] ? "VIB-KLN-01" : "VIB-KLN-02";
         H(M, "R-KLN-12", {
-          severity: v >= VIB_ALARM ? "Critical" : "Advisory",
+          severity: v >= VIB_ALARM ? "Critical" : "Alert",
           evidence: `Both coupling sides up together: motor DE ×${r1.toFixed(2)} (${measured["VIB-KLN-01"].toFixed(2)} mm/s) and gearbox input ×${r2.toFixed(2)} (${measured["VIB-KLN-02"].toFixed(2)} mm/s) their models · bearings not heating (DE ${fmtSigned(meanRes("TMP-KLN-19", 10))} K, input ${fmtSigned(meanRes("TMP-KLN-22", 10))} K) · torque on model`,
           tags: ["VIB-KLN-01", "VIB-KLN-02", "TMP-KLN-19", "TMP-KLN-22"],
           subs: ["kln-motor", "kln-gearbox"],
@@ -474,7 +474,7 @@ export function evalKln(c: EvalContext): void {
     if (kilnTurning && posRange !== null && presRange !== null && posRange < 1 && presRange < 2) parts.push(`Kiln not floating: axial position moved ${posRange.toFixed(1)} mm and thrust pressure ${presRange.toFixed(1)} bar over 4 h (30-min means)`);
     if (parts.length) {
       H(M, "R-KLN-09", {
-        severity: crit ? "Critical" : "Advisory",
+        severity: crit ? "Critical" : "Alert",
         evidence: `${parts.join(" · ")} · axial ${pos.toFixed(1)} mm`,
         tags: ["PRS-KLN-07", "POS-KLN-01", "POS-KLN-02"],
         stateRule: limit || hpuDown,
@@ -490,7 +490,7 @@ export function evalKln(c: EvalContext): void {
     const mainDown = eq["kln-main-drive"] === "tripped" || eq["kln-main-drive"] === "stopped" || !kilnTurning;
     const auxDown = !auxAvailable;
     H(M, "R-KLN-11", {
-      severity: mainDown && auxDown ? "Critical" : "Advisory",
+      severity: mainDown && auxDown ? "Critical" : "Alert",
       evidence: `Auxiliary drive ${states["STS-KLN-11"]} · brake pads ${states["LIM-KLN-01"]}${mainDown ? ` · main drive ${eq["kln-main-drive"] ?? "stopped"}, kiln ${speed.toFixed(2)} rpm${auxDown ? " — the hot kiln cannot be turned" : ""}` : " · main drive running"}`,
       tags: ["STS-KLN-11", "LIM-KLN-01", "SPD-KLN-01"],
       stateRule: true,
@@ -507,11 +507,11 @@ export function evalKln(c: EvalContext): void {
     if (r25 > 15 || r26 > 25 || fanDown) {
       const flame = bz !== null && bz > 25;
       H(M, "R-KLN-17", {
-        severity: r26 > 50 || measured["TMP-KLN-26"] >= 290 || measured["TMP-KLN-25"] >= 80 || fanDown ? "Critical" : "Advisory",
+        severity: r26 > 50 || measured["TMP-KLN-26"] >= 400 || measured["TMP-KLN-25"] >= 180 || fanDown ? "Critical" : "Alert",
         evidence: `Sector-plate cooling air ${measured["TMP-KLN-25"].toFixed(0)} °C (${fmtSigned(r25)} K vs baseline, ${fmtSigned(ratePerH("TMP-KLN-25"), 1)} K/h) · cow shell ${measured["TMP-KLN-26"].toFixed(0)} °C (${fmtSigned(r26, 0)} K vs model) · outlet end 66–74 m ${scanOk ? `${fmtSigned(th.outletResidual, 0)} K on the shell map` : "shell map not valid"}${fan ? ` · outlet cooling fan ${fan}` : ""}${flame ? ` · burning zone also ${fmtSigned(bz!, 0)} K: check the flame length` : ""}`,
         tags: ["TMP-KLN-25", "TMP-KLN-26", "CAL-KLN-03"],
         subs: ["kln-outlet"],
-        lead: r26 > 25 ? { tag: "TMP-KLN-26", target: measured["TMP-KLN-26"] < 250 ? 250 : 290 } : { tag: "TMP-KLN-25", target: measured["TMP-KLN-25"] < 65 ? 65 : 80 },
+        lead: r26 > 25 ? { tag: "TMP-KLN-26", target: measured["TMP-KLN-26"] < 350 ? 350 : 400 } : { tag: "TMP-KLN-25", target: measured["TMP-KLN-25"] < 150 ? 150 : 180 },
       });
     }
   }
@@ -521,12 +521,12 @@ export function evalKln(c: EvalContext): void {
     const ph = measured["PRS-KLN-03"];
     const fanTxt = eq["phc-idfan"] ? `ID fan ${eq["phc-idfan"]}` : `ID fan ${measured["SPD-PHC-01"].toFixed(0)} rpm (${fmtSigned(res("SPD-PHC-01"), 0)} vs reference)`;
     H(M, "R-KLN-18", {
-      severity: ph >= 0.3 ? "Critical" : "Advisory",
-      evidence: `Hood pressure ${fmtSigned(ph, 2)} mbar (D5: ≥ 0 warning, ≥ +0.3 alarm) · hood ${measured["TMP-KLN-27"].toFixed(0)} °C (${fmtSigned(res("TMP-KLN-27"), 0)} K vs model) · inlet draft ${measured["PRS-KLN-01"].toFixed(2)} mbar (${fmtSigned(res("PRS-KLN-01"), 2)} vs model) · ${fanTxt} — hot gas / dust blow-out risk at the kiln front`,
+      severity: ph >= 0.098 ? "Critical" : "Alert",
+      evidence: `Hood pressure ${fmtSigned(ph, 3)} mbar (OSW-PE-SNL-PYR-01: ≥ 0 warning, ≥ +0.098 mbar / +1 mmWG alarm) · hood ${measured["TMP-KLN-27"].toFixed(0)} °C (${fmtSigned(res("TMP-KLN-27"), 0)} K vs model) · inlet draft ${measured["PRS-KLN-01"].toFixed(2)} mbar (${fmtSigned(res("PRS-KLN-01"), 2)} vs model) · ${fanTxt} — hot gas / dust blow-out risk at the kiln front`,
       tags: ["PRS-KLN-03", "TMP-KLN-27", "PRS-KLN-01"],
       subs: ["kln-outlet"],
       stateRule: true,
-      lead: { tag: "PRS-KLN-03", target: ph < 0.3 ? 0.3 : 0.6 },
+      lead: { tag: "PRS-KLN-03", target: ph < 0.098 ? 0.098 : 0.49 },
     });
   }
 
@@ -572,7 +572,7 @@ export function evalKln(c: EvalContext): void {
     }
     if (bad.length) {
       H(M, "R-KLN-20", {
-        severity: "Advisory",
+        severity: "Alert",
         evidence: `Working check failed (D5 Table 5.4.6): ${bad.map((b) => `${b.tag} ${b.note}`).join(" · ")} — verify the instrument before acting on it`,
         tags: [...new Set(bad.map((b) => b.tag))],
       });

@@ -49,7 +49,7 @@ export function CardDialog({ open, ix, sourceId, card, prefill, onClose, onSaved
 
   const validate = (): boolean => {
     const e: Errors = {};
-    if (!code.trim()) e.code = "Card id is required";
+    if (!code.trim()) e.code = "Enter the card ID";
     else if (code.trim().length > 64) e.code = "64 characters at most";
     const n = numberOrNull(channelCount);
     if (n !== null && (!Number.isInteger(n) || n < 0 || n > 4096)) e.channelCount = "Whole number from 0 to 4096";
@@ -93,7 +93,7 @@ export function CardDialog({ open, ix, sourceId, card, prefill, onClose, onSaved
   };
 
   const onCard = card ? pointsOf(ix, sourceId).filter((p) => p.slot === card.code).length : 0;
-  const question = onCard ? `Delete card ${card!.code}? Its ${plural(onCard, "point")} are kept` : `Delete card ${card?.code ?? ""}?`;
+  const question = onCard ? `Delete card ${card!.code}? Its ${plural(onCard, "reading point")} are kept` : `Delete card ${card?.code ?? ""}?`;
 
   return (
     <Dialog
@@ -102,7 +102,7 @@ export function CardDialog({ open, ix, sourceId, card, prefill, onClose, onSaved
       busy={busy}
       onSubmit={submit}
       width={560}
-      title={editing ? "Edit card" : prefill?.code ? "Register card" : "Add card"}
+      title={editing ? "Edit sensor card" : prefill?.code ? "Register sensor card" : "Add sensor card"}
       subtitle={source ? `On ${source.code} · ${source.name}` : undefined}
       footerStart={editing ? <DeleteConfirm label="Delete card" question={question} onDelete={doDelete} disabled={busy} /> : undefined}
       footer={
@@ -111,13 +111,13 @@ export function CardDialog({ open, ix, sourceId, card, prefill, onClose, onSaved
             Cancel
           </PillButton>
           <PillButton type="submit" variant="primary" disabled={busy}>
-            {busy ? "Saving…" : editing ? "Save" : "Add card"}
+            {busy ? "Saving…" : editing ? "Save" : "Add sensor card"}
           </PillButton>
         </>
       }
     >
       <FieldGrid>
-        <Field label="Card id" required error={errors.code} hint="Slot number or card name as the gateway sends it">
+        <Field label="Card ID" required error={errors.code} hint="Slot number or card name, exactly as the data collector sends it">
           {(id, d) => <TextInput id={id} describedBy={d} value={code} onChange={setCode} mono placeholder="3 or AI-4" autoFocus={!editing && !prefill?.code} disabled={busy} />}
         </Field>
         <Field label="Card type">
@@ -133,7 +133,7 @@ export function CardDialog({ open, ix, sourceId, card, prefill, onClose, onSaved
           {(id, d) => <TextArea id={id} describedBy={d} value={notes} onChange={setNotes} rows={2} disabled={busy} />}
         </Field>
       </FieldGrid>
-      <Toggle checked={enabled} onChange={setEnabled} disabled={busy} label="Enabled" />
+      <Toggle checked={enabled} onChange={setEnabled} disabled={busy} label="Switched on" />
       {editing && onCard > 0 && <FormNote tone="info">Deleting the card keeps its {plural(onCard, "point")}; they stay mapped by card id {card!.code}.</FormNote>}
       {failure && <FormNote tone="bad">{failure}</FormNote>}
     </Dialog>

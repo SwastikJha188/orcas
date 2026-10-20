@@ -243,7 +243,7 @@ export interface QualityScreen {
 /** Screen and validate this minute's readings and update the line's quality flags. */
 export function screenQuality(q: QualityInput): QualityScreen {
   const { t, s, measured, states, running, res, staleTags } = q;
-  const { feedElev, feedTorque, feedMeter, coalLine, coalBz, coalMeter } = q.witnesses;
+  const { feedElev, feedTorque, coalLine, coalBz, coalMeter } = q.witnesses;
   const m = memOf(s);
   m.notes = {};
   const transient = q.transient ?? false;
@@ -484,11 +484,11 @@ export function screenQuality(q: QualityInput): QualityScreen {
   // Witness votes; once a meter is out-voted it stays suspect until it agrees again (hysteresis).
   // The witnesses' own scatter grows with the rate, so their agreement window scales with the design feed / coal
   // (calibrated at 205 t/h and 15.8 t/h); a witness a fault pattern is building on (elevator slip, torque) does not vote.
-  const fk = Math.max(1, (PYRO_SIGNAL_BY_TAG["FLO-KFS-01"]?.base ?? 205) / 205);
+  // Kiln feed runs through two parallel solid-flow meters (A, B) of half the feed each: each is voted as twice its reading.
+  const fk = Math.max(1, (2 * (PYRO_SIGNAL_BY_TAG["FLO-KFS-01"]?.base ?? 102.5)) / 205);
   const ck = Math.max(1, (PYRO_SIGNAL_BY_TAG["FLO-BRN-01"]?.base ?? 15.8) / 15.8);
-  const feedSticky = s.flags["FLO-KFS-01"]?.rule === "R-DQ-02";
   const coalSticky = s.flags["FLO-BRN-01"]?.rule === "R-DQ-02";
-  const feedWitnessOk = feedSticky || !(patterned("ELE-KFS-01") || patterned("ELE-KLN-01"));
+  const feedWitnessFree = !(patterned("ELE-KFS-01") || patterned("ELE-KLN-01"));
   const coalWitnessOk = coalSticky || !(patterned("PRS-BRN-04") || patterned("TMP-KLN-14"));
   // Two independent estimates agree with each other and each disagrees with the meter on the same side: a witness that
   // moves on its own (elevator choke, kiln drag, dirty pyrometer) leaves the other on the meter, and the vote abstains.
@@ -500,9 +500,13 @@ export function screenQuality(q: QualityInput): QualityScreen {
     return sticky ? now : n >= VOTE_MIN;
   };
   const feedAvg = (feedElev + feedTorque) / 2;
-  const feedNow = feedWitnessOk && (feedSticky ? Math.abs(feedElev - feedTorque) < 20 * fk && Math.abs(feedMeter - feedAvg) > 10 : outVoted(feedElev, feedTorque, feedMeter, 12 * fk, 10 * fk));
-  if (voted("FLO-KFS-01", feedNow, feedSticky)) {
-    dq2["FLO-KFS-01"] = `Physical neighbours: witness vote — elevator ${feedElev.toFixed(0)} t/h, kiln torque ${feedTorque.toFixed(0)} t/h vs meter ${feedMeter.toFixed(0)} t/h`;
+  for (const [tag, name] of [["FLO-KFS-01", "SFM A"], ["FLO-KFS-02", "SFM B"]] as const) {
+    const meter = 2 * measured[tag];
+    const sticky = s.flags[tag]?.rule === "R-DQ-02";
+    const now = (sticky || feedWitnessFree) && (sticky ? Math.abs(feedElev - feedTorque) < 20 * fk && Math.abs(meter - feedAvg) > 10 : outVoted(feedElev, feedTorque, meter, 12 * fk, 10 * fk));
+    if (voted(tag, now, sticky)) {
+      dq2[tag] = `Physical neighbours: witness vote — elevator ${feedElev.toFixed(0)} t/h, kiln torque ${feedTorque.toFixed(0)} t/h vs ${name} ${measured[tag].toFixed(0)} t/h × 2 (half the kiln feed)`;
+    }
   }
   const coalAvg = (coalLine + coalBz) / 2;
   const coalNow = coalWitnessOk && (coalSticky ? Math.abs(coalLine - coalBz) < 0.9 * ck && Math.abs(coalMeter - coalAvg) > 0.5 : outVoted(coalLine, coalBz, coalMeter, 0.4 * ck, 0.8 * ck));
@@ -537,7 +541,7 @@ export function screenQuality(q: QualityInput): QualityScreen {
     const n = (m.vibTmp[vib] = hit ? (m.vibTmp[vib] ?? 0) + 1 : 0);
     if (n >= VIB_TMP_MIN) {
       const note = `Flag only (FP-46): vibration ×${rt.toFixed(2)} model, bearing ${tmp} flat (${dt >= 0 ? "+" : "−"}${Math.abs(dt).toFixed(1)} K) — verify the sensor (mounting, cable) first`;
-      if (n === VIB_TMP_MIN) q.notify(vib, "Advisory", `${vib} vibration–temperature disagreement (flag only)`, note);
+      if (n === VIB_TMP_MIN) q.notify(vib, "Alert", `${vib} vibration–temperature disagreement (flag only)`, note);
       m.notes[vib] = note;
     }
   }
@@ -569,7 +573,7 @@ export function screenQuality(q: QualityInput): QualityScreen {
     const f = s.flags[tag];
     if (!f) {
       s.flags[tag] = { rule, note, since: t, clean: 0 };
-      q.notify(tag, "Advisory", `${tag} marked ${rule === "R-DQ-01" ? "invalid" : "suspect"}`, note);
+      q.notify(tag, "Alert", `${tag} marked ${rule === "R-DQ-01" ? "invalid" : "suspect"}`, note);
     } else {
       f.note = note;
       f.rule = rule;
@@ -595,7 +599,7 @@ export function signalQuality(s: LineState, { invalid, scannerNote }: QualityScr
   return (tag: string): Quality => {
     if (tag === "CAL-KLN-06" && (s.flags["GAS-KLN-01"] || s.flags["TMP-KLN-13"])) return s.flags["GAS-KLN-01"]?.rule === "R-DQ-01" ? "Invalid" : "Suspect";
     if (tag === "CAL-PHC-01" && (s.flags["GAS-KLN-01"] || s.flags["GAS-PHC-01"])) return "Suspect";
-    if (tag === "CAL-BRN-01" && (s.flags["FLO-KFS-01"] || s.flags["FLO-BRN-01"])) return "Suspect";
+    if (tag === "CAL-BRN-01" && (s.flags["FLO-KFS-01"] || s.flags["FLO-KFS-02"] || s.flags["FLO-BRN-01"])) return "Suspect";
     if (tag === "CAL-KLN-03" && scannerNote) return "Suspect";
     const f = s.flags[tag];
     if (!f) return "Good";
@@ -659,9 +663,9 @@ export function evalQualityRules(c: EvalContext): void {
   for (const id of MACHINE_IDS) {
     const mine = (tag: string) => PYRO_SIGNAL_BY_TAG[tag]?.machine === id;
     const dq1 = Object.entries(s.flags).filter(([tg, f]) => f.rule === "R-DQ-01" && mine(tg));
-    if (dq1.length) H(id, "R-DQ-01", { severity: "Advisory", evidence: dq1.map(([tg, f]) => `${tg}: ${f.note}`).join(" · "), tags: dq1.map(([tg]) => tg), stateRule: true });
+    if (dq1.length) H(id, "R-DQ-01", { severity: "Alert", evidence: dq1.map(([tg, f]) => `${tg}: ${f.note}`).join(" · "), tags: dq1.map(([tg]) => tg), stateRule: true });
     const dq2f = Object.entries(s.flags).filter(([tg, f]) => f.rule === "R-DQ-02" && mine(tg));
-    if (dq2f.length) H(id, "R-DQ-02", { severity: "Advisory", evidence: dq2f.map(([tg, f]) => `${tg}: ${f.note}`).join(" · "), tags: dq2f.map(([tg]) => tg) });
+    if (dq2f.length) H(id, "R-DQ-02", { severity: "Alert", evidence: dq2f.map(([tg, f]) => `${tg}: ${f.note}`).join(" · "), tags: dq2f.map(([tg]) => tg) });
     const covered = new Set<string>(WATCHED);
     for (const mid of MACHINE_IDS) for (const h of Object.values(hits[mid])) for (const tg of h.tags) covered.add(tg);
     // Comparable state only (D5 Table 9.4.2 operating mode): a running unit at a steady operating point; calculated values
@@ -669,6 +673,6 @@ export function evalQualityRules(c: EvalContext): void {
     const far = c.transient
       ? []
       : SIGNALS_BY_MACHINE[id].filter((d) => d.type === "analog" && d.origin !== "manual" && !d.calculated && c.tagRunning(d.tag) && good(d.tag) && !covered.has(d.tag) && Math.abs(z(d.tag)) > 10).map((d) => d.tag);
-    if (far.length) H(id, "R-ANM-01", { severity: "Advisory", evidence: `No known pattern: ${far.map((tg) => `${tg} ${fmtZ(z(tg))}`).join(", ")}`, tags: far });
+    if (far.length) H(id, "R-ANM-01", { severity: "Alert", evidence: `No known pattern: ${far.map((tg) => `${tg} ${fmtZ(z(tg))}`).join(", ")}`, tags: far });
   }
 }

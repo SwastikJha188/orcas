@@ -1,149 +1,125 @@
 /**
  * Sheet K-8 — KLN-01 · Rotary kiln — Shell and scanner.
  *
- * Composed as PDF page 21: the zone ruler (inlet 0–15 m, transition 15–40 m,
- * burning 40–66 m, outlet 66–74 m, ticked every 5 m) over the full shell with
- * its girth gear and three tyres on their roller stations, the burning-zone
- * heat inside the shell; in front, the stand-off shell scanner on its pole
- * with the scanned sectors fanning up to the shell and the shadow ("no view")
- * behind each tyre; at the right the handheld pyrometer of the manual check
- * aimed at the shell.
+ * Panel "SHELL AND SCANNER" of group image 3A (page 7, panel box 574 91 –
+ * 1080 540): the kiln shell on its three tyres and roller stations with the
+ * girth gear, the scanner zone bands (inlet, transition, burning, outlet) over
+ * it and the burning-zone hot spot, the two shell cooling fans blowing onto
+ * the burning zone, the stand-off shell scanner on its post with its sight
+ * lines (no view behind the tyres), and the handheld IR check point. The
+ * fan status pad sits on the fan starter box above the fans (PDF: between them). The
+ * shell temperature map maximum (CAL-KLN-03) sits on the hot spot.
  */
 import React from "react";
-import { Bolt, GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
-import { GearEdge } from "../../sheets/sb-parts";
+import { Fan, GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
 import type { LineSheetArt } from "../types";
-import { KilnShell, Pier, RollerPair, Tyre, type Pt } from "./parts-kb";
+import { KilnShell, Pier, RollerPair, Tyre } from "./parts-kb";
+import { Flow, FlowArrow, Glow } from "./parts-k2";
 
-const W = 824;
-const H = 704;
+const W = 506;
+const H = 449;
+const GROUND = 271.5;
+const GROUND2 = 404;
 
-const SHELL = { x: 31, y: 180.5, w: 765, h: 112.5 };
-const SHELL_BOT = SHELL.y + SHELL.h;
-const TYRES = [144.5, 434, 651];
-const UPPER_FLOOR = 420.5;
-const GROUND = 645.5;
-/** Shell metre → sheet x (74 m over the shell). */
-const M = (m: number) => +(32 + m * 10.3).toFixed(1);
-const ZONES: Array<[number, number, string]> = [
-  [0, 15, "INLET 0–15 m"],
-  [15, 40, "TRANSITION 15–40 m"],
-  [40, 66, "BURNING 40–66 m"],
-  [66, 74, "OUTLET 66–74"],
-];
-const HEAD: Pt = [413, 497];
-/** Shell spans the scanner sees (between the tyre shadows). */
-const SECTORS: Array<[number, number]> = [
-  [40, 128],
-  [162, 420],
-  [450, 636],
-  [668, 788],
+const SHELL = { x: 26.5, y: 129, w: 452.5, h: 67.5 };
+const TYRES = [94.25, 265.25, 393.75];
+const GG = { x: 125.5, y: 114.5, w: 10.5, h: 97 };
+const SCAN = { x: 231, y: 316, w: 44, h: 19.5 };
+const FANS = [293.5, 346.5];
+/** Zone bands over the shell: [x0, x1, label, tone]. */
+const ZONES: Array<[number, number, string, "air" | "plain" | "heat"]> = [
+  [27.5, 118, "INLET 0–15 m", "air"],
+  [119, 271, "TRANSITION 15–40 m", "plain"],
+  [272, 429, "BURNING 40–66 m", "heat"],
+  [431, 478, "OUTLET 66–74", "plain"],
 ];
 
-function ZoneRuler() {
-  const ticks: number[] = [];
-  for (let m = 5; m < 74; m += 5) ticks.push(m);
+function Zones() {
   return (
     <g>
-      {ZONES.map(([a, b, label]) => (
-        <g key={label}>
-          <rect x={M(a) + 1} y={143} width={M(b) - M(a) - 2} height={22.5} rx={3} {...PAINT.recess} />
-          <MachineLabel x={(M(a) + M(b)) / 2} y={157} size={7.9}>
-            {label}
+      {ZONES.map(([x0, x1, t, tone]) => (
+        <g key={t}>
+          <rect x={x0} y={107.5} width={x1 - x0} height={13.5} rx={2.5} fill={MX.deep} stroke={MX.fine} strokeWidth={0.8} />
+          {tone !== "plain" && <rect x={x0} y={107.5} width={x1 - x0} height={13.5} rx={2.5} fill={tone === "air" ? MX.air : MX.heat} opacity={tone === "air" ? 0.22 : 0.35} />}
+          <MachineLabel x={(x0 + x1) / 2} y={116.8} size={5.5} tone="ink">
+            {t}
           </MachineLabel>
         </g>
       ))}
-      <line x1={M(0)} x2={M(74)} y1={170} y2={170} {...PAINT.hair} />
-      {ticks.map((m) => (
-        <line key={m} x1={M(m)} x2={M(m)} y1={167} y2={170} {...PAINT.hair} />
-      ))}
-      {[0, 15, 40, 66, 74].map((m) => (
-        <line key={m} x1={M(m)} x2={M(m)} y1={165} y2={173} stroke={MX.fine} strokeWidth={1} />
-      ))}
     </g>
   );
 }
 
-function ScanFan() {
-  const [hx, hy] = HEAD;
-  return (
-    <g aria-hidden="true">
-      {SECTORS.map(([a, b]) => (
-        <g key={a}>
-          <path d={`M ${hx} ${hy} L ${a} ${SHELL_BOT} H ${b} Z`} fill={MX.fine} opacity={0.07} />
-          <line x1={hx} y1={hy} x2={a} y2={SHELL_BOT} {...PAINT.hair} strokeDasharray="4 3" />
-          <line x1={hx} y1={hy} x2={b} y2={SHELL_BOT} {...PAINT.hair} strokeDasharray="4 3" />
-        </g>
-      ))}
-    </g>
-  );
-}
-
-function KilnAndStations() {
+function ShellAndStations() {
+  const top = SHELL.y;
+  const bot = SHELL.y + SHELL.h;
   return (
     <g>
-      <line x1={22.5} x2={803.5} y1={UPPER_FLOOR} y2={UPPER_FLOOR} stroke={MX.fine} strokeWidth={MX.w} />
       {TYRES.map((cx) => (
         <g key={cx}>
-          <Pier cx={cx} top={389} bottom={UPPER_FLOOR} wTop={104} wBot={119} />
-          <RollerPair cx={cx} cy={353} r={20} gap={57} frameY={377} frameW={129} frameH={12} />
+          <Pier cx={cx} top={253} bottom={GROUND} wTop={63.5} wBot={71.5} />
+          <RollerPair cx={cx} cy={231.5} r={11.5} gap={33.5} frameY={245.5} frameW={76.5} frameH={7.5} />
         </g>
       ))}
-      <KilnShell x={SHELL.x} y={SHELL.y} w={SHELL.w} h={SHELL.h} seam={54.6} />
-      {/* burning-zone heat seen through the shell */}
-      {[
-        [124, 40, 0.1],
-        [96, 31, 0.14],
-        [66, 22, 0.2],
-        [36, 12, 0.26],
-      ].map(([rx, ry, o]) => (
-        <ellipse key={rx} cx={606} cy={237} rx={rx} ry={ry} fill={MX.material} opacity={o} />
-      ))}
-      <GearEdge x={197.5} y={155} w={18} h={163} n={24} />
+      <KilnShell x={SHELL.x} y={SHELL.y} w={SHELL.w} h={SHELL.h} seam={32.5} />
+      <Glow cx={370} cy={161} rx={72} ry={24} core={0.85} />
       {TYRES.map((cx) => (
-        <Tyre key={cx} cx={cx} y={171.5} w={23} h={130.5} shellTop={SHELL.y} shellBot={SHELL_BOT} />
+        <Tyre key={cx} cx={cx} y={124} w={13.5} h={77.5} shellTop={top} shellBot={bot} />
       ))}
+      {/* girth gear */}
+      <rect x={GG.x} y={GG.y} width={GG.w} height={GG.h} rx={2} {...PAINT.raised} />
+      {Array.from({ length: 22 }).map((_, i) => (
+        <line key={i} x1={GG.x + 1.5} x2={GG.x + GG.w - 1.5} y1={GG.y + 4 + i * 4.1} y2={GG.y + 4 + i * 4.1} stroke={MX.edge} strokeWidth={0.7} />
+      ))}
+    </g>
+  );
+}
+
+function CoolingFans() {
+  return (
+    <g>
+      {FANS.map((cx) => (
+        <g key={cx}>
+          <path d={`M ${cx - 12.5} 92.5 V 71 Q ${cx - 12.5} 65 ${cx - 6.5} 65 H ${cx + 6} Q ${cx + 12.5} 65 ${cx + 12.5} 72 V 92.5 Z`} {...PAINT.body} />
+          <Fan cx={cx + 0.5} cy={79.5} r={8.5} />
+          <FlowArrow x1={cx} y1={94} x2={cx} y2={106} color={MX.air} w={1.4} s={6} />
+        </g>
+      ))}
+      {/* fan starter / status box above the fans, wired to both */}
+      <polyline points={`${FANS[0]},65 ${FANS[0]},56 ${FANS[1]},56 ${FANS[1]},65`} fill="none" stroke={MX.fine} strokeWidth={1.1} />
+      <rect x={309} y={36} width={21} height={20} rx={3.5} {...PAINT.body} />
     </g>
   );
 }
 
 function Scanner() {
+  const lens: [number, number] = [253.5, 321];
+  const targets: Array<[number, number]> = [
+    [44, 196.5],
+    [130.5, 211.5],
+    [195, 196.5],
+    [318.5, 196.5],
+    [400, 196.5],
+    [470, 196.5],
+  ];
   return (
     <g>
-      {/* pole, junction box, base plate */}
-      <rect x={409} y={528} width={8} height={GROUND - 535} {...PAINT.shaft} />
-      <rect x={405} y={600} width={16} height={18} rx={2.5} {...PAINT.raised} />
-      <line x1={408} x2={418} y1={609} y2={609} {...PAINT.hair} />
-      <rect x={400} y={GROUND - 12} width={26} height={5} rx={1.2} {...PAINT.raised} />
-      <rect x={390.5} y={GROUND - 7} width={45} height={7} rx={1.5} {...PAINT.body} />
-      <Bolt x={395.5} y={GROUND - 3.5} r={1.2} />
-      <Bolt x={430.5} y={GROUND - 3.5} r={1.2} />
-      {/* head: sun hood, scan window, purge-air and cable glands */}
-      <rect x={371} y={489.5} width={84} height={6} rx={2} {...PAINT.raised} />
-      <rect x={375.5} y={495.5} width={75} height={33} rx={6} {...PAINT.body} />
-      <rect x={380} y={500} width={66} height={24} rx={4} fill="none" stroke={MX.fine} strokeWidth={0.8} />
-      <rect x={399} y={496} width={28} height={4} rx={1} {...PAINT.recess} />
-      <rect x={450.5} y={503} width={7} height={6} rx={1.2} {...PAINT.shaft} />
-      <rect x={450.5} y={514} width={7} height={6} rx={1.2} {...PAINT.shaft} />
-      <rect x={404} y={528} width={18} height={5} rx={1.2} {...PAINT.raised} />
-      <Bolt x={381.5} y={524} r={1.1} />
-      <Bolt x={444.5} y={524} r={1.1} />
+      {targets.map(([x, y]) => (
+        <Flow key={x} pts={[lens, [x, y]]} color={MX.air} dash="3 3" w={0.9} opacity={0.75} />
+      ))}
+      <rect x={251.5} y={SCAN.y + SCAN.h} width={4} height={GROUND2 - 1.5 - SCAN.y - SCAN.h} {...PAINT.shaft} />
+      <rect x={240} y={GROUND2 - 2} width={26} height={4.5} rx={1.2} {...PAINT.raised} />
+      <rect x={SCAN.x} y={SCAN.y} width={SCAN.w} height={SCAN.h} rx={4} {...PAINT.body} />
+      <rect x={SCAN.x + 3.5} y={SCAN.y + 3.5} width={SCAN.w - 7} height={SCAN.h - 7} rx={2.5} fill="none" stroke={MX.fine} strokeWidth={0.8} />
     </g>
   );
 }
 
 function Handheld() {
-  // barrel axis from the pad toward the shell between stations 2 and 3
-  const a = (Math.atan2(294 - 474.5, 482 - 632) * 180) / Math.PI;
   return (
-    <g aria-hidden="true">
-      <line x1={622} y1={457} x2={482} y2={294} {...PAINT.hair} strokeDasharray="2 3" opacity={0.9} />
-      <path d="M 625 480 H 640 L 642 508 Q 642 511 639 511 H 629 Q 626 511 626 508 Z" {...PAINT.raised} />
-      <path d="M 626 486 Q 619 490 620 498" fill="none" stroke={MX.edge} strokeWidth={1.2} />
-      <g transform={`rotate(${a.toFixed(1)} 632 474.5)`}>
-        <rect x={620} y={467} width={34} height={15} rx={5} {...PAINT.body} />
-        <rect x={651} y={469.5} width={6} height={10} rx={1.5} {...PAINT.recess} />
-      </g>
+    <g>
+      <rect x={376} y={307.5} width={12} height={20} rx={3} fill={MX.flatBody} stroke={MX.label} strokeWidth={1.1} strokeDasharray="2.5 2" />
+      <line x1={388} y1={312.5} x2={404} y2={302.5} stroke={MX.label} strokeWidth={1.8} strokeLinecap="round" />
     </g>
   );
 }
@@ -151,33 +127,49 @@ function Handheld() {
 function Art() {
   return (
     <g>
-      <ZoneRuler />
-      <ScanFan />
-      <KilnAndStations />
+      <GroundLine x1={22.5} x2={484} y={GROUND} />
+      <GroundLine x1={22.5} x2={484} y={GROUND2} />
       <Scanner />
+      <ShellAndStations />
+      <Zones />
+      <CoolingFans />
       <Handheld />
-      <GroundLine x1={22.5} x2={803.5} y={GROUND} />
 
-      <MachineLabel x={206.5} y={133} size={6.8}>GIRTH GEAR</MachineLabel>
+      <MachineLabel x={319.5} y={27} size={6}>
+        SHELL COOLING FANS (BURNING ZONE)
+      </MachineLabel>
+      <MachineLabel x={130.75} y={104} size={5.5}>
+        GG
+      </MachineLabel>
       {TYRES.map((cx) => (
-        <MachineLabel key={cx} x={cx} y={318} size={6.8}>NO VIEW</MachineLabel>
+        <MachineLabel key={cx} x={cx} y={212} size={5.5}>
+          NO VIEW
+        </MachineLabel>
       ))}
-      <MachineLabel x={368} y={516} anchor="end" size={9}>SHELL SCANNER (STAND-OFF)</MachineLabel>
-      <MachineLabel x={588.5} y={530} anchor="start" size={8.2}>HANDHELD CHECK</MachineLabel>
+      <MachineLabel x={252.5} y={306} size={6}>
+        SHELL SCANNER (STAND-OFF)
+      </MachineLabel>
+      <MachineLabel x={388} y={341} size={6}>
+        HANDHELD CHECK
+      </MachineLabel>
     </g>
   );
 }
 
-/** Pad centre per point (sheet units), as on PDF page 21. */
+/** Pad centre per point (sheet units), as on group image 3A, middle panel. */
 const pads: LineSheetArt["pads"] = {
-  "STS-KLN-08": [413, 512],
-  "MAN-KLN-01": [632, 474.5],
+  "STS-KLN-08": [253.5, 325.5],
+  "STS-KLN-13": [319.5, 46],
+  "MAN-KLN-01": [382.5, 303.5],
+  "CAL-KLN-03": [370, 161],
 };
 
-/** Tag chip centre per point, as on PDF page 21. */
-const chips: NonNullable<LineSheetArt["chips"]> = {
-  "STS-KLN-08": [498.5, 557],
-  "MAN-KLN-01": [710, 557],
+/** Plate side per point (start = plate right of the pad, end = left). */
+const callouts: LineSheetArt["callouts"] = {
+  "STS-KLN-08": [241, 325.5, "end"],
+  "STS-KLN-13": [332, 46, "start"],
+  "MAN-KLN-01": [395, 303.5, "start"],
+  "CAL-KLN-03": [382, 161, "start"],
 };
 
-export const sheet: LineSheetArt = { id: "K-8", ready: true, width: W, height: H, Art, pads, chips };
+export const sheet: LineSheetArt = { id: "K-8", ready: true, width: W, height: H, Art, pads, callouts };

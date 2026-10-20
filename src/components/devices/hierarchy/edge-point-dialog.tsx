@@ -16,9 +16,9 @@ import type { Selection } from "./edge-tree-model";
    ========================================================================== */
 
 const DATA_TYPES: Array<{ value: PointDataType; label: string }> = [
-  { value: "float", label: "Float" },
-  { value: "int", label: "Integer" },
-  { value: "bool", label: "Boolean" },
+  { value: "float", label: "Decimal number" },
+  { value: "int", label: "Whole number" },
+  { value: "bool", label: "On / off" },
   { value: "string", label: "Text" },
   { value: "video", label: "Video stream" },
   { value: "status+map", label: "Status + map" },
@@ -74,8 +74,8 @@ export function PointDialog({ open, ix, sourceId, point, prefill, onClose, onSav
 
   const validate = (): boolean => {
     const e: Errors = {};
-    if (!tag.trim()) e.tag = "Tag is required";
-    if (!name.trim()) e.name = "Name is required";
+    if (!tag.trim()) e.tag = "Enter the sensor tag";
+    if (!name.trim()) e.name = "Enter a name";
     const cardIssue = idProblem(slot, "Card");
     const channelIssue = idProblem(channel, "Channel");
     if (cardIssue) e.slot = cardIssue;
@@ -138,37 +138,37 @@ export function PointDialog({ open, ix, sourceId, point, prefill, onClose, onSav
       busy={busy}
       onSubmit={submit}
       width={620}
-      title={editing ? "Edit point" : prefill ? "Map channel" : "Add point"}
+      title={editing ? "Edit reading point" : prefill ? "Link channel to a machine" : "Add reading point"}
       subtitle={
         editing ? `${point!.tag} · card ${point!.slot}, channel ${point!.channel}` : source ? `On ${source.code} · ${source.name}` : undefined
       }
-      footerStart={editing ? <DeleteConfirm label="Delete point" question={`Delete point ${point!.tag}?`} onDelete={doDelete} disabled={busy} /> : undefined}
+      footerStart={editing ? <DeleteConfirm label="Delete reading point" question={`Delete reading point ${point!.tag}?`} onDelete={doDelete} disabled={busy} /> : undefined}
       footer={
         <>
           <PillButton variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </PillButton>
           <PillButton type="submit" variant="primary" disabled={busy}>
-            {busy ? "Saving…" : editing ? "Save" : "Add point"}
+            {busy ? "Saving…" : editing ? "Save" : "Add reading point"}
           </PillButton>
         </>
       }
     >
-      <FieldSection title="Point">
+      <FieldSection title="Reading point">
         <FieldGrid>
-          <Field label="Tag" required error={errors.tag}>
+          <Field label="Sensor tag" required error={errors.tag}>
             {(id, d) => <TextInput id={id} describedBy={d} value={tag} onChange={setTag} mono placeholder="TMP-KLN-04" autoFocus={!editing} disabled={busy} />}
           </Field>
           <Field label="Name" required error={errors.name}>
             {(id, d) => <TextInput id={id} describedBy={d} value={name} onChange={setName} placeholder="Tyre 2 bearing temperature" disabled={busy} />}
           </Field>
-          <Field label="Card" required error={errors.slot} hint="Card (slot) id as the gateway sends it">
+          <Field label="Card" required error={errors.slot} hint="Card (slot) ID, exactly as the data collector sends it">
             {(id, d) => <TextInput id={id} describedBy={d} value={slot} onChange={setSlot} mono placeholder="3 or AI-4" disabled={busy} />}
           </Field>
           <Field label="Channel" required error={errors.channel}>
             {(id, d) => <TextInput id={id} describedBy={d} value={channel} onChange={setChannel} mono placeholder="1 or TT-101" disabled={busy} />}
           </Field>
-          <Field label="Address" hint="Register, OPC UA node id or PLC tag path">
+          <Field label="Address" hint="Register number, OPC UA node ID or PLC tag path">
             {(id, d) => <TextInput id={id} describedBy={d} value={address} onChange={setAddress} mono placeholder="40001" disabled={busy} />}
           </Field>
           <Field label="Unit">
@@ -177,7 +177,7 @@ export function PointDialog({ open, ix, sourceId, point, prefill, onClose, onSav
           <Field label="Data type">
             {(id, d) => <Select id={id} describedBy={d} value={dataType} onChange={(v) => setDataType(v as PointDataType)} disabled={busy} options={DATA_TYPES} />}
           </Field>
-          <Field label="Sample rate">
+          <Field label="How often it is read">
             {(id, d) => <TextInput id={id} describedBy={d} value={sampleRate} onChange={setSampleRate} placeholder="1 s" disabled={busy} />}
           </Field>
         </FieldGrid>
@@ -192,21 +192,21 @@ export function PointDialog({ open, ix, sourceId, point, prefill, onClose, onSav
             {(id, d) => <NumberInput id={id} describedBy={d} value={dangerLimit} onChange={setDangerLimit} step="any" disabled={busy} />}
           </Field>
         </FieldGrid>
-        {inverted && <FormNote tone="warn">Alarm is below warning. That is right only for a low limit; high limits need the alarm at or above the warning.</FormNote>}
+        {inverted && <FormNote tone="warn">The alarm limit is below the warning limit. That is only right for a reading that must not drop too low; for a high limit, set the alarm at or above the warning.</FormNote>}
       </FieldSection>
 
-      <FieldSection title="Asset model">
+      <FieldSection title="Which machine it feeds">
         <FieldGrid>
           <Field label="Machine">
             {(id, d) => <Select id={id} describedBy={d} value={machineId} onChange={setMachineId} disabled={busy} options={machineOptions(ix.registry)} />}
           </Field>
-          <Field label="Signal tag" hint="The machine signal this point feeds">
+          <Field label="Machine sensor tag" hint="The machine sensor this reading point feeds">
             {(id, d) => <TextInput id={id} describedBy={d} value={signalTag} onChange={setSignalTag} mono placeholder="TMP-KLN-04" disabled={busy} />}
           </Field>
         </FieldGrid>
       </FieldSection>
 
-      <Toggle checked={enabled} onChange={setEnabled} disabled={busy} label="Enabled" />
+      <Toggle checked={enabled} onChange={setEnabled} disabled={busy} label="Switched on" />
       {failure && <FormNote tone="bad">{failure}</FormNote>}
     </Dialog>
   );

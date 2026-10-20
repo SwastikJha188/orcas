@@ -20,7 +20,15 @@ import {
   measureTightSvgBox,
   useKitId,
 } from "./machine-kit/machine-kit";
-import { pyroDrawingForType } from "./pyro/pyro-drawings";
+import { hasCodeDrawing, pyroDrawingForType } from "./pyro/pyro-drawings";
+import { useDbDiagram } from "./diagrams/db-diagrams";
+import { calloutLeaderPath, layoutSensorCallouts } from "./sensor-callout-layout";
+import { displayName } from "@/lib/display-name";
+import { ValuePill, pillContentWidth, type PillContent } from "@/components/home/operator/value-pill";
+
+const LABEL_NAME_CHARS = 24;
+/** The original five schematics, drawn here (no stored drawing to look up). */
+const LEGACY_TYPES = new Set<string>(["mill", "crusher", "pump", "blower", "kiln"]);
 
 /* ==========================================================================
    Monoline machine schematic. Neutral bodies + var(--diagram-stroke) lines,
@@ -35,7 +43,7 @@ export interface SchematicDot {
   name: string;
   value: string;
   unit: string;
-  status: "Normal" | "Advisory" | "Critical";
+  status: "Normal" | "Alert" | "Critical";
   x: number;
   y: number;
   systemId?: string;
@@ -60,6 +68,9 @@ export function MachineSchematic({
   onSelect,
   focusSystemId,
   compact = false,
+  showAllValues = "off",
+  isComponent = false,
+  pillContent,
   label,
 }: {
   diagramType: AssetMachine["diagramType"];
@@ -69,6 +80,15 @@ export function MachineSchematic({
   /** Dims every dot outside this system (hover on a subsystem row). */
   focusSystemId?: string | null;
   compact?: boolean;
+  /** Operator mimic mode: show live value callout cards directly next to measurement points. */
+  showAllValues?: "value" | "tag-value" | "alerts" | "off";
+  /** True when scoped to an individual component / sub-assembly. */
+  isComponent?: boolean;
+  /**
+   * Operator mimic: the HMI value block of a point (short label, value + unit,
+   * set-point, run state); callouts then draw as ValuePills with leaders.
+   */
+  pillContent?: (tag: string) => PillContent;
   label: string;
 }) {
   const [hoverTag, setHoverTag] = useState<string | null>(null);
@@ -80,15 +100,71 @@ export function MachineSchematic({
   const placed = dots.filter((d) => d.x > 0 || d.y > 0);
   const labelTag = hoverTag ?? (interactive ? selectedTag : null);
   const labelDot = labelTag ? placed.find((d) => d.tag === labelTag) : undefined;
-  const r = compact ? 7 : 6;
+  const isPartView = isComponent || Boolean(focusSystemId);
+  const r = compact ? 5 : isPartView ? 5 : 4.2;
+  // A drawing kind with no drawing in code may have one stored in the DB (diagram skills / onboarding).
+  useDbDiagram("2d", diagramType, hasCodeDrawing(diagramType) || LEGACY_TYPES.has(diagramType));
   const pyro = pyroDrawingForType(diagramType);
   const w = pyro?.width ?? W;
   const h = pyro?.height ?? H;
   const px = (p: number) => (p / 100) * w;
   const py = (p: number) => (p / 100) * h;
+  const calloutFontSz = isPartView ? 12.5 : 8.8;
+  const calloutCardH = isPartView ? 22 : 16;
+  const calloutPadR = isPartView ? 6.5 : 5.5;
+
+  const calloutLayout = React.useMemo(() => {
+    if (compact || showAllValues === "off") return null;
+    const charW = isPartView ? 7.2 : 5.2;
+    const padW = isPartView ? 18 : 12;
+    const maxW = isPartView ? 220 : 118;
+    const minW = isPartView ? 58 : 46;
+    const layout = layoutSensorCallouts(
+      placed.map((d) => {
+        if (pillContent) {
+          const content = pillContent(d.tag);
+          // Spaced by the drawn block: label, value and set-point included.
+          const pw = pillContentWidth(content, calloutFontSz) + padW;
+          return { tag: d.tag, px: (d.x / 100) * w, py: (d.y / 100) * h, label: content.value, w: pw, baseW: pw };
+        }
+        const valStr = `${d.value}${d.unit ? ` ${d.unit}` : ""}`.trim();
+        // Name + value: the sensor name clipped to what the callout can hold.
+        const room = Math.floor((maxW - padW) / charW) - valStr.length - 1;
+        const name = displayName(d.name);
+        const short = name.length > room ? `${name.slice(0, Math.max(1, room - 1)).trimEnd()}…` : name;
+        const text = showAllValues === "tag-value" ? `${short} ${valStr}` : valStr;
+        return {
+          tag: d.tag,
+          px: (d.x / 100) * w,
+          py: (d.y / 100) * h,
+          label: text,
+          w: Math.max(minW, Math.min(maxW, Math.round(text.length * charW + padW))),
+          baseW: Math.max(minW, Math.min(maxW, Math.round(valStr.length * charW + padW))),
+        };
+      }),
+      [0, 0, w, h],
+      isPartView ? { cardH: calloutCardH, padR: calloutPadR, gapX: 5, gapY: 4 } : pillContent ? { cardH: calloutCardH, padR: calloutPadR } : undefined,
+    );
+    const shownCallouts = layout.callouts
+      .filter((c) => {
+        const d = placed.find((pt) => pt.tag === c.tag);
+        if (!d) return false;
+        return showAllValues === "alerts"
+          ? d.status !== "Normal" || d.tag === selectedTag || d.tag === hoverTag
+          : true;
+      })
+      .map((c) => ({ ...c, dot: placed.find((d) => d.tag === c.tag)!, text: c.label }))
+      .sort((a, b) => {
+        const aHot = a.tag === hoverTag ? 2 : a.tag === selectedTag ? 1 : 0;
+        const bHot = b.tag === hoverTag ? 2 : b.tag === selectedTag ? 1 : 0;
+        return aHot - bHot;
+      });
+    return { ...layout, callouts: shownCallouts };
+  }, [compact, showAllValues, placed, h, w, selectedTag, hoverTag, isPartView, calloutCardH, calloutPadR, calloutFontSz, pillContent]);
+  const callouts = calloutLayout?.callouts ?? [];
 
   useLayoutEffect(() => {
-    if (compact) {
+    if (compact || showAllValues !== "off") {
       setTightBox(null);
       return;
     }
@@ -114,9 +190,9 @@ export function MachineSchematic({
     const ro = new ResizeObserver(updateBox);
     ro.observe(svgEl);
     return () => ro.disconnect();
-  }, [compact, diagramType, placed.length, h]);
+  }, [compact, diagramType, placed.length, h, showAllValues]);
 
-  const activeBox: [number, number, number, number] = tightBox ?? [0, 0, w, h];
+  const activeBox: [number, number, number, number] = calloutLayout?.viewBox ?? tightBox ?? [0, 0, w, h];
 
   return (
     <svg
@@ -152,7 +228,7 @@ export function MachineSchematic({
                   ? {
                       tabIndex: 0,
                       role: "button",
-                      "aria-label": `${d.tag} ${d.name}: ${d.value} ${d.unit}, ${d.status}`,
+                      "aria-label": `${d.name} (${d.tag}): ${d.value} ${d.unit}, ${d.status}`,
                       "aria-pressed": isSel,
                       onClick: () => onSelect?.(isSel ? null : d.tag),
                       onKeyDown: (e: React.KeyboardEvent) => {
@@ -168,6 +244,7 @@ export function MachineSchematic({
                     }
                   : {})}
               >
+                <title>{`${d.tag} · ${d.name}`}</title>
                 {interactive && <circle className="ast-sch-hit" r={14} />}
                 {(isSel || isHover) && <circle className="ast-sch-sel" r={r + 5} />}
                 <MachinePad x={0} y={0} status={d.status} scale={(isSel && compact ? r + 2 : r) / 5} className="ast-sch-pin" />
@@ -176,20 +253,114 @@ export function MachineSchematic({
           })}
         </g>
 
-        {labelDot && !compact && <DotLabel dot={labelDot} r={r} w={w} h={h} />}
+        {callouts.length > 0 && (
+          <g>
+            {callouts.map((c) => {
+              const isSel = c.dot.tag === selectedTag;
+              const isHot = isSel || c.dot.tag === hoverTag;
+              const strokeColor =
+                c.dot.status === "Critical"
+                  ? MX.bad
+                  : c.dot.status === "Alert"
+                  ? MX.warn
+                  : isHot
+                  ? "var(--dx-ink)"
+                  : MX.fine;
+              const textColor =
+                c.dot.status === "Critical"
+                  ? MX.bad
+                  : c.dot.status === "Alert"
+                  ? MX.warn
+                  : "var(--dx-ink)";
+              const strokeW = isHot || c.dot.status !== "Normal" ? 1.2 : isPartView ? 1 : 0.85;
+              const leader = pillContent ? calloutLeaderPath(c, calloutPadR) : null;
+              return (
+                <g
+                  key={`callout-${c.dot.tag}`}
+                  style={{ cursor: interactive ? "pointer" : "default" }}
+                  onClick={() => onSelect?.(isSel ? null : c.dot.tag)}
+                  onMouseEnter={() => setHoverTag(c.dot.tag)}
+                  onMouseLeave={() => setHoverTag(null)}
+                >
+                  {leader && (
+                    <path d={leader} fill="none" stroke={isHot ? "var(--dx-ink)" : MX.label} strokeWidth={isPartView ? 1 : 0.85} opacity={isHot ? 0.9 : 0.6} />
+                  )}
+                  {pillContent ? (
+                    <ValuePill
+                      content={pillContent(c.dot.tag)}
+                      cx={c.cx}
+                      cy={c.cy}
+                      w={c.w}
+                      h={c.h}
+                      rx={isPartView ? 5 : 4}
+                      fontSz={calloutFontSz}
+                      textDy={isPartView ? 4.3 : 3.1}
+                      tone={severityTone(c.dot.status)}
+                      hot={isHot}
+                      strokeW={strokeW}
+                    />
+                  ) : (
+                    <>
+                      <rect
+                        x={c.cx - c.w / 2}
+                        y={c.cy - c.h / 2}
+                        width={c.w}
+                        height={c.h}
+                        rx={isPartView ? 5 : 4}
+                        fill={MX.padPanel}
+                        stroke={strokeColor}
+                        strokeWidth={strokeW}
+                      />
+                      <text
+                        x={c.cx}
+                        y={c.cy + (isPartView ? 4.3 : 3.2)}
+                        textAnchor="middle"
+                        fontSize={calloutFontSz}
+                        fontWeight={700}
+                        fill={textColor}
+                        style={{ fontVariantNumeric: "tabular-nums" }}
+                      >
+                        {c.text}
+                      </text>
+                    </>
+                  )}
+                </g>
+              );
+            })}
+          </g>
+        )}
+
       </g>
+      {labelDot && !compact && showAllValues === "off" && <DotLabel dot={labelDot} r={r} w={w} h={h} box={activeBox} />}
     </svg>
   );
 }
 
-function DotLabel({ dot, r, w: spaceW, h: spaceH }: { dot: SchematicDot; r: number; w: number; h: number }) {
-  const text = `${dot.tag}  ${dot.value} ${dot.unit}`.trim();
+function DotLabel({
+  dot,
+  r,
+  w: spaceW,
+  h: spaceH,
+  box,
+}: {
+  dot: SchematicDot;
+  r: number;
+  w: number;
+  h: number;
+  box: [number, number, number, number];
+}) {
+  // Sensor name (clipped to keep the label compact); the tag stays in the dot's accessible label.
+  const name = displayName(dot.name);
+  const short = name.length > LABEL_NAME_CHARS ? `${name.slice(0, LABEL_NAME_CHARS - 1).trimEnd()}…` : name;
+  const text = `${short}  ${dot.value} ${dot.unit}`.trim();
   const w = text.length * 8.2 + 22;
   const h = 28;
   const cx = (dot.x / 100) * spaceW;
   const cy = (dot.y / 100) * spaceH;
-  const x = Math.min(Math.max(cx - w / 2, 4), spaceW - w - 4);
-  const above = cy - r - 10 - h > 2;
+  const minX = box[0] + 4;
+  const maxX = Math.max(minX, box[0] + box[2] - w - 4);
+  const x = Math.min(Math.max(cx - w / 2, minX), maxX);
+  const above = cy - r - 10 - h > box[1] + 2;
   const y = above ? cy - r - 10 - h : cy + r + 10;
   return (
     <g className="ast-sch-label" pointerEvents="none">

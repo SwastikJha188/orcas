@@ -1,0 +1,151 @@
+/* Simulation page (src/components/simulation/simulation-view.tsx). */
+.sim-root {
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* One column grid: two cards a row on wide screens, equal heights; tables span the row. */
+.sim-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: stretch;
+}
+.sim-wide {
+  grid-column: 1 / -1;
+}
+@media (max-width: 1100px) {
+  .sim-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.sim-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.sim-help {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.sim-head-actions {
+  display: inline-flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.sim-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.sim-check input {
+  accent-color: var(--accent-primary);
+}
+
+.sim-start {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sim-start .ui-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.sim-history {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sim-history li {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr) 180px 140px;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--card-border);
+  font-size: var(--fs-sm);
+}
+.sim-history li:first-child {
+  border-top: none;
+}
+
+.sim-context {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  max-width: 900px;
+}
+
+/* Try a fault (simulation-try.tsx): machine pills, the form + running list, then the machine's real pages. */
+.sim-try {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.sim-form-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: auto;
+}
+.sim-running {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sim-running li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px 150px;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--card-border);
+  font-size: var(--fs-sm);
+}
+.sim-running li:first-child {
+  border-top: none;
+}
+.sim-running-name {
+  color: var(--text-primary);
+  min-width: 0;
+}
+.sim-count {
+  margin-left: 6px;
+  color: var(--status-bad);
+  font-weight: 600;
+}
+/* The real machine pages, in the page flow (the Simulation page scrolls, not the pages). */
+:root .sim-workspace.assets-machine-workspace {
+  flex: none;
+  height: auto;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+  background: transparent;
+}
+.sim-alarms {
+  height: min(640px, 70vh);
+  border: 1px solid var(--card-border);
+  border-radius: var(--corner-card, 8px);
+  overflow: hidden;
+}
+.sim-alarms .opc-alarm-rail {
+  border-left: none;
+}
+@media (max-width: 700px) {
+  .sim-running li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}

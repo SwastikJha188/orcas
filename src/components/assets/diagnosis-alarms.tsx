@@ -6,6 +6,7 @@ import type { OpsWorkOrder } from "@/providers/kiln-ops-context";
 import { formatDuration } from "@/lib/kiln-sim/engine";
 import { StatusTag, type Tone } from "./assets-shell-ui";
 import { ACTION } from "@/components/ui/status";
+import { useWorkOrderPriorities } from "@/lib/reference-data";
 import {
   HYSTERESIS_SAMPLES,
   responseLeft,
@@ -67,6 +68,8 @@ export function AlarmCards({
   onUnshelve,
   workOrders,
   onWorkOrder,
+  onSeeReason,
+  onSeePrognosis,
 }: {
   alarms: DxAlarm[];
   shelved: Map<string, Shelf>;
@@ -80,7 +83,10 @@ export function AlarmCards({
   onUnshelve: (ruleId: string) => void;
   workOrders: OpsWorkOrder[] | null;
   onWorkOrder?: (ruleId: string) => void;
+  onSeeReason?: (alarm: DxAlarm) => void;
+  onSeePrognosis?: (alarm: DxAlarm) => void;
 }) {
+  const priorities = useWorkOrderPriorities();
   const [shelving, setShelving] = useState<string | null>(null);
   const [dur, setDur] = useState(SHELVE_FOR[0].id);
   const [reason, setReason] = useState("");
@@ -145,7 +151,7 @@ export function AlarmCards({
       width: "140px",
       render: (a) => {
         const raised = a.state !== "confirming";
-        const left = responseLeft(a, t);
+        const left = responseLeft(a, t, priorities);
         return (
           <span className="ast-cell-stack ast-num">
             <span>{raised && a.activeFor ? a.activeFor : `${a.persistence}/${a.threshold} samples`}</span>
@@ -157,8 +163,8 @@ export function AlarmCards({
     },
     {
       key: "actions",
-      header: "Actions",
-      width: "220px",
+      header: "Actions & layers",
+      width: "300px",
       render: (a) => {
         const raised = a.state !== "confirming";
         const wo = workOrders?.find((w) => w.ruleId === a.ruleId && (w.status === "open" || w.status === "in_progress")) ?? null;
@@ -197,6 +203,16 @@ export function AlarmCards({
                   Work order
                 </PillButton>
               )
+            )}
+            {onSeeReason && (
+              <PillButton variant="secondary" className="pg-diag-sm" onClick={() => onSeeReason(a)}>
+                See reason →
+              </PillButton>
+            )}
+            {onSeePrognosis && (
+              <PillButton variant="secondary" className="pg-diag-sm" onClick={() => onSeePrognosis(a)}>
+                Prognosis →
+              </PillButton>
             )}
           </span>
         );

@@ -1,11 +1,12 @@
 "use client";
 
+import { useComponentScope } from "./component-scope";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { AssetMachine } from "./assets-data";
 import { PillButton } from "@/components/ui";
 import type { KilnSimulation } from "./kiln-seals-simulation";
 import type { KilnSealsSensorData } from "./kiln-seals-types";
-import { useMachineCatalog, type CatalogSensorView } from "./use-machine-catalog";
+import { ruleInputsOf, useMachineCatalog, useMachineMeasurements, type CatalogSensorView } from "./use-machine-catalog";
 import { useMachineAcquisition } from "./acquisition/use-machine-acquisition";
 import { isKilnMachine, isLiveMachine, useKilnSimulationFor } from "@/providers/kiln-simulation-context";
 import { useIndustrialData } from "@/providers/industrial-data-context";
@@ -19,6 +20,7 @@ import type { SensorScope } from "./sensor-mapping-diagram";
 import type { Tone } from "./assets-shell-ui";
 import { Empty, PageHeader, Section, SectionIndex, scrollToSection, type SectionIndexItem } from "./analysis/an-ui";
 import { SensorsRegister } from "./sensors-register";
+import { REFERENCES_SECTION_ID, ReferencesSection } from "./monitoring/references-section";
 import {
   SENSORS_SECTIONS,
   SensorsAssemblies,
@@ -37,6 +39,7 @@ import {
   parseRange,
   parseSampleRate,
   qualityOf,
+  QUALITY_LABEL,
   roleOf,
   tagOf,
   type SensorRow,
@@ -69,10 +72,12 @@ import { VPC_MACHINE_BY_ID } from "@/lib/vpc-sim/signals";
 export interface MachineSensorMappingViewProps {
   machine: AssetMachine;
   simulation?: KilnSimulation;
-  /** Kept for the parent's wiring; navigation goes through the data context. */
   onNavigateToDiagnosis?: () => void;
-  /** Kept for the parent's wiring; navigation goes through the data context. */
   onNavigateToTrends?: () => void;
+  onNavigateToHealth?: () => void;
+  onNavigateToRack?: () => void;
+  onSelectSensor?: (tag: string) => void;
+  externalScope?: SensorScope | null;
 }
 
 export interface DetailedSensorInfo {
@@ -83,7 +88,7 @@ export interface DetailedSensorInfo {
   component: string;
   value: string;
   unit: string;
-  status: "Normal" | "Advisory" | "Critical";
+  status: "Normal" | "Alert" | "Critical";
   normalThreshold: string;
   warningThreshold: string;
   alarmThreshold: string;
@@ -155,8 +160,8 @@ function statusFromDbLimits(s: CatalogSensorView, display: string): SensorStatus
     return raw.toUpperCase() === nominal ? "Normal" : "Critical";
   }
   const v = s.nominalBand.trim().startsWith("±") ? Math.abs(Number(raw)) : Number(raw);
-  if (alarm >= warn) return v >= alarm ? "Critical" : v >= warn ? "Advisory" : "Normal";
-  return v <= alarm ? "Critical" : v <= warn ? "Advisory" : "Normal";
+  if (alarm >= warn) return v >= alarm ? "Critical" : v >= warn ? "Alert" : "Normal";
+  return v <= alarm ? "Critical" : v <= warn ? "Alert" : "Normal";
 }
 
 /**
@@ -202,7 +207,7 @@ export function buildDetailedSensors(
       warningVal: s.warningVal,
       alarmVal: s.alarmVal,
       maxScale: s.maxScale,
-      measurementTime: s.live ? "Live" : overlay !== null ? "Simulated" : "",
+      measurementTime: s.live || overlay !== null ? "Live" : "",
       cardId: s.cardId,
       rackId: s.rackId,
       sampleRate: s.sampleRate,
@@ -234,9 +239,10 @@ export function hotspotSensors(machine: AssetMachine): DetailedSensorInfo[] {
     value: h.value,
     unit: h.unit,
     status: h.status,
-    normalThreshold: "Normal",
-    warningThreshold: "Warning",
-    alarmThreshold: "Alarm",
+    // Hotspots carry no limits: no threshold text is claimed.
+    normalThreshold: "—",
+    warningThreshold: "—",
+    alarmThreshold: "—",
     numericValue: parseFloat(h.value) || 0,
     warningVal: 0,
     alarmVal: 0,
@@ -267,29 +273,48 @@ const issue = (t: Tone): Tone | undefined => (t === "warn" || t === "bad" ? t : 
 
 /* ------------------------------------------------------------ view */
 
-export function MachineSensorMappingView({ machine, simulation: simProp }: MachineSensorMappingViewProps) {
-  // Canonical DB catalog with the live overlay — same rows as Diagnosis / Health / Trends.
+export function MachineSensorMappingView({
+  machine,
+  simulation: simProp,
+  onNavigateToTrends,
+  onNavigateToHealth,
+  onNavigateToRack,
+  onSelectSensor,
+  externalScope,
+}: MachineSensorMappingViewProps) {
+  // Canonical DB catalog with the live overlay — same rows as Diagnosis / Trends.
   const catalog = useMachineCatalog(machine);
   const simFor = useKilnSimulationFor(machine.id);
   const simulation = simProp ?? simFor;
   const frame = simulation?.frame ?? null;
   const acquisition = useMachineAcquisition(machine.id);
+  // DB measurements: specification, priority, install status, full limit (basis texts, approval), reference.
+  const measurements = useMachineMeasurements(machine.id);
+  const ruleInputs = useMemo(() => ruleInputsOf(catalog.sensors), [catalog.sensors]);
   const { setActiveSubPage, setActiveTab } = useIndustrialData();
   const tz = useSiteTimeZone({ machineId: machine.id });
   const hasSpec = isLiveMachine(machine.id);
   // The machine's own catalog (kiln fleet or pyro line); null for machines without a live engine.
   const defs = frame?.defs ?? defsFor(machine.id);
 
-  const [scope, setScope] = useState<SensorScope | null>(null);
+  // Without a scope from the host, the machine's component filter (shared by its pages) scopes the register.
+  const components = useComponentScope(machine);
+  const shared: SensorScope | null | undefined =
+    externalScope !== undefined ? externalScope : components.selected ? { id: components.selected.id, label: components.selected.name, tags: components.selected.tags } : null;
+  const [scope, setScopeState] = useState<SensorScope | null>(shared ?? null);
+  const setScope = (next: SensorScope | null) => {
+    setScopeState(next);
+    if (externalScope === undefined) components.select(next?.id ?? null);
+  };
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   // Pyro line & VPC 066: machine specification and manual records. The diagram sheets live on the Overview.
   const pyroSpec = Boolean(PYRO_MACHINE_BY_ID[machine.id] || VPC_MACHINE_BY_ID[machine.id]);
   const [focusNonce, setFocusNonce] = useState(0);
 
   useEffect(() => {
-    setScope(null);
-    setSelectedTag(null);
-  }, [machine.id]);
+    setScopeState(shared ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- follows the scope's identity, not its object
+  }, [shared?.id, machine.id]);
 
   const pointByTag = useMemo(() => {
     const m = new Map<string, MachineLivePoint>();
@@ -297,7 +322,7 @@ export function MachineSensorMappingView({ machine, simulation: simProp }: Machi
     return m;
   }, [acquisition.data]);
 
-  const rows = useMemo<SensorRow[]>(() => {
+  const allRows = useMemo<SensorRow[]>(() => {
     const db = buildDetailedSensors(catalog.sensors, undefined, machine.id);
     const base = db.length > 0 ? db : catalog.isLoading ? [] : hotspotSensors(machine);
     return base.map((s) => {
@@ -306,12 +331,16 @@ export function MachineSensorMappingView({ machine, simulation: simProp }: Machi
       const q = qualityOf(s, livePoint);
       const spec = hasSpec && defs ? defs.signalByTag[tag] : undefined;
       const d4 = d4Of(defs, tag);
+      const m = measurements.byTag.get(tag);
       const range = parseRange(s.range);
       const num = parseFloat(s.value);
       const outOfRange = Boolean(range && !isOnOff(s) && Number.isFinite(num) && (num < range.lo || num > range.hi) && q.quality !== "No live feed");
-      return { ...s, q, livePoint, spec, d4, role: roleOf(s, spec, defs, d4), outOfRange, dataQuality: { label: q.quality, tone: q.tone } };
+      return { ...s, q, livePoint, spec, d4, m, role: roleOf(s, spec, defs, d4), outOfRange, dataQuality: { label: QUALITY_LABEL[q.quality], tone: q.tone } };
     });
-  }, [catalog.sensors, catalog.isLoading, machine, pointByTag, hasSpec, defs]);
+  }, [catalog.sensors, catalog.isLoading, machine, pointByTag, hasSpec, defs, measurements.byTag]);
+  // A part picked: the whole page (counts, checks, table, data path) shows only its sensors.
+  const scopeTags = useMemo(() => (scope ? new Set(scope.tags) : null), [scope]);
+  const rows = useMemo(() => (scopeTags ? allRows.filter((r) => scopeTags.has(tagOf(r))) : allRows), [allRows, scopeTags]);
 
   /* ---- counts (reconcile to the DB total, name every subset) ---- */
   const counts = useMemo<SensorCounts>(() => {
@@ -329,7 +358,7 @@ export function MachineSensorMappingView({ machine, simulation: simProp }: Machi
       if (r.q.quality === "Stale") q.stale += 1;
       if (r.q.quality === "No data") q.nodata += 1;
     }
-    const status = { Normal: 0, Advisory: 0, Critical: 0 };
+    const status = { Normal: 0, Alert: 0, Critical: 0 };
     for (const r of rows) status[r.status] += 1;
     const wiredRows = rows.filter(isWired);
     const cards = new Set(wiredRows.map((r) => r.cardId).filter(Boolean)).size;
@@ -354,9 +383,13 @@ export function MachineSensorMappingView({ machine, simulation: simProp }: Machi
     };
   }, [rows]);
 
-  /* ---- navigation (context API only) ---- */
+  /* ---- navigation ---- */
   const goTrends = useCallback(
     (tag?: string | null) => {
+      if (tag && onSelectSensor) {
+        onSelectSensor(tag);
+        return;
+      }
       if (tag) {
         try {
           sessionStorage.setItem(TRENDS_FOCUS_KEY, tag);
@@ -364,11 +397,19 @@ export function MachineSensorMappingView({ machine, simulation: simProp }: Machi
           /* storage unavailable */
         }
       }
-      setActiveSubPage("trends");
+      if (onNavigateToTrends) onNavigateToTrends();
+      else setActiveSubPage("trends");
     },
-    [setActiveSubPage]
+    [setActiveSubPage, onSelectSensor, onNavigateToTrends]
   );
-  const goRack = useCallback(() => setActiveSubPage("rack"), [setActiveSubPage]);
+  const goRack = useCallback(() => {
+    if (onNavigateToRack) onNavigateToRack();
+    else setActiveSubPage("rack");
+  }, [setActiveSubPage, onNavigateToRack]);
+  const goHealth = useCallback(() => {
+    if (onNavigateToHealth) onNavigateToHealth();
+    else setActiveSubPage("diagnosis");
+  }, [setActiveSubPage, onNavigateToHealth]);
   const goDevices = useCallback(
     (point?: MachineLivePoint) => {
       try {
@@ -384,7 +425,7 @@ export function MachineSensorMappingView({ machine, simulation: simProp }: Machi
 
   // Cross-page focus: another page writes a tag to `ultron.sensors.focus` and opens Sensors.
   useEffect(() => {
-    if (catalog.isLoading || rows.length === 0) return;
+    if (catalog.isLoading || allRows.length === 0) return;
     let tag: string | null = null;
     try {
       tag = sessionStorage.getItem(SENSORS_FOCUS_KEY);
@@ -392,7 +433,7 @@ export function MachineSensorMappingView({ machine, simulation: simProp }: Machi
     } catch {
       return;
     }
-    if (!tag || !rows.some((r) => tagOf(r) === tag)) return;
+    if (!tag || !allRows.some((r) => tagOf(r) === tag)) return;
     setScope(null);
     setFocusNonce((n) => n + 1);
     setSelectedTag(tag);
@@ -402,9 +443,17 @@ export function MachineSensorMappingView({ machine, simulation: simProp }: Machi
       const el = document.querySelector(`[data-sensor-tag="${CSS.escape(focusTag)}"]`);
       el?.closest("tr")?.scrollIntoView({ block: "center", behavior: "smooth" });
     }, 120);
-  }, [catalog.isLoading, rows]);
+  }, [catalog.isLoading, allRows]);
 
-  const select = useCallback((tag: string | null) => setSelectedTag(tag), []);
+  const select = useCallback(
+    (tag: string | null) => {
+      setSelectedTag(tag);
+      if (tag && onSelectSensor) {
+        onSelectSensor(tag);
+      }
+    },
+    [onSelectSensor],
+  );
 
   /* ---- last sample, in the site's time zone ---- */
   const lastSample = useMemo(() => {
@@ -426,33 +475,41 @@ export function MachineSensorMappingView({ machine, simulation: simProp }: Machi
     history: acquisition.history,
     hasSpec,
     defs,
+    measurements: measurements.byTag,
+    measurementList: measurements.list,
+    ruleInputs,
     timeZone: tz.timeZone,
     selectedTag,
     select,
     focusNonce,
     goTrends,
     goRack,
+    goHealth,
     goDevices,
     goSection: scrollToSection,
+    scopeTags,
   };
 
-  const loading = catalog.isLoading && rows.length === 0;
+  const loading = catalog.isLoading && allRows.length === 0;
   const validTone: Tone =
     counts.q.invalid + counts.q.nodata > 0 ? "bad" : counts.q.attention > 0 ? "warn" : counts.q.valid > 0 ? "good" : "idle";
-  const feed = frame ? "engine validation" : acquisition.data?.points.some((p) => p.live.updatedAt) ? "gateway MQTT" : "stored DB values";
+  const feed = frame ? "live, checked automatically" : acquisition.data?.points.some((p) => p.live.updatedAt) ? "live from the plant network" : "last saved values";
 
   const countLine = !catalog.isLive && rows.length > 0
-    ? `Sensor catalog unavailable · ${counts.total} hotspot points stored for ${machine.name}`
-    : `${counts.total} · ${counts.wired} wired + ${counts.calculated} calc.${counts.manual ? ` + ${counts.manual} manual` : ""}`;
+    ? `Sensor list could not load · showing ${counts.total} saved sensor points for ${machine.name}`
+    : `${counts.total} in all · ${counts.wired} wired, ${counts.calculated} calculated${counts.manual ? `, ${counts.manual} typed in by hand` : ""}`;
 
   const hasValidity = counts.q.nolive < counts.total;
-  const asmTone: Tone | undefined = counts.status.Critical ? "bad" : counts.status.Advisory ? "warn" : undefined;
+  // The machine's specification is about the whole machine: not on a part's page.
+  const planned = pyroSpec && !scope;
+  const asmTone: Tone | undefined = counts.status.Critical ? "bad" : counts.status.Alert ? "warn" : undefined;
   const index: SectionIndexItem[] = [
-    { id: SENSORS_SECTIONS.assemblies, label: "Sub-assemblies", tone: asmTone },
-    ...(pyroSpec ? [{ id: "sensors-spec", label: "Specification" }] : []),
-    ...(hasValidity ? [{ id: SENSORS_SECTIONS.validity, label: "Validity", tone: issue(validTone) }] : []),
+    ...(scope ? [] : [{ id: SENSORS_SECTIONS.assemblies, label: "Parts", tone: asmTone }]),
+    ...(planned ? [{ id: "sensors-spec", label: "Planned sensors" }] : []),
+    ...(hasValidity ? [{ id: SENSORS_SECTIONS.validity, label: "Reading checks", tone: issue(validTone) }] : []),
     { id: SENSORS_SECTIONS.register, label: "Sensors" },
-    { id: SENSORS_SECTIONS.chain, label: "Acquisition", tone: counts.wired && counts.linked < counts.wired ? ("warn" as Tone) : undefined },
+    { id: REFERENCES_SECTION_ID, label: "Normal values" },
+    { id: SENSORS_SECTIONS.chain, label: "Data path", tone: counts.wired && counts.linked < counts.wired ? ("warn" as Tone) : undefined },
   ];
 
 
@@ -460,28 +517,22 @@ export function MachineSensorMappingView({ machine, simulation: simProp }: Machi
     <div className="ast-root pg-frame pg-sensors" aria-label="Sensors">
       <PageHeader
         title="Sensors"
-        status={rows.length ? { label: counts.q.attention ? `${counts.q.attention} flagged` : "Normal", tone: issue(validTone) } : null}
+        // Whether the readings can be trusted, not the machine's condition (that is Diagnosis): never the word "Normal" here.
+        status={rows.length ? { label: counts.q.attention ? `${counts.q.attention} doubtful readings` : "All readings good", tone: issue(validTone) } : null}
         meta={[
           { label: "Sensors", value: loading ? "Loading…" : rows.length ? countLine : "none recorded" },
-          rows.length > 0 && { label: "Source", value: feed },
+          rows.length > 0 && { label: "Readings", value: feed },
           {
-            label: "Last sample",
-            value: lastSample ? `${lastSample.text}${lastSample.sim ? " · sim." : ""}` : "no live sample",
+            label: "Last reading",
+            value: lastSample ? lastSample.text : "no live reading yet",
           },
+          scope && { label: "Part", value: scope.label },
         ]}
         actions={
+          // Page links, Trends and Rack are in the machine bar above.
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <PillButton variant="secondary" onClick={() => setActiveSubPage("overview")}>
-              Overview
-            </PillButton>
-            <PillButton variant="secondary" onClick={() => setActiveSubPage("trends")}>
-              Trends
-            </PillButton>
-            <PillButton variant="secondary" onClick={() => setActiveSubPage("diagnosis")}>
-              Diagnosis
-            </PillButton>
             <PillButton variant="secondary" onClick={() => goDevices(rows.find((r) => tagOf(r) === selectedTag)?.livePoint)}>
-              Open in Devices
+              Network devices
             </PillButton>
           </div>
         }
@@ -489,46 +540,55 @@ export function MachineSensorMappingView({ machine, simulation: simProp }: Machi
 
       {loading ? (
         <section className="ast-card" role="status" aria-live="polite">
-          <Empty title="Loading sensor catalog…" />
+          <Empty title="Loading sensors…" />
         </section>
-      ) : rows.length === 0 ? (
+      ) : allRows.length === 0 ? (
         <section className="ast-card">
-          <Empty title={`No sensors recorded for ${machine.name}.`}>Map gateway channels to this machine in Devices.</Empty>
+          <Empty title={`No sensors recorded for ${machine.name}.`}>Link this machine&apos;s sensor inputs to it on the Devices page.</Empty>
+        </section>
+      ) : rows.length === 0 && scope ? (
+        <section className="ast-card">
+          <Empty title={`No sensors recorded for ${scope.label}.`}>Link this part&apos;s sensor inputs to it on the Devices page.</Empty>
         </section>
       ) : (
         <>
           <SensorsSummary ctx={ctx} />
           <SectionIndex items={index} label="Sensors sections" pendingKey={SENSORS_SECTION_KEY} />
           <div className="pg-frame-body pg-sensors-body">
-            <Section id={SENSORS_SECTIONS.assemblies} title="Sub-assemblies" bare>
-              <SensorsAssemblies
-                ctx={ctx}
-                activeId={scope?.id ?? null}
-                onPick={(id, label, tags) => {
-                  setScope(scope?.id === id ? null : { id, label, tags });
-                  if (scope?.id !== id) scrollToSection(SENSORS_SECTIONS.register);
-                }}
-              />
-            </Section>
+            {/* Whole machine only: on a part's page the part bar above picks parts. */}
+            {!scope && (
+              <Section id={SENSORS_SECTIONS.assemblies} title="Parts" bare>
+                <SensorsAssemblies
+                  ctx={ctx}
+                  activeId={null}
+                  onPick={(id, label, tags) => {
+                    setScope({ id, label, tags });
+                    scrollToSection(SENSORS_SECTIONS.register);
+                  }}
+                />
+              </Section>
+            )}
 
-            {pyroSpec && (
-              <Section id="sensors-spec" index={1} title="Specification">
+            {planned && (
+              <Section id="sensors-spec" index={1} title="Planned sensors">
                 <PyroMachineSpec machineId={machine.id} t={frame?.t} />
                 {frame?.records && frame.records.length > 0 && <ManualRecords records={frame.records} timeZone={tz.timeZone} />}
               </Section>
             )}
 
             {hasValidity && (
-              <Section id={SENSORS_SECTIONS.validity} index={pyroSpec ? 2 : 1} title="Validity" bare>
+              <Section id={SENSORS_SECTIONS.validity} index={planned ? 2 : 1} title="Reading checks" bare>
                 <SensorsValidity ctx={ctx} />
               </Section>
             )}
 
-            <Section id={SENSORS_SECTIONS.register} index={(hasValidity ? 2 : 1) + (pyroSpec ? 1 : 0)} title="Sensors">
-              <SensorsRegister ctx={ctx} scope={scope} onClearScope={() => setScope(null)} />
+            <Section id={SENSORS_SECTIONS.register} index={(hasValidity ? 2 : 1) + (planned ? 1 : 0)} title="Sensors">
+              <SensorsRegister ctx={ctx} scope={externalScope !== undefined ? scope : null} onClearScope={() => setScope(null)} />
             </Section>
 
-            <Section id={SENSORS_SECTIONS.chain} index={(hasValidity ? 3 : 2) + (pyroSpec ? 1 : 0)} title="Acquisition" bare>
+            <ReferencesSection machineId={machine.id} index={(hasValidity ? 3 : 2) + (planned ? 1 : 0)} tags={scopeTags} />
+
+            <Section id={SENSORS_SECTIONS.chain} index={(hasValidity ? 4 : 3) + (planned ? 1 : 0)} title="Data path" bare>
               <SensorsChain ctx={ctx} />
             </Section>
           </div>

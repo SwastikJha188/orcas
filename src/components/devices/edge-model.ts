@@ -26,10 +26,10 @@ export const LINK_TONE: Record<LinkStatus, Tone> = {
 
 export const LINK_LABEL: Record<LinkStatus, string> = {
   online: "Online",
-  stale: "Stale",
+  stale: "Old data",
   offline: "Offline",
   waiting: "No data",
-  disabled: "Disabled",
+  disabled: "Switched off",
 };
 
 const LINK_RANK: Record<LinkStatus, number> = { online: 0, disabled: 1, waiting: 2, stale: 3, offline: 4 };
@@ -54,11 +54,11 @@ export const READING_TONE: Record<ReadingStatus, Tone> = {
 
 export const READING_LABEL: Record<ReadingStatus, string> = {
   normal: "Normal",
-  alert: "Warning",
-  danger: "Alarm",
-  stale: "Stale",
+  alert: "Alert",
+  danger: "Critical",
+  stale: "Old data",
   nodata: "No data",
-  disabled: "Disabled",
+  disabled: "Switched off",
 };
 
 export interface PointReading {
@@ -142,42 +142,42 @@ const fromLive = (s: "ONLINE" | "STALE" | "OFFLINE"): LinkStatus => (s === "ONLI
 
 /** Why nothing can arrive for a gateway, before looking at live data. */
 function blocked(ix: EdgeIndex, gw: EdgeGateway): string | null {
-  if (!gw.brokerId) return "Not assigned to a broker";
+  if (!gw.brokerId) return "Not linked to a data connection";
   const broker = ix.brokers.get(gw.brokerId);
-  if (!broker) return "Broker removed";
-  if (!broker.enabled) return `${broker.name} is disabled`;
+  if (!broker) return "Its data connection was removed";
+  if (!broker.enabled) return `${broker.name} is switched off`;
   const state = ix.brokerState.get(broker.id)?.state;
-  if (state && state !== "connected") return `${broker.name} is ${state === "disabled" ? "disabled" : "not connected"}`;
+  if (state && state !== "connected") return `${broker.name} is ${state === "disabled" ? "switched off" : "not connected"}`;
   return null;
 }
 
 export function gatewayLink(ix: EdgeIndex, gw: EdgeGateway): LinkState {
-  if (!gw.enabled) return { status: "disabled", reason: "Gateway disabled", lastSeenAt: null };
+  if (!gw.enabled) return { status: "disabled", reason: "Data collector switched off", lastSeenAt: null };
   const live = liveGateway(ix, gw);
   if (live) {
     const why = blocked(ix, gw);
     // A broker that dropped keeps the last state; say so rather than show green.
     if (why && live.state === "ONLINE") return { status: "stale", reason: why, lastSeenAt: live.lastSeenAt };
-    return { status: fromLive(live.state), reason: live.state === "ONLINE" ? null : "No message within the stale window", lastSeenAt: live.lastSeenAt };
+    return { status: fromLive(live.state), reason: live.state === "ONLINE" ? null : "No message for too long", lastSeenAt: live.lastSeenAt };
   }
-  return { status: "waiting", reason: blocked(ix, gw) ?? "Nothing published yet", lastSeenAt: null };
+  return { status: "waiting", reason: blocked(ix, gw) ?? "Nothing sent yet", lastSeenAt: null };
 }
 
 export function sourceLink(ix: EdgeIndex, src: EdgeSource): LinkState {
   const gw = ix.gateways.get(src.gatewayId);
-  if (!src.enabled) return { status: "disabled", reason: "Source disabled", lastSeenAt: null };
-  if (!gw) return { status: "waiting", reason: "Gateway removed", lastSeenAt: null };
+  if (!src.enabled) return { status: "disabled", reason: "Device switched off", lastSeenAt: null };
+  if (!gw) return { status: "waiting", reason: "Its data collector was removed", lastSeenAt: null };
   const parent = gatewayLink(ix, gw);
   if (parent.status === "disabled") return { status: "disabled", reason: parent.reason, lastSeenAt: null };
   const rack = liveRack(ix, src);
   if (!rack) {
-    const reason = parent.status === "waiting" ? parent.reason : `${gw.code} does not report ${src.code}`;
+    const reason = parent.status === "waiting" ? parent.reason : `${gw.code} is not sending data from ${src.code}`;
     return { status: "waiting", reason, lastSeenAt: null };
   }
   // A rack cannot be fresher than the gateway it is reached through.
   const own = fromLive(rack.state);
   const status = LINK_RANK[parent.status] > LINK_RANK[own] && parent.status !== "waiting" ? parent.status : own;
-  return { status, reason: rack.reason ?? (rack.dataCurrent ? null : "Data not current"), lastSeenAt: rack.lastSeenAt };
+  return { status, reason: rack.reason ?? (rack.dataCurrent ? null : "Data is out of date"), lastSeenAt: rack.lastSeenAt };
 }
 
 export function pointReading(ix: EdgeIndex, point: EdgePoint): PointReading {

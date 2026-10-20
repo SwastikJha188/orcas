@@ -57,11 +57,19 @@ export function symptomsOf(f: Finding, byTag: Map<string, DxSensor>) {
 
 function limitTone(s: DxSensor | undefined): Tone | undefined {
   if (!s) return undefined;
-  return s.severity === "Critical" ? "bad" : s.severity === "Advisory" ? "warn" : undefined;
+  return s.severity === "Critical" ? "bad" : s.severity === "Alert" ? "warn" : undefined;
 }
 
 /** Clear sensor evidence table inside a fault card showing which readings are off-normal. */
-function EvidenceTable({ f, byTag }: { f: Finding; byTag: Map<string, DxSensor> }) {
+function EvidenceTable({
+  f,
+  byTag,
+  onOpenTrend,
+}: {
+  f: Finding;
+  byTag: Map<string, DxSensor>;
+  onOpenTrend?: (tag: string) => void;
+}) {
   const { rows } = symptomsOf(f, byTag);
   if (!rows.length) {
     return f.evidence ? <p className="pg-diag-f-note">{f.evidence}</p> : null;
@@ -91,7 +99,21 @@ function EvidenceTable({ f, byTag }: { f: Finding; byTag: Map<string, DxSensor> 
           return (
             <li key={tag} className={state === "present" ? "" : "is-quiet"}>
               <span className="pg-diag-in-sig">
-                <span className="pg-diag-in-tag ast-num">{tag}</span>
+                {onOpenTrend ? (
+                  <button
+                    type="button"
+                    className="pg-diag-inline-link pg-diag-in-tag ast-num"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenTrend(tag);
+                    }}
+                    title={`Inspect ${tag} live trend & sensor details`}
+                  >
+                    {tag} ↗
+                  </button>
+                ) : (
+                  <span className="pg-diag-in-tag ast-num">{tag}</span>
+                )}
                 <span className="pg-diag-in-sub">{[s?.name, statusNote].filter(Boolean).join(" · ")}</span>
               </span>
               <span className="pg-diag-in-num ast-num">
@@ -125,6 +147,8 @@ function FindingCard({
   onFeedback,
   onAnalysis,
   onPrognosis,
+  onLocatePart,
+  onOpenTrend,
 }: {
   f: Finding;
   byTag: Map<string, DxSensor>;
@@ -133,8 +157,10 @@ function FindingCard({
   onToggle: () => void;
   feedback: Feedback | null;
   onFeedback: (v: Feedback) => void;
-  onAnalysis: () => void;
-  onPrognosis: () => void;
+  onAnalysis: (f: Finding) => void;
+  onPrognosis: (f: Finding) => void;
+  onLocatePart?: (f: Finding) => void;
+  onOpenTrend?: (tag: string) => void;
 }) {
   const raised = f.state === "active" || f.state === "clearing" || f.state === "recorded";
   const tone: Tone = raised ? toneOf(f.severity) : "idle";
@@ -166,21 +192,33 @@ function FindingCard({
             className="pg-diag-inline-link"
             onClick={(e) => {
               e.stopPropagation();
-              onPrognosis();
+              onAnalysis(f);
             }}
           >
-            Open Prognosis →
+            See reason (Root cause) →
           </button>
           <button
             type="button"
             className="pg-diag-inline-link"
             onClick={(e) => {
               e.stopPropagation();
-              onAnalysis();
+              onPrognosis(f);
             }}
           >
-            Open Analysis →
+            See RUL &amp; forecast (Prognosis) →
           </button>
+          {onLocatePart && f.tags.length > 0 && (
+            <button
+              type="button"
+              className="pg-diag-inline-link"
+              onClick={(e) => {
+                e.stopPropagation();
+                onLocatePart(f);
+              }}
+            >
+              Locate part on 2D →
+            </button>
+          )}
         </span>
       }
       actions={
@@ -227,7 +265,7 @@ function FindingCard({
           </>
         )}
       </dl>
-      <EvidenceTable f={f} byTag={byTag} />
+      <EvidenceTable f={f} byTag={byTag} onOpenTrend={onOpenTrend} />
     </Tile>
   );
 }
@@ -242,6 +280,8 @@ export function FaultCandidates({
   onFeedback,
   onAnalysis,
   onPrognosis,
+  onLocatePart,
+  onOpenTrend,
   focusRuleId = null,
 }: {
   focusRuleId?: string | null;
@@ -253,8 +293,10 @@ export function FaultCandidates({
   onSelect: (ruleId: string | null) => void;
   feedback: Map<string, Feedback>;
   onFeedback: (f: Finding, v: Feedback) => void;
-  onAnalysis: () => void;
-  onPrognosis: () => void;
+  onAnalysis: (f: Finding) => void;
+  onPrognosis: (f: Finding) => void;
+  onLocatePart?: (f: Finding) => void;
+  onOpenTrend?: (tag: string) => void;
 }) {
   const faults = findings.filter((f) => isConditionRule(f));
   const others = findings.filter((f) => !isConditionRule(f));
@@ -301,6 +343,21 @@ export function FaultCandidates({
       width: "110px",
       render: (f) => <StatusTag tone={toneOf(f.severity)} label={f.severity} />,
     },
+    {
+      key: "links",
+      header: "Layer drill-down",
+      width: "210px",
+      render: (f) => (
+        <span style={{ display: "inline-flex", gap: 8, flexWrap: "wrap" }} onClick={(e) => e.stopPropagation()}>
+          <button type="button" className="pg-diag-inline-link" onClick={() => onAnalysis(f)}>
+            See reason →
+          </button>
+          <button type="button" className="pg-diag-inline-link" onClick={() => onPrognosis(f)}>
+            Prognosis →
+          </button>
+        </span>
+      ),
+    },
   ];
 
   return (
@@ -324,6 +381,8 @@ export function FaultCandidates({
                 onFeedback={(v) => onFeedback(f, v)}
                 onAnalysis={onAnalysis}
                 onPrognosis={onPrognosis}
+                onLocatePart={onLocatePart}
+                onOpenTrend={onOpenTrend}
               />
             ))}
           </TileGrid>

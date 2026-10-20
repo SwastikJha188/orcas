@@ -8,26 +8,42 @@ import React from "react";
    ========================================================================== */
 
 import type { Tone } from "@/components/ui/status";
+import { useHealthBands, type HealthBands } from "@/lib/reference-data";
+import { useIndustrialData } from "@/providers/industrial-data-context";
+import { usePrimaryMachineId } from "@/providers/kiln-simulation-context";
 export type { Tone };
 export { StatusTag } from "@/components/ui/status-tag";
 
 export function severityTone(status: string): Tone {
   if (status === "Critical" || status === "Alarm" || status === "Trip") return "bad";
-  if (status === "Advisory" || status === "Warning" || status === "Alert") return "warn";
+  if (status === "Alert" || status === "Warning") return "warn";
   return "good";
 }
 
 export function machineTone(status: string): Tone {
-  if (status === "Advisory") return "warn";
+  if (status === "Alert") return "warn";
   if (status === "Critical") return "bad";
   if (status === "Standby" || status === "Maintenance") return "idle";
   return "good";
 }
 
-export function healthTone(health: number): Tone {
-  if (health >= 90) return "good";
-  if (health >= 75) return "warn";
+/** Tone of a health score under its model's bands (`useMachineHealthBands`); idle while the bands load. */
+export function healthTone(health: number, bands: HealthBands | null): Tone {
+  if (!bands) return "idle";
+  if (health >= bands.advisory) return "good";
+  if (health >= bands.critical) return "warn";
   return "bad";
+}
+
+/**
+ * Health bands of a machine's health model (DB). Without a machine id, the
+ * active plant's primary machine — the model plant-level aggregates use.
+ */
+export function useMachineHealthBands(machineId?: string | null): HealthBands | null {
+  const { machines } = useIndustrialData();
+  const primary = usePrimaryMachineId();
+  const id = machineId ?? primary;
+  return useHealthBands(machines.find((m) => m.id === id)?.healthModelId ?? null);
 }
 
 /** Quantised instrument meter — discrete ticks, fill carries state. */

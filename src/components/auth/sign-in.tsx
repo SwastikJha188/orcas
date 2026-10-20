@@ -49,11 +49,17 @@ export function SignInScreen() {
               {error}
             </p>
           )}
-          <PillButton type="submit" variant="primary" disabled={busy || !email || !password}>
+          <PillButton
+            type="submit"
+            variant="primary"
+            loading={busy}
+            state={error ? "error" : undefined}
+            disabled={busy || !email || !password}
+          >
             {busy ? "Signing in…" : "Sign in"}
           </PillButton>
         </form>
-        <p className="auth-foot">ULTRON · predictive maintenance for machines and plants</p>
+        <p className="auth-foot">ULTRON watches your plant’s machines and warns you before they break down.</p>
       </section>
     </main>
   );

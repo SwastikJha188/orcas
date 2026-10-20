@@ -55,8 +55,28 @@ export interface LineSheetArt {
   pads: Record<string, [number, number]>;
   /** Detail sheets: tag-chip centre per point (tag → [x, y]); the viewer draws the chip and its leader. */
   chips?: Record<string, [number, number]>;
+  /**
+   * Overview sheets: where each point's value block sits (tag → [x, y, anchor]),
+   * as laid out on the stage-overview PDF. `x` is the block's left edge
+   * ("start"), right edge ("end") or centre ("middle"); `y` its centre. The
+   * mimic keeps blocks there and only nudges them apart when values collide.
+   */
+  callouts?: Record<string, [number, number, "start" | "middle" | "end"]>;
+  /**
+   * Points the mimic shows as one value block holding their mean (block key → member tags and its control-room label).
+   * The key has its own pad and callout; the members keep theirs for alert popups but get no block of their own.
+   */
+  averages?: Record<string, { tags: string[]; label: string }>;
   /** Set once the equipment art is drawn (a stub has pads from the PDF but no art); pages only show ready sheets. */
   ready?: boolean;
   /** PYR-0: clickable machine region per machine id ([x, y, w, h]). */
   links?: Record<string, [number, number, number, number]>;
+  /** PYR-0: regions washed with a machine's condition, where its drawing reaches past its link region. */
+  shades?: Record<string, Array<[number, number, number, number]>>;
+  /** PYR-0: centre of each machine's name-and-health chip (machine id → [x, y]). */
+  machineChips?: Record<string, [number, number]>;
+  /** PYR-0: health badge of each sub-assembly, at its place on the drawing (sub-assembly id → machine and [x, y]). */
+  parts?: Record<string, { machine: string; at: [number, number] }>;
+  /** PYR-0: area of each sub-assembly's equipment (sub-assembly id → machine and [x, y, w, h]), tinted by its health. */
+  partRegions?: Record<string, { machine: string; box: [number, number, number, number] }>;
 }

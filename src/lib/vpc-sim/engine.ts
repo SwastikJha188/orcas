@@ -63,6 +63,8 @@ export interface VpcSimState {
   history: Record<string, number[]>;
   modelHistory: Record<string, number[]>;
   qualityHistory: Record<string, number[]>;
+  /** Discrete states reported at the last step (the gateway publishes them). */
+  lastStates?: Record<string, string>;
   healthHist: { overall: number[] } & Record<string, number[]>;
   events: SimEvent[];
   frame: SimFrame | null;
@@ -226,7 +228,7 @@ export function performVpcAction(state: VpcSimState, ruleId: string, kind: Opera
     addEvent(state, "action", "Normal", `Acknowledged ${ruleId}`, `${rName} acknowledged by ${auto ? "cast crew" : "operator"}.`, { ruleId, kind, auto });
   } else if (kind === "mitigate") {
     state.relief[ruleId] = 0.55;
-    addEvent(state, "action", "Advisory", `Mitigation applied for ${ruleId}`, `Temporary process/utility adjustment applied for ${rName}; deviation reduced ~55 %.`, { ruleId, kind, auto });
+    addEvent(state, "action", "Alert", `Mitigation applied for ${ruleId}`, `Temporary process/utility adjustment applied for ${rName}; deviation reduced ~55 %.`, { ruleId, kind, auto });
   } else if (kind === "repair") {
     state.relief[ruleId] = 1;
     state.repairedAt = state.t;
@@ -307,7 +309,7 @@ function evaluateVpcRules(
   hits.push({
     ruleId: "R-DQ-01",
     matched: badTags.length > 0,
-    severity: badTags.some((t) => qualities[t] === "Invalid") ? "Critical" : "Advisory",
+    severity: badTags.some((t) => qualities[t] === "Invalid") ? "Critical" : "Alert",
     evidence: badTags.length
       ? `Flagged channel(s): ${badTags.map((t) => `${t} (${qualities[t]})`).join(", ")}`
       : "All 15 wired VPC 066 channels within calibrated range and variability band",
@@ -320,7 +322,7 @@ function evaluateVpcRules(
   hits.push({
     ruleId: "R-DQ-02",
     matched: dtMismatch || vacMismatch,
-    severity: "Advisory",
+    severity: "Alert",
     evidence: dtMismatch
       ? `T3 (${vals.T3.toFixed(1)} °C) < T2 (${vals.T2.toFixed(1)} °C) while E1 = ${vals.E1.toFixed(2)} kW`
       : vacMismatch
@@ -336,7 +338,7 @@ function evaluateVpcRules(
   hits.push({
     ruleId: "R-VPC-01",
     matched: p2Slow && pumpRising,
-    severity: r01Crit ? "Critical" : "Advisory",
+    severity: r01Crit ? "Critical" : "Alert",
     evidence: `P2 = ${Math.round(vals.P2)} mbar (target 300 mbar) · V1 = ${vals.V1.toFixed(2)} mm/s · T4 = ${vals.T4.toFixed(1)} °C · P4 = ${Math.round(vals.P4)} mbar · E2 = ${vals.E2.toFixed(2)} A`,
     tags: ["P2", "V1", "T4", "P4", "E2"],
   });
@@ -346,7 +348,7 @@ function evaluateVpcRules(
   hits.push({
     ruleId: "R-VPC-02",
     matched: p2Slow && pumpNormal && states.S1 === "OK",
-    severity: vals.P2 >= 450 ? "Critical" : "Advisory",
+    severity: vals.P2 >= 450 ? "Critical" : "Alert",
     evidence: `P2 = ${Math.round(vals.P2)} mbar (≥ 390 mbar limit) while V1 = ${vals.V1.toFixed(2)} mm/s & T4 = ${vals.T4.toFixed(1)} °C normal`,
     tags: ["P2", "V1", "T4", "S2"],
   });
@@ -357,7 +359,7 @@ function evaluateVpcRules(
   hits.push({
     ruleId: "R-VPC-03",
     matched: p1Low && p3Low,
-    severity: vals.P3 <= 4.00 || vals.P1 <= 0.90 ? "Critical" : "Advisory",
+    severity: vals.P3 <= 4.00 || vals.P1 <= 0.90 ? "Critical" : "Alert",
     evidence: `P1 = ${vals.P1.toFixed(2)} bar (target 1.20 bar) · P3 regulated supply = ${vals.P3.toFixed(2)} bar (baseline 5.00 bar)`,
     tags: ["P1", "P3"],
   });
@@ -367,7 +369,7 @@ function evaluateVpcRules(
   hits.push({
     ruleId: "R-VPC-04",
     matched: p1Low && p3Stable && states.S1 === "OK",
-    severity: vals.P1 <= 0.90 || vals.P1 >= 1.50 ? "Critical" : "Advisory",
+    severity: vals.P1 <= 0.90 || vals.P1 >= 1.50 ? "Critical" : "Alert",
     evidence: `P1 = ${vals.P1.toFixed(2)} bar (deviation ${(vals.P1 - 1.20).toFixed(2)} bar) with P3 stable at ${vals.P3.toFixed(2)} bar`,
     tags: ["P1", "P3", "S2"],
   });
@@ -378,7 +380,7 @@ function evaluateVpcRules(
   hits.push({
     ruleId: "R-VPC-05",
     matched: t1Dev && e1Low,
-    severity: vals.E1 <= 6.72 || Math.abs(vals.T1 - 1020) >= 30 ? "Critical" : "Advisory",
+    severity: vals.E1 <= 6.72 || Math.abs(vals.T1 - 1020) >= 30 ? "Critical" : "Alert",
     evidence: `T1 = ${Math.round(vals.T1)} °C (target 1,020 °C) · E1 = ${vals.E1.toFixed(2)} kW (${Math.round((vals.E1 / 8.4) * 100)} % of matched 8.4 kW basis)`,
     tags: ["T1", "E1"],
   });
@@ -388,7 +390,7 @@ function evaluateVpcRules(
   hits.push({
     ruleId: "R-VPC-06",
     matched: t1Dev && e1Normal,
-    severity: Math.abs(vals.T1 - 1020) >= 30 ? "Critical" : "Advisory",
+    severity: Math.abs(vals.T1 - 1020) >= 30 ? "Critical" : "Alert",
     evidence: `T1 = ${Math.round(vals.T1)} °C (${vals.T1 >= 1020 ? "+" : ""}${Math.round(vals.T1 - 1020)} °C vs 1,020 °C) while E1 normal at ${vals.E1.toFixed(2)} kW`,
     tags: ["T1", "E1"],
   });
@@ -399,7 +401,7 @@ function evaluateVpcRules(
   hits.push({
     ruleId: "R-VPC-07",
     matched: f1Low && dtHigh,
-    severity: vals.F1 <= 10.5 || vals.DT1 >= 11.0 ? "Critical" : "Advisory",
+    severity: vals.F1 <= 10.5 || vals.DT1 >= 11.0 ? "Critical" : "Alert",
     evidence: `F1 = ${vals.F1.toFixed(1)} L/min (baseline 14.0 L/min) · DT1 = ${vals.DT1.toFixed(1)} °C (T2 ${vals.T2.toFixed(1)} °C → T3 ${vals.T3.toFixed(1)} °C)`,
     tags: ["F1", "T2", "T3", "DT1"],
   });
@@ -410,7 +412,7 @@ function evaluateVpcRules(
   hits.push({
     ruleId: "R-VPC-08",
     matched: t2High && f1Normal,
-    severity: vals.T2 > 29.0 || vals.T3 >= 33.0 ? "Critical" : "Advisory",
+    severity: vals.T2 > 29.0 || vals.T3 >= 33.0 ? "Critical" : "Alert",
     evidence: `T2 inlet = ${vals.T2.toFixed(1)} °C (warn > 26 °C) · T3 outlet = ${vals.T3.toFixed(1)} °C · F1 normal at ${vals.F1.toFixed(1)} L/min`,
     tags: ["T2", "T3", "F1", "DT1"],
   });
@@ -421,7 +423,7 @@ function evaluateVpcRules(
   hits.push({
     ruleId: "R-VPC-09",
     matched: s1Bad && profileAltered,
-    severity: states.S1 === "FAULT" ? "Critical" : "Advisory",
+    severity: states.S1 === "FAULT" ? "Critical" : "Alert",
     evidence: `S1 stopper = ${states.S1} · P1 = ${vals.P1.toFixed(2)} bar · P2 = ${Math.round(vals.P2)} mbar`,
     tags: ["S1", "P1", "P2"],
   });
@@ -431,7 +433,7 @@ function evaluateVpcRules(
   hits.push({
     ruleId: "R-VPC-10",
     matched: v2Bad,
-    severity: vals.V2 <= 1.20 || vals.V2 >= 6.00 ? "Critical" : "Advisory",
+    severity: vals.V2 <= 1.20 || vals.V2 >= 6.00 ? "Critical" : "Alert",
     evidence: `V2 flask vibration = ${vals.V2.toFixed(2)} mm/s RMS (normal envelope 2.40–4.20 mm/s)`,
     tags: ["V2", "P2"],
   });
@@ -441,7 +443,7 @@ function evaluateVpcRules(
   hits.push({
     ruleId: "R-VPC-11",
     matched: s2Bad,
-    severity: states.S2 === "OPEN_FAULT" ? "Critical" : "Advisory",
+    severity: states.S2 === "OPEN_FAULT" ? "Critical" : "Alert",
     evidence: `S2 chamber closure permissive = ${states.S2}`,
     tags: ["S2", "P1", "P2"],
   });
@@ -456,7 +458,7 @@ export function stepVpcSim(state: VpcSimState, buildFrame = true): SimFrame {
   const sc = vpcScenario(state.scenarioId);
   const elapsed = Math.max(0, state.t - state.scenarioStart);
 
-  // Compute relief factor from any mitigated rule; advisory autopilot stays within the Advisory threshold band.
+  // Compute relief factor from any mitigated rule; advisory autopilot stays within the Alert threshold band.
   const activeRelief = Math.max(0, ...Object.values(state.relief));
   const profileScale = state.autopilot && state.profile === "advisory" ? 0.68 : 1;
   const scale = (1 - activeRelief) * profileScale;
@@ -540,6 +542,7 @@ export function stepVpcSim(state: VpcSimState, buildFrame = true): SimFrame {
   qualityNotes.DT1 = qualities.DT1 !== "Good" ? "Input RTD (T2 or T3) flagged" : null;
 
   // Push histories
+  state.lastStates = { ...states };
   pushRoll(state.times, state.t);
   for (const def of VPC_SIGNALS) {
     const v = def.type === "state" ? (states[def.tag] === def.states?.normal ? 1 : 0) : vals[def.tag];
@@ -587,8 +590,8 @@ export function stepVpcSim(state: VpcSimState, buildFrame = true): SimFrame {
     }
 
     const status = mem.status;
-    const severity: Severity = status === "ACTIVE" ? mem.severity : status === "PENDING" ? hit?.severity ?? "Advisory" : "Normal";
-    const priority = severity === "Critical" ? "P1" : severity === "Advisory" ? (r.category === "Data quality" ? "P3" : "P2") : "P4";
+    const severity: Severity = status === "ACTIVE" ? mem.severity : status === "PENDING" ? hit?.severity ?? "Alert" : "Normal";
+    const priority = severity === "Critical" ? "P1" : severity === "Alert" ? (r.category === "Data quality" ? "P3" : "P2") : "P4";
 
     return {
       id: r.id,
@@ -610,6 +613,9 @@ export function stepVpcSim(state: VpcSimState, buildFrame = true): SimFrame {
       cause: r.cause,
       consequence: r.consequence,
       action: r.action,
+      plainTitle: r.plainTitle,
+      plainWhat: r.plainWhat,
+      plainTodo: r.plainTodo,
       since: mem.since,
       owner: r.owner,
       unproven: r.unproven,
@@ -626,9 +632,9 @@ export function stepVpcSim(state: VpcSimState, buildFrame = true): SimFrame {
       if (r.severity === "Critical") {
         penalty += 28;
         worst = "Critical";
-      } else if (r.severity === "Advisory") {
+      } else if (r.severity === "Alert") {
         penalty += 14;
-        if (worst === "Normal") worst = "Advisory";
+        if (worst === "Normal") worst = "Alert";
       }
     }
     // Also factor in direct signal limit deviations on this subassembly
@@ -641,9 +647,9 @@ export function stepVpcSim(state: VpcSimState, buildFrame = true): SimFrame {
       if (limSev === "Critical") {
         penalty = Math.max(penalty, 22);
         worst = "Critical";
-      } else if (limSev === "Advisory") {
+      } else if (limSev === "Alert") {
         penalty = Math.max(penalty, 10);
-        if (worst === "Normal") worst = "Advisory";
+        if (worst === "Normal") worst = "Alert";
       }
     }
     const h = clamp(98 - penalty, 42, 99);
@@ -657,8 +663,8 @@ export function stepVpcSim(state: VpcSimState, buildFrame = true): SimFrame {
     const h = children.length ? Math.round(children.reduce((n, c) => n + c.health, 0) / children.length) : 98;
     const st: Severity = children.some((c) => c.status === "Critical")
       ? "Critical"
-      : children.some((c) => c.status === "Advisory")
-        ? "Advisory"
+      : children.some((c) => c.status === "Alert")
+        ? "Alert"
         : "Normal";
     systems[sys.id] = { id: sys.id, name: sys.name, health: h, status: st };
     pushRoll(state.healthHist[sys.id], h);
@@ -671,8 +677,8 @@ export function stepVpcSim(state: VpcSimState, buildFrame = true): SimFrame {
   pushRoll(state.healthHist.overall, overall);
 
   const hasCrit = Object.values(subs).some((c) => c.status === "Critical");
-  const hasAdv = Object.values(subs).some((c) => c.status === "Advisory");
-  const condition: SimFrame["condition"] = hasCrit ? "Critical" : hasAdv ? "Advisory" : "Healthy";
+  const hasAdv = Object.values(subs).some((c) => c.status === "Alert");
+  const condition: SimFrame["condition"] = hasCrit ? "Critical" : hasAdv ? "Alert" : "Healthy";
 
   if (!buildFrame && state.frame) {
     state.frame.overall = overall;
@@ -716,12 +722,12 @@ export function stepVpcSim(state: VpcSimState, buildFrame = true): SimFrame {
     const limSev = limEval.severity;
     const ruleSev = evaluatedRules
       .filter((r) => r.status === "ACTIVE" && r.category !== "Data quality" && r.tags.includes(def.tag))
-      .reduce<Severity>((w, r) => (r.severity === "Critical" ? "Critical" : r.severity === "Advisory" && w === "Normal" ? "Advisory" : w), "Normal");
+      .reduce<Severity>((w, r) => (r.severity === "Critical" ? "Critical" : r.severity === "Alert" && w === "Normal" ? "Alert" : w), "Normal");
     const status: Severity =
       limSev === "Critical" || ruleSev === "Critical"
         ? "Critical"
-        : limSev === "Advisory" || ruleSev === "Advisory"
-          ? "Advisory"
+        : limSev === "Alert" || ruleSev === "Alert"
+          ? "Alert"
           : "Normal";
     const sl = slopePerHour(state.history[def.tag]);
 
@@ -739,7 +745,7 @@ export function stepVpcSim(state: VpcSimState, buildFrame = true): SimFrame {
       quality: qualities[def.tag],
       qualityNote: qualityNotes[def.tag],
       slopePerHour: sl,
-      timeToLimit: status === "Critical" ? "At limit" : status === "Advisory" ? "~25 min" : null,
+      timeToLimit: status === "Critical" ? "At limit" : status === "Alert" ? "~25 min" : null,
       sourceTs: qualities[def.tag] === "Suspect" && state.heldValue[def.tag] !== undefined ? state.scenarioStart + 2 : state.t,
       receivedTs: state.t,
     };

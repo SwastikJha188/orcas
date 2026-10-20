@@ -12,11 +12,11 @@ export const BROKER_STATE: Record<BrokerState, [Tone, string]> = {
   connecting: ["info", "Connecting"],
   reconnecting: ["warn", "Reconnecting"],
   offline: ["bad", "Offline"],
-  disabled: ["idle", "Disabled"],
+  disabled: ["idle", "Switched off"],
 };
 
 export const LIVE_LINK_TONE: Record<LinkState, Tone> = { ONLINE: "good", STALE: "warn", OFFLINE: "bad" };
-export const LIVE_LINK_LABEL: Record<LinkState, string> = { ONLINE: "Online", STALE: "Stale", OFFLINE: "Offline" };
+export const LIVE_LINK_LABEL: Record<LinkState, string> = { ONLINE: "Online", STALE: "Old data", OFFLINE: "Offline" };
 
 export const nf = new Intl.NumberFormat("en-GB");
 const nf1 = new Intl.NumberFormat("en-GB", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -91,8 +91,8 @@ export function registeredGateway(registry: EdgeRegistry, brokerId: string, code
 /** Header summary: "2 of 3 connected", toned by the worst enabled broker. */
 export function connectionSummary(rows: BrokerRow[]): [Tone, string] {
   const enabled = rows.filter((r) => r.broker.enabled);
-  if (rows.length === 0) return ["idle", "No brokers"];
-  if (enabled.length === 0) return ["idle", "None enabled"];
+  if (rows.length === 0) return ["idle", "No data connections"];
+  if (enabled.length === 0) return ["idle", "All switched off"];
   const connected = enabled.filter((r) => r.state === "connected").length;
   const tone: Tone =
     connected === enabled.length ? "good" : enabled.some((r) => r.state === "offline") ? "bad" : "warn";

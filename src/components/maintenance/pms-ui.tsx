@@ -4,7 +4,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { Dialog, Field, FormNote, PillButton, TextArea, type Tone } from "@/components/ui";
 import { STEPS, planGenerates, planHours, type PlanDue } from "@/lib/pms";
 import type { PmsPlan, PmsWorkOrder } from "@/types/pms";
-import { ROUND_NAME, machineCode, planName, unitLabel, woRef, type Outcome } from "./pms-model";
+import { machineName, planName, planRound, unitLabel, woRef, type Outcome } from "./pms-model";
 
 /* ==========================================================================
    Shared pieces of the planned-maintenance views (prefix pm-).
@@ -12,15 +12,17 @@ import { ROUND_NAME, machineCode, planName, unitLabel, woRef, type Outcome } fro
 
 /* ------------------------------------------------------------ pages and focus */
 
-export type PmsPage = "overview" | "calendar" | "machine" | "condition" | "work" | "resources" | "history";
+export type PmsPage = "overview" | "preventive" | "predictive" | "proactive" | "work" | "calendar" | "machine" | "resources" | "history";
 
 export const PMS_PAGES: { id: PmsPage; label: string }[] = [
   { id: "overview", label: "Overview" },
+  { id: "preventive", label: "Preventive" },
+  { id: "predictive", label: "Predictive & planned" },
+  { id: "proactive", label: "Proactive" },
+  { id: "work", label: "Work orders" },
   { id: "calendar", label: "Calendar" },
   { id: "machine", label: "Machine maintenance" },
-  { id: "condition", label: "Condition planning" },
-  { id: "work", label: "Work orders & checklists" },
-  { id: "resources", label: "Resources & shutdown" },
+  { id: "resources", label: "People, parts & shutdowns" },
   { id: "history", label: "History & performance" },
 ];
 
@@ -31,7 +33,7 @@ export const usePmsNav = () => useContext(NavContext);
 
 const FOCUS_KEY = "ultron.pms.focus";
 
-/** Open a page on one item: "w:<id>" work order, "f:<machine>:<rule>" finding, "p:<plan>" plan, "m:<machine>" machine. */
+/** Open a page on one item: "w:<id>" work order, "c:<id>" alarm check, "p:<plan>" plan, "m:<machine>" machine, "g:<group>" preventive group, "r:<part>" part. */
 export function setPmsFocus(key: string) {
   try {
     sessionStorage.setItem(FOCUS_KEY, key);
@@ -113,8 +115,8 @@ export function occurrences(plans: PmsPlan[], dues: Map<string, PlanDue>, wos: P
         at,
         kind: "plan",
         title: planName(p),
-        short: `${ROUND_NAME[p.route] ?? p.route}`,
-        sub: `${p.unitCode === "GEN" ? machineCode(p.machineId) : p.unitCode}${p.kind === "sensor" ? " · instruments" : ""}`,
+        short: planRound(p),
+        sub: `${p.unitCode === "GEN" ? machineName(p.machineId) : p.unitCode}${p.kind === "sensor" ? " · instruments" : ""}`,
         tasks: p.tasks.length,
         tone: first && d.state === "overdue" ? "warn" : undefined,
         due: first && d.dueAt <= now,
@@ -153,7 +155,7 @@ export function routineSummary(list: Occurrence[], plans: PmsPlan[]): string | n
   for (const o of list) {
     if (!o.routine) continue;
     const p = plans.find((x) => x.id === o.ref);
-    const name = p ? (ROUND_NAME[p.route] ?? p.route).replace(" round", "") : "Round";
+    const name = p ? p.routeLabel : "Round";
     byRoute.set(name, (byRoute.get(name) ?? 0) + 1);
   }
   if (!byRoute.size) return null;
@@ -181,7 +183,7 @@ export function DefList({ rows, className = "" }: { rows: { label: string; value
 /** The seven-step lifecycle as a segmented track; the current step is marked. */
 export function Stepper({ step, paused, ended }: { step: number; paused?: string | null; ended?: string | null }) {
   return (
-    <ol className="pm-steps" aria-label="Work order lifecycle">
+    <ol className="pm-steps" aria-label="Steps of a work order">
       {STEPS.map((s, i) => {
         const state = i < step ? "done" : i === step ? "current" : "todo";
         return (
@@ -241,7 +243,7 @@ export function NoteDialog({
   }, [open, initial]);
   const submit = async () => {
     if (!value.trim()) {
-      setErr("Required");
+      setErr("Please fill this in.");
       return;
     }
     setBusy(true);
@@ -303,6 +305,7 @@ export const PM_ICON = {
   prev: svg(<path d="M10 3.5 5.5 8l4.5 4.5" />),
   next: svg(<path d="M6 3.5 10.5 8 6 12.5" />),
   lock: svg(<><rect x="3.5" y="7" width="9" height="6" rx="1.5" /><path d="M5.5 7V5.5a2.5 2.5 0 0 1 5 0V7" /></>),
+  part: svg(<><circle cx="8" cy="8" r="2.2" /><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6 5 5M11 11l1.4 1.4M3.6 12.4 5 11M11 5l1.4-1.4" /></>),
 };
 
 /** Leading badge + title + muted sub line for a table cell. */

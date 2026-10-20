@@ -13,7 +13,6 @@ import "../assets-shell.css";
 import "./hierarchy.css";
 
 const SELECTED_KEY = "ultron.hierarchy.selected";
-const DEFAULT_PLANT = "plant-kln";
 
 /**
  * Assets directory: "What equipment do I have, where is it in the plant
@@ -22,9 +21,9 @@ const DEFAULT_PLANT = "plant-kln";
  * and opens machines through `navigateToMachine`. The selection survives the
  * round trip into a machine (sessionStorage, like ULTRON's tree state).
  */
-export function AssetHierarchyPage() {
+export function AssetHierarchyPage({ viewSwitcher }: { viewSwitcher?: React.ReactNode } = {}) {
   const { roots, lookup, isLoading, loadError } = useHierarchyData();
-  const { navigateToMachine } = useIndustrialData();
+  const { navigateToMachine, selectedPlantId } = useIndustrialData();
   const onOpenMachine = (machineId: string, subPage: AssetsSubPage = "overview") => navigateToMachine(machineId, subPage);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Phone / tablet only: the tree is a drawer behind a toggle (CSS hides both on wider screens).
@@ -52,9 +51,9 @@ export function AssetHierarchyPage() {
     }
   };
 
-  // Resolve the selection; fall back to the default plant root.
+  // Resolve the selection; fall back to the active plant root.
   const path = useMemo(() => (selectedId ? findPath(roots, selectedId) : []), [roots, selectedId]);
-  const fallback = roots.find((p) => p.id === DEFAULT_PLANT) ?? roots[0];
+  const fallback = roots.find((p) => p.id === selectedPlantId) ?? roots[0];
   const node = path[path.length - 1] ?? fallback;
   const plant = path[0] ?? fallback;
 
@@ -64,16 +63,16 @@ export function AssetHierarchyPage() {
         <div className="assets-directory-workspace ast-root">
           <div className="ast-card ast-empty">
             {isLoading ? (
-              <strong className="hx-empty-title">Loading plant hierarchy…</strong>
+              <strong className="hx-empty-title">Loading the plant&apos;s equipment…</strong>
             ) : loadError ? (
               <>
-                <strong className="hx-empty-title">Plant hierarchy unavailable</strong>
+                <strong className="hx-empty-title">Could not load the plant&apos;s equipment</strong>
                 {loadError}
               </>
             ) : (
               <>
-                <strong className="hx-empty-title">No plant in the database</strong>
-                The plant hierarchy table is empty. Seed or import the plant structure to list its equipment here.
+                <strong className="hx-empty-title">No plant set up yet</strong>
+                Add the plant and its machines to see them listed here.
               </>
             )}
           </div>
@@ -91,7 +90,7 @@ export function AssetHierarchyPage() {
       }}
     >
       <button type="button" className="hx-tree-toggle" aria-expanded={treeOpen} onClick={() => setTreeOpen((o) => !o)}>
-        <span className="hx-tree-toggle-label">Hierarchy</span>
+        <span className="hx-tree-toggle-label">Plant equipment</span>
         <span className="hx-tree-toggle-node">{(path.length ? path : [node]).map(nodeLabel).join(" / ")}</span>
         <IconChevron size={12} dir="down" />
       </button>
@@ -107,7 +106,14 @@ export function AssetHierarchyPage() {
         selectedId={node.id}
         onSelect={select}
       />
-      <HierarchyContents roots={roots} lookup={lookup} node={node} onSelectNode={select} onOpenMachine={onOpenMachine} />
+      <HierarchyContents
+        roots={roots}
+        lookup={lookup}
+        node={node}
+        onSelectNode={select}
+        onOpenMachine={onOpenMachine}
+        viewSwitcher={viewSwitcher}
+      />
     </div>
   );
 }

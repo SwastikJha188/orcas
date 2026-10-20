@@ -111,7 +111,7 @@ export function RackEnclosure({
       viewBox={`0 0 ${VB_W} ${VB_H}`}
       role="group"
       style={kitStyle(kit)}
-      aria-label={`${rack.positions} single-channel slots on ${shelves} 3U ${shelves === 1 ? "shelf" : "shelves"}, ${rack.modules.length} wired. Select a slot to inspect it.`}
+      aria-label={`${rack.positions} slots, one sensor each, on ${shelves} ${shelves === 1 ? "shelf" : "shelves"}, ${rack.modules.length} wired. Select a slot to see what is in it.`}
     >
       <MachineDefs id={kit} />
       {Array.from({ length: shelves }, (_, s) => {

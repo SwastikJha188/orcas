@@ -10,6 +10,10 @@
 [data-tone="idle"] { --tone: var(--text-muted); }
 [data-tone="info"] { --tone: var(--signal-blue); }
 
+/* The detail popup's backdrop is absolute; anchor it to the main column so it
+   sits below the top bar and rail instead of under them. */
+.ast-modal-host { position: relative; }
+
 /* ---------------------------------------------------------------- root */
 .ast-root {
   color: var(--page-fg);
@@ -139,19 +143,6 @@
   flex-shrink: 0;
 }
 
-.ast-id {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 7px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--separator);
-  background: var(--bg-canvas);
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
 
 /* ---------------------------------------------------------------- ticks */
 .ast-ticks {
@@ -193,7 +184,7 @@
   fill: none;
   stroke: var(--tone);
   stroke-linecap: round;
-  transition: stroke-dashoffset 0.5s var(--ease-out);
+  transition: stroke-dashoffset var(--dur-modal) var(--ease-out);
 }
 
 .ast-ring-center {
@@ -660,9 +651,8 @@
   font-weight: 600;
   color: var(--dx-ink);
   line-height: 1.3;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .ast-health-cell {
@@ -729,6 +719,10 @@
 .ast-plant-btn:hover {
   background: var(--row-hover-bg);
   border-color: var(--border-subtle);
+}
+
+.ast-plant-btn:active {
+  transform: scale(0.97);
 }
 
 .ast-plant-btn span {
@@ -911,7 +905,7 @@
 
 .ast-sch-dot {
   cursor: default;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--dur-fast) var(--ease-out);
   outline: none;
 }
 
@@ -1157,7 +1151,7 @@
   stroke-width: 1;
   stroke-dasharray: 3 3;
   opacity: 0.55;
-  transition: stroke 0.14s ease, opacity 0.14s ease, stroke-width 0.14s ease;
+  transition: stroke var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out), stroke-width var(--dur-fast) var(--ease-out);
 }
 
 .ast-smw-leader[data-detailed] path {
@@ -1168,7 +1162,7 @@
 .ast-smw-leader circle {
   fill: var(--mx-edge);
   opacity: 0.75;
-  transition: fill 0.14s ease, opacity 0.14s ease;
+  transition: fill var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
 }
 
 .ast-smw-leader[data-hot] path {
@@ -1275,7 +1269,7 @@
   min-width: 0;
   padding: 0 2px 5px;
   border-bottom: 1px solid var(--separator);
-  transition: border-color 0.15s ease;
+  transition: border-color var(--dur-fast) var(--ease-out);
 }
 
 .ast-smw-label-text {
@@ -1343,6 +1337,10 @@
 .ast-smw-card:hover,
 .ast-smw-card[data-hot] {
   border-color: var(--border-hover);
+}
+
+.ast-smw-card:active {
+  transform: scale(0.97);
 }
 
 .ast-smw-card[aria-pressed="true"] {
@@ -1559,3 +1557,49 @@
   background: var(--tone);
 }
 
+
+/* Assets machine pages: row 2 holds the page's own header (PageHeaderSlot), sized
+   like the Operator view's sheet row so the bars line up page to page. */
+.ast-page-bar > .pg-frame-head {
+  flex: 1 1 auto;
+  /* The Operator view's sheet pills are 32px: the same row height on every page. */
+  min-height: 32px;
+  gap: 8px 16px;
+}
+.ast-page-bar .pg-frame-title {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  line-height: 28px;
+}
+.ast-page-bar .pg-frame-head-main {
+  align-items: center;
+}
+.ast-page-bar .pg-frame-actions .btn-pill {
+  height: 28px;
+  padding-block: 0;
+  font-size: var(--fs-xs);
+}
+
+/* The machine's parts lead the page row on one line (scrolling sideways when there are many);
+   the page's own header sits on the line below. */
+.ast-page-bar > .ast-part-bar {
+  order: -1;
+  flex: 1 1 100%;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.ast-page-bar > .ast-part-bar::-webkit-scrollbar { display: none; }
+.ast-part-bar > .opc-pill-group {
+  flex-wrap: nowrap;
+  max-width: none;
+  flex: none;
+}
+/* "Whole machine" stays in reach while the parts scroll under it. */
+.ast-part-bar > .opc-pill-group > .opc-pill-btn:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--card-bg);
+  box-shadow: 6px 0 6px -2px var(--card-bg);
+}

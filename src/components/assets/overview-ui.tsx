@@ -40,7 +40,7 @@ export function RangeBar({ row, tone }: { row: OvOperatingRow; tone: Tone }) {
   const ticks: { v: number; kind: "warn" | "alarm" }[] = [];
   for (const v of [row.warn.lo, row.warn.hi]) if (v !== null) ticks.push({ v, kind: "warn" });
   for (const v of [row.alarm.lo, row.alarm.hi]) if (v !== null) ticks.push({ v, kind: "alarm" });
-  const label = `${fmtN(row.value, row.decimals)} ${row.unit}; normal ${row.normalBand}${row.model !== null ? `; reference ${fmtN(row.model, row.decimals)}` : ""}`;
+  const label = `${fmtN(row.value, row.decimals)} ${row.unit}; normal range ${row.normalBand}${row.model !== null ? `; expected ${fmtN(row.model, row.decimals)}` : ""}`;
   return (
     <span className="pg-ov-range" role="img" aria-label={label}>
       <span className="pg-ov-range-track" />

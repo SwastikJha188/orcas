@@ -174,7 +174,7 @@ export const VPC_DEMO_OPERATING_CASE = {
   cooling: "14 L/min (F1) · 22 °C in (T2) · 27 °C out (T3) · 5 °C rise (DT1)",
   pumpCondition: "1.8 mm/s RMS vibration (V1) · 57 °C housing (T4)",
   inductionPower: "~8.4 kW active heating power (E1, below 11 kW rated Power unit)",
-  note: "Assumed demo values for ULTRON simulation only; actual production recipes are alloy-, tree- and plant-specific.",
+  note: "Assumed demo values; actual production recipes are alloy-, tree- and plant-specific.",
 } as const;
 
 /** Section 6: Critical Areas and Failure Modes. */
@@ -262,7 +262,7 @@ export const VPC_MACHINE: PyroMachineDef = {
   gate:
     "Confirm machine variant (Classic 6.8 kW / Power 11 kW / Supreme 13 kW), extreme overpressure option (3 bar), whether direct vibration technology (V2) is fitted, and read-only PLC/OEM tap availability before installing external sensors.",
   limitations: [
-    "D4 distinction (§2.5): Published OEM limits (400 V 3-phase, 6.8/11/13 kW, 1,600 °C S-type max, 1,450 °C separate crucible limit, 130 × 300 mm max flask) are factual; all demo values and proposed instruments in Rev 01 are for simulation only, not machine settings or protection limits.",
+    "D4 distinction (§2.5): Published OEM limits (400 V 3-phase, 6.8/11/13 kW, 1,600 °C S-type max, 1,450 °C separate crucible limit, 130 × 300 mm max flask) are factual; all demo values and proposed instruments in Rev 01 are for demonstration only, not machine settings or protection limits.",
     "Section 5.1: Schultheiss public literature provides machine capabilities and features, not universal recipe numbers, because melt temperature, vacuum level, gas pressure, hold time and cooling flow depend on alloy, flask size, tree geometry and site utilities.",
     "Section 7.4 Rule #10: If casting rejects are high while all process signals (P1, P2, P3, T1, F1, S1) are normal, investigate mould burnout, alloy cleanliness, sprue design or upstream quality rather than blaming a machine component.",
   ],

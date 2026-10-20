@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, sessionUser } from "@/server/services/auth-service";
 import { MaintenanceInputError, addChecklistItem, removeChecklistItem } from "@/server/services/maintenance-service";
+import { accessFail, requestScope } from "@/app/api/_lib/respond";
+import { requireMachine } from "@/server/services/access-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,9 +21,10 @@ export async function POST(request: NextRequest) {
     const userId = await sessionUser(request.cookies.get(SESSION_COOKIE)?.value);
     if (!userId) return signedOut();
     const body = (await request.json()) as Record<string, unknown>;
+    requireMachine(await requestScope(request), typeof body.machineId === "string" ? body.machineId : null);
     return NextResponse.json({ data: await addChecklistItem(body, userId) }, { status: 201 });
   } catch (error) {
-    return fail(error, "MAINTENANCE_ITEM_ERROR", "Failed to add the item");
+    return accessFail(error) ?? fail(error, "MAINTENANCE_ITEM_ERROR", "Failed to add the item");
   }
 }
 
@@ -31,9 +34,10 @@ export async function DELETE(request: NextRequest) {
     const userId = await sessionUser(request.cookies.get(SESSION_COOKIE)?.value);
     if (!userId) return signedOut();
     const sp = request.nextUrl.searchParams;
+    requireMachine(await requestScope(request), sp.get("machineId"));
     await removeChecklistItem({ machineId: sp.get("machineId"), kind: sp.get("kind"), taskId: sp.get("taskId") }, userId);
     return NextResponse.json({ data: { ok: true } });
   } catch (error) {
-    return fail(error, "MAINTENANCE_ITEM_ERROR", "Failed to remove the item");
+    return accessFail(error) ?? fail(error, "MAINTENANCE_ITEM_ERROR", "Failed to remove the item");
   }
 }

@@ -142,7 +142,7 @@ export function FormatPreview({
         <h2 className="ast-card-title">Preview</h2>
         <PillNav
           items={[
-            { id: "captured", label: "Captured" },
+            { id: "captured", label: "Recorded" },
             { id: "paste", label: "Paste" },
           ]}
           activeId={mode}
@@ -154,8 +154,8 @@ export function FormatPreview({
         <div className="fmt-source">
           <div className="fmt-source-bar">
             <span className="ui-select fmt-select">
-              <select aria-label="Broker" value={brokerId} onChange={(e) => setBrokerId(e.target.value)}>
-                <option value="all">All brokers</option>
+              <select aria-label="Data connection" value={brokerId} onChange={(e) => setBrokerId(e.target.value)}>
+                <option value="all">All data connections</option>
                 {brokers.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
@@ -166,7 +166,7 @@ export function FormatPreview({
                 <polyline points="6 9 12 15 18 9" />
               </svg>
             </span>
-            <SearchPill value={query} onChange={setQuery} placeholder="Filter topic or payload" label="Filter samples" />
+            <SearchPill value={query} onChange={setQuery} placeholder="Search channel or message" label="Search recorded messages" />
             <PillButton variant="secondary" onClick={() => void load()} disabled={loading}>
               {loading ? "Loading…" : "Refresh"}
             </PillButton>
@@ -174,26 +174,26 @@ export function FormatPreview({
               variant="secondary"
               onClick={() => void startListening()}
               disabled={!listenBroker || isListening}
-              title={listenBroker ? `Subscribe ${brokerName(listenBroker)} to # for ${LISTEN_SECONDS} s` : "Choose a broker to listen on"}
+              title={listenBroker ? `Listen to every channel on ${brokerName(listenBroker)} for ${LISTEN_SECONDS} s` : "Choose a data connection to listen on"}
             >
               {isListening ? `Listening · ${remaining} s` : `Listen ${LISTEN_SECONDS} s`}
             </PillButton>
           </div>
           {listenError && <FormNote tone="bad">{listenError}</FormNote>}
           {loadError ? (
-            <FormNote tone="bad">Samples unavailable. Retry.</FormNote>
+            <FormNote tone="bad">Recorded messages could not be loaded. Try again.</FormNote>
           ) : samples === null ? (
-            <p className="fmt-muted">Loading captured messages…</p>
+            <p className="fmt-muted">Loading recorded messages…</p>
           ) : filtered.length === 0 ? (
             <p className="fmt-muted">
               {samples.length === 0
                 ? listenBroker
-                  ? `No messages captured${scopeId ? ` on ${brokerName(scopeId)}` : ""}. Listen for ${LISTEN_SECONDS} s to capture what the gateways publish, or paste a message.`
+                  ? `No messages recorded${scopeId ? ` on ${brokerName(scopeId)}` : ""}. Listen for ${LISTEN_SECONDS} s to record what the data collectors send, or paste a message.`
                   : "No messages captured. Choose a broker and listen, or paste a message."
                 : "No captured message matches the filter."}
             </p>
           ) : (
-            <ul className="fmt-samples" aria-label="Captured messages">
+            <ul className="fmt-samples" aria-label="Recorded messages">
               {filtered.map((s) => {
                 const k = sampleKey(s);
                 const ok = matches.get(k);
@@ -239,18 +239,18 @@ export function FormatPreview({
       {!chosen || !result ? null : <Outcome result={result} topic={chosen.topic} />}
 
       {chosen && root !== undefined && typeof root === "object" && root !== null && (
-        <section className="fmt-json-wrap" aria-label="Payload">
+        <section className="fmt-json-wrap" aria-label="Message content">
           <div className="fmt-json-head">
-            <span className="fmt-label">Payload</span>
+            <span className="fmt-label">Message content</span>
             {onPick && pickLabel && <span className="ast-caption">Click a key to fill {pickLabel}</span>}
           </div>
           <JsonView value={root} pickLabel={pickLabel ?? undefined} onPick={onPick ? (p) => onPick(p, root) : undefined} />
-          {"truncated" in chosen && chosen.truncated && <p className="fmt-muted">Payload cut at 16 kB.</p>}
+          {"truncated" in chosen && chosen.truncated && <p className="fmt-muted">Message cut off at 16 kB.</p>}
         </section>
       )}
       {chosen && (root === undefined || typeof root !== "object" || root === null) && chosen.payload && (
-        <section className="fmt-json-wrap" aria-label="Payload">
-          <span className="fmt-label">Payload (not a JSON object)</span>
+        <section className="fmt-json-wrap" aria-label="Message content">
+          <span className="fmt-label">Message content (not a JSON object)</span>
           <pre className="fmt-json">{chosen.payload}</pre>
         </section>
       )}
@@ -280,7 +280,7 @@ function Outcome({ result, topic }: { result: ReturnType<typeof parseMessage>; t
   const captures = Object.entries(result.captures);
 
   const columns: Column<ParsedReading & { k: string }>[] = [
-    { key: "rack", header: "Rack", render: (r) => <span className="ast-num">{r.rack}</span> },
+    { key: "rack", header: "Device", render: (r) => <span className="ast-num">{r.rack}</span> },
     { key: "card", header: "Card", render: (r) => <span className="ast-num">{r.card}</span> },
     { key: "channel", header: "Channel", render: (r) => <span className="ast-num">{r.channel}</span> },
     { key: "name", header: "Name", render: (r) => <span className="ast-cell-text">{r.name ?? <span className="ast-muted">—</span>}</span> },
@@ -299,15 +299,15 @@ function Outcome({ result, topic }: { result: ReturnType<typeof parseMessage>; t
   ];
 
   return (
-    <section className="fmt-outcome" aria-label="Parse result" aria-live="polite">
+    <section className="fmt-outcome" aria-label="How the message is read" aria-live="polite">
       <div className="fmt-outcome-line">
-        <StatusTag tone={result.matched ? "good" : "warn"} label={result.matched ? "Topic matches" : "Topic does not match"} />
+        <StatusTag tone={result.matched ? "good" : "warn"} label={result.matched ? "Channel matches" : "Channel does not match"} />
         {captures.map(([k, v]) => (
           <span key={k} className="fmt-capture">
             <span className="ast-muted">{k}</span> <span className="ast-num">{v}</span>
           </span>
         ))}
-        {!topic && <span className="ast-caption">No topic given</span>}
+        {!topic && <span className="ast-caption">No channel given</span>}
       </div>
       {result.errors.map((e) => (
         <FormNote key={e} tone={result.readings.length ? "warn" : "bad"}>

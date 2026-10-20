@@ -37,6 +37,14 @@
   padding: 6px 4px;
 }
 
+/* One line standing in for rows that have nothing to say ("13 other parts: nothing needed"). */
+.pg-table-rest {
+  margin: 0;
+  padding: 10px 16px;
+  color: var(--text-muted);
+  font-size: var(--fs-md);
+}
+
 .pg-table-card .ast-card-head {
   padding: 10px 16px 0;
   margin-bottom: 4px;

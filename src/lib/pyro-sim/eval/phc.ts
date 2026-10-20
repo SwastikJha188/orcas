@@ -9,7 +9,7 @@ import { PYRO_SIGNAL_BY_TAG } from "../signals";
 import { fmtSigned, median } from "../shared";
 import { bearingHit, unitRun, type EvalContext } from "./context";
 
-type Sev = "Advisory" | "Critical";
+type Sev = "Alert" | "Critical";
 
 /** C4–C6 cone taps with the gas outlet of the same stage (D5 FP-07 signals PRS-PHC-07…09, TMP-PHC-04…06). */
 const CONES: Array<[string, string, string]> = [
@@ -63,7 +63,7 @@ export function evalPhc(c: EvalContext): void {
         if (mealRes <= -8) why.push(`hot meal ${fmtSigned(mealRes, 0)} K`);
         if (!why.length) continue;
         offer({
-          sev: f >= 0.35 || (why.length >= 2 && f >= 0.25) ? "Critical" : "Advisory",
+          sev: f >= 0.35 || (why.length >= 2 && f >= 0.25) ? "Critical" : "Alert",
           score: f,
           evidence: `FP-07 ${stage} cone blockage: cone ${measured[cone].toFixed(1)} mbar, ${fmtSigned(r)} mbar toward zero (${(f * 100).toFixed(0)} % of model) · ${why.join(" · ")}`,
           tags: [cone, tmp, "TMP-PHC-07"],
@@ -89,7 +89,7 @@ export function evalPhc(c: EvalContext): void {
         const critical = rise >= 0.35 && (Math.abs(tMax) >= 30 || inletLoss >= 0.35);
         const tTag = shifts.find(([, v]) => v === tMax)?.[0];
         offer({
-          sev: critical ? "Critical" : "Advisory",
+          sev: critical ? "Critical" : "Alert",
           score: rise,
           evidence: `FP-08 ${sec.label} build-up: section ΔP ${lm.toFixed(1)} → ${(lm + lres).toFixed(1)} mbar (${fmtSigned(rise * 100, 0)} % vs model)${tShift && tTag ? ` · ${tTag} ${fmtSigned(tMax, 0)} K` : ""}${draftLoss ? ` · kiln-inlet draft ${(inletLoss * 100).toFixed(0)} % weaker` : ""}`,
           tags: [sec.a, sec.b, ...sec.temps, ...(draftLoss ? ["PRS-KLN-01"] : [])],
@@ -117,7 +117,7 @@ export function evalPhc(c: EvalContext): void {
         ? `NOₓ ${measured["GAS-KLN-03"].toFixed(0)} ppm (${fmtSigned(res("GAS-KLN-03"), 0)} vs model) at coal ${measured["FLO-BRN-01"].toFixed(2)} t/h, burning zone ${measured["TMP-KLN-14"].toFixed(0)} °C, inlet O₂ ${measured["GAS-KLN-01"].toFixed(2)} vol%`
         : "NOₓ not valid";
       H("PYR-PHC-01", "SW-PHC-02", {
-        severity: "Advisory",
+        severity: "Alert",
         evidence: `CO inlet ${coIn.toFixed(0)} ppm, exit ${coEx.toFixed(0)} ppm with O₂ ${measured["GAS-KLN-01"].toFixed(2)} / ${measured["GAS-PHC-01"].toFixed(2)} vol% · ${noxTxt} · inlet analyser ${states["STS-KLN-06"]} — context, not a burning-quality verdict`,
         tags: ["GAS-PHC-02", "GAS-PHC-01", "GAS-KLN-02", "GAS-KLN-01", "GAS-KLN-03"],
         lead: { tag: "GAS-PHC-02", target: coEx < 1200 ? 1200 : 2500 },
@@ -133,7 +133,7 @@ export function evalPhc(c: EvalContext): void {
     const spdDev = Math.abs(res("SPD-PHC-01")) / Math.max(1, model["SPD-PHC-01"]);
     if (r1 > 1.35 && r2 > 1.35 && spdDev < 0.015 && meanRes("TMP-PHC-09", 10) < 1.5 && meanRes("TMP-PHC-10", 10) < 1.5) {
       H("PYR-PHC-01", "R-PHC-04", {
-        severity: Math.max(measured["VIB-PHC-01"], measured["VIB-PHC-02"]) >= 4.5 ? "Critical" : "Advisory",
+        severity: Math.max(measured["VIB-PHC-01"], measured["VIB-PHC-02"]) >= 4.5 ? "Critical" : "Alert",
         evidence: `DE ×${r1.toFixed(2)} and NDE ×${r2.toFixed(2)} model together at a constant ${measured["SPD-PHC-01"].toFixed(0)} rpm · bearings not heating`,
         tags: ["VIB-PHC-01", "VIB-PHC-02", "SPD-PHC-01"],
         subs: ["phc-idfan"],
@@ -148,7 +148,7 @@ export function evalPhc(c: EvalContext): void {
     const c1 = good("TMP-PHC-01") ? meanRes("TMP-PHC-01", 10) : 0;
     if (pw >= 0.02 || c1 <= -6) {
       H("PYR-PHC-01", "R-PHC-05", {
-        severity: measured["CAL-PHC-01"] >= 2.8 ? "Critical" : "Advisory",
+        severity: measured["CAL-PHC-01"] >= 2.8 ? "Critical" : "Alert",
         evidence: `Exit − inlet O₂ ${measured["CAL-PHC-01"].toFixed(2)} vol% (${fmtSigned(meanRes("CAL-PHC-01", 10), 2)} above model) · ID fan power ${fmtSigned(pw * 100, 1)} % vs fan law · C1 gas ${fmtSigned(c1, 0)} K`,
         tags: ["CAL-PHC-01", "GAS-PHC-01", "ELE-PHC-01", "TMP-PHC-01"],
         subs: ["phc-upper"],
@@ -184,7 +184,7 @@ export function evalPhc(c: EvalContext): void {
     if (odd.size) {
       const sus = [...odd];
       H("PYR-PHC-01", "R-PHC-V1", {
-        severity: "Advisory",
+        severity: "Alert",
         evidence: `${sus.map((t) => `${t} (${fmtSigned(res(t), 0)} K vs model)`).join(", ")} suspect: ${pairs.join(" · ")}`,
         tags: sus,
         subs: ["phc-upper", "phc-lower"],
@@ -222,7 +222,7 @@ export function evalPhc(c: EvalContext): void {
     }
     if (odd.size) {
       H("PYR-PHC-01", "R-PHC-V2", {
-        severity: "Advisory",
+        severity: "Alert",
         evidence: `${[...odd].join(", ")} suspect (blocked tap / purge / transmitter): ${why.join(" · ")} · ID fan ${measured["SPD-PHC-01"].toFixed(0)} rpm`,
         tags: [...odd],
         subs: ["phc-upper", "phc-lower"],
@@ -234,7 +234,7 @@ export function evalPhc(c: EvalContext): void {
   if (good("GAS-PHC-01", "GAS-KLN-01") && measured["GAS-PHC-01"] < measured["GAS-KLN-01"]) {
     const odd = Math.abs(z("GAS-PHC-01")) >= Math.abs(z("GAS-KLN-01")) ? "GAS-PHC-01" : "GAS-KLN-01";
     H("PYR-PHC-01", "R-PHC-V3", {
-      severity: "Advisory",
+      severity: "Alert",
       evidence: `${odd} suspect: exit O₂ ${measured["GAS-PHC-01"].toFixed(2)} vol% (${fmtSigned(res("GAS-PHC-01"), 2)} vs model) below kiln-inlet O₂ ${measured["GAS-KLN-01"].toFixed(2)} vol% (${fmtSigned(res("GAS-KLN-01"), 2)}) — air only enters the tower`,
       tags: [odd, odd === "GAS-PHC-01" ? "GAS-KLN-01" : "GAS-PHC-01", "CAL-PHC-01"],
       subs: ["phc-exitgas"],
@@ -247,7 +247,7 @@ export function evalPhc(c: EvalContext): void {
     const falseAir = good("CAL-PHC-01") && meanRes("CAL-PHC-01", 10) > 0.3;
     if (Math.abs(f) > 0.1 && !falseAir) {
       H("PYR-PHC-01", "R-PHC-V4", {
-        severity: "Advisory",
+        severity: "Alert",
         evidence: `ELE-PHC-01 suspect: ${measured["ELE-PHC-01"].toFixed(0)} kW, ${fmtSigned(f * 100, 0)} % vs the fan-law model at ${measured["SPD-PHC-01"].toFixed(0)} rpm and damper ${measured["POS-PHC-01"].toFixed(0)} % · exit − inlet O₂ at model (no false air)`,
         tags: ["ELE-PHC-01", "SPD-PHC-01", "POS-PHC-01"],
         subs: ["phc-idfan"],

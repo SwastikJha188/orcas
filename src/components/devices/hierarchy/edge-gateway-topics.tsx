@@ -41,7 +41,7 @@ export function filterProblem(filter: string, existing: string[] = []): string |
     return "Wildcards must fill a whole level: + for one level, # only at the end";
   }
   if (parts[0] === "+" || parts[0] === "#" || filter.startsWith("$")) return "Start with a fixed topic level, not a wildcard or a $SYS topic";
-  if (existing.includes(filter)) return "Already subscribed";
+  if (existing.includes(filter)) return "Already listening on this channel";
   return null;
 }
 
@@ -135,18 +135,18 @@ export function GatewayTopics({ ix, gw, subscription, now }: { ix: EdgeIndex; gw
     e.preventDefault();
     const issue = filterProblem(trimmed, filters);
     if (issue) return setNote({ tone: "bad", text: issue });
-    if (await save([...gw.topics, trimmed], `Subscribed to ${trimmed}`)) setDraft("");
+    if (await save([...gw.topics, trimmed], `Now listening on ${trimmed}`)) setDraft("");
   };
-  const remove = (filter: string) => void save(gw.topics.filter((t) => t !== filter), `Unsubscribed from ${filter}`);
+  const remove = (filter: string) => void save(gw.topics.filter((t) => t !== filter), `Stopped listening on ${filter}`);
 
   const columns: Column<TopicRow>[] = [
     {
       key: "filter",
-      header: "Topic filter",
+      header: "Message channel (topic)",
       render: (r) => (
         <span className="ast-cell-stack">
           <code className="dv-code hx-topic-filter">{r.filter}</code>
-          <span className="ast-cell-sub">{r.origin === "format" ? "From the data format" : "Added here"}</span>
+          <span className="ast-cell-sub">{r.origin === "format" ? "From the message format" : "Added here"}</span>
         </span>
       ),
     },
@@ -181,7 +181,7 @@ export function GatewayTopics({ ix, gw, subscription, now }: { ix: EdgeIndex; gw
     },
     {
       key: "payload",
-      header: "Latest payload",
+      header: "Latest message",
       render: (r) =>
         r.latest ? (
           <span className="ast-cell-stack hx-topic-payload">
@@ -199,7 +199,7 @@ export function GatewayTopics({ ix, gw, subscription, now }: { ix: EdgeIndex; gw
       render: (r) =>
         r.origin === "added" ? (
           <span className="mq-action" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-            <PillButton variant="secondary" className="mq-reveal" disabled={saving} onClick={() => remove(r.filter)} aria-label={`Unsubscribe from ${r.filter}`}>
+            <PillButton variant="secondary" className="mq-reveal" disabled={saving} onClick={() => remove(r.filter)} aria-label={`Stop listening on ${r.filter}`}>
               Unsubscribe
             </PillButton>
           </span>
@@ -210,19 +210,19 @@ export function GatewayTopics({ ix, gw, subscription, now }: { ix: EdgeIndex; gw
   const opened = rows.find((r) => r.filter === open && r.latest);
 
   return (
-    <section className="hx-section" aria-label="Topics">
+    <section className="hx-section" aria-label="Message channels (topics)">
       <h2 className="ast-section-label">
-        Topics
+        Message channels (topics)
         <span>
-          {filters.length} subscribed{broker ? ` on ${broker.name}` : ""} · times in {zoneText}
+          listening on {filters.length}{broker ? ` via ${broker.name}` : ""} · times in {zoneText}
         </span>
       </h2>
       <div className="ast-card pg-table-card">
         {!broker ? (
-          <div className="ast-empty">Assign a broker to this gateway to subscribe to topics.</div>
+          <div className="ast-empty">Link this data collector to a data connection (MQTT broker) to listen on its channels.</div>
         ) : (
           <>
-            {!broker.enabled && <FormNote tone="warn">{broker.name} is disabled, so nothing is subscribed. Enable it on the MQTT page.</FormNote>}
+            {!broker.enabled && <FormNote tone="warn">{broker.name} is switched off, so nothing is being received. Switch it on under Data connections.</FormNote>}
             <Table
               className="ast-table"
               columns={columns}
@@ -247,8 +247,8 @@ export function GatewayTopics({ ix, gw, subscription, now }: { ix: EdgeIndex; gw
               <input
                 className="ui-input"
                 data-mono
-                aria-label="Topic filter to subscribe to"
-                placeholder={full ? `At most ${MAX_TOPICS} extra topics` : "Topic or filter, e.g. plant/line1/+/data"}
+                aria-label="Message channel to listen on"
+                placeholder={full ? `At most ${MAX_TOPICS} extra channels` : "Channel (topic), e.g. plant/line1/+/data"}
                 value={draft}
                 spellCheck={false}
                 disabled={saving || full}
@@ -259,7 +259,7 @@ export function GatewayTopics({ ix, gw, subscription, now }: { ix: EdgeIndex; gw
                 }}
               />
               <PillButton type="submit" variant="primary" icon={<IconPlus size={13} />} disabled={saving || full || !trimmed || Boolean(problem)}>
-                {saving ? "Saving…" : "Subscribe"}
+                {saving ? "Saving…" : "Listen"}
               </PillButton>
             </form>
             {(problem || note) && (
@@ -269,8 +269,8 @@ export function GatewayTopics({ ix, gw, subscription, now }: { ix: EdgeIndex; gw
             )}
             {gatewayFormat(ix, gw.formatId)?.kind !== "json" && gw.topics.length > 0 && (
               <p className="ast-caption hx-topic-hint">
-                <StatusTag tone="idle" label="Raw" /> This gateway uses the ULTRON contract, so messages on added topics outside {broker.topicPrefix} are kept as raw
-                messages; pick a JSON data format to read them as readings.
+                <StatusTag tone="idle" label="Kept as is" /> This data collector uses the standard ULTRON format, so messages on added channels outside {broker.topicPrefix} are
+                kept as they arrive; pick a JSON message format to read them as readings.
               </p>
             )}
           </>

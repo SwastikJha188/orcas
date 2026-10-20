@@ -1,0 +1,1 @@
+[["Alert",1,"Differs from expectation or crosses a warning boundary; investigate","P2"],["Critical",2,"Crosses an alarm boundary; act","P1"],["Normal",0,"Within the applicable reference and limits",null]]

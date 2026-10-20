@@ -36,7 +36,7 @@ export function EdgeDiscoveredView({ ix, found, now, sectionNav, onSelect, onReg
   const columns: Column<MqttRack>[] = [
     {
       key: "rack",
-      header: "Rack ID",
+      header: "Device ID",
       render: (r) => (
         <span className="dv-lead">
           <span className="ast-badge">
@@ -46,16 +46,16 @@ export function EdgeDiscoveredView({ ix, found, now, sectionNav, onSelect, onReg
         </span>
       ),
     },
-    { key: "slots", header: "Slots", render: (r) => <span className="ast-num">{r.slotCount}</span> },
+    { key: "slots", header: "Card slots", render: (r) => <span className="ast-num">{r.slotCount}</span> },
     { key: "status", header: "Reported status", render: (r) => <span className="ast-cell-text">{r.status}</span> },
-    { key: "state", header: "Link", render: (r) => <StatusTag tone={LINK_TONE[fromLive(r.state)]} label={LINK_LABEL[fromLive(r.state)]} /> },
+    { key: "state", header: "Connection", render: (r) => <StatusTag tone={LINK_TONE[fromLive(r.state)]} label={LINK_LABEL[fromLive(r.state)]} /> },
     { key: "seen", header: "Last seen", render: (r) => <span className="ast-num ast-muted">{ago(r.lastSeenAt, now)}</span> },
   ];
 
   return (
     <>
       <ContentsHead
-        crumbs={[{ label: "Devices" }, { label: "Edge network", onClick: () => onSelect({ type: "network" }) }, { label: "Discovered" }]}
+        crumbs={[{ label: "Devices" }, { label: "Data collectors", onClick: () => onSelect({ type: "network" }) }, { label: "Found, not registered" }]}
         title={found.gatewayId}
         badge={
           <>
@@ -72,15 +72,15 @@ export function EdgeDiscoveredView({ ix, found, now, sectionNav, onSelect, onReg
         sectionNav={sectionNav}
       />
 
-      <section className="ast-kpis" aria-label="Discovered gateway status">
-        <Kpi label="Broker" value={broker?.name ?? found.brokerId} aside={<BrokerTag ix={ix} brokerId={found.brokerId} />}>
-          <span className="ast-caption ast-num">{broker ? `${broker.host}:${broker.port}` : "Broker not in the registry"}</span>
+      <section className="ast-kpis" aria-label="Status of the found data collector">
+        <Kpi label="Data connection" value={broker?.name ?? found.brokerId} aside={<BrokerTag ix={ix} brokerId={found.brokerId} />}>
+          <span className="ast-caption ast-num">{broker ? `${broker.host}:${broker.port}` : "Data connection not registered"}</span>
         </Kpi>
         <Kpi label="Network" value={found.ip || "No IP reported"}>
-          <span className="ast-caption">Topic</span>
+          <span className="ast-caption">Message channel (topic)</span>
           <code className="dv-code">{subscriptionFor(ix, { code: found.gatewayId, brokerId: found.brokerId, formatId: null })}</code>
         </Kpi>
-        <Kpi label="Link" value={LINK_LABEL[state]} tone={LINK_TONE[state]}>
+        <Kpi label="Connection" value={LINK_LABEL[state]} tone={LINK_TONE[state]}>
           <span className="ast-caption ast-num">Last seen {ago(found.lastSeenAt, now)}</span>
           {live && (
             <span className="ast-caption ast-num">
@@ -90,7 +90,7 @@ export function EdgeDiscoveredView({ ix, found, now, sectionNav, onSelect, onReg
         </Kpi>
       </section>
 
-      <section className="ast-card pg-table-card" aria-label="Racks reported">
+      <section className="ast-card pg-table-card" aria-label="Devices reported">
         <div className="ast-card-head">
           <h2 className="ast-card-title">
             Racks reported <span className="ast-caption ast-num">{plural(racks.length, "rack")}</span>
@@ -98,7 +98,7 @@ export function EdgeDiscoveredView({ ix, found, now, sectionNav, onSelect, onReg
         </div>
         {racks.length === 0 ? (
           <div className="ast-empty">
-            <strong className="hx-empty-title">No racks reported</strong>
+            <strong className="hx-empty-title">No devices reported</strong>
             The gateway has announced itself but published no rack status yet.
           </div>
         ) : (

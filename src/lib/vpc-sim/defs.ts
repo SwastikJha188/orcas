@@ -31,9 +31,13 @@ export interface VpcFleetMember {
   profile: "healthy" | "advisory" | "critical";
 }
 
-export const VPC_FLEET: ReadonlyArray<VpcFleetMember> = [
-  { machineId: "VPC-066", seed: 20261016, profile: "healthy" },
-  { machineId: "VPC-067", seed: 20261017, profile: "advisory" },
-  { machineId: "VPC-068", seed: 20261018, profile: "critical" },
-];
+const vpcFleet: VpcFleetMember[] = [];
+
+/** The simulated VPC cells, from the database (`machine_simulations`, engine "vpc"), set by `applyEngineConfig`. */
+export const VPC_FLEET: ReadonlyArray<VpcFleetMember> = vpcFleet;
+
+/** Replaces the cells in place. */
+export function setVpcFleet(members: VpcFleetMember[]): void {
+  vpcFleet.splice(0, vpcFleet.length, ...members);
+}
 

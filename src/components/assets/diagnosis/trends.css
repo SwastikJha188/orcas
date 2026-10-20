@@ -209,7 +209,7 @@
 .pg-trends-legend-head { display: flex; align-items: center; gap: 8px; min-width: 0; height: 20px; }
 .pg-trends-legend-head svg { flex-shrink: 0; }
 .pg-trends-legend-head .pg-trends-ov-x { margin-left: auto; }
-.pg-trends-legend-tag { font-family: var(--font-mono); font-size: var(--fs-md); font-weight: 600; color: var(--dx-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pg-trends-legend-tag { font-size: var(--fs-md); font-weight: 600; min-width: 0; color: var(--dx-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pg-trends-legend-name { font-size: var(--fs-sm); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pg-trends-legend-value { display: flex; align-items: baseline; gap: 4px; min-width: 0; font-family: var(--font-mono); font-size: var(--fs-3xl); font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; color: var(--dx-ink); white-space: nowrap; }
 .pg-trends-legend-unit { font-family: var(--font-ui); font-size: var(--fs-sm); font-weight: 400; letter-spacing: 0; color: var(--text-muted); }
@@ -244,7 +244,6 @@
 .pg-trends-msg .ast-cell-sub { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; }
 .pg-trends-sig { display: inline-flex; align-items: baseline; gap: 12px; min-width: 0; }
 .pg-trends-sig svg { align-self: center; flex-shrink: 0; }
-.pg-trends-tagcol { min-width: 88px; font-family: var(--font-mono); color: var(--dx-ink); font-weight: 500; }
 .pg-trends-name { color: var(--text-muted); max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
 .pg-trends-table .ui-table td.pg-trends-strip-col, .pg-trends-table .ui-table th.pg-trends-strip-col { width: 40%; min-width: 220px; }
 .pg-trends-more { display: flex; justify-content: center; padding: 8px 0; }

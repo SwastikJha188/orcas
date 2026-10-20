@@ -2,14 +2,16 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { PillButton, PillNav, rowActivate, type Tone } from "@/components/ui";
-import { OWNER } from "@/lib/maintenance";
+import { useApi } from "@/lib/api-cache";
+import { MAINTENANCE_VOCABULARY_URL } from "@/lib/maintenance";
 import { PLAN_STATE_ORDER, planGenerates, planMode, planStrategy, planTrigger, readinessBlockers } from "@/lib/pms";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { formatLocalTime } from "@/lib/time";
 import type { PlanState, PmsPlan } from "@/types/pms";
+import type { MaintenanceVocabulary } from "@/types/maintenance";
 import { Empty, KpiStrip, Section } from "@/components/assets/analysis/an-ui";
 import type { Outcome, PmsModel } from "./pms-model";
-import { dueStatus, intervalText, machineCode, planName, unitLabel, woRef } from "./pms-model";
+import { dueStatus, intervalText, machineName, planName, unitLabel, woRef } from "./pms-model";
 import { Loading } from "./page-overview";
 import { DAY, DefList, ItemCell, NoteDialog, Notice, PM_ICON, StateWord, occurrences, routineSummary, setPmsFocus, startOfDay, usePmsFocus, usePmsNav, type Occurrence } from "./pms-ui";
 
@@ -119,7 +121,7 @@ export function PageCalendar({ pms }: { pms: PmsModel }) {
     for (const [k, list] of days)
       if (list.length > 1) {
         const [m, day] = k.split("|");
-        out.push({ key: `iso${k}`, title: `${machineCode(m)}: ${list.length} isolation jobs on ${SHORT.format(Number(day))}`, detail: "Plan them as one isolation zone and one stop", tone: "warn" });
+        out.push({ key: `iso${k}`, title: `${machineName(m)}: ${list.length} isolation jobs on ${SHORT.format(Number(day))}`, detail: "Plan them as one isolation zone and one stop", tone: "warn" });
       }
     const crew = new Map<string, number[]>();
     for (const w of openWos) {
@@ -186,16 +188,16 @@ export function PageCalendar({ pms }: { pms: PmsModel }) {
         page
         label="Schedule summary"
         items={[
-          { label: "This week", value: `${counts.week}`, foot: `occurrences · ${counts.weekIso} need isolation` },
-          { label: "Overdue rounds", value: `${counts.overdue}`, tone: counts.overdue ? "warn" : undefined, foot: "past their interval" },
-          { label: "Approved plans", value: `${counts.approved}`, unit: `/ ${counts.generating}`, bar: counts.generating ? (counts.approved / counts.generating) * 100 : 0, foot: "others on document intervals" },
-          { label: "Conflicts", value: `${realConflicts}`, tone: realConflicts ? "warn" : undefined, foot: `${counts.verify} plans wait for site verify` },
+          { label: "This week", value: `${counts.week}`, foot: `jobs · ${counts.weekIso} need the machine stopped` },
+          { label: "Overdue rounds", value: `${counts.overdue}`, tone: counts.overdue ? "warn" : undefined, foot: "past their due date" },
+          { label: "Approved plans", value: `${counts.approved}`, unit: `/ ${counts.generating}`, bar: counts.generating ? (counts.approved / counts.generating) * 100 : 0, foot: "the rest use the manuals' suggested timing" },
+          { label: "Clashes", value: `${realConflicts}`, tone: realConflicts ? "warn" : undefined, foot: `${counts.verify} plans wait to be checked on site` },
         ]}
       />
       <div className="pg-frame-body">
         <div className="ast-toolbar pm-toolbar">
-          <PillNav ariaLabel="Machine" items={[{ id: "all", label: "All machines" }, ...data.machineIds.map((id) => ({ id, label: machineCode(id) }))]} activeId={machine} onChange={setMachine} />
-          <PillNav ariaLabel="Show" items={[{ id: "all", label: "All work" }, { id: "equipment", label: "Equipment" }, { id: "sensor", label: "Instruments" }, { id: "wo", label: "Work orders" }]} activeId={filter} onChange={(id) => setFilter(id as Filter)} />
+          <PillNav ariaLabel="Machine" items={[{ id: "all", label: "All machines" }, ...data.machineIds.map((id) => ({ id, label: machineName(id) }))]} activeId={machine} onChange={setMachine} />
+          <PillNav ariaLabel="Show" items={[{ id: "all", label: "All work" }, { id: "equipment", label: "Equipment" }, { id: "sensor", label: "Sensors" }, { id: "wo", label: "Work orders" }]} activeId={filter} onChange={(id) => setFilter(id as Filter)} />
         </div>
         <div className="pm-split">
           <Section
@@ -270,7 +272,7 @@ export function PageCalendar({ pms }: { pms: PmsModel }) {
                           <span className="pm-cal-item-title">{o.short}</span>
                           {mode === "week" && (
                             <span className="pm-cal-item-sub">
-                              {o.isolate && <span className="pm-cal-lock" aria-label="Needs isolation">{PM_ICON.lock}</span>}
+                              {o.isolate && <span className="pm-cal-lock" aria-label="Machine must be stopped">{PM_ICON.lock}</span>}
                               {o.sub}
                             </span>
                           )}
@@ -288,9 +290,9 @@ export function PageCalendar({ pms }: { pms: PmsModel }) {
             )}
           </Section>
 
-          <Section id="pm-conflicts" title="Conflicts">
+          <Section id="pm-conflicts" title="Clashes">
             {conflicts.length === 0 ? (
-              <Empty title="No overlaps in this range." />
+              <Empty title="No jobs clash in this period." />
             ) : (
               <ul className="pm-list">
                 {conflicts.map((c) => (
@@ -320,8 +322,8 @@ function DayList({ list, onOpen }: { list: Occurrence[]; onOpen: (o: Occurrence)
           <tr>
             <th>Time</th>
             <th className="pm-grow">Work</th>
-            <th>Mode</th>
-            <th>State</th>
+            <th>Machine</th>
+            <th>Status</th>
           </tr>
         </thead>
         <tbody>
@@ -331,7 +333,7 @@ function DayList({ list, onOpen }: { list: Occurrence[]; onOpen: (o: Occurrence)
               <td className="pm-grow">
                 <ItemCell icon={o.kind === "wo" ? PM_ICON.wo : o.sensor ? PM_ICON.sensor : PM_ICON.plan} tone={o.tone} title={o.title} sub={o.tasks ? `${o.sub} · ${o.tasks} tasks` : o.sub} />
               </td>
-              <td className="pm-muted">{o.isolate ? "Isolation" : "While running"}</td>
+              <td className="pm-muted">{o.isolate ? "Stopped" : "Running"}</td>
               <td>
                 <StateWord label={o.tone === "warn" ? "Overdue" : o.kind === "wo" ? "Scheduled" : "Due"} tone={o.tone} />
               </td>
@@ -345,9 +347,13 @@ function DayList({ list, onOpen }: { list: Occurrence[]; onOpen: (o: Occurrence)
 
 /* ---------------------------------------------------------------- plan library */
 
+/** A plan's state in everyday words ("Site verify" is a database value). */
+const planStateLabel = (state: string) => (state === "Site verify" ? "To check on site" : state === "Retired" ? "No longer used" : state);
+
 function PlanLibrary({ pms, machine, filter, selectedId, onSelect }: { pms: PmsModel; machine: string; filter: Filter; selectedId: string | null; onSelect: (id: string) => void }) {
   const { data, dues, now } = pms;
   const tz = useSiteTimeZone({ machineId: machine === "all" ? data?.machineIds[0] : machine });
+  const owners = useApi<MaintenanceVocabulary>(MAINTENANCE_VOCABULARY_URL).data?.owners ?? null;
   const [ask, setAsk] = useState<{ state: PlanState; title: string } | null>(null);
   const [notice, setNotice] = useState<Outcome | null>(null);
   const [busy, setBusy] = useState(false);
@@ -380,14 +386,14 @@ function PlanLibrary({ pms, machine, filter, selectedId, onSelect }: { pms: PmsM
 
   return (
     <div className="pm-split" id="pm-plan-library">
-      <Section id="pm-plans" title="Maintenance plans" right={<span className="ast-caption">{plans.length} plans · calendar, event and condition triggers</span>}>
+      <Section id="pm-plans" title="Maintenance plans" right={<span className="ast-caption">{plans.length} plans · run by date, by event or by sensor condition</span>}>
         <div className="ui-table-container ast-table pm-table pm-scroll">
           <table className="ui-table">
             <thead>
               <tr>
                 <th className="pm-grow">Plan</th>
-                <th>Interval</th>
-                <th>State</th>
+                <th>How often</th>
+                <th>Status</th>
                 <th>Due</th>
               </tr>
             </thead>
@@ -397,11 +403,11 @@ function PlanLibrary({ pms, machine, filter, selectedId, onSelect }: { pms: PmsM
                 return (
                   <tr key={p.id} className={`is-clickable ${p.id === selected?.id ? "active" : ""}`} {...rowActivate(() => { onSelect(p.id); setNotice(null); })}>
                     <td className="pm-grow">
-                      <ItemCell icon={p.kind === "sensor" ? PM_ICON.sensor : PM_ICON.plan} tone={st.tone} title={planName(p)} sub={`${p.id} · ${p.tasks.length} tasks`} />
+                      <ItemCell icon={p.kind === "sensor" ? PM_ICON.sensor : PM_ICON.plan} tone={st.tone} title={planName(p)} sub={`${p.tasks.length} tasks`} />
                     </td>
                     <td className="pm-muted">{intervalText(p)}</td>
                     <td>
-                      <StateWord label={p.state} tone={STATE_TONE[p.state]} />
+                      <StateWord label={planStateLabel(p.state)} tone={STATE_TONE[p.state]} />
                     </td>
                     <td>
                       <StateWord label={st.label} tone={st.tone} />
@@ -415,30 +421,30 @@ function PlanLibrary({ pms, machine, filter, selectedId, onSelect }: { pms: PmsM
       </Section>
 
       {selected && (
-        <Section id="pm-plan" title={selected.id} right={<StateWord label={selected.state} tone={STATE_TONE[selected.state]} />}>
+        <Section id="pm-plan" title={planName(selected)} right={<StateWord label={planStateLabel(selected.state)} tone={STATE_TONE[selected.state]} />}>
           <DefList
             rows={[
-              { label: "Equipment", value: `${machineCode(selected.machineId)} · ${unitLabel(selected.unitCode)} · ${selected.unitTitle}` },
-              { label: "Strategy", value: `${planStrategy(selected.route)} · ${planTrigger(selected.route)}` },
-              { label: "Task template", value: `${doc(selected).number} ${doc(selected).revision} · §${selected.sections.join(", §")}` },
+              { label: "Machine part", value: `${machineName(selected.machineId)} · ${selected.unitCode === "GEN" ? unitLabel(selected.unitCode) : selected.unitTitle}` },
+              { label: "How it is timed", value: `${planStrategy(selected.route)} · ${planTrigger(selected)}` },
+              { label: "Taken from", value: `${doc(selected).number} ${doc(selected).revision} · §${selected.sections.join(", §")}` },
               {
-                label: "Interval",
-                value: selected.state === "Approved" ? intervalText(selected) : `${intervalText(selected)} · site value required`,
+                label: "How often",
+                value: selected.state === "Approved" ? intervalText(selected) : `${intervalText(selected)} · the plant must confirm it`,
                 tone: selected.state === "Approved" ? undefined : "warn",
-                hint: "The documents' starting route; the plant approves the actual interval.",
+                hint: "Suggested by the documents; the plant approves the real interval.",
               },
-              { label: "Running hours", value: "Not configured · no validated running-hour meter", hint: "Invalid meter readings block time estimates (PMS-04)." },
-              { label: "Due anchor", value: "Last completion of each task" },
-              { label: "Work mode", value: planMode(selected) === "Isolate" ? "Isolation (LOTO) required" : planMode(selected) === "Run + stop" ? "Running checks, isolated at a stop" : "While running" },
-              { label: "Trades", value: [...new Set(selected.tasks.map((t) => OWNER[t.owner] ?? t.owner).filter(Boolean))].join(" · ") || "—" },
-              { label: "Last run", value: due?.lastRunAt ? when(due.lastRunAt) : "Not run since the plan started" },
+              { label: "Running hours", value: "Not set up · no trusted running-hours meter", hint: "Without a trusted meter, no time estimates are made from running hours." },
+              { label: "Counted from", value: "When each task was last done" },
+              { label: "Machine state", value: planMode(selected) === "Isolate" ? "Must be stopped and locked off" : planMode(selected) === "Run + stop" ? "Some checks while running, the rest at a shutdown" : "While running" },
+              { label: "Who does it", value: (owners && [...new Set(selected.tasks.map((t) => owners[t.owner] ?? t.owner).filter(Boolean))].join(" · ")) || "—" },
+              { label: "Last done", value: due?.lastRunAt ? when(due.lastRunAt) : "Not done since the plan started" },
               {
                 label: "Next due",
                 value: !planGenerates(selected) ? `No due work while ${selected.state.toLowerCase()}` : due?.dueAt ? (due.dueAt <= now ? "Now" : when(due.dueAt)) : intervalText(selected),
               },
               {
-                label: "Authorization",
-                value: selected.approvedBy && selected.approvedAt ? `${selected.approvedBy} · ${when(selected.approvedAt)}` : "Not plant-approved",
+                label: "Approved by",
+                value: selected.approvedBy && selected.approvedAt ? `${selected.approvedBy} · ${when(selected.approvedAt)}` : "Not approved by the plant yet",
                 tone: selected.approvedBy ? undefined : "warn",
               },
             ]}
@@ -452,7 +458,7 @@ function PlanLibrary({ pms, machine, filter, selectedId, onSelect }: { pms: PmsM
             )}
             {(selected.state === "Site verify" || selected.state === "Retired") && (
               <PillButton disabled={busy} onClick={() => void change(selected, "Provisional")}>
-                {selected.state === "Site verify" ? "Equipment verified" : "Reinstate"}
+                {selected.state === "Site verify" ? "Checked on site" : "Use again"}
               </PillButton>
             )}
             {selected.state === "Approved" && (
@@ -461,24 +467,23 @@ function PlanLibrary({ pms, machine, filter, selectedId, onSelect }: { pms: PmsM
               </PillButton>
             )}
             {(selected.state === "Provisional" || selected.state === "Approved") && (
-              <PillButton variant="secondary" disabled={busy} onClick={() => setAsk({ state: "Site verify", title: "Send to site verification" })}>
-                Site verify
+              <PillButton variant="secondary" disabled={busy} onClick={() => setAsk({ state: "Site verify", title: "Send for a check on site" })}>
+                Send for site check
               </PillButton>
             )}
             {selected.state !== "Retired" && (
-              <PillButton variant="secondary" disabled={busy} onClick={() => setAsk({ state: "Retired", title: "Retire plan" })}>
-                Retire
+              <PillButton variant="secondary" disabled={busy} onClick={() => setAsk({ state: "Retired", title: "Stop using this plan" })}>
+                Stop using
               </PillButton>
             )}
           </div>
-          <div className="pm-tasks" role="group" aria-label="Template tasks">
-            <h4 className="pg-analysis-block-title">Template tasks · {selected.tasks.length}</h4>
+          <div className="pm-tasks" role="group" aria-label="Tasks in this plan">
+            <h4 className="pg-analysis-block-title">Tasks in this plan · {selected.tasks.length}</h4>
             <ul>
               {selected.tasks.map((t) => (
                 <li key={t.id}>
                   <span className="pm-muted">{t.id}</span>
-                  <span className="pm-task-name" title={t.component}>
-                    {t.tag ? `${t.tag} · ` : ""}
+                  <span className="pm-task-name" title={t.tag ? `${t.tag} · ${t.component}` : t.component}>
                     {t.component}
                   </span>
                   <span className="ast-caption">{t.mode}</span>
@@ -492,8 +497,8 @@ function PlanLibrary({ pms, machine, filter, selectedId, onSelect }: { pms: PmsM
               title={ask.title}
               subtitle={`${selected.id} · ${planName(selected)}`}
               label="Reason"
-              hint="Kept with the plan's audit trail"
-              confirm={ask.state === "Retired" ? "Retire" : "Send to site verify"}
+              hint="Saved in the plan's history of changes"
+              confirm={ask.state === "Retired" ? "Stop using" : "Send for site check"}
               danger={ask.state === "Retired"}
               onClose={() => setAsk(null)}
               onConfirm={(reason) => change(selected, ask.state, reason)}

@@ -19,13 +19,13 @@ import { ItemCell, PM_ICON, StateWord, setPmsFocus, usePmsNav } from "./pms-ui";
    ========================================================================== */
 
 const SHORT_LABEL: Record<string, string> = {
-  spares: "Spares",
+  spares: "Parts",
   personnel: "People",
   tools: "Tools",
   procedure: "Instructions",
   isolation: "Permits",
   access: "Access",
-  window: "Window",
+  window: "Time slot",
 };
 
 /** Jobs before execution: readiness still matters. */
@@ -43,7 +43,7 @@ export function PageResources({ pms }: { pms: PmsModel }) {
         .filter((w) => ["awaiting_review", "scheduled", "completed", "awaiting_verification"].includes(w.stage))
         .map((w) => ({
           w,
-          what: w.stage === "awaiting_review" ? "Technical review" : w.stage === "scheduled" ? "Release" : w.stage === "awaiting_verification" ? "As-left verification" : "Close-out",
+          what: w.stage === "awaiting_review" ? "Engineer review" : w.stage === "scheduled" ? "Hand over to crew" : w.stage === "awaiting_verification" ? "Final check" : "Close-out",
         })),
     [openWos],
   );
@@ -100,18 +100,18 @@ export function PageResources({ pms }: { pms: PmsModel }) {
     <div className="ast-root pg-frame pm-page" style={{ "--pm-side": "360px" } as React.CSSProperties}>
       <KpiStrip
         page
-        label="Resource summary"
+        label="People, parts and shutdowns"
         items={[
-          { label: "Readiness open", value: `${openItems}`, tone: openItems ? "warn" : undefined, foot: `${jobs.length} ${jobs.length === 1 ? "job" : "jobs"} in planning · ${spares} on spares` },
-          { label: "Blocked jobs", value: `${blockedJobs}`, tone: blockedJobs ? "bad" : undefined, foot: "a blocked item stops Ready" },
-          { label: "Planned work", value: hours ? `${hours}` : "0", unit: "h", foot: unestimated ? `${unestimated} not estimated` : "estimated duration" },
-          { label: "Pending approvals", value: `${approvals.length}`, foot: `${provisional} plans provisional` },
+          { label: "Still missing", value: `${openItems}`, tone: openItems ? "warn" : undefined, foot: `${jobs.length} ${jobs.length === 1 ? "job" : "jobs"} in planning · ${spares} waiting for parts` },
+          { label: "Blocked jobs", value: `${blockedJobs}`, tone: blockedJobs ? "bad" : undefined, foot: "one blocked item stops a job being ready" },
+          { label: "Planned work", value: hours ? `${hours}` : "0", unit: "h", foot: unestimated ? `${unestimated} without a time estimate` : "estimated time" },
+          { label: "Waiting for approval", value: `${approvals.length}`, foot: `${provisional} plans not yet approved` },
         ]}
       />
       <div className="pg-frame-body">
-        <Section id="pm-readiness" title="Readiness" right={<span className="ast-caption">A date alone does not make a job ready</span>}>
+        <Section id="pm-readiness" title="Ready to start?" right={<span className="ast-caption">Setting a date does not by itself make a job ready</span>}>
           {jobs.length === 0 ? (
-            <Empty title="No jobs in planning. Requests appear here once approved for planning." />
+            <Empty title="No jobs in planning. Requests appear here once they are approved for planning." />
           ) : (
             <div className="ui-table-container ast-table pm-table">
               <table className="ui-table pm-matrix">
@@ -123,7 +123,7 @@ export function PageResources({ pms }: { pms: PmsModel }) {
                         {SHORT_LABEL[k]}
                       </th>
                     ))}
-                    <th>Est.</th>
+                    <th title="Estimated time">Time</th>
                     <th>Stage</th>
                   </tr>
                 </thead>
@@ -131,7 +131,7 @@ export function PageResources({ pms }: { pms: PmsModel }) {
                   {jobs.map((w) => (
                     <tr key={w.id} className="is-clickable" {...rowActivate(() => openWo(w))}>
                       <td className="pm-grow">
-                        <ItemCell icon={PM_ICON.wo} tone={priorityTone(w.priority)} title={w.title} sub={`${woRef(w.id)} · ${machineCode(w.machineId)} · ${w.workMode ?? "mode not set"}`} />
+                        <ItemCell icon={PM_ICON.wo} tone={priorityTone(w.priority)} title={w.title} sub={`${woRef(w.id)} · ${machineName(w.machineId)} · ${w.workMode === "Isolate" ? "machine stopped" : w.workMode === "Run" ? "machine running" : "machine state not set"}`} />
                       </td>
                       {READINESS_KEYS.map((k) => (
                         <td key={k} className="pm-cell-dot" title={`${READINESS_LABEL[k]}: ${READINESS_STATE_LABEL[w.readiness[k].state]}`}>
@@ -155,30 +155,30 @@ export function PageResources({ pms }: { pms: PmsModel }) {
         </Section>
 
         <div className="pm-split">
-          <Section id="pm-shutdown" title="Shutdown opportunities" right={<span className="ast-caption">Grouped by isolation zone · next 30 days</span>}>
+          <Section id="pm-shutdown" title="Work to group into a shutdown" right={<span className="ast-caption">Grouped by machine · next 30 days</span>}>
             {packages.length === 0 ? (
-              <Empty title="No isolation work or planned-stop rounds in the next 30 days." />
+              <Empty title="No work that needs a stopped machine in the next 30 days." />
             ) : (
               <div className="pm-packages">
                 {packages.map((p) => (
                   <div key={p.m} className="pm-package">
                     <div className="pm-package-head">
-                      <span className="pm-package-name">
-                        <b>{machineCode(p.m)}</b> {machineName(p.m)}
+                      <span className="pm-package-name" title={machineCode(p.m)}>
+                        <b>{machineName(p.m)}</b>
                       </span>
-                      <StateWord label={p.blocked ? "Blocked" : p.open ? "Not ready for release" : p.wos.length ? "Ready for release" : "Rounds only"} tone={p.blocked ? "bad" : p.open ? "warn" : undefined} />
+                      <StateWord label={p.blocked ? "Blocked" : p.open ? "Not ready to hand to the crew" : p.wos.length ? "Ready to hand to the crew" : "Rounds only"} tone={p.blocked ? "bad" : p.open ? "warn" : undefined} />
                     </div>
                     <span className="ast-caption">
-                      {p.wos.length} isolation {p.wos.length === 1 ? "job" : "jobs"} · {p.rounds.length} {p.rounds.length === 1 ? "round" : "rounds"} · {p.hours ? `${p.hours} h estimated` : "not estimated"}
-                      {p.unestimated && p.hours ? ` · ${p.unestimated} without estimate` : ""}
+                      {p.wos.length} {p.wos.length === 1 ? "job" : "jobs"} with the machine stopped · {p.rounds.length} {p.rounds.length === 1 ? "round" : "rounds"} · {p.hours ? `${p.hours} h estimated` : "not estimated"}
+                      {p.unestimated && p.hours ? ` · ${p.unestimated} without a time estimate` : ""}
                     </span>
                     {p.wos.length > 0 && p.hours > 0 && (
-                      <div className="pm-timeline-bar" aria-label="Job sequence">
+                      <div className="pm-timeline-bar" aria-label="Jobs in order">
                         {p.wos
                           .filter((w) => w.estimateHours)
                           .map((w) => (
                             <i key={w.id} style={{ flexGrow: w.estimateHours ?? 0 }} data-tone={readinessBlockers(w.readiness).length ? "warn" : undefined} title={`${woRef(w.id)} · ${w.estimateHours} h`}>
-                              {woRef(w.id)}
+                              #{String(w.id).padStart(4, "0")}
                             </i>
                           ))}
                       </div>
@@ -190,7 +190,7 @@ export function PageResources({ pms }: { pms: PmsModel }) {
                             {woRef(w.id)} · {w.title}
                           </button>
                           <span className="ast-caption">{w.estimateHours ? `${w.estimateHours} h` : "—"}</span>
-                          <StateWord label={readinessBlockers(w.readiness).length ? `${readinessBlockers(w.readiness).length} open` : "Ready"} tone={readinessBlockers(w.readiness).length ? "warn" : undefined} />
+                          <StateWord label={readinessBlockers(w.readiness).length ? `${readinessBlockers(w.readiness).length} missing` : "Ready"} tone={readinessBlockers(w.readiness).length ? "warn" : undefined} />
                         </li>
                       ))}
                       {p.rounds.map((r) => (
@@ -199,7 +199,7 @@ export function PageResources({ pms }: { pms: PmsModel }) {
                             {planName(r)}
                           </button>
                           <span className="ast-caption">{r.tasks.length} tasks</span>
-                          <StateWord label={r.route === "stop" ? "At the stop" : "Needs isolation"} />
+                          <StateWord label={r.route === "stop" ? "At the shutdown" : "Machine must be stopped"} />
                         </li>
                       ))}
                     </ul>
@@ -207,11 +207,11 @@ export function PageResources({ pms }: { pms: PmsModel }) {
                 ))}
               </div>
             )}
-            <p className="ast-caption pm-foot">Permits are recorded here; isolation and safe entry stay with plant procedures.</p>
+            <p className="ast-caption pm-foot">Permits are only recorded here. Stopping, locking off and safe entry follow the plant’s own procedures.</p>
           </Section>
 
           <div className="pm-stack">
-            <Section id="pm-approvals" title="Pending approvals">
+            <Section id="pm-approvals" title="Waiting for approval">
               {approvals.length === 0 ? (
                 <Empty title="Nothing waiting for approval." />
               ) : (
@@ -221,14 +221,16 @@ export function PageResources({ pms }: { pms: PmsModel }) {
                       <button type="button" className="pm-link" onClick={() => openWo(w)}>
                         {woRef(w.id)} · {w.title}
                       </button>
-                      <span className="ast-caption">{machineCode(w.machineId)}</span>
+                      <span className="ast-caption" title={machineCode(w.machineId)}>
+                        {machineName(w.machineId)}
+                      </span>
                       <StateWord label={what} tone="warn" />
                     </li>
                   ))}
                 </ul>
               )}
             </Section>
-            <Section id="pm-crew" title="Crew load">
+            <Section id="pm-crew" title="Work per person">
               {crew.length === 0 ? (
                 <Empty title="No open work assigned." />
               ) : (

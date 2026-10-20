@@ -280,8 +280,8 @@ export const KLN_SCENARIOS: PyroScenario[] = list("PYR-KLN-01", [
     documentedDetection: "+1h 45m",
     description: "The outlet sector-plate cooling duct collapses: cooling air and the cow shell heat up and the outlet end of the shell map runs hot.",
     effects: [
-      { target: sig("TMP-KLN-25"), delta: 22, onsetMin: 5, rampMin: 180, shape: "accel" },
-      { target: sig("TMP-KLN-26"), delta: 60, onsetMin: 5, rampMin: 240, shape: "ramp" },
+      { target: sig("TMP-KLN-25"), delta: 45, onsetMin: 5, rampMin: 180, shape: "accel" },
+      { target: sig("TMP-KLN-26"), delta: 92, onsetMin: 5, rampMin: 240, shape: "ramp" },
       { target: prof("outletEnd"), delta: 45, onsetMin: 5, rampMin: 240, shape: "ramp" },
     ],
   },
@@ -291,9 +291,9 @@ export const KLN_SCENARIOS: PyroScenario[] = list("PYR-KLN-01", [
     group: "Equipment fault",
     expected: ["R-KLN-18"],
     documentedDetection: "+0h 46m",
-    description: "The hood seal and outlet leak and the hood draft is lost: hood pressure crosses 0 mbar, then +0.3 mbar, and hot gas pushes out at the kiln front.",
+    description: "The hood seal and outlet leak and the hood draft is lost: hood pressure crosses 0 mbar, then +0.1 mbar (+1 mmWG), and hot gas pushes out at the kiln front.",
     effects: [
-      { target: sig("PRS-KLN-03"), delta: 0.7, onsetMin: 5, rampMin: 90, shape: "ramp" },
+      { target: sig("PRS-KLN-03"), delta: 0.34, onsetMin: 5, rampMin: 90, shape: "ramp" },
       { target: sig("TMP-KLN-27"), delta: 30, onsetMin: 5, rampMin: 90, shape: "ramp" },
     ],
   },
@@ -389,7 +389,7 @@ export const KLN_SCENARIOS: PyroScenario[] = list("PYR-KLN-01", [
     expected: ["R-KLN-20"],
     documentedDetection: "+0h 54m",
     description: "The kiln inlet thermocouple junction degrades and drifts down until it reads below the C6 cyclone stage, which is impossible for the gas leaving the kiln.",
-    effects: [{ target: sig("TMP-KLN-13"), delta: -200, onsetMin: 5, rampMin: 60, shape: "ramp", sensor: true }],
+    effects: [{ target: sig("TMP-KLN-13"), delta: -260, onsetMin: 5, rampMin: 60, shape: "ramp", sensor: true }],
   },
   {
     id: "kln-bearing-rtd-drift",

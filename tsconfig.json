@@ -31,10 +31,15 @@
   "include": [
     "**/*.ts",
     "**/*.tsx",
+    ".next-assetiq/types/**/*.ts",
+    ".next-backend/types/**/*.ts",
+    ".next-dev-rims/types/**/*.ts",
     ".next-health/types/**/*.ts",
     ".next-memtest-prod/types/**/*.ts",
     ".next-memtest-tp/types/**/*.ts",
     ".next-memtest-wp/types/**/*.ts",
+    ".next-monitoring/types/**/*.ts",
+    ".next-names/types/**/*.ts",
     ".next-perf-rims/types/**/*.ts",
     ".next-perf/types/**/*.ts",
     ".next-preview/types/**/*.ts",
@@ -44,11 +49,12 @@
     ".next-verify-build/types/**/*.ts",
     ".next/types/**/*.ts",
     "next-env.d.ts",
-    ".next-dev-rims/types/**/*.ts"
+    ".next-stage/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     "LiquidGlassSkill-main/**",
-    "liquid-glass-skill-main/**"
+    "liquid-glass-skill-main/**",
+    "onboarding-work/**"
   ]
 }

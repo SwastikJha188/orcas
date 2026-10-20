@@ -1,95 +1,7 @@
-/* ULTRON Copilot. Semantic tokens only; works in light and dark. */
+/* AssetIQ answer pieces. Semantic tokens only; works in light and dark. */
 
-/* ---- Launcher ---- */
-.cp-topbar-actions { display: inline-flex; align-items: center; gap: 6px; }
-
-.cp-launcher {
-  position: relative;
-  inline-size: 32px;
-  block-size: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--bg-surface);
-  color: var(--text-muted);
-  cursor: pointer;
-  transition:
-    background var(--dur-fast) var(--ease-out),
-    border-color var(--dur-fast) var(--ease-out),
-    color var(--dur-fast) var(--ease-out),
-    transform 60ms var(--ease-out);
-}
-.cp-launcher:hover { background: var(--bg-surface-elevated); border-color: var(--border-hover); color: var(--page-fg); }
-.cp-launcher:active { transform: scale(0.97); }
-.cp-launcher.open { background: var(--bg-surface-elevated); border-color: var(--accent-primary); color: var(--page-fg); }
-.cp-launcher:focus-visible,
-.cp-icon-btn:focus-visible,
 .cp-btn:focus-visible,
-.cp-send:focus-visible,
-.cp-composer input:focus-visible,
 .cp-reasoning summary:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
-
-.cp-dot {
-  position: absolute;
-  inset-block-start: 4px;
-  inset-inline-end: 4px;
-  inline-size: 7px;
-  block-size: 7px;
-  border-radius: 50%;
-  background: var(--status-warning);
-  box-shadow: 0 0 0 2px var(--topbar-bg);
-}
-.cp-dot.crit { background: var(--status-danger); }
-@media (prefers-reduced-motion: no-preference) {
-  .cp-dot { animation: cp-pulse 1.8s ease-in-out infinite; }
-}
-@keyframes cp-pulse { 50% { transform: scale(1.2); } }
-
-/* ---- Drawer ---- */
-.cp-layer { position: fixed; inset: 0; z-index: 1000; }
-.cp-scrim {
-  position: absolute;
-  inset: 0;
-  background: var(--scrim);
-  opacity: 0;
-  transition: opacity var(--dur-modal) var(--ease-out);
-}
-.cp-scrim.in { opacity: 1; }
-
-.cp-drawer {
-  position: absolute;
-  inset-block: 8px;
-  inset-inline-end: 8px;
-  inline-size: min(440px, calc(100vw - 16px));
-  display: flex;
-  flex-direction: column;
-  border-radius: var(--radius-lg);
-  background: var(--card-bg);
-  border: 1px solid var(--border-hover);
-  box-shadow: var(--shadow-pop);
-  color: var(--page-fg);
-  overflow: hidden;
-  transform: translateX(16px);
-  opacity: 0;
-  transition: transform var(--dur-modal) var(--ease-out), opacity var(--dur-modal) var(--ease-out);
-}
-.cp-drawer.in { transform: none; opacity: 1; }
-@media (prefers-reduced-motion: reduce) {
-  .cp-drawer, .cp-scrim { transition: none; }
-}
-
-.cp-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
-  border-block-end: 1px solid var(--separator);
-}
-.cp-head-text { flex: 1; min-inline-size: 0; }
-.cp-head h2 { margin: 0; font-size: var(--fs-lg); font-weight: 600; color: var(--dx-ink); letter-spacing: -0.01em; }
-.cp-head p { margin: 2px 0 0; font-size: var(--fs-sm); color: var(--text-muted); }
 
 .cp-avatar {
   flex: none;
@@ -103,24 +15,6 @@
   background: var(--bg-surface-elevated);
   color: var(--accent-primary);
 }
-.cp-avatar-lg { inline-size: 30px; block-size: 30px; }
-.cp-avatar-xl { inline-size: 40px; block-size: 40px; border-radius: var(--radius-md); }
-
-.cp-icon-btn {
-  inline-size: 28px;
-  block-size: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
-}
-.cp-icon-btn:hover { background: var(--bg-surface-elevated); border-color: var(--border-subtle); color: var(--page-fg); }
-.cp-icon-btn:active { transform: scale(0.97); }
 
 /* Action buttons */
 .cp-btn {
@@ -146,16 +40,8 @@
 .cp-btn-primary:disabled { color: var(--btn-primary-fg); opacity: 0.5; }
 .cp-btn-text { background: transparent; border-color: transparent; color: var(--text-muted); padding-inline: 10px; }
 .cp-btn-text:hover:not(:disabled) { background: var(--hover-faint); border-color: var(--border-subtle); color: var(--page-fg); }
-.cp-btn-sm { padding: 5px 10px; font-size: var(--fs-sm); font-weight: 400; color: var(--page-fg); text-align: start; }
 
-/* ---- Thread ---- */
-.cp-scroll { flex: 1; min-block-size: 0; overflow-y: auto; overscroll-behavior: contain; }
-.cp-thread { display: flex; flex-direction: column; gap: 16px; padding: 16px; }
-
-.cp-intro { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 8px 2px 4px; }
-.cp-intro h3 { margin: 4px 0 0; font-size: var(--fs-xl); font-weight: 600; color: var(--dx-ink); }
-.cp-intro p { margin: 0; font-size: var(--fs-md); line-height: 1.5; color: var(--text-muted); max-width: 65ch; }
-
+/* ---- Messages ---- */
 .cp-msg { display: flex; gap: 10px; }
 .cp-msg-user { justify-content: flex-end; }
 .cp-user-bubble {
@@ -170,17 +56,15 @@
   overflow-wrap: anywhere;
 }
 .cp-body { flex: 1; min-inline-size: 0; display: flex; flex-direction: column; gap: 10px; }
-.cp-badge {
-  align-self: flex-start;
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-canvas);
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  font-weight: 500;
-}
+/* Proactive insight: severity and plant time, quiet. */
+.cp-meta { display: inline-flex; align-items: center; gap: 7px; font-size: var(--fs-sm); font-weight: 500; color: var(--text-muted); }
+.cp-meta-dot { inline-size: 7px; block-size: 7px; border-radius: 50%; background: var(--text-muted); }
+.cp-meta-advisory { color: var(--status-warning); }
+.cp-meta-advisory .cp-meta-dot { background: var(--status-warning); }
+.cp-meta-critical { color: var(--status-danger); }
+.cp-meta-critical .cp-meta-dot { background: var(--status-danger); }
+.cp-meta-clock { color: var(--text-muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+.cp-meta-clock::before { content: "·"; margin-inline-end: 7px; }
 
 .cp-text { font-size: var(--fs-base); line-height: 1.55; color: var(--page-fg); max-width: 68ch; overflow-wrap: anywhere; }
 .cp-text p { margin: 0 0 8px; }
@@ -256,14 +140,3 @@
 .cp-note { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); background: var(--bg-canvas); color: var(--text-muted); font-size: var(--fs-sm); align-self: flex-start; }
 .cp-note svg { color: var(--status-success); flex: none; }
 .cp-note span { margin-inline-start: 6px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-
-/* ---- Footer (Nested radius: composer R_outer = 4px, P = 2px -> send button R_inner = 2px) ---- */
-.cp-foot { padding: 10px 16px 14px; border-block-start: 1px solid var(--separator); background: var(--bg-canvas); display: flex; flex-direction: column; gap: 10px; }
-.cp-suggest { display: flex; flex-wrap: wrap; gap: 6px; max-block-size: 96px; overflow-y: auto; }
-.cp-composer { display: flex; align-items: center; gap: 8px; padding: 2px 2px 2px 12px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); background: var(--card-bg); transition: border-color var(--dur-fast) var(--ease-out); }
-.cp-composer:focus-within { border-color: var(--accent-primary); }
-.cp-composer input { flex: 1; min-inline-size: 0; border: none; background: transparent; color: var(--page-fg); font: inherit; font-size: var(--fs-base); padding: 6px 0; outline: none; }
-.cp-composer input::placeholder { color: var(--text-muted); }
-.cp-send { inline-size: 30px; block-size: 30px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: var(--radius-sm); background: var(--btn-primary-bg); color: var(--btn-primary-fg); cursor: pointer; transition: transform 60ms var(--ease-out), opacity var(--dur-fast) var(--ease-out); }
-.cp-send:active:not(:disabled) { transform: scale(0.97); }
-.cp-send:disabled { opacity: 0.35; cursor: not-allowed; }

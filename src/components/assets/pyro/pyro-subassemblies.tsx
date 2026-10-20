@@ -1388,7 +1388,6 @@ export const SUBASSEMBLY_DRAWINGS: Record<string, SubAssemblyDrawingDef> = {
     Art: FslSiloArt,
     pads: {
       "LEV-FSL-01": [330, 22],
-      "STS-FSL-01": [368, 250],
     },
   },
   "fsl-aeration": {
@@ -1405,9 +1404,6 @@ export const SUBASSEMBLY_DRAWINGS: Record<string, SubAssemblyDrawingDef> = {
     Art: KfsBinArt,
     pads: {
       "WGT-KFS-01": [252, 264],
-      "LEV-KFS-01": [350, 36],
-      "LEV-KFS-02": [486, 84],
-      "LEV-KFS-03": [444, 204],
     },
   },
   "kfs-dosing": {

@@ -212,12 +212,22 @@
   background: var(--tone);
 }
 
+.pg-frame-kpi-value.is-text {
+  font-family: var(--font-ui);
+  letter-spacing: -0.01em;
+}
+
+/* Sentence in the UI face; wraps to a second line rather than cutting words off. */
 .pg-frame-kpi-foot {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   font-size: var(--fs-sm);
+  line-height: 1.35;
   color: var(--text-muted);
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 1100px) {
@@ -1180,7 +1190,7 @@
   min-width: 0;
   padding: 14px 16px;
   container: ui-tile / inline-size;
-  transition: border-color 0.12s ease, background-color 0.12s ease;
+  transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
 }
 
 /* Narrow (default): one column — head, sub, value, meter, body, facts, foot. */
@@ -1597,5 +1607,118 @@
 
   #an-diagnosis .pg-analysis-section-body > .pg-analysis-block:is(:has(> .pg-analysis-flow), :has(> .pg-analysis-dl)) {
     grid-column: 2;
+  }
+}
+
+/* ======================================================================
+   Issue view (an-issue-view.tsx): one issue at a time. Facts as a
+   label / value grid, tables flush; monochrome, red only for evidence a
+   rule fired on.
+   ====================================================================== */
+.pg-an-issue-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  margin-top: 16px;
+}
+
+.pg-an-issue-title {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--dx-ink);
+}
+
+.pg-an-verify {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pg-an-facts {
+  display: grid;
+  grid-template-columns: minmax(140px, 200px) minmax(0, 1fr);
+  gap: 10px 24px;
+  margin: 0 0 16px;
+}
+
+.pg-an-facts > dt {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.pg-an-facts > dd {
+  margin: 0;
+  color: var(--dx-ink);
+}
+
+.pg-an-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pg-an-chain {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pg-an-chain > li + li::before {
+  content: "→";
+  margin: 0 10px;
+  color: var(--text-muted);
+}
+
+.pg-an-start-chart {
+  margin: 0 0 16px;
+}
+
+.pg-an-start-dot {
+  fill: var(--card-bg);
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+}
+
+.pg-an-start-dot.is-first {
+  stroke: var(--dx-ink);
+  stroke-width: 2;
+}
+
+.pg-an-strong {
+  font-weight: 600;
+  color: var(--dx-ink);
+}
+
+.pg-an-table td {
+  vertical-align: top;
+}
+
+.pg-an-table tr:has(.pg-an-ev[data-fired]) td:first-child {
+  box-shadow: inset 3px 0 0 var(--status-danger);
+}
+
+.pg-an-ev[data-fired] .ast-cell-title {
+  color: var(--status-danger);
+}
+
+.pg-analysis .pg-sf-table + .pg-an-table,
+.pg-analysis .pg-an-facts + .ui-table-container {
+  margin-top: 8px;
+}
+
+@media (max-width: 599px) {
+  .pg-an-facts {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .pg-an-facts > dd {
+    margin-bottom: 8px;
   }
 }

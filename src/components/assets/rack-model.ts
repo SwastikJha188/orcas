@@ -18,14 +18,15 @@ import type { SimFrame } from "@/lib/kiln-sim/engine";
 import type { PlantDefs } from "@/lib/plant-defs";
 import type { Tone } from "./assets-shell-ui";
 import { channelState, processState, worstState, type SlotState } from "./eurocard-module";
-import { CALCULATED_INPUTS, IEPE_SPEC_CHANNELS, hasKilnSpec } from "./rack-spec";
+import type { MeasurementDto } from "@/types/monitoring";
+import { calcDefsFor } from "./sensors-model";
 import { isPyroMachineId } from "@/lib/live-defs";
 
 export const STATE_TONE: Record<SlotState, Tone> = { ok: "good", warn: "warn", bad: "bad", empty: "idle" };
 
 export const toneState = (t: Tone): SlotState => (t === "bad" ? "bad" : t === "warn" ? "warn" : t === "good" ? "ok" : "empty");
 
-export const SIGNAL_LABEL: Record<SlotState, string> = { ok: "Valid", warn: "Suspect", bad: "Invalid", empty: "Spare" };
+export const SIGNAL_LABEL: Record<SlotState, string> = { ok: "Good", warn: "May be wrong", bad: "Not usable", empty: "Spare" };
 
 /* ---------------------------------------------------------------- rows */
 
@@ -53,37 +54,16 @@ export interface ChassisRecord {
   packetLossPct: number | null;
 }
 
-/** Reads the free-text cabinet record (rack_chassis) into typed fields; unknown text stays raw. */
+/**
+ * Typed cabinet record. rack_chassis carries no PTP clock, PSU or packet-loss
+ * readings (they were never measured), so those report "Not reported" / null.
+ */
 export function readChassisRecord(c: RackChassisInfo | null | undefined): ChassisRecord {
-  const latencyRaw = c?.latency?.trim() ?? "";
-  const psuRaw = c?.psuStatus?.trim() ?? "";
-  const mode: PtpMode = !latencyRaw
-    ? "Not reported"
-    : /holdover|free.?run|unsync|lost/i.test(latencyRaw)
-      ? "Holdover"
-      : /synced|lock/i.test(latencyRaw)
-        ? "Locked"
-        : "As recorded";
-  const latency = Number(latencyRaw.match(/([\d.]+)\s*ms/i)?.[1] ?? NaN);
-  // Measured rails are in brackets ("Redundant 24V DC Active (24.1V / 24.1V)"); else any voltage given.
-  const voltText = psuRaw.match(/\(([^)]*V[^)]*)\)/)?.[1] ?? psuRaw;
-  const volts = (voltText.match(/[\d.]+(?=\s*V\b)/g) ?? []).map(Number).filter((v) => v > 5 && v < 60);
-  const loss = Number((c?.packetLoss ?? "").match(/([\d.]+)\s*%/)?.[1] ?? NaN);
   return {
     chassis: c ?? null,
-    ptp: {
-      mode,
-      state: mode === "Locked" ? "ok" : mode === "Holdover" ? "warn" : "empty",
-      latencyMs: Number.isFinite(latency) ? latency : null,
-      raw: latencyRaw,
-    },
-    psu: {
-      state: !psuRaw ? "empty" : /fail|fault|lost|down/i.test(psuRaw) ? "bad" : /active|ok|normal/i.test(psuRaw) ? "ok" : "warn",
-      volts,
-      redundant: !psuRaw ? null : /redundan/i.test(psuRaw) || volts.length > 1,
-      raw: psuRaw,
-    },
-    packetLossPct: Number.isFinite(loss) ? loss : null,
+    ptp: { mode: "Not reported", state: "empty", latencyMs: null, raw: "" },
+    psu: { state: "empty", volts: [], redundant: null, raw: "" },
+    packetLossPct: null,
   };
 }
 
@@ -105,10 +85,10 @@ export interface GatewayLink {
 
 const LINK: Record<GatewayRow["state"], { state: SlotState; label: string }> = {
   online: { state: "ok", label: "Online" },
-  stale: { state: "warn", label: "Stale" },
+  stale: { state: "warn", label: "Not updating" },
   offline: { state: "bad", label: "Offline" },
   waiting: { state: "empty", label: "Waiting for data" },
-  disabled: { state: "empty", label: "Disabled" },
+  disabled: { state: "empty", label: "Switched off" },
 };
 
 /* ---------------------------------------------------------------- checks */
@@ -178,8 +158,10 @@ export function buildRackModel(input: {
   acq: MachineAcquisition | null;
   frame: SimFrame | null | undefined;
   catalog: CatalogSensorView[];
+  /** DB measurements by tag: which catalog tags are calculated, and their names. */
+  measurements: ReadonlyMap<string, MeasurementDto>;
 }): RackModel {
-  const { machineId, racks, acq, frame, catalog } = input;
+  const { machineId, racks, acq, frame, catalog, measurements } = input;
 
   const pointByTag = new Map<string, MachineLivePoint>();
   for (const p of acq?.points ?? []) {
@@ -238,7 +220,7 @@ export function buildRackModel(input: {
       gateway: g,
       code: g.code,
       state: simulated ? "ok" : base.state,
-      label: simulated ? "Simulated feed" : base.label,
+      label: simulated ? "Online" : base.label,
       simulated,
       ...counts,
     };
@@ -266,12 +248,13 @@ export function buildRackModel(input: {
       ? { newestS: (now - Math.max(...stamps)) / 1000, oldestS: (now - Math.min(...stamps)) / 1000, stamped: stamps.length }
       : null;
 
-  /* ---------- calculated inputs (kiln D5 Table 9.2 and VPC DT1) ---------- */
+  /* ---------- calculated inputs (gateway formulas of the DB's calculated measurements) ---------- */
   const rowByTag = new Map(rows.map((r) => [r.ch.tag, r]));
   const calcInputs = new Map<string, { tag: string; row: ChannelRow | null }[]>();
+  const calcDefs = calcDefsFor(defs, measurements);
   for (const s of calculated) {
-    const spec = CALCULATED_INPUTS[s.tag];
-    if (spec) calcInputs.set(s.tag, spec.inputs.map((tag) => ({ tag, row: rowByTag.get(tag) ?? null })));
+    const def = calcDefs[s.tag];
+    if (def) calcInputs.set(s.tag, def.inputs.map((tag) => ({ tag, row: rowByTag.get(tag) ?? null })));
   }
 
   /* ---------- checks ---------- */
@@ -296,7 +279,7 @@ export function buildRackModel(input: {
     label: "Signal quality",
     tone: signal.bad ? "bad" : signal.warn ? "warn" : rows.length ? "good" : "idle",
     result: `${signal.ok} valid · ${signal.warn} suspect / stale · ${signal.bad} invalid`,
-    source: frame ? "Data-quality flags (R-DQ-01), live" : origin.mqtt ? "MQTT point state" : "Stored quality",
+    source: frame ? "Data-quality flags, live" : origin.mqtt ? "MQTT point state" : "Stored quality",
     tags: faulty.map((r) => r.ch.tag),
   });
   checks.push({
@@ -326,21 +309,6 @@ export function buildRackModel(input: {
     source: "Cabinet record (rack_chassis)",
     tags: [],
   });
-  if (hasKilnSpec(machineId)) {
-    const slots = racks.flatMap((r) => r.modules);
-    const iepe = slots.find((m) => m.sensorType === "VIB");
-    const iepeMapped = iepe ? slots.filter((m) => m.code === iepe.code).length : 0;
-    if (iepe && iepe.cardCapacity !== IEPE_SPEC_CHANNELS)
-      checks.push({
-        id: "spec",
-        label: "IEPE module vs specification",
-        tone: "info",
-        result: `Registry records ${iepe.cardCapacity} channels; D5 Table 7.1 specifies ${IEPE_SPEC_CHANNELS} inputs (${IEPE_SPEC_CHANNELS - iepeMapped} spare)`,
-        source: "Edge registry (edge_cards) vs D5 Table 7.1",
-        tags: [],
-      });
-  }
-
   const state = worstState(checks.filter((c) => c.tone !== "idle" && c.tone !== "info").map((c) => toneState(c.tone)));
 
   return {

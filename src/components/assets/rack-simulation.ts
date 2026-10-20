@@ -46,20 +46,20 @@ export function applyRackLive(racks: MachineRackInfo[], frame?: SimFrame | null)
 export function applyRackSimulation(racks: MachineRackInfo[], d?: KilnSealsSensorData): MachineRackInfo[] {
   if (!d) return racks;
   const signed = (v: number, digits: number) => (v > 0 ? `+${v.toFixed(digits)}` : v.toFixed(digits));
-  const by = (v: number, adv: number, crit: number): ChannelStatus => (v > crit ? "Critical" : v > adv ? "Advisory" : "Normal");
+  const by = (v: number, adv: number, crit: number): ChannelStatus => (v > crit ? "Critical" : v > adv ? "Alert" : "Normal");
   const values: Record<string, Override> = {
     "POS-KLN-01": { currentValue: signed(d.lvdtPosition, 1), status: by(Math.abs(d.lvdtPosition), 30, 40) },
     "GAS-KLN-01": { currentValue: d.gasO2.toFixed(2), status: by(d.gasO2, 3.5, 5) },
-    "GAS-KLN-02": { currentValue: `${d.gasCO}`, status: d.gasCO > 1000 ? "Advisory" : "Normal" },
-    "TMP-KLN-13": { currentValue: `${d.inletGasTemp}`, status: d.inletGasTemp < 900 ? "Critical" : d.inletGasTemp < 950 ? "Advisory" : "Normal" },
+    "GAS-KLN-02": { currentValue: `${d.gasCO}`, status: d.gasCO > 1000 ? "Alert" : "Normal" },
+    "TMP-KLN-13": { currentValue: `${d.inletGasTemp}`, status: d.inletGasTemp < 900 ? "Critical" : d.inletGasTemp < 950 ? "Alert" : "Normal" },
     "PRS-KLN-01": { currentValue: d.inletDraft.toFixed(2), status: by(d.inletDraft, -1.5, -0.5) },
-    "STS-KLN-06": { currentValue: d.gasAnalyserStatus, status: d.gasAnalyserStatus === "OK" ? "Normal" : "Advisory", ledOk: d.gasAnalyserStatus === "OK" },
+    "STS-KLN-06": { currentValue: d.gasAnalyserStatus, status: d.gasAnalyserStatus === "OK" ? "Normal" : "Alert", ledOk: d.gasAnalyserStatus === "OK" },
     "FLO-KLN-01": { currentValue: `${d.kilnFeed}`, status: by(d.kilnFeed, 355, 380) },
     "FLO-KLN-02": { currentValue: d.kilnFuel.toFixed(2) },
     "PRS-KLN-03": { currentValue: signed(d.hoodPressure, 2), status: by(d.hoodPressure, 0, 0.3) },
     "SPD-KLN-01": { currentValue: d.kilnSpeed.toFixed(2) },
     "POS-KLN-02": { currentValue: d.travelLimitSwitch, status: d.travelLimitSwitch === "LIMIT" ? "Critical" : "Normal", ledOk: d.travelLimitSwitch === "CLEAR" },
-    "STS-KLN-08": { currentValue: d.scannerCoverage.toFixed(1), status: d.scannerCoverage < 90 ? "Advisory" : "Normal" },
+    "STS-KLN-08": { currentValue: d.scannerCoverage.toFixed(1), status: d.scannerCoverage < 90 ? "Alert" : "Normal" },
     "STS-KLN-10": { currentValue: d.outletFanStatus, status: d.outletFanStatus === "STOPPED" ? "Critical" : "Normal", ledOk: d.outletFanStatus === "RUNNING" },
   };
   return overlay(racks, (ch) => values[ch.tag]);
@@ -78,7 +78,7 @@ export function applyRackMqtt(racks: MachineRackInfo[], acq?: MachineAcquisition
   return overlay(racks, (ch) => {
     const l = live.get(ch.tag);
     if (!l) return undefined;
-    const status: ChannelStatus = l.state === "danger" ? "Critical" : l.state === "alert" ? "Advisory" : "Normal";
+    const status: ChannelStatus = l.state === "danger" ? "Critical" : l.state === "alert" ? "Alert" : "Normal";
     return {
       currentValue: l.value !== null ? fmt(l.value) : l.display ?? "—",
       status,

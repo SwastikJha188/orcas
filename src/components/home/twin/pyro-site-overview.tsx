@@ -10,10 +10,11 @@ import { StatusTag } from "@/components/ui/status-tag";
 import { type Condition, type Tone, conditionTone, toCondition, worstCondition } from "@/components/ui/status";
 import { IconChevron, IconClose } from "@/components/assets/assets-shell-ui";
 import { type SimFrame, formatDuration } from "@/lib/kiln-sim/engine";
-import { PYRO_MACHINE_BY_ID, PYRO_SIGNALS, isOnline } from "@/lib/pyro-sim/signals";
-import { PYRO_SPEC } from "@/lib/pyro-sim/spec";
+import { PYRO_MACHINE_BY_ID } from "@/lib/pyro-sim/signals";
+import { useApi } from "@/lib/api-cache";
 import { useIndustrialData } from "@/providers/industrial-data-context";
-import { useKilnFleet } from "@/providers/kiln-simulation-context";
+import { useKilnFleet, usePrimaryMachineId } from "@/providers/kiln-simulation-context";
+import type { MeasurementDto } from "@/types/monitoring";
 import type { TwinInset } from "./plant-twin-canvas";
 import { hasWebGL } from "./plant-twin";
 import { createInfiniteGrid } from "./infinite-grid";
@@ -28,7 +29,8 @@ import type { EdgeRegistry, MachineAcquisition } from "@/types/edge";
    pyroprocessing & clinker line: the six machines (eight D4 units) modelled along the line
    in process order, the gateway house and the power house with their dashed
    data / power runs. Imperative three.js; every value shown is read from the
-   live line (`useKilnFleet`) or the D4 catalog (`PYRO_MACHINES`, `PYRO_SPEC`).
+   live line (`useKilnFleet`), the plant's machines and its measurement
+   catalogue (GET /api/measurements?plantId=…).
    ========================================================================== */
 
 const NODES: NodeKey[] = [...LINE, ...INFRA];
@@ -44,17 +46,17 @@ const PART_OF: Partial<Record<MachineKey, MachineKey>> = { KFS: "FSL", CSL: "HMR
 const primaryOf = <K extends NodeKey>(k: K): K => ((PART_OF as Record<string, K>)[k] ?? k);
 /** Every node of a machine (FSL → FSL + KFS). */
 const nodesOf = (k: NodeKey): NodeKey[] => [k, ...(Object.keys(PART_OF) as MachineKey[]).filter((n) => PART_OF[n] === k)];
-const MACHINE_ID: Record<MachineKey, string> = {
-  FSL: "PYR-FED-01",
-  KFS: "PYR-FED-01",
-  PHC: "PYR-PHC-01",
-  KLN: "PYR-KLN-01",
-  BRN: "PYR-BRN-01",
-  CLR: "PYR-CLR-01",
-  HMR: "PYR-CCT-01",
-  CSL: "PYR-CCT-01",
+/** Drawing kind each site model draws; the plant machine with that `diagramType` is the node's machine. */
+const NODE_DIAGRAM: Record<MachineKey, string> = {
+  FSL: "feed-system",
+  KFS: "feed-system",
+  PHC: "preheater",
+  KLN: "pyro-kiln",
+  BRN: "kiln-burner",
+  CLR: "grate-cooler",
+  HMR: "clinker-transport",
+  CSL: "clinker-transport",
 };
-const machineIdOf = (k: MachineKey) => MACHINE_ID[k];
 /** The machines' own nodes, in line order (one row per machine). */
 const MAIN_NODES = LINE.filter((k) => !PART_OF[k]);
 const isMachine = (k: NodeKey): k is MachineKey => (LINE as string[]).includes(k);
@@ -73,37 +75,61 @@ const ANCHORS: Record<NodeKey, V3> = {
   PW: [22, 7.2, 75.4],
 };
 
-const INFRA_NAME: Record<InfraKey, string> = { GW: "Gateway house", PW: "Electrical / power house" };
+const INFRA_NAME: Record<InfraKey, string> = { GW: "Data gateway house", PW: "Electrical power house" };
 
 /* ---------------------------------------------------------------- catalog */
 
-/** Required / optional D4 entries per machine code (Tables 5.1c–5.8c). */
-const SPEC_COUNTS: Record<string, { required: number; optional: number }> = (() => {
-  const out: Record<string, { required: number; optional: number }> = {};
-  for (const e of Object.values(PYRO_SPEC)) {
-    const c = (out[e.machine] ??= { required: 0, optional: 0 });
-    if (e.priority === "Required") c.required++;
-    else c.optional++;
-  }
-  return out;
-})();
-const ONLINE_SIGNALS = PYRO_SIGNALS.filter(isOnline).length;
-const MANUAL_RECORDS = PYRO_SIGNALS.filter((s) => s.origin === "manual").length;
-const DRIVE_PAIRS = Object.entries(PYRO_SPEC).filter(([, e]) => e.sensorType.startsWith("MCC"));
-const DRIVE_ENTRIES = DRIVE_PAIRS.map(([, e]) => e);
-const DRIVE_FEEDERS = DRIVE_ENTRIES.length;
-const DRIVE_MACHINES = new Set(DRIVE_ENTRIES.map((e) => e.machine)).size;
-const DRIVE_TAGS = DRIVE_PAIRS.map(([tag]) => tag);
-const ONLINE_BY_MACHINE: Record<string, string[]> = {};
-for (const sg of PYRO_SIGNALS) if (isOnline(sg)) (ONLINE_BY_MACHINE[sg.machine] ??= []).push(sg.tag);
-/** Two lead readings per machine for a quiet panel: its first required online entries. */
-const KEY_TAGS: Record<string, string[]> = Object.fromEntries(
-  Object.entries(ONLINE_BY_MACHINE).map(([m, tags]) => [m, tags.filter((tg) => PYRO_SPEC[tg]?.priority === "Required" && PYRO_SIGNALS.find((x) => x.tag === tg)?.unit !== "state").slice(0, 2)]),
-);
+/** Counts and tag lists the panels read, built from the plant's measurement catalogue. */
+interface SiteCatalog {
+  /** Required / optional entries per machine id. */
+  specCounts: Record<string, { required: number; optional: number }>;
+  onlineSignals: number;
+  manualRecords: number;
+  /** Online measurements whose limits the plant has approved. */
+  approvedOnline: number;
+  driveFeeders: number;
+  driveMachines: number;
+  /** Quantities the MCC / VFD feeders deliver. */
+  driveQuantities: string[];
+  /** MCC / VFD feeder measurements: tag → owning machine. */
+  driveTags: Array<{ tag: string; machineId: string }>;
+  onlineByMachine: Record<string, string[]>;
+  /** Two lead readings per machine for a quiet panel: its first required online analog entries. */
+  keyTags: Record<string, string[]>;
+}
 
-/** Online entries (D4 count, no calculated or manual) that are trusted now. */
-function onlineValid(f: SimFrame, machineId: string): { valid: number; total: number } {
-  const tags = ONLINE_BY_MACHINE[machineId] ?? [];
+function siteCatalog(ms: MeasurementDto[]): SiteCatalog {
+  const specCounts: SiteCatalog["specCounts"] = {};
+  const onlineByMachine: Record<string, string[]> = {};
+  const keyTags: Record<string, string[]> = {};
+  const drives = ms.filter((m) => m.sensorType?.startsWith("MCC"));
+  for (const m of ms) {
+    const c = (specCounts[m.machineId] ??= { required: 0, optional: 0 });
+    if (m.priority === "Required") c.required++;
+    else if (m.priority === "Optional") c.optional++;
+    if (m.origin !== "online") continue;
+    (onlineByMachine[m.machineId] ??= []).push(m.tag);
+    const keys = (keyTags[m.machineId] ??= []);
+    if (m.priority === "Required" && m.valueKind === "analog" && keys.length < 2) keys.push(m.tag);
+  }
+  const online = ms.filter((m) => m.origin === "online");
+  return {
+    specCounts,
+    onlineSignals: online.length,
+    manualRecords: ms.filter((m) => m.origin === "manual").length,
+    approvedOnline: online.filter((m) => m.limit?.approval === "approved").length,
+    driveFeeders: drives.length,
+    driveMachines: new Set(drives.map((m) => m.machineId)).size,
+    driveQuantities: [...new Set(drives.map((m) => m.quantity.name))],
+    driveTags: drives.map((m) => ({ tag: m.tag, machineId: m.machineId })),
+    onlineByMachine,
+    keyTags,
+  };
+}
+
+/** Online entries (no calculated or manual) that are trusted now. */
+function onlineValid(f: SimFrame, machineId: string, catalog: SiteCatalog): { valid: number; total: number } {
+  const tags = catalog.onlineByMachine[machineId] ?? [];
   let valid = 0;
   for (const tg of tags) {
     const q = f.signals[tg]?.quality;
@@ -170,7 +196,8 @@ export interface PyroSiteOverviewProps {
 
 interface MachineRow {
   key: MachineKey;
-  id: string;
+  /** The plant machine this node draws; null while the plant's machines load or when it has none. */
+  id: string | null;
   code: string;
   name: string;
   shortName: string;
@@ -182,7 +209,17 @@ interface MachineRow {
 
 export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOverviewProps) {
   const fleet = useKilnFleet();
-  const { navigateToMachine } = useIndustrialData();
+  const { navigateToMachine, allMachines, selectedPlantId } = useIndustrialData();
+  const plantMachines = useMemo(
+    () => (selectedPlantId ? allMachines.filter((m) => m.plantId === selectedPlantId) : []),
+    [allMachines, selectedPlantId],
+  );
+  const machineIdOf = useCallback(
+    (k: MachineKey): string | null => plantMachines.find((m) => m.diagramType === NODE_DIAGRAM[k])?.id ?? null,
+    [plantMachines],
+  );
+  const measurements = useApi<MeasurementDto[]>(selectedPlantId ? `/api/measurements?plantId=${encodeURIComponent(selectedPlantId)}` : null);
+  const catalog = useMemo(() => siteCatalog(measurements.data ?? []), [measurements.data]);
   const reduce = useReducedMotion();
 
   const rootRef = useRef<HTMLDivElement>(null);
@@ -223,22 +260,23 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
     () =>
       MAIN_NODES.map((key) => {
         const id = machineIdOf(key);
-        const cat = PYRO_MACHINE_BY_ID[id];
-        const f = fleet[id]?.frame;
+        const machine = id ? plantMachines.find((m) => m.id === id) : undefined;
+        const cat = id ? PYRO_MACHINE_BY_ID[id] : undefined;
+        const f = id ? fleet[id]?.frame : undefined;
         const condition: Condition = f ? toCondition(f.condition) : "No data";
         return {
           key,
           id,
-          code: cat?.code ?? `${key}-01`,
-          name: cat?.name ?? key,
-          shortName: cat?.shortName ?? key,
+          code: cat?.code ?? id ?? "—",
+          name: machine?.name ?? cat?.name ?? key,
+          shortName: cat?.shortName ?? machine?.type ?? key,
           diagrams: cat?.diagrams ?? [],
           condition,
           tone: conditionTone(condition),
           score: f ? Math.round(f.overall) : null,
         };
       }),
-    [fleet],
+    [fleet, machineIdOf, plantMachines],
   );
   const rowByKey = useMemo(() => {
     const out = Object.fromEntries(rows.map((r) => [r.key, r])) as Record<MachineKey, MachineRow>;
@@ -258,21 +296,20 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
     let valid = 0;
     let total = 0;
     for (const r of rows) {
-      const f = fleet[r.id]?.frame;
-      if (!f) continue;
-      const c = onlineValid(f, r.id);
+      const f = r.id ? fleet[r.id]?.frame : undefined;
+      if (!f || !r.id) continue;
+      const c = onlineValid(f, r.id, catalog);
       valid += c.valid;
       total += c.total;
     }
     let feeders: number | null = null;
-    for (const tg of DRIVE_TAGS) {
-      const machine = PYRO_SIGNALS.find((x) => x.tag === tg)?.machine;
-      const q = machine ? fleet[machine]?.frame?.signals[tg]?.quality : undefined;
+    for (const { tag: tg, machineId: machine } of catalog.driveTags) {
+      const q = fleet[machine]?.frame?.signals[tg]?.quality;
       if (!q) continue;
       feeders = (feeders ?? 0) + (q !== "Invalid" && q !== "Suspect" ? 1 : 0);
     }
     return { condition, tone: conditionTone(condition), score, counts, valid, total, feeders };
-  }, [rows, fleet]);
+  }, [rows, fleet, catalog]);
 
   const toneKey = rows.map((r) => r.tone).join("|");
 
@@ -978,10 +1015,10 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
               data-active={active || undefined}
               data-dim={dim || undefined}
               aria-pressed={selected === key}
-              aria-label={`${INFRA_NAME[key]}, site infrastructure`}
+              aria-label={`${INFRA_NAME[key]}, support building`}
               onClick={() => select(key)}
             >
-              <span className="pso-label-head" title={`${INFRA_NAME[key]} · site infrastructure`}>
+              <span className="pso-label-head" title={`${INFRA_NAME[key]} · support building`}>
                 <i aria-hidden="true" />
                 <span className="pso-label-name">{INFRA_NAME[key]}</span>
               </span>
@@ -992,30 +1029,32 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
 
 
       <div ref={toolsRef} className="pso-tools" role="group" aria-label="Camera">
-        <span className="pso-sim" title="Values come from the line simulation until the plant tag export is mapped">
-          Simulated
-        </span>
-        <span className="pso-tool-sep" aria-hidden="true" />
         <span className="pso-sim">Move</span>
-        <button type="button" className="pso-tool pso-tool-icon" onClick={() => apiRef.current?.nudge("move-left")} aria-label="Move left" title="Move left (A / Left arrow / Right-drag)">
+        <button type="button" className="pso-tool pso-tool-icon" onClick={() => apiRef.current?.nudge("move-left")} aria-label="Move left" title="Move left (A key, left arrow, or right-drag)">
           ←
         </button>
-        <button type="button" className="pso-tool pso-tool-icon" onClick={() => apiRef.current?.nudge("move-up")} aria-label="Move forward" title="Move forward (W / Up arrow / Right-drag)">
+        <button type="button" className="pso-tool pso-tool-icon" onClick={() => apiRef.current?.nudge("move-up")} aria-label="Move forward" title="Move forward (W key, up arrow, or right-drag)">
           ↑
         </button>
-        <button type="button" className="pso-tool pso-tool-icon" onClick={() => apiRef.current?.nudge("move-down")} aria-label="Move back" title="Move back (S / Down arrow / Right-drag)">
+        <button type="button" className="pso-tool pso-tool-icon" onClick={() => apiRef.current?.nudge("move-down")} aria-label="Move back" title="Move back (S key, down arrow, or right-drag)">
           ↓
         </button>
-        <button type="button" className="pso-tool pso-tool-icon" onClick={() => apiRef.current?.nudge("move-right")} aria-label="Move right" title="Move right (D / Right arrow / Right-drag)">
+        <button type="button" className="pso-tool pso-tool-icon" onClick={() => apiRef.current?.nudge("move-right")} aria-label="Move right" title="Move right (D key, right arrow, or right-drag)">
           →
         </button>
         <span className="pso-tool-sep" aria-hidden="true" />
-        <span className="pso-sim">Orbit</span>
-        <button type="button" className="pso-tool pso-tool-icon" onClick={() => apiRef.current?.nudge("orbit-left")} aria-label="Orbit left" title="Orbit left (Q / Left-drag)">
-          ↺
+        <span className="pso-sim">Turn</span>
+        <button type="button" className="pso-tool pso-tool-icon" onClick={() => apiRef.current?.nudge("orbit-left")} aria-label="Turn left" title="Turn left (Q key or drag)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+          </svg>
         </button>
-        <button type="button" className="pso-tool pso-tool-icon" onClick={() => apiRef.current?.nudge("orbit-right")} aria-label="Orbit right" title="Orbit right (E / Left-drag)">
-          ↻
+        <button type="button" className="pso-tool pso-tool-icon" onClick={() => apiRef.current?.nudge("orbit-right")} aria-label="Turn right" title="Turn right (E key or drag)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+            <path d="M21 3v5h-5" />
+          </svg>
         </button>
         <button type="button" className="pso-tool pso-tool-icon" onClick={() => apiRef.current?.zoom(0.8)} aria-label="Zoom in" title="Zoom in">
           +
@@ -1046,7 +1085,7 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
       )}
 
       <div className="pso-seq-wrap">
-        <nav ref={seqRef} className="pso-seq" aria-label="Process sequence">
+        <nav ref={seqRef} className="pso-seq" aria-label="Machines in process order">
           {SEQUENCE.map((step, i) => (
             <React.Fragment key={step.join("-")}>
               {i > 0 && (
@@ -1088,12 +1127,25 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
           {isMachine(selected) ? (
             <MachinePanel
               row={rowByKey[selected]}
-              frame={fleet[machineIdOf(selected)]?.frame ?? null}
+              catalog={catalog}
+              frame={rowByKey[selected].id ? (fleet[rowByKey[selected].id]?.frame ?? null) : null}
               onClose={() => setSelected(null)}
-              onOpen={() => navigateToMachine(machineIdOf(selected), "overview")}
+              onOpen={() => {
+                const id = rowByKey[selected].id;
+                if (id) navigateToMachine(id, "overview");
+              }}
             />
           ) : (
-            <InfraPanel infra={selected} valid={line.valid} total={line.total} feeders={line.feeders} onClose={() => setSelected(null)} />
+            <InfraPanel
+              infra={selected}
+              catalog={catalog}
+              plantId={selectedPlantId}
+              machineIds={plantMachines.map((m) => m.id)}
+              valid={line.valid}
+              total={line.total}
+              feeders={line.feeders}
+              onClose={() => setSelected(null)}
+            />
           )}
         </aside>
       )}
@@ -1105,7 +1157,7 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
 
 type Frame = SimFrame;
 
-const SEVERITY_RANK: Record<string, number> = { Critical: 0, Advisory: 1, Normal: 2 };
+const SEVERITY_RANK: Record<string, number> = { Critical: 0, Alert: 1, Normal: 2 };
 
 function PanelHead({ title, sub, onClose }: { title: string; sub: string; onClose: () => void }) {
   return (
@@ -1121,22 +1173,22 @@ function PanelHead({ title, sub, onClose }: { title: string; sub: string; onClos
   );
 }
 
-function MachinePanel({ row, frame, onClose, onOpen }: { row: MachineRow; frame: Frame | null; onClose: () => void; onOpen: () => void }) {
-  const spec = SPEC_COUNTS[row.code] ?? { required: 0, optional: 0 };
+function MachinePanel({ row, catalog, frame, onClose, onOpen }: { row: MachineRow; catalog: SiteCatalog; frame: Frame | null; onClose: () => void; onOpen: () => void }) {
+  const spec = (row.id && catalog.specCounts[row.id]) || { required: 0, optional: 0 };
   const findings = frame
     ? frame.rules
         .filter((r) => r.status === "ACTIVE" && isConditionRule(r))
         .sort((a, b) => (SEVERITY_RANK[a.severity] ?? 3) - (SEVERITY_RANK[b.severity] ?? 3))
     : [];
-  const counts = frame ? onlineValid(frame, row.id) : null;
-  const keyTags = KEY_TAGS[row.id] ?? [];
+  const counts = frame && row.id ? onlineValid(frame, row.id, catalog) : null;
+  const keyTags = (row.id && catalog.keyTags[row.id]) || [];
   const subs = frame ? frame.defs.subassemblies.map((s) => ({ id: s.id, name: s.name, cell: frame.subs[s.id] })) : [];
 
   return (
     <>
       <PanelHead
         title={row.name}
-        sub={`${row.code} · ${row.diagrams.length > 1 ? "Diagrams" : "Diagram"} ${row.diagrams.join(", ") || "—"}${row.key === "BRN" ? " · single firing point, no preheater burner" : ""}`}
+        sub={`${row.code} · ${row.diagrams.length > 1 ? "Drawings" : "Drawing"} ${row.diagrams.join(", ") || "—"}${row.key === "BRN" ? " · the only burner on the line" : ""}`}
         onClose={onClose}
       />
       <div className="pso-score">
@@ -1148,10 +1200,10 @@ function MachinePanel({ row, frame, onClose, onOpen }: { row: MachineRow; frame:
       </div>
 
       <section className="pso-sec">
-        <h3>Findings</h3>
+        <h3>Problems</h3>
         {findings.length === 0 ? (
           <>
-            <p className="pso-empty">{frame ? "No active findings" : "No live data"}</p>
+            <p className="pso-empty">{frame ? "No problems right now" : "No live readings"}</p>
             {frame && keyTags.length > 0 && (
               <dl className="ph-insp-rows">
                 {keyTags.map((tg) => {
@@ -1175,13 +1227,19 @@ function MachinePanel({ row, frame, onClose, onOpen }: { row: MachineRow; frame:
               <li key={r.id} data-tone={conditionTone(r.severity)}>
                 <div className="pso-find-head">
                   <i aria-hidden="true" />
-                  <span className="pso-find-name">{r.name}</span>
+                  <span className="pso-find-name" title={r.plainTitle ? r.name : undefined}>{r.plainTitle ?? r.name}</span>
                   {r.since !== null && frame && <span className="pso-find-age ast-num">{formatDuration(frame.t - r.since)}</span>}
                 </div>
-                {r.evidence && <p className="pso-find-ev ast-num">{r.evidence}</p>}
-                {r.action && (
-                  <p className="pso-find-act">
-                    <b>Action</b> {r.action}
+                {r.plainWhat ? (
+                  <p className="pso-find-ev" title={r.evidence || undefined}>
+                    {r.plainWhat}
+                  </p>
+                ) : (
+                  r.evidence && <p className="pso-find-ev ast-num">{r.evidence}</p>
+                )}
+                {(r.plainTodo || r.action) && (
+                  <p className="pso-find-act" title={r.plainTodo ? r.action : undefined}>
+                    <b>To do</b> {r.plainTodo ?? r.action}
                   </p>
                 )}
               </li>
@@ -1191,10 +1249,10 @@ function MachinePanel({ row, frame, onClose, onOpen }: { row: MachineRow; frame:
       </section>
 
       <section className="pso-sec">
-        <h3>Signals</h3>
+        <h3>Sensors</h3>
         <dl className="ph-insp-rows">
           <div>
-            <dt>Required</dt>
+            <dt>Needed</dt>
             <dd className="ast-num">{spec.required}</dd>
           </div>
           <div>
@@ -1202,16 +1260,16 @@ function MachinePanel({ row, frame, onClose, onOpen }: { row: MachineRow; frame:
             <dd className="ast-num">{spec.optional}</dd>
           </div>
           <div>
-            <dt>Valid inputs</dt>
+            <dt>Reading correctly</dt>
             <dd className="ast-num">{counts ? `${counts.valid} of ${counts.total}` : "—"}</dd>
           </div>
         </dl>
       </section>
 
       <section className="pso-sec">
-        <h3>Sub-assemblies</h3>
+        <h3>Parts</h3>
         {subs.length === 0 ? (
-          <p className="pso-empty">No live data</p>
+          <p className="pso-empty">No live readings</p>
         ) : (
           <ul className="pso-subs">
             {subs.map((s) => {
@@ -1237,40 +1295,62 @@ function MachinePanel({ row, frame, onClose, onOpen }: { row: MachineRow; frame:
 
 const LINK_LABEL: Record<MachineAcquisition["gateways"][number]["state"], string> = {
   online: "Online",
-  stale: "Stale",
+  stale: "Not updating",
   offline: "Offline",
   waiting: "Waiting",
   disabled: "Disabled",
 };
 
-/** "Online · last seen 12 s ago"; "Simulated · no heartbeat" while no MQTT heartbeat has arrived. */
+/** "Online · last seen 12 s ago"; "Not heard from yet" while no MQTT heartbeat has arrived. */
 function gatewayStatus(gws: EdgeRegistry["gateways"], link: MachineAcquisition["gateways"][number] | null, serverNow: string | null): string {
-  if (!gws.length) return "Not registered";
+  if (!gws.length) return "Not set up";
   if (!gws.every((g) => g.enabled)) return "Disabled";
-  if (!link?.lastSeenAt) return "Simulated · no heartbeat";
+  if (!link?.lastSeenAt) return "Not heard from yet";
   const now = serverNow ? Date.parse(serverNow) : Date.now();
   const s = Math.max(0, Math.round((now - Date.parse(link.lastSeenAt)) / 1000));
   // Real (wall-clock) seconds: formatDuration counts simulated minutes.
   const ago = s < 60 ? `${s} s` : s < 3600 ? `${Math.floor(s / 60)} min` : `${Math.floor(s / 3600)} h`;
-  const simulated = gws.some((g) => /simulated/i.test(g.notes ?? "")) ? " · values simulated" : "";
-  return `${LINK_LABEL[link.state]} · last seen ${ago} ago${simulated}`;
+  return `${LINK_LABEL[link.state]} · last seen ${ago} ago`;
 }
 
-function InfraPanel({ infra, valid, total, feeders, onClose }: { infra: InfraKey; valid: number; total: number; feeders: number | null; onClose: () => void }) {
+function InfraPanel({
+  infra,
+  catalog,
+  plantId,
+  machineIds,
+  valid,
+  total,
+  feeders,
+  onClose,
+}: {
+  infra: InfraKey;
+  catalog: SiteCatalog;
+  plantId: string | null;
+  machineIds: string[];
+  valid: number;
+  total: number;
+  feeders: number | null;
+  onClose: () => void;
+}) {
+  const primaryId = usePrimaryMachineId();
+  const machineKey = machineIds.join("|");
   // Gateway facts from the edge registry (protocols of its sources, mapped points) and the
   // MQTT runtime (link state, last heartbeat), not hard-coded.
   const [gw, setGw] = useState<{ status: string; protocols: string; points: number } | null>(null);
   useEffect(() => {
-    if (infra !== "GW") return;
+    if (infra !== "GW" || !primaryId) return;
     let alive = true;
     const json = <T,>(url: string) =>
       fetch(url, { cache: "no-store" })
         .then((r) => r.json())
         .then((body: { data?: T }) => body.data ?? null)
         .catch(() => null);
-    Promise.all([json<EdgeRegistry>("/api/edge"), json<MachineAcquisition>("/api/edge/machines/PYR-KLN-01")]).then(([reg, acq]) => {
+    Promise.all([json<EdgeRegistry>("/api/edge"), json<MachineAcquisition>(`/api/edge/machines/${encodeURIComponent(primaryId)}`)]).then(([reg, acq]) => {
       if (!alive || !reg) return;
-      const gws = reg.gateways.filter((g) => g.id.startsWith("gw-pyro"));
+      // The plant's gateways: those serving the plant node or instrumenting one of its machines.
+      const mIds = new Set(machineKey ? machineKey.split("|") : []);
+      const served = new Set(reg.sources.filter((x) => x.machineId && mIds.has(x.machineId)).map((x) => x.gatewayId));
+      const gws = reg.gateways.filter((g) => (plantId !== null && g.siteNodeId === plantId) || served.has(g.id));
       const ids = new Set(gws.map((g) => g.id));
       const srcs = reg.sources.filter((x) => ids.has(x.gatewayId));
       const srcIds = new Set(srcs.map((x) => x.id));
@@ -1284,27 +1364,27 @@ function InfraPanel({ infra, valid, total, feeders, onClose }: { infra: InfraKey
     return () => {
       alive = false;
     };
-  }, [infra]);
+  }, [infra, primaryId, plantId, machineKey]);
   const rows: Array<[string, React.ReactNode]> =
     infra === "GW"
       ? [
-          ["Edge gateway", gw?.status ?? "—"],
-          ["Online signals", ONLINE_SIGNALS],
-          ["Valid inputs now", total ? `${valid} of ${total} (simulated)` : "—"],
-          ["Verified by plant", `0 of ${ONLINE_SIGNALS} (D4 Table 11.1)`],
-          ["Protocols (read-only)", gw?.protocols ?? "—"],
-          ["Mapped points", gw ? gw.points : "—"],
-          ["Manual records", MANUAL_RECORDS],
+          ["Data gateway", gw?.status ?? "—"],
+          ["Sensors sending data", catalog.onlineSignals],
+          ["Reading correctly now", total ? `${valid} of ${total}` : "—"],
+          ["Limits approved by plant", catalog.onlineSignals ? `${catalog.approvedOnline} of ${catalog.onlineSignals}` : "—"],
+          ["Connection types (read only)", gw?.protocols ?? "—"],
+          ["Readings linked", gw ? gw.points : "—"],
+          ["Readings entered by hand", catalog.manualRecords],
         ]
       : [
-          ["MCC / VFD feeder signals", DRIVE_FEEDERS],
-          ["Feeder data valid now", feeders === null ? "—" : `${feeders} of ${DRIVE_FEEDERS}`],
-          ["Machines fed", DRIVE_MACHINES],
-          ["Drive data to ULTRON", "Current, power, speed"],
+          ["Motor panel and speed drive signals", catalog.driveFeeders],
+          ["Drive signals reading correctly", feeders === null ? "—" : `${feeders} of ${catalog.driveFeeders}`],
+          ["Machines powered from here", catalog.driveMachines],
+          ["Drive readings sent to this system", catalog.driveQuantities.join(", ") || "—"],
         ];
   return (
     <>
-      <PanelHead title={INFRA_NAME[infra]} sub="Site infrastructure" onClose={onClose} />
+      <PanelHead title={INFRA_NAME[infra]} sub="Support building" onClose={onClose} />
       <dl className="ph-insp-rows">
         {rows.map(([k, v]) => (
           <div key={k}>

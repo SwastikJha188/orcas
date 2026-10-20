@@ -36,15 +36,15 @@ export const BROKER_STATE: Record<BrokerState, [Tone, string]> = {
   connecting: ["info", "Connecting"],
   reconnecting: ["warn", "Reconnecting"],
   offline: ["bad", "Offline"],
-  disabled: ["idle", "Disabled"],
+  disabled: ["idle", "Switched off"],
 };
 
 /** Broker chip for a broker id; honest when there is no live status yet. */
 export function BrokerTag({ ix, brokerId }: { ix: EdgeIndex; brokerId: string | null }) {
   const broker = brokerId ? ix.brokers.get(brokerId) : undefined;
-  if (!broker) return <StatusTag tone="idle" label="No broker" />;
+  if (!broker) return <StatusTag tone="idle" label="No data connection" />;
   const live = ix.brokerState.get(broker.id);
-  if (!live) return <StatusTag tone="idle" label={broker.enabled ? "No status" : "Disabled"} />;
+  if (!live) return <StatusTag tone="idle" label={broker.enabled ? "No status" : "Switched off"} />;
   const [tone, label] = BROKER_STATE[live.state];
   return <StatusTag tone={tone} label={label} />;
 }
@@ -80,7 +80,7 @@ export function EdgeGatewayView({ ix, gw, now, sectionNav, onSelect, onEdit, onA
     setAddNote(null);
     try {
       const res = await commission({ gatewayId: gw.id, sources: pending });
-      setAddNote({ tone: "good", text: `Added ${plural(res.sourcesCreated, "source")} · ${plural(res.cardsCreated, "card")}${res.skipped ? ` · ${res.skipped} already registered` : ""}` });
+      setAddNote({ tone: "good", text: `Added ${plural(res.sourcesCreated, "device")} · ${plural(res.cardsCreated, "sensor card")}${res.skipped ? ` · ${res.skipped} already registered` : ""}` });
     } catch (err) {
       setAddNote({ tone: "bad", text: (err as Error).message });
     } finally {
@@ -93,38 +93,38 @@ export function EdgeGatewayView({ ix, gw, now, sectionNav, onSelect, onEdit, onA
   return (
     <>
       <ContentsHead
-        crumbs={[{ label: "Devices" }, { label: "Edge network", onClick: () => onSelect({ type: "network" }) }, { label: gw.code }]}
+        crumbs={[{ label: "Devices" }, { label: "Data collectors", onClick: () => onSelect({ type: "network" }) }, { label: gw.code }]}
         title={gw.name}
         badge={
           <>
             <IconGateway size={12} />
-            Gateway
+            Data collector
           </>
         }
         status={<StatusTag tone={LINK_TONE[link.status]} label={LINK_LABEL[link.status]} />}
         actions={
           <>
             <PillButton variant="secondary" icon={<IconEdit size={13} />} onClick={onEdit}>
-              Edit gateway
+              Edit data collector
             </PillButton>
             <PillButton variant="primary" icon={<IconPlus size={13} />} onClick={() => onAddSource()}>
-              Add source
+              Add device
             </PillButton>
           </>
         }
         sectionNav={sectionNav}
       />
 
-      <section className="ast-kpis" aria-label="Gateway status">
-        <Kpi label="Broker" value={broker ? broker.name : "Not assigned"} aside={<BrokerTag ix={ix} brokerId={gw.brokerId} />}>
-          <span className="ast-caption ast-num">{broker ? brokerLive?.host ?? `${broker.host}:${broker.port}` : "Assign a broker so its messages are read"}</span>
+      <section className="ast-kpis" aria-label="Data collector status">
+        <Kpi label="Data connection" value={broker ? broker.name : "Not linked"} aside={<BrokerTag ix={ix} brokerId={gw.brokerId} />}>
+          <span className="ast-caption ast-num">{broker ? brokerLive?.host ?? `${broker.host}:${broker.port}` : "Link a data connection (MQTT broker) so its messages are read"}</span>
           {broker && <span className="ast-caption">{broker.tls ? "TLS" : "Plain TCP"}{brokerLive?.protocolVersion ? ` · MQTT ${brokerLive.protocolVersion === 5 ? "5" : "3.1.1"}` : ""}</span>}
         </Kpi>
         <Kpi label="Network" value={gw.ipAddress ?? live?.ip ?? "No IP address"}>
           <span className="ast-caption">{formatLabel(ix, gw.formatId)}</span>
           <code className="dv-code">{subscription}</code>
         </Kpi>
-        <Kpi label="Link" value={LINK_LABEL[link.status]} tone={link.status === "waiting" || link.status === "disabled" ? undefined : LINK_TONE[link.status]}>
+        <Kpi label="Connection" value={LINK_LABEL[link.status]} tone={link.status === "waiting" || link.status === "disabled" ? undefined : LINK_TONE[link.status]}>
           {live ? (
             <>
               <span className="ast-caption ast-num">Last seen {ago(live.lastSeenAt, now)} · seq {fmt(live.lastSequence)}</span>
@@ -133,7 +133,7 @@ export function EdgeGatewayView({ ix, gw, now, sectionNav, onSelect, onEdit, onA
               </span>
             </>
           ) : (
-            <span className="ast-caption">{link.reason ?? "Nothing published yet"}</span>
+            <span className="ast-caption">{link.reason ?? "Nothing sent yet"}</span>
           )}
         </Kpi>
         <Kpi label="Site" value={site ?? "No site"}>
@@ -143,19 +143,19 @@ export function EdgeGatewayView({ ix, gw, now, sectionNav, onSelect, onEdit, onA
         </Kpi>
       </section>
 
-      <section className="hx-section" aria-label="Sources">
+      <section className="hx-section" aria-label="Devices">
         <h2 className="ast-section-label">
-          Sources
+          Devices
           <span>
-            {sources.length === 0 ? "0" : `${kindSummary(sources)} · ${plural(points.length, "point")}`}
+            {sources.length === 0 ? "0" : `${kindSummary(sources)} · ${plural(points.length, "reading point")}`}
           </span>
         </h2>
         {sources.length === 0 ? (
           <div className="ast-card ast-empty">
-            <strong className="hx-empty-title">No sources</strong>
-            Add the DAQ racks, PLCs, SCADA or DCS this gateway reads. The source code is the code it publishes under.
+            <strong className="hx-empty-title">No devices</strong>
+            Add the sensor racks, controllers (PLC), SCADA or DCS systems this data collector reads. The device code is the code it sends its data under.
             <PillButton variant="secondary" icon={<IconPlus size={13} />} onClick={() => onAddSource()}>
-              Add source
+              Add device
             </PillButton>
           </div>
         ) : (

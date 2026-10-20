@@ -12,6 +12,8 @@ import { fmtMin } from "@/lib/kiln-sim/test-lab";
 
 export interface ResponseMarker {
   id: string;
+  /** Text by the marker (the rule name); the ID stays in the tooltip. */
+  label?: string;
   /** Plant minutes after scenario start. */
   at: number;
   tone: "good" | "warn" | "bad" | "info";
@@ -51,7 +53,7 @@ export function SimulationResponseChart({ times, health, start, documented, mark
   }, []);
 
   if (times.length < 2 || health.length < 2) {
-    return <div className="ast-empty">Collecting history. The response appears after the first simulated minutes.</div>;
+    return <div className="ast-empty">Collecting history. The response appears after the first few minutes.</div>;
   }
 
   // Window: 20 min of lead-in before the scenario start when the history holds it.
@@ -103,7 +105,7 @@ export function SimulationResponseChart({ times, health, start, documented, mark
   const placed = markers
     .filter((mk) => mk.at >= x0 && mk.at <= x1)
     .map((mk) => {
-      const text = `${mk.id}${mk.expected ? "" : " ·unexp."}`;
+      const text = `${mk.label ?? mk.id}${mk.expected ? "" : " · unexpected"}`;
       return { mk, text, cx: sx(mk.at), cy: sy(healthAt(mk.at)), w: text.length * 6.6 };
     })
     .sort((a, b) => a.cx - b.cx);
@@ -164,7 +166,7 @@ export function SimulationResponseChart({ times, health, start, documented, mark
               textAnchor={sx(documented) > W - 100 ? "end" : "start"}
               className="sim-mark-text"
             >
-              D5 {label(documented)}
+              Due {label(documented)}
             </text>
           </g>
         )}
@@ -177,6 +179,7 @@ export function SimulationResponseChart({ times, health, start, documented, mark
           <g key={`${mk.id}-${mk.at}`} data-tone={mk.tone} className="sim-marker">
             <line x1={cx} x2={cx} y1={cy} y2={H - PAD.b} />
             <circle cx={cx} cy={cy} r={4.5} />
+            <title>{mk.id}</title>
             <text x={tx} y={ty} textAnchor="middle">
               {text}
             </text>

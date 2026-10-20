@@ -49,7 +49,7 @@ export type EquipmentStates = Record<EquipmentId, EquipmentState>;
 export const EQUIPMENT_LABEL: Record<EquipmentId, string> = {
   "fsl-blower-duty": "Aeration blower (duty)",
   "fsl-blower-standby": "Aeration blower (standby)",
-  "fsl-gate": "Silo extraction gate",
+  "fsl-gate": "Silo air-slide outlet gates",
   "kfs-airslide-blower": "Air-slide blower",
   "kfs-elevator": "Bucket elevator",
   "phc-idfan": "ID fan",
@@ -121,25 +121,25 @@ export function defaultEquipment(): EquipmentStates {
  * The aeration header and blower current follow whichever blower carries it.
  */
 const UNIT_TAGS: Array<[EquipmentId | "fsl-aeration", string[]]> = [
-  ["fsl-aeration", ["PRS-FSL-01", "ELE-FSL-01"]],
-  ["kfs-airslide-blower", ["PRS-KFS-01"]],
-  ["kfs-elevator", ["ELE-KFS-01", "VIB-KFS-01", "TMP-KFS-01", "SPD-KFS-01", "FLO-KFS-01", "PRS-KFS-02", "POS-KFS-01"]],
-  ["phc-idfan", ["SPD-PHC-01", "ELE-PHC-01", "VIB-PHC-01", "VIB-PHC-02", "TMP-PHC-09", "TMP-PHC-10", "POS-PHC-01", "PRS-PHC-01", "PRS-PHC-02", "PRS-PHC-03", "PRS-PHC-04", "PRS-PHC-05", "PRS-PHC-06", "PRS-PHC-07", "PRS-PHC-08", "PRS-PHC-09", "PRS-KLN-01"]],
+  ["fsl-aeration", ["PRS-FSL-01", "ELE-FSL-01", "TMP-FSL-01"]],
+  ["kfs-airslide-blower", ["PRS-KFS-01", "ELE-KFS-02"]],
+  ["kfs-elevator", ["FLO-BRN-02", "ELE-KFS-01", "VIB-KFS-01", "TMP-KFS-01", "TMP-KFS-02", "SPD-KFS-01", "FLO-KFS-01", "FLO-KFS-02", "PRS-KFS-02", "PRS-KFS-06", "PRS-KFS-04"]],
+  ["phc-idfan", ["SPD-PHC-01", "ELE-PHC-01", "TMP-PHC-11", "PRS-PHC-10", "VIB-PHC-01", "VIB-PHC-02", "TMP-PHC-09", "TMP-PHC-10", "POS-PHC-01", "PRS-PHC-01", "PRS-PHC-02", "PRS-PHC-03", "PRS-PHC-04", "PRS-PHC-05", "PRS-PHC-06", "PRS-PHC-07", "PRS-PHC-08", "PRS-PHC-09", "PRS-KLN-01"]],
   ["kln-main-drive", ["ELE-KLN-01", "SPD-KLN-01", "TMP-KLN-21", "TMP-KLN-19", "TMP-KLN-20", "VIB-KLN-01", "VIB-KLN-02", "VIB-KLN-03", "VIB-KLN-04", "TMP-KLN-22", "TMP-KLN-23"]],
   ["kln-lube-pump", ["PRS-KLN-04", "PRS-KLN-05"]],
   ["kln-thrust-hpu", ["PRS-KLN-07"]],
   ["kln-outlet-fan", ["TMP-KLN-25"]],
-  ["brn-pafan", ["PRS-BRN-01", "PRS-BRN-02", "PRS-BRN-03", "VIB-BRN-01", "TMP-BRN-01", "ELE-BRN-01"]],
+  ["brn-pafan", ["PRS-BRN-01", "PRS-BRN-02", "PRS-BRN-03", "VIB-BRN-01", "TMP-BRN-01", "ELE-BRN-01", "TMP-BRN-05"]],
   ["brn-coal-feeder", ["FLO-BRN-01", "CAL-BRN-01"]],
-  ["brn-coal-blower", ["PRS-BRN-04", "VIB-BRN-02", "ELE-BRN-02"]],
+  ["brn-coal-blower", ["PRS-BRN-04", "VIB-BRN-02", "ELE-BRN-02", "TMP-BRN-06"]],
   ...([1, 2, 3, 4, 5, 6] as const).map((k): [EquipmentId, string[]] => [
     `clr-fan-${k}` as EquipmentId,
-    [`PRS-CLR-0${k}`, `ELE-CLR-0${k}`, `TMP-CLR-0${k}`, ...(k <= 3 ? [`VIB-CLR-0${k}`] : [])],
+    [`PRS-CLR-0${k}`, `ELE-CLR-0${k}`, `TMP-CLR-0${k}`, `TMP-CLR-${16 + k}`, ...(k <= 3 ? [`VIB-CLR-0${k}`] : [])],
   ]),
   ["clr-grate-hpu", ["SPD-CLR-01", "PRS-CLR-07", "TMP-CLR-07"]],
-  ["clr-vent-fan", ["VIB-CLR-07", "TMP-CLR-10", "ELE-CLR-07"]],
+  ["clr-vent-fan", ["VIB-CLR-07", "TMP-CLR-10", "ELE-CLR-07", "TMP-CLR-23"]],
   ["hmr-crusher", ["TMP-HMR-03", "ELE-HMR-01", "VIB-HMR-01", "VIB-HMR-02", "TMP-HMR-01", "TMP-HMR-02", "SPD-HMR-01"]],
-  ["csl-conveyor", ["VIB-CSL-01", "ELE-CSL-01", "SPD-CSL-01"]],
+  ["csl-conveyor", ["VIB-CSL-01", "ELE-CSL-01", "SPD-CSL-01", "TMP-CSL-02"]],
   ["csl-dust-fan", ["PRS-CSL-01", "ELE-CSL-02"]],
 ];
 
@@ -179,4 +179,22 @@ export function observedEquipment(eq: EquipmentStates): EquipmentStates {
   const o = { ...eq };
   for (const id of PROCESS_ONLY) o[id] = "run";
   return o;
+}
+
+/** Tags each unit governs (the shared aeration header goes to neither blower: STS-FSL-02 says which one runs). */
+const TAGS_OF_UNIT: Partial<Record<EquipmentId, string[]>> = Object.fromEntries(
+  UNIT_TAGS.filter(([u]) => u !== "fsl-aeration").map(([u, tags]) => [u, tags]),
+);
+
+/**
+ * Run states of one machine's units with run feedback, as the edge sees them
+ * (process-only units are left out: the edge cannot see them stop).
+ */
+export function machineEquipment(eqObs: EquipmentStates, machineId: string): Record<string, { label: string; state: EquipmentState; tags: string[] }> {
+  const out: Record<string, { label: string; state: EquipmentState; tags: string[] }> = {};
+  for (const id of EQUIPMENT_IDS) {
+    if (EQUIPMENT_MACHINE[id] !== machineId || PROCESS_ONLY.includes(id)) continue;
+    out[id] = { label: EQUIPMENT_LABEL[id], state: eqObs[id], tags: TAGS_OF_UNIT[id] ?? [] };
+  }
+  return out;
 }

@@ -1,14 +1,14 @@
 /* ==========================================================================
    Machine › Sensors — data model.
    Pure derivations for the Sensors page: data-quality verdicts, the D5
-   sensor-validation method behind each verdict (Table 9.6), the D4
-   instrument specification used for coverage (Tables 5.xc, 6.2, 7.1), and
-   the calculated values of D5 Table 9.2. No React.
+   sensor-validation method behind each verdict (Table 9.6) with the tags it
+   covers derived from the DB catalog, limit approval captions from the DB
+   limit rows, and the calculated values of D5 Table 9.2. No React.
    ========================================================================== */
 
 import type { MachineLivePoint } from "@/types/edge";
+import type { MeasurementDto, MeasurementLimitDto } from "@/types/monitoring";
 import type { SimEvent, SimFrame } from "@/lib/kiln-sim/engine";
-import { KILN_DEFS } from "@/lib/kiln-sim/defs";
 import { EQUATION_BY_TARGET } from "@/lib/kiln-sim/relationships";
 import type { DefSignal, PlantDefs } from "@/lib/plant-defs";
 import { PYRO_DEFS } from "@/lib/pyro-sim/defs";
@@ -26,6 +26,7 @@ import {
 } from "@/lib/pyro-sim/sensor-meta";
 import type { Tone } from "./assets-shell-ui";
 import type { DetailedSensorInfo } from "./machine-sensor-mapping-view";
+import { VALIDITY_WORDS } from "@/components/ui/status";
 
 /* ------------------------------------------------------------ basics */
 
@@ -56,8 +57,8 @@ export function parseSampleRate(raw: string): { sps: number | null; label: strin
   if (m) return finalize(1 / (60 * parseFloat(m[1])));
   m = s.match(/([\d.]+)\s*s\b/);
   if (m) return finalize(1 / parseFloat(m[1]));
-  if (/change/i.test(s)) return { sps: null, label: "On change" };
-  if (/model|internal|derived/i.test(s)) return { sps: null, label: "Derived" };
+  if (/change/i.test(s)) return { sps: null, label: "When it changes" };
+  if (/model|internal|derived/i.test(s)) return { sps: null, label: "Worked out" };
   return { sps: null, label: "—" };
 }
 
@@ -66,10 +67,10 @@ function finalize(sps: number) {
 }
 
 export function formatSps(sps: number): string {
-  if (sps >= 1000) return `${+(sps / 1000).toFixed(1)} kS/s`;
-  if (sps >= 1) return `${+sps.toFixed(1)} S/s`;
-  if (sps >= 1 / 60) return `1 / ${+(1 / sps).toFixed(0)} s`;
-  return `1 / ${+(1 / sps / 60).toFixed(0)} min`;
+  if (sps >= 1000) return `${+(sps / 1000).toFixed(1)}k per s`;
+  if (sps >= 1) return `${+sps.toFixed(1)} per s`;
+  if (sps >= 1 / 60) return `every ${+(1 / sps).toFixed(0)} s`;
+  return `every ${+(1 / sps / 60).toFixed(0)} min`;
 }
 
 export function slotOf(cardId: string): { slot: string; module: string } {
@@ -104,19 +105,22 @@ export const QUALITY_TONE: Record<Quality, Tone> = {
 
 export const QUALITY_ORDER: Quality[] = ["Valid", "Suspect", "Invalid", "Stale", "No data", "No live feed"];
 
+/** What each data-quality verdict means, in words anyone can read (docs/plain-language.md). */
+export const QUALITY_LABEL: Record<Quality, string> = { ...VALIDITY_WORDS, "No live feed": "Not live" };
+
 /** The check that produced the current verdict (task / D5 Table 9.6 vocabulary). */
 export type CheckKind = "range" | "rate" | "flatline" | "band" | "cross" | "status" | "manual" | "input" | "link";
 
 export const CHECK_LABEL: Record<CheckKind, string> = {
-  range: "Range / zero",
-  rate: "Rate of change",
-  flatline: "Flat-line / stale",
-  band: "Variability band",
-  cross: "Cross-check",
-  status: "Instrument status",
-  manual: "Manual comparison",
-  input: "Input validity",
-  link: "Gateway link",
+  range: "Out of range or zero",
+  rate: "Jumped too fast",
+  flatline: "Stuck or not updating",
+  band: "Too steady or too noisy",
+  cross: "Disagrees with related sensors",
+  status: "Instrument reports a fault",
+  manual: "Disagrees with a hand reading",
+  input: "Uses a doubtful reading",
+  link: "Connection lost",
 };
 
 export interface QualityInfo {
@@ -171,10 +175,10 @@ export function qualityOf(s: DetailedSensorInfo, point: MachineLivePoint | undef
     return {
       quality,
       tone: QUALITY_TONE[quality],
-      basis: "Sensor validation (R-DQ-01 / R-DQ-02)",
+      basis: "Automatic sensor checks",
       note:
         s.live.qualityNote ??
-        (quality === "Valid" ? "Passes data-quality and sensor-validation checks." : `Marked ${quality.toLowerCase()} by sensor validation.`),
+        (quality === "Valid" ? "Passes every automatic check that the reading can be trusted." : `The automatic sensor checks say: ${QUALITY_LABEL[quality].toLowerCase()}.`),
       check: cls?.check ?? null,
       method: cls?.method ?? null,
       // The verdict decides the rule: invalid readings are R-DQ-01, suspect ones R-DQ-02.
@@ -186,14 +190,14 @@ export function qualityOf(s: DetailedSensorInfo, point: MachineLivePoint | undef
     const quality: Quality = st === "stale" ? "Stale" : st === "nodata" ? "No data" : "Valid";
     const note =
       quality === "Valid"
-        ? `Live reading from ${point.source.code} · card ${point.card} · ch ${point.channel}.`
+        ? `Live reading from ${point.source.code}, card ${point.card}, channel ${point.channel}.`
         : quality === "Stale"
-          ? `No fresh reading from ${point.source.code} · card ${point.card}; showing the last value.`
-          : `Channel ${point.card}/${point.channel} on ${point.source.code} has not reported.`;
+          ? `No new reading from ${point.source.code}, card ${point.card}; showing the last value received.`
+          : `Card ${point.card}, channel ${point.channel} on ${point.source.code} has not sent any reading.`;
     return {
       quality,
       tone: QUALITY_TONE[quality],
-      basis: "Gateway channel (MQTT)",
+      basis: "Live feed from the plant network",
       note,
       check: quality === "Valid" ? null : quality === "Stale" ? "flatline" : "link",
       method: null,
@@ -203,12 +207,12 @@ export function qualityOf(s: DetailedSensorInfo, point: MachineLivePoint | undef
   return {
     quality: "No live feed",
     tone: "idle",
-    basis: "Stored value",
+    basis: "Last saved value",
     note: isCalculated(s)
-      ? "Calculated value; no live calculation is running for this machine."
+      ? "Worked out from other sensors, but that calculation is not running live for this machine."
       : isManual(s)
-        ? "Manual record entered in ULTRON; showing the stored DB value."
-        : "No gateway channel is mapped to this sensor; showing the stored DB value.",
+        ? "Typed in by hand; showing the last saved value."
+        : "This sensor is not connected to a live feed yet; showing the last saved value.",
     check: null,
     method: null,
     rule: null,
@@ -220,15 +224,17 @@ export interface SensorRow extends DetailedSensorInfo {
   livePoint?: MachineLivePoint;
   /** Engine signal definition (live machines), when the tag is specified. */
   spec?: DefSignal;
-  /** D4-OSW-PE-PYR schedule entry (pyro line online signals). */
+  /** D4-OSW-PE-PYR schedule entry (pyro line online signals): drawing sheet and purpose text. */
   d4?: PyroSpecEntry;
+  /** DB measurement (GET /api/measurements): specification, priority, install status, full limit, reference. */
+  m?: MeasurementDto;
   /** Process context vs condition monitoring (PCM terminology). */
   role: "Process" | "Condition";
   /** Out of the D5 instrument range (checked on this page, calc.). */
   outOfRange: boolean;
 }
 
-/** D4-OSW-PE-PYR / VPC 066 schedule entry for a tag (the kiln fleet has none). */
+/** D4-OSW-PE-PYR / VPC 066 schedule entry for a tag (the kiln fleet has none): drawing sheet, purpose and location text. */
 export function d4Of(defs: PlantDefs | null, tag: string): PyroSpecEntry | undefined {
   return defs?.plant === "pyro" ? (PYRO_SPEC[tag] ?? VPC_SPEC[tag]) : undefined;
 }
@@ -238,38 +244,68 @@ export function d4Of(defs: PlantDefs | null, tag: string): PyroSpecEntry | undef
  * the label never asserts that a device is installed or approved.
  */
 export const D4_SOURCE_LABEL: Record<PyroSpecEntry["source"], string> = {
-  "R?": "Existing (R?, not verified)",
-  "N?": "New (N?, not approved)",
-  "R/N?": "Existing or new (R/N?, to be established)",
+  "R?": "Existing, not yet checked on site",
+  "N?": "New, not yet approved",
+  "R/N?": "Existing or new, not yet decided",
 };
 
-/** Caption for every pyro-line limit and limit status (D4 §7.2: no limit is plant-approved). */
-/** Pyro line: D5 Table 9.2 provisional logic; nothing is plant-approved (D4 §7.2). */
-export const PYRO_DEMO_LIMIT = "Provisional limit (D5 Table 9.2) · not plant-approved (D4 §7.2)";
+/** Approval caption of a DB limit row ("Provisional limit · not plant-approved · final from …"); null without a limit. */
+export function limitApprovalText(limit: MeasurementLimitDto | null | undefined): string | null {
+  if (!limit) return null;
+  if (limit.approval === "approved") return ["Approved limit", limit.approvedBy ? `by ${limit.approvedBy}` : ""].filter(Boolean).join(" ");
+  return ["Draft limit, not yet approved by the plant", limit.source ? `final value will come from ${limit.source}` : ""].filter(Boolean).join(" · ");
+}
 
-/** Caption for every pyro-line rack slot / channel: an allocation proposal, not installed hardware. */
-export const PYRO_PROPOSED_RACK = "Vibration on four IEPE DAQ nodes (D5 Table 7.2); every other signal read-only from PLC / DCS and the scanner, analyser and camera servers. Addresses and slots pending the D3 walkdown (D5 Table 13.1).";
+/** Approval summary of a set of DB limit rows: "Provisional · not plant-approved" when any is provisional; null when none has a limit. */
+export function limitsApprovalText(limits: ReadonlyArray<MeasurementLimitDto | null | undefined>): string | null {
+  const rows = limits.filter((l): l is MeasurementLimitDto => Boolean(l));
+  if (!rows.length) return null;
+  const provisional = rows.filter((l) => l.approval === "provisional").length;
+  if (!provisional) return "Approved limits";
+  return provisional === rows.length ? "Draft limits, not yet approved by the plant" : `${provisional} of ${rows.length} limits are drafts, not yet approved by the plant`;
+}
+
+/** Warning / alarm values of a DB limit row in words ("warn 380 · alarm 420"); null when it holds no values. */
+export function limitValuesText(limit: MeasurementLimitDto | null | undefined, unit?: string | null): string | null {
+  if (!limit) return null;
+  const u = unit && unit !== "state" ? ` ${unit}` : "";
+  const v = (x: number | null) => (x === null ? null : `${fmt(x)}${limit.relative || limit.warnPct !== null ? "" : u}`);
+  const band = (lo: number | null, hi: number | null) => [lo !== null ? `below ${v(lo)}` : null, hi !== null ? `above ${v(hi)}` : null].filter(Boolean).join(" or ");
+  const warn = limit.warnValue !== null ? v(limit.warnValue) : band(limit.warnLo, limit.warnHi) || (limit.warnPct !== null ? `${limit.warnPct} %` : null);
+  const alarm = limit.alarmValue !== null ? v(limit.alarmValue) : band(limit.alarmLo, limit.alarmHi) || (limit.alarmPct !== null ? `${limit.alarmPct} %` : null);
+  const rate = limit.ratePerHour !== null ? `changing faster than ${fmt(limit.ratePerHour)}${u} per hour` : null;
+  const out = [warn ? `Alert at ${warn}` : null, alarm ? `Critical at ${alarm}` : null, rate].filter(Boolean).join(" · ");
+  return out ? `${limit.kindName}: ${out}` : null;
+}
 
 /** D4 Table 11.1 acceptance: valid readings of the Required tags. */
 export const D4_REQUIRED_TARGET_PCT = 95;
 
 /**
- * Valid share of the machine's D4 Required online tags in the current frame
- * (pyro line; D4 Table 11.1 acceptance ≥ 95 %). Null for machines without a
- * D4 schedule or without Required tags.
+ * Valid share of the machine's Required online tags in the current frame
+ * (pyro line; D4 Table 11.1 acceptance ≥ 95 %). The priority is the DB
+ * measurement's. Null for machines without Required tags (or before the
+ * measurements load).
  */
-export function requiredAvailability(frame: SimFrame | null | undefined): { valid: number; total: number; pct: number; invalid: string[] } | null {
+export function requiredAvailability(
+  frame: SimFrame | null | undefined,
+  measurements: ReadonlyMap<string, MeasurementDto>,
+  /** Only these sensors (one part); every sensor when omitted. */
+  within: ReadonlySet<string> | null = null,
+): { valid: number; total: number; pct: number; invalid: string[] } | null {
   if (frame?.defs.plant !== "pyro") return null;
-  const tags = frame.defs.signals.filter((s) => (PYRO_SPEC[s.tag] ?? VPC_SPEC[s.tag])?.priority === "Required").map((s) => s.tag);
+  const tags = frame.defs.signals
+    .filter((s) => (!within || within.has(s.tag)) && measurements.get(s.tag)?.origin === "online" && measurements.get(s.tag)?.priority === "Required")
+    .map((s) => s.tag);
   if (!tags.length) return null;
   const invalid = tags.filter((t) => frame.signals[t]?.quality !== "Good");
   const valid = tags.length - invalid.length;
   return { valid, total: tags.length, pct: Math.round((valid / tags.length) * 1000) / 10, invalid };
 }
 
-/** Channel design still on HOLD (D4 Table 3.1: PRX-KLN-01…06 metering-channel candidates). */
-export function isHoldChannel(name: string | undefined, d4?: PyroSpecEntry): boolean {
-  return /\(HOLD\)/i.test(name ?? "") || /\(HOLD\)/i.test(d4?.sensorType ?? "");
+/** Channel design still on HOLD (D4 Table 3.1: PRX-KLN-01…06 metering-channel candidates), per the DB name / sensor type. */
+export function isHoldChannel(name: string | undefined, m?: Pick<MeasurementDto, "sensorType"> | null): boolean {
+  return /\(HOLD\)/i.test(name ?? "") || /\(HOLD\)/i.test(m?.sensorType ?? "");
 }
 
 const PROCESS_RX = /flow|feed|fuel|o₂|o2|co\b|gas|draft|pressure|hood|burning|speed|torque|current|level/i;
@@ -307,101 +343,129 @@ export interface ValidationMethod {
   evaluated: boolean;
 }
 
-const RTD = KILN_DEFS.signals.filter((s) => s.instrument === "Pt100 RTD").map((s) => s.tag);
-const ANALOG_WIRED = KILN_DEFS.signals.filter((s) => s.type === "analog" && !s.calculated).map((s) => s.tag);
+/** DB facts a validation method's tag set is derived from. */
+export interface ValidationSource {
+  /** The machine's DB measurements (GET /api/measurements). */
+  measurements: ReadonlyArray<MeasurementDto>;
+  /** Rule code → input tags from the DB (catalog `sensors[].reasons[]`). */
+  ruleInputs: ReadonlyMap<string, string[]>;
+}
 
-/** Kiln-seal fleet (D5 Table 9.6). Other plants: `validationMethods(defs)`. */
-export const VALIDATION_METHODS: ValidationMethod[] = [
-  {
-    id: "range",
-    method: "Range / flat / zero",
-    check: "flatline",
-    rule: "R-DQ-01",
-    appliesTo: "All wired analog signals",
-    flagsWhen: "Six identical samples while running (flat-line), or vibration ≈ 0 while the kiln turns",
-    tags: ANALOG_WIRED,
-    evaluated: true,
-  },
-  {
-    id: "status",
-    method: "Instrument status",
-    check: "status",
-    rule: "R-DQ-01",
-    appliesTo: "Gas analyser O₂ / CO, shell maximum",
-    flagsWhen: "Analyser status FAULT, or shell-scanner coverage below 90 %",
-    tags: ["GAS-KLN-01", "GAS-KLN-02", "CAL-KLN-03"],
-    evaluated: true,
-  },
-  {
-    id: "plausibility",
-    method: "Physical plausibility",
-    check: "rate",
-    rule: "R-DQ-02",
-    appliesTo: "Thermal signals (Pt100 RTDs)",
-    flagsWhen: "One-sample step > 6 K and > 75 % of the remaining deviation, unexplained by drivers",
-    tags: RTD,
-    evaluated: true,
-  },
-  {
-    id: "driven",
-    method: "Driven signals disagree",
-    check: "cross",
-    rule: "R-DQ-02",
-    appliesTo: "Torque, gearbox oil temperature",
-    flagsWhen: "Reading moved > 5σ but the signals it drives follow the model, not the reading",
-    tags: ["ELE-KLN-01", "TMP-KLN-15"],
-    evaluated: true,
-  },
-  {
-    id: "witness",
-    method: "Witness vote",
-    check: "cross",
-    rule: "R-DQ-02",
-    appliesTo: "Feed meter, fuel meter",
-    flagsWhen: "Two independent estimates agree with each other but not with the meter (feed > 22 t/h, fuel > 0.8 t/h)",
-    tags: ["FLO-KLN-01", "FLO-KLN-02"],
-    evaluated: true,
-  },
-  {
-    id: "thermal",
-    method: "Thermal signature",
-    check: "cross",
-    rule: "R-DQ-02",
-    appliesTo: "O₂ analyser",
-    flagsWhen: "O₂ > 0.35 vol% above model with no inlet-temperature drop and a steady process",
-    tags: ["GAS-KLN-01"],
-    evaluated: true,
-  },
-  {
-    id: "noise",
-    method: "Noise",
-    check: "rate",
-    rule: "R-DQ-02",
-    appliesTo: "All non-moving signals",
-    flagsWhen: "Second-difference noise > 6 × normal",
-    tags: ANALOG_WIRED,
-    evaluated: false,
-  },
-];
+const isOnline = (m: MeasurementDto) => m.origin === "online";
+const isAnalog = (m: MeasurementDto) => m.valueKind === "analog";
+
+/**
+ * Tags a method covers: the DB inputs of its rule (R-DQ-01 / R-DQ-02) when the
+ * DB lists any, else every DB measurement — narrowed to the measurements the
+ * method applies to (DB instrument, origin, value kind, quantity).
+ */
+function coveredTags(src: ValidationSource, rule: "R-DQ-01" | "R-DQ-02", applies: (m: MeasurementDto) => boolean): string[] {
+  const inputs = src.ruleInputs.get(rule);
+  const pool = inputs?.length ? src.measurements.filter((m) => inputs.includes(m.tag)) : src.measurements;
+  return pool.filter(applies).map((m) => m.tag);
+}
+
+/** Kiln-seal fleet (D5 Table 9.6): methods and conditions; covered tags from the DB. Other plants: `validationMethods(defs, src)`. */
+function kilnValidationMethods(src: ValidationSource): ValidationMethod[] {
+  const analogWired = (m: MeasurementDto) => isOnline(m) && isAnalog(m);
+  const inst = (m: MeasurementDto) => m.instrument ?? m.sensorType ?? "";
+  return [
+    {
+      id: "range",
+      method: "Range / flat / zero",
+      check: "flatline",
+      rule: "R-DQ-01",
+      appliesTo: "Every wired sensor that gives a number",
+      flagsWhen: "The same value six times in a row while running (stuck), or no vibration at all while the kiln turns",
+      tags: coveredTags(src, "R-DQ-01", analogWired),
+      evaluated: true,
+    },
+    {
+      id: "status",
+      method: "Instrument status",
+      check: "status",
+      rule: "R-DQ-01",
+      appliesTo: "Oxygen and carbon monoxide analysers, hottest shell point",
+      flagsWhen: "The analyser reports a fault, or the shell scanner sees less of the shell than it should",
+      tags: coveredTags(src, "R-DQ-01", (m) => (isOnline(m) && isAnalog(m) && /analyser/i.test(inst(m))) || (m.origin === "calculated" && /scanner/i.test(`${m.sensorType ?? ""} ${m.name}`))),
+      evaluated: true,
+    },
+    {
+      id: "plausibility",
+      method: "Physical plausibility",
+      check: "rate",
+      rule: "R-DQ-02",
+      appliesTo: "Temperature sensors (Pt100)",
+      flagsWhen: "Jumps more than 6 °C in one reading, and more than 75 % of the remaining gap, with nothing in the process to explain it",
+      tags: coveredTags(src, "R-DQ-02", (m) => isOnline(m) && /RTD/i.test(inst(m))),
+      evaluated: true,
+    },
+    {
+      id: "driven",
+      method: "Driven signals disagree",
+      check: "cross",
+      rule: "R-DQ-02",
+      appliesTo: "Drive torque, gearbox oil temperature",
+      flagsWhen: "The reading moved far from expected (over 5 × its usual spread), but the readings it should affect did not move",
+      tags: coveredTags(src, "R-DQ-02", (m) => isOnline(m) && isAnalog(m) && (/torque/i.test(m.name) || (m.quantity.id === "temperature" && /gearbox oil/i.test(m.name)))),
+      evaluated: true,
+    },
+    {
+      id: "witness",
+      method: "Witness vote",
+      check: "cross",
+      rule: "R-DQ-02",
+      appliesTo: "Feed meter, fuel meter",
+      flagsWhen: "Two separate estimates agree with each other but not with the meter (feed above 22 t/h, fuel above 0.8 t/h)",
+      tags: coveredTags(src, "R-DQ-02", (m) => isOnline(m) && isAnalog(m) && /flow meter/i.test(inst(m))),
+      evaluated: true,
+    },
+    {
+      id: "thermal",
+      method: "Thermal signature",
+      check: "cross",
+      rule: "R-DQ-02",
+      appliesTo: "Oxygen (O₂) analyser",
+      flagsWhen: "Oxygen reads more than 0.35 % above expected, but the inlet temperature has not dropped and the process is steady",
+      tags: coveredTags(src, "R-DQ-02", (m) => isOnline(m) && /analyser/i.test(inst(m)) && /O₂|\bO2\b/i.test(m.name)),
+      evaluated: true,
+    },
+    {
+      id: "noise",
+      method: "Noise",
+      check: "rate",
+      rule: "R-DQ-02",
+      appliesTo: "Sensors on parts that do not move",
+      flagsWhen: "The reading jumps around more than 6 × normal",
+      tags: coveredTags(src, "R-DQ-02", analogWired),
+      evaluated: false,
+    },
+  ];
+}
 
 /**
  * The validation methods the machine's engine evaluates, with the tags each
- * covers from its own catalog. Kiln fleet: D5 Table 9.6 as above. Pyro line:
- * the D5-OSW-PE-PYR Table 9.4.2 sensor-health verification (all signals).
+ * covers from the DB. Kiln fleet: D5 Table 9.6 as above. Pyro line: the
+ * D5-OSW-PE-PYR Table 9.4.2 sensor-health verification (all signals); the
+ * engine-specific groups (analysers, neighbour checks, vibration / temperature
+ * pairs) come from the engine's sensor meta, kept to tags the DB holds.
  */
-export function validationMethods(defs: PlantDefs | null): ValidationMethod[] {
-  if (!defs || defs.plant === "kiln") return VALIDATION_METHODS;
-  const sig = defs.signals;
-  const online = (s: DefSignal) => (s.origin ?? (s.calculated ? "calculated" : "online")) === "online";
-  const mine = (tags: string[]) => tags.filter((t) => defs.signalByTag[t]);
-  const wired = sig.filter((s) => online(s)).map((s) => s.tag);
-  const analog = sig.filter((s) => s.type === "analog" && online(s)).map((s) => s.tag);
+export function validationMethods(defs: PlantDefs | null, src: ValidationSource): ValidationMethod[] {
+  if (!defs || defs.plant === "kiln") return kilnValidationMethods(src);
+  const dbTags = new Set(src.measurements.map((m) => m.tag));
+  const mine = (tags: string[]) => tags.filter((t) => dbTags.has(t));
+  const wired = coveredTags(src, "R-DQ-01", isOnline);
+  const analog = coveredTags(src, "R-DQ-02", (m) => isOnline(m) && isAnalog(m));
   const analyser = mine(PYRO_ANALYSERS.flatMap((a) => a.tags));
-  const status = mine([...analyser, "CAM-BRN-01", ...PYRO_ANALYSERS.flatMap((a) => (a.status ? [a.status] : []))]);
-  const meters = [defs.driverTags.feed, defs.driverTags.fuel].filter((t): t is string => Boolean(t && defs.signalByTag[t]));
+  const camera = src.measurements.filter((m) => /camera/i.test(`${m.sensorType ?? ""} ${m.name}`)).map((m) => m.tag);
+  const status = mine([...analyser, ...camera, ...PYRO_ANALYSERS.flatMap((a) => (a.status ? [a.status] : []))]);
+  const meters = [defs.driverTags.feed, defs.driverTags.fuel].filter((t): t is string => Boolean(t && dbTags.has(t)));
   const neighbours = mine(PYRO_NEIGHBOUR_CHECKS.flatMap((n) => [n.subject, ...n.witnesses]));
   const vibTmp = mine(PYRO_VIB_TMP_PAIRS.flat());
-  const manual = mine(["CAL-KLN-03", "MAN-KLN-01", "LAB-KLN-01"]);
+  // Manual records and the scanner map maximum they are compared with (DB origin / sensor type).
+  const manual = src.measurements
+    .filter((m) => m.origin === "manual" || (m.origin === "calculated" && /scanner/i.test(`${m.sensorType ?? ""} ${m.name}`)))
+    .map((m) => m.tag);
 
   const out: ValidationMethod[] = [
     {
@@ -409,8 +473,8 @@ export function validationMethods(defs: PlantDefs | null): ValidationMethod[] {
       method: "Range / stale",
       check: "range",
       rule: "R-DQ-01",
-      appliesTo: "All wired signals",
-      flagsWhen: "Outside the D5 instrument range (broken loop), clipped at a range end 3 samples, source frozen beyond its cadence, vibration ≈ 0 on a running unit, speed ≈ 0 at model drive current",
+      appliesTo: "Every wired sensor",
+      flagsWhen: "Outside what the instrument can measure (broken wire), stuck at the end of its range for 3 readings, not updated for longer than usual, no vibration on a running machine, or no speed while the drive draws normal current",
       tags: wired,
       evaluated: true,
     },
@@ -419,8 +483,8 @@ export function validationMethods(defs: PlantDefs | null): ValidationMethod[] {
       method: "Variability band",
       check: "band",
       rule: "R-DQ-02",
-      appliesTo: "All wired analog signals",
-      flagsWhen: `Too steady: spread below the family minimum over its window (stuck, blocked tap). Too noisy: 1-min step spread > ${PYRO_NOISY_FACTOR} × normal over ${PYRO_NOISY_WINDOW} samples (loose, failing)`,
+      appliesTo: "Every wired sensor that gives a number",
+      flagsWhen: `Too steady: barely moves over its time window (stuck or blocked). Too noisy: jumps around more than ${PYRO_NOISY_FACTOR} × normal over ${PYRO_NOISY_WINDOW} readings (loose or failing)`,
       tags: analog,
       evaluated: true,
     },
@@ -429,8 +493,8 @@ export function validationMethods(defs: PlantDefs | null): ValidationMethod[] {
       method: "Rate of change",
       check: "rate",
       rule: "R-DQ-02",
-      appliesTo: "All wired analog signals, limit per sensor class",
-      flagsWhen: "A 1-min step no instrument of its class can make (RTD 6 K, TC 60 K, IR 100 K, pressure 30 % of nominal, level 5 %, vibration 5 mm/s …), unexplained by the reference model",
+      appliesTo: "Every wired sensor that gives a number, with a limit for each sensor type",
+      flagsWhen: "Changes in one minute faster than any instrument of its type can (6 °C for a resistance thermometer, 60 °C for a thermocouple, 100 °C for an infrared sensor, 30 % for pressure, 5 % for level, 5 mm/s for vibration …), with nothing in the process to explain it",
       tags: analog,
       evaluated: true,
     },
@@ -441,8 +505,8 @@ export function validationMethods(defs: PlantDefs | null): ValidationMethod[] {
       method: "Physical neighbours",
       check: "cross",
       rule: "R-DQ-02",
-      appliesTo: "Torque with winding and oil; fan current with pressure; meters with their witnesses; any unit at stop",
-      flagsWhen: "One signal > 5σ from model for 30 min while the signals it must move with stay at model; meter out-voted by two witnesses; vibration, current or header pressure not ≈ 0 on a stopped unit",
+      appliesTo: "Drive torque with motor and oil temperatures; fan current with pressure; meters with their cross-checks; any stopped machine",
+      flagsWhen: "One reading is far from expected (over 5 × its usual spread) for 30 min while the readings that should move with it do not; a meter disagrees with two other estimates; vibration, current or pressure is not near zero on a stopped machine",
       tags: [...new Set([...neighbours, ...meters])],
       evaluated: true,
     });
@@ -452,8 +516,8 @@ export function validationMethods(defs: PlantDefs | null): ValidationMethod[] {
       method: "Vibration vs temperature",
       check: "cross",
       rule: "R-DQ-02",
-      appliesTo: "Bearing vibration / temperature pairs",
-      flagsWhen: "Flag only (FP-46): vibration > 1.4 × model for 10 min with the bearing flat (< +0.5 K) — verify the sensor first; quality stays valid",
+      appliesTo: "Bearings with both a vibration and a temperature sensor",
+      flagsWhen: "A note only (FP-46): vibration is over 1.4 × expected for 10 min but the bearing has not warmed up (less than 0.5 °C). Check the sensor first; the reading still counts as good",
       tags: vibTmp,
       evaluated: true,
     });
@@ -464,7 +528,7 @@ export function validationMethods(defs: PlantDefs | null): ValidationMethod[] {
       check: "status",
       rule: "R-DQ-01",
       appliesTo: "Gas analysers, flame camera",
-      flagsWhen: `Analyser FAULT or stuck in probe blowback > ${PYRO_BLOWBACK_STUCK_MIN} min (values held during a normal blowback); camera feed lost`,
+      flagsWhen: `The analyser reports a fault, or stays in its probe-cleaning cycle for more than ${PYRO_BLOWBACK_STUCK_MIN} min (values are held during a normal cleaning); the camera picture is lost`,
       tags: status,
       evaluated: true,
     });
@@ -474,8 +538,8 @@ export function validationMethods(defs: PlantDefs | null): ValidationMethod[] {
       method: "Manual comparison",
       check: "manual",
       rule: "R-DQ-02",
-      appliesTo: "Shell scanner vs handheld; gearbox oil trend vs laboratory",
-      flagsWhen: `Handheld > ${PYRO_HANDHELD_GAP_K} K from the scanner at the matched position, or coverage < ${PYRO_COVERAGE_TARGET} %: shell maximum suspect. Laboratory Fe high with flat oil instruments: flag only`,
+      appliesTo: "Shell scanner against hand-held readings; gearbox oil against the laboratory",
+      flagsWhen: `A hand-held reading differs from the scanner by more than ${PYRO_HANDHELD_GAP_K} °C at the same spot, or the scanner sees less than ${PYRO_COVERAGE_TARGET} % of the shell: the hottest-point reading may be wrong. The laboratory finds a lot of iron in the oil while the oil sensors stay flat: a note only`,
       tags: manual,
       evaluated: true,
     });
@@ -483,7 +547,7 @@ export function validationMethods(defs: PlantDefs | null): ValidationMethod[] {
 }
 
 /** Which method flagged a row now (by its classified note). */
-export function methodFlagging(row: SensorRow, methods: ValidationMethod[] = VALIDATION_METHODS): ValidationMethod | null {
+export function methodFlagging(row: SensorRow, methods: ValidationMethod[]): ValidationMethod | null {
   const m = row.q.method ?? "";
   if (!m) return null;
   if (m.startsWith("Range")) return methods.find((v) => v.id === "range") ?? null;
@@ -504,7 +568,7 @@ export interface Impact {
 }
 
 /** Rules, health input and calculated values a tag feeds, from the machine's own definitions. */
-export function impactOf(tag: string, defs: PlantDefs | null = KILN_DEFS): Impact {
+export function impactOf(tag: string, defs: PlantDefs | null): Impact {
   if (!defs) return { rules: [], health: null, feeds: [] };
   const def = defs.signalByTag[tag];
   const rules = defs.rules
@@ -537,8 +601,14 @@ export function flaggedSince(events: SimEvent[] | undefined, tag: string): numbe
 
 /* ------------------------------------------------------------ calculated values (D5 Table 9.2) */
 
+/**
+ * Gateway calculations. The DB decides which tags are calculated (measurement
+ * origin) and names them; it holds no formulas yet (`measurement_formulas` is
+ * empty), so the formula text and its input tags stay here, keyed by tag.
+ */
 export interface CalcDef {
   tag: string;
+  /** Name of the calculated value (the DB measurement name once resolved by `calcDefsFor`). */
   value: string;
   formula: string;
   ref: string;
@@ -635,21 +705,19 @@ export function scannerEntryOf(defs: PlantDefs | null, tag: string): PyroSpecEnt
   return PYRO_CALC_DEFS[tag]?.inputs.map((t) => PYRO_SPEC[t]).find(isMap);
 }
 
-/** Calculated-value definitions of the machine's plant (kiln fleet: D5 Table 9.2). */
-export function calcDefsFor(defs: PlantDefs | null): Record<string, CalcDef> {
-  if (defs?.plant !== "pyro") return CALC_DEFS;
-  const vpcCalc: Record<string, CalcDef> = {
-    DT1: {
-      tag: "DT1",
-      value: "Cooling water temperature rise",
-      formula: "T3 − T2",
-      ref: "Gateway calculation (§7.3)",
-      inputs: ["T2", "T3"],
-      validity: "Suspect when either RTD (T2 or T3) is flagged",
-    },
-  };
-  const merged = { ...PYRO_CALC_DEFS, ...vpcCalc };
-  return Object.fromEntries(Object.entries(merged).filter(([tag]) => defs.signalByTag[tag]));
+/**
+ * Calculated values of the machine: every DB measurement whose origin is
+ * "calculated" and that has a gateway formula on file, named as the DB names
+ * it. Empty until the measurements load.
+ */
+export function calcDefsFor(defs: PlantDefs | null, measurements: ReadonlyMap<string, MeasurementDto>): Record<string, CalcDef> {
+  const formulas = defs?.plant === "pyro" ? PYRO_CALC_DEFS : CALC_DEFS;
+  const out: Record<string, CalcDef> = {};
+  for (const [tag, def] of Object.entries(formulas)) {
+    const m = measurements.get(tag);
+    if (m?.origin === "calculated") out[tag] = { ...def, value: m.name };
+  }
+  return out;
 }
 
 /** Pyro/VPC machine that owns `tag` (calculation inputs on another machine), else null. */
@@ -658,24 +726,3 @@ export function pyroOwnerOf(tag: string): string | null {
   if (VPC_SPEC[tag]) return "VPC-066";
   return null;
 }
-
-/* ------------------------------------------------------------ D4 specification */
-
-/** D4 Table 7.1 basic sensor requirements, by instrument family. */
-export const D4_SENSOR_SPEC: Record<string, { range: string; accuracy: string; output: string; mounting: string; source: "New" | "Existing" }> = {
-  "IEPE accelerometer": { range: "±50 g · 0.5 Hz–10 kHz", accuracy: "100 mV/g ±5 %", output: "IEPE to DAQ", mounting: "Stud on bearing housing", source: "New" },
-  "Pt100 RTD": { range: "−50…+200 °C", accuracy: "Class A", output: "PLC / DCS", mounting: "Existing, embedded", source: "Existing" },
-  "Thermocouple type K": { range: "0…1,400 °C", accuracy: "Class 1", output: "DCS", mounting: "Existing probe", source: "Existing" },
-  "Thermocouple type S": { range: "0…1,600 °C", accuracy: "Class 1", output: "Machine PLC", mounting: "Crucible TC pocket", source: "Existing" },
-  "Two-colour pyrometer": { range: "800…2,000 °C", accuracy: "±0.75 %", output: "4–20 mA", mounting: "Existing, hood", source: "Existing" },
-  "Pressure transmitter": { range: "per tag", accuracy: "≤ 0.1 % span", output: "4–20 mA / HART", mounting: "Existing", source: "Existing" },
-  "Flow transmitter": { range: "0…15 L/min", accuracy: "±1 % FS", output: "4–20 mA / PLC", mounting: "Inline cooling manifold", source: "Existing" },
-  "Power transducer": { range: "0…15 kW (400 V 3~)", accuracy: "Class 0.5", output: "Generator / PLC", mounting: "Control cabinet", source: "Existing" },
-  "Motor CT / transmitter": { range: "0…10 A", accuracy: "Class 0.5", output: "4–20 mA to gateway", mounting: "Motor feed", source: "New" },
-  "LVDT position transmitter": { range: "±50 mm", accuracy: "±0.5 mm", output: "4–20 mA to thrust PLC", mounting: "Existing on cylinder", source: "Existing" },
-  "Solid flow meter": { range: "0–500 / 0–25 t/h", accuracy: "±0.5–1 %", output: "DCS", mounting: "Existing", source: "Existing" },
-  "Gas analyser channel": { range: "O₂ 0–25 %; CO 0–20,000 ppm", accuracy: "±2 % range", output: "DCS / Modbus", mounting: "Existing, extractive", source: "Existing" },
-  "VFD data point": { range: "torque, speed", accuracy: "Class 0.5", output: "PLC / OPC UA", mounting: "Data point", source: "Existing" },
-  "IR shell scanner": { range: "0–600 °C", accuracy: "±2 %", output: "Scanner server", mounting: "Existing", source: "Existing" },
-  "Status signal": { range: "state", accuracy: "—", output: "PLC / DCS", mounting: "Data point", source: "Existing" },
-};

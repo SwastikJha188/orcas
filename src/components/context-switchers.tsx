@@ -7,6 +7,7 @@ import { IconChevron, machineTone } from "@/components/assets/assets-shell-ui";
 import { toCondition } from "@/components/ui/status";
 import { TypeIcon } from "@/components/assets/hierarchy/hierarchy-icons";
 import {
+  nodeLabel,
   type MachineLookup,
   findPath,
   isFolder,
@@ -15,6 +16,7 @@ import {
   shortName,
   subtreeMachines,
 } from "@/components/assets/hierarchy/hierarchy-model";
+import { displayName } from "@/lib/display-name";
 import { useHierarchyData } from "@/components/assets/hierarchy/use-hierarchy-data";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import "@/components/assets/assets-shell.css";
@@ -29,7 +31,7 @@ import "./context-switchers.css";
 
 /* ------------------------------------------------------------ anchored menu */
 
-function useAnchoredMenu(width: number) {
+export function useAnchoredMenu(width: number) {
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -113,7 +115,7 @@ function useAnchoredMenu(width: number) {
   return { trigger, menu, open, setOpen, close, pos, focusFirst };
 }
 
-function Trigger({
+export function Trigger({
   innerRef,
   open,
   icon,
@@ -155,7 +157,7 @@ function Trigger({
   );
 }
 
-function Menu({
+export function Menu({
   innerRef,
   pos,
   width,
@@ -177,7 +179,7 @@ function Menu({
   );
 }
 
-function Check({ on }: { on: boolean }) {
+export function Check({ on }: { on: boolean }) {
   return (
     <svg className="ctx-check" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ opacity: on ? 1 : 0 }}>
       <polyline points="5 12.5 10 17.5 19 7" />
@@ -232,7 +234,7 @@ function PlantSwitcher({
       {m.open && (
         <Menu innerRef={m.menu} pos={m.pos} width={PLANT_W} label="Plants">
           <div className="ctx-menu-head">
-            <span className="ctx-menu-title">Accessible Plants</span>
+            <span className="ctx-menu-title">Plants you can open</span>
             <span className="ctx-menu-meta ast-num">{roots.length}</span>
           </div>
           <div className="ctx-list">
@@ -329,7 +331,7 @@ function MachineSwitcher({
         open={m.open}
         icon={<TypeIcon type="machine" size={14} />}
         kind="Machine"
-        label={machineNode?.name ?? "All machines"}
+        label={machineNode ? nodeLabel(machineNode) : "All machines"}
         tone={tone}
         onClick={() => {
           m.setOpen((o) => !o);
@@ -383,12 +385,12 @@ function MachineSwitcher({
                 </span>
                 <span className="ctx-row-text">
                   <span className="ctx-row-name">All machines</span>
-                  <span className="ctx-row-meta">Plant twin</span>
+                  <span className="ctx-row-meta">3D view of the whole plant</span>
                 </span>
               </button>
             )}
 
-            {rows.length === 0 && <p className="ctx-empty">Nothing at this level.</p>}
+            {rows.length === 0 && <p className="ctx-empty">No machines at this level.</p>}
 
             {rows.map((row) => {
               if (row.type !== "machine") {
@@ -439,14 +441,14 @@ function MachineSwitcher({
                     <TypeIcon type="machine" size={14} />
                   </span>
                   <span className="ctx-row-text">
-                    <span className="ctx-row-name">{row.name}</span>
-                    <span className="ctx-row-meta ast-num">
-                      {row.machineId} · {toCondition(c.status)}
+                    <span className="ctx-row-name" title={row.machineId}>
+                      {displayName(row.name)}
                     </span>
+                    <span className="ctx-row-meta">{toCondition(c.status)}</span>
                   </span>
-                  <span className="ctx-row-value ast-num">
-                    {c.health}
-                    <span className="ast-unit">%</span>
+                  <span className="ctx-row-value ast-num" title={c.health !== null ? `Health score ${c.health}%` : "Health score not available"}>
+                    {c.health ?? "—"}
+                    {c.health !== null && <span className="ast-unit">%</span>}
                   </span>
                 </button>
               );
@@ -472,7 +474,11 @@ export function UserSwitcher({
   if (!currentUser) return null;
 
   const userTone = currentUser.status === "Active" ? "good" : currentUser.status === "On Call" ? "warn" : "idle";
-  const plantSummary = currentUser.plantAccess.length > 0 ? currentUser.plantAccess.map((p) => p.plantName).join(", ") : "All plants";
+  const plantSummary = currentUser.role.allPlants
+    ? "Every plant"
+    : currentUser.plantAccess.length > 0
+      ? currentUser.plantAccess.map((p) => p.plantName).join(", ")
+      : "All plants";
 
   return (
     <>
@@ -480,7 +486,7 @@ export function UserSwitcher({
         innerRef={m.trigger}
         open={m.open}
         icon={<IconUser />}
-        kind="Operator"
+        kind="Signed in as"
         label={currentUser.fullName}
         tone={userTone}
         onClick={() => {
@@ -525,7 +531,7 @@ export function UserSwitcher({
                 </span>
                 <span className="ctx-row-text">
                   <span className="ctx-row-name">Manage users & plants…</span>
-                  <span className="ctx-row-meta">Configure RBAC & site access</span>
+                  <span className="ctx-row-meta">Choose who can see and change each plant</span>
                 </span>
               </button>
             )}
@@ -586,7 +592,7 @@ export function ContextSwitchers() {
   if (roots.length === 0) return null;
 
   return (
-    <div className="ctx-switchers" role="group" aria-label="Plant and machine context">
+    <div className="ctx-switchers" role="group" aria-label="Choose plant and machine">
       <PlantSwitcher roots={roots} plant={plant} lookup={lookup} onChange={choosePlant} />
       <span className="ctx-sep" aria-hidden="true">/</span>
       <MachineSwitcher plant={plant} machineId={selectedMachineId} lookup={lookup} onChange={chooseMachine} />

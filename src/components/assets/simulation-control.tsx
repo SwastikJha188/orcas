@@ -4,7 +4,7 @@ import React, { useMemo, useState } from "react";
 import { Field, KpiCard, KpiCards, NumberInput, PillButton, Select, Sparkline, Table, Toggle, type Column } from "@/components/ui";
 import { conditionTone, toCondition } from "@/components/ui/status";
 import { StatusTag } from "@/components/ui/status-tag";
-import { useKilnFleet } from "@/providers/kiln-simulation-context";
+import { useRealtimeKilnFleet } from "@/providers/kiln-simulation-context";
 import { formatClock, type SimFrame, type StoryProfile } from "@/lib/kiln-sim/engine";
 import { PYRO_SCENARIOS, pyroScenario } from "@/lib/pyro-sim/scenarios";
 import { PYRO_MACHINES, PYRO_SIGNALS } from "@/lib/pyro-sim/signals";
@@ -12,6 +12,8 @@ import { VPC_SCENARIOS, vpcScenario } from "@/lib/vpc-sim/scenarios";
 import { VPC_MACHINE_IDS, VPC_MACHINES, VPC_SIGNALS } from "@/lib/vpc-sim/signals";
 import type { Injection, LineSimSettings, SignalFaultSpec } from "@/lib/pyro-sim/engine";
 import type { KilnSimulation } from "./kiln-seals-simulation";
+import { displayName } from "@/lib/display-name";
+import { healthTone, useMachineHealthBands } from "./assets-shell-ui";
 
 /**
  * Simulation › Control (pyro line & VPC 066): the plant-wide demo layer.
@@ -31,10 +33,12 @@ const ALL_LINE_SCENARIOS: Record<string, typeof VPC_SCENARIOS> = {
 };
 const MACHINE = new Map(ALL_LINE_MACHINES.map((m) => [m.id, m]));
 const code = (id: string) => MACHINE.get(id)?.code ?? id;
+/** Machine name for display; the code stays in tooltips. */
+const machineName = (id: string) => MACHINE.get(id)?.shortName ?? MACHINE.get(id)?.name ?? id;
 
 const PROFILE_OPTIONS: Array<{ value: StoryProfile; label: string }> = [
   { value: "healthy", label: "Normal" },
-  { value: "advisory", label: "Advisory" },
+  { value: "advisory", label: "Alert" },
   { value: "critical", label: "Critical" },
   { value: "story", label: "Rotate faults" },
 ];
@@ -61,7 +65,9 @@ function recentAlerts(frames: SimFrame[], t: number, window: number): number {
 const activeRules = (f: SimFrame) => f.rules.filter((r) => r.status === "ACTIVE" && r.category !== "Service life");
 
 export function SimulationControl({ simulation, line }: { simulation: KilnSimulation; line: Line }) {
-  const fleet = useKilnFleet();
+  const fleet = useRealtimeKilnFleet();
+  // Plant-level score: banded on the plant's primary machine's health model.
+  const bands = useMachineHealthBands();
   const machines = useMemo(() => ALL_LINE_MACHINES.map((m) => fleet[m.id]).filter(Boolean) as KilnSimulation[], [fleet]);
   const frames = machines.map((m) => m.frame);
   const speed = simulation.speedMultiplier;
@@ -73,14 +79,15 @@ export function SimulationControl({ simulation, line }: { simulation: KilnSimula
   const active = frames.flatMap(activeRules);
   const critical = active.filter((r) => r.severity === "Critical").length;
   const last10 = recentAlerts(frames, t, 10);
+  const plantTone = healthTone(plantHealth, bands);
 
   return (
     <>
       <KpiCards label="Live plant">
-        <KpiCard label="Alerts raised" value={String(last10)} unit="/ 10 min" foot={last10 ? `≈ 1 every ${+(10 / last10 / speed).toFixed(1)} s on screen at ${speed}×` : "None in the last 10 min"} />
-        <KpiCard label="Active alerts" value={String(active.length)} tone={critical ? "bad" : active.length ? "warn" : undefined} foot={`${critical} critical`} />
-        <KpiCard label="Events running" value={String(running.length)} foot={line.settings.events ? `Generator on · max ${line.settings.maxEvents}` : "Generator off"} />
-        <KpiCard label="Plant health" value={String(plantHealth)} unit="/ 100" tone={plantHealth < 60 ? "bad" : plantHealth < 85 ? "warn" : undefined} foot="0.6 × worst + 0.4 × mean" />
+        <KpiCard label="Alerts raised" value={String(last10)} unit="/ 10 min" foot={last10 ? `about 1 every ${+(10 / last10 / speed).toFixed(1)} s on screen at ${speed}× speed` : "None in the last 10 min"} />
+        <KpiCard label="Active alerts" value={String(active.length)} tone={critical ? "bad" : active.length ? "warn" : undefined} foot={`${critical} Critical`} />
+        <KpiCard label="Events running" value={String(running.length)} foot={line.settings.events ? `Random events on · up to ${line.settings.maxEvents} at once` : "Random events off"} />
+        <KpiCard label="Plant health" value={String(plantHealth)} unit="/ 100" tone={plantTone === "bad" || plantTone === "warn" ? plantTone : undefined} foot="Mostly the worst machine, partly the average" />
       </KpiCards>
 
       <QuickActions line={line} machines={machines} />
@@ -101,25 +108,26 @@ function QuickActions({ line, machines }: { line: Line; machines: KilnSimulation
   const scenarios = (ALL_LINE_SCENARIOS[machine] ?? []).filter((s) => s.id !== "healthy");
   const [scenarioId, setScenarioId] = useState("");
   const picked = scenarios.find((s) => s.id === scenarioId) ?? scenarios[0];
+  const ruleName = (id: string) => machines.map((m) => m.frame.defs.ruleById[id]?.plainTitle ?? m.frame.defs.ruleById[id]?.name).find(Boolean) ?? id;
   const groups = [...new Set(scenarios.map((s) => (s.id.startsWith("line-") ? "Line trips & upsets" : s.group)))];
 
   return (
     <section className="ast-card simc-card" aria-label="Quick actions">
       <div className="ast-card-head sim-card-head-row">
         <h2 className="ast-card-title">Quick actions</h2>
-        <span className="ast-caption">Faults move the signals; the rules raise the alerts</span>
+        <span className="ast-caption">A fault changes the readings; the automatic checks then raise the alerts</span>
       </div>
       <div className="simc-actions">
         <div className="simc-action-group" role="group" aria-label="Raise events">
           <span className="simc-group-label">Raise now</span>
           <PillButton variant="secondary" onClick={() => line.raise("sensor")}>Instrument fault</PillButton>
           <PillButton variant="secondary" onClick={() => line.raise("fault")}>Equipment fault</PillButton>
-          <PillButton variant="secondary" onClick={() => line.burst(5)}>Burst × 5</PillButton>
+          <PillButton variant="secondary" onClick={() => line.burst(5)}>5 faults at once</PillButton>
         </div>
         <div className="simc-action-group" role="group" aria-label="Hold every machine">
           <span className="simc-group-label">Whole line</span>
           <PillButton variant="secondary" onClick={() => line.setAllProfiles("healthy")}>All Normal</PillButton>
-          <PillButton variant="secondary" onClick={() => line.restoreMix()}>Demo mix</PillButton>
+          <PillButton variant="secondary" onClick={() => line.restoreMix()}>Mixed demo</PillButton>
           <PillButton variant="secondary" onClick={() => line.setAllProfiles("critical")}>All Critical</PillButton>
           <PillButton variant="secondary" onClick={() => line.repairAll()}>Repair all</PillButton>
           <PillButton variant="secondary" onClick={() => line.clearAll()} disabled={!line.events.some((j) => j.end > line.t)}>
@@ -137,11 +145,11 @@ function QuickActions({ line, machines }: { line: Line; machines: KilnSimulation
                 setMachine(v);
                 setScenarioId("");
               }}
-              options={machines.map((m) => ({ value: m.machineId, label: `${code(m.machineId)} · ${MACHINE.get(m.machineId)?.shortName ?? ""}` }))}
+              options={machines.map((m) => ({ value: m.machineId, label: machineName(m.machineId) }))}
             />
           )}
         </Field>
-        <Field label="Scenario" hint={picked ? `Expected ${picked.expected.join(", ") || "no alarm"}${picked.expectedElsewhere?.length ? ` · also ${picked.expectedElsewhere.join(", ")}` : ""}` : undefined}>
+        <Field label="Scenario" hint={picked ? `Should raise: ${picked.expected.map(ruleName).join(", ") || "no alarm"}${picked.expectedElsewhere?.length ? ` · also ${picked.expectedElsewhere.map(ruleName).join(", ")}` : ""}` : undefined}>
           {(id, d) => (
             <Select
               id={id}
@@ -208,13 +216,13 @@ function GeneratorCard({ line, speed }: { line: Line; speed: number }) {
     <section className="ast-card simc-card" aria-label="Event generator and sensors">
       <div className="ast-card-head sim-card-head-row">
         <div className="sim-card-head-text">
-          <h2 className="ast-card-title">Event generator &amp; sensors</h2>
+          <h2 className="ast-card-title">Random events and sensors</h2>
           <span className="ast-caption ast-num">
-            {s.events ? `Next event ${Math.max(0, line.nextEventAt - line.t)} min · plant minutes, seconds on screen at ${speed}×` : "Generator off: only held faults and your triggers run"}
+            {s.events ? `Next event in ${Math.max(0, line.nextEventAt - line.t)} plant minutes (seconds on screen at ${speed}× speed)` : "Random events off: only faults you start, or hold, will run"}
           </span>
         </div>
         <div className="sim-actions">
-          <Toggle checked={s.events} onChange={(v) => set({ events: v })} label="Generator" />
+          <Toggle checked={s.events} onChange={(v) => set({ events: v })} label="Random events" />
           <PillButton variant="secondary" onClick={() => line.resetSettings()}>
             Defaults
           </PillButton>
@@ -224,10 +232,10 @@ function GeneratorCard({ line, speed }: { line: Line; speed: number }) {
         <Knob label="New event every" value={s.eventEvery} min={1} max={30} step={1} display={live(s.eventEvery)} onChange={(v) => set({ eventEvery: v })} disabled={off} />
         <Knob label="Time to alert" value={s.eventLead} min={1} max={30} step={1} display={live(s.eventLead)} onChange={(v) => set({ eventLead: v })} disabled={off} />
         <Knob label="Event lasts" value={s.eventLife} min={2} max={90} step={1} display={live(s.eventLife)} onChange={(v) => set({ eventLife: v })} disabled={off} />
-        <Knob label="Concurrent events" value={s.maxEvents} min={1} max={12} step={1} display={`max ${s.maxEvents}`} onChange={(v) => set({ maxEvents: v })} disabled={off} />
+        <Knob label="Events at once" value={s.maxEvents} min={1} max={12} step={1} display={`max ${s.maxEvents}`} onChange={(v) => set({ maxEvents: v })} disabled={off} />
         <Knob label="Instrument faults" value={Math.round(s.sensorShare * 100)} min={0} max={100} step={5} display={`${Math.round(s.sensorShare * 100)} %`} onChange={(v) => set({ sensorShare: v / 100 })} disabled={off} />
         <Knob label="Event severity" value={s.intensity} min={0.5} max={2} step={0.1} display={`× ${s.intensity.toFixed(1)}`} onChange={(v) => set({ intensity: v })} />
-        <Knob label="Sensor noise" value={s.noise} min={0.2} max={3} step={0.1} display={`× ${s.noise.toFixed(1)} σ`} onChange={(v) => set({ noise: v })} />
+        <Knob label="Sensor noise" value={s.noise} min={0.2} max={3} step={0.1} display={`× ${s.noise.toFixed(1)} normal`} onChange={(v) => set({ noise: v })} />
         <Knob label="Health response" value={s.healthDrift} min={0} max={3} step={0.1} display={s.healthDrift ? `× ${s.healthDrift.toFixed(1)}` : "Off"} onChange={(v) => set({ healthDrift: v })} />
         <Knob
           label="Held fault repaired after"
@@ -254,8 +262,9 @@ function MachinesCard({ line, machines, running }: { line: Line; machines: KilnS
       header: "Machine",
       render: (m) => (
         <span className="ast-cell-stack">
-          <span className="ast-cell-title ast-num">{code(m.machineId)}</span>
-          <span className="ast-cell-sub">{MACHINE.get(m.machineId)?.shortName}</span>
+          <span className="ast-cell-title" title={`${code(m.machineId)} · ${MACHINE.get(m.machineId)?.name ?? ""}`}>
+            {machineName(m.machineId)}
+          </span>
         </span>
       ),
     },
@@ -301,12 +310,12 @@ function MachinesCard({ line, machines, running }: { line: Line; machines: KilnS
     },
     {
       key: "gen",
-      header: "Generator",
+      header: "Random events",
       width: "96px",
       render: (m) => {
         const on = line.settings.machines[m.machineId] !== false;
         return (
-          <PillButton variant="secondary" pressed={on} className="simc-pill-sm" onClick={() => line.setSettings({ machines: { [m.machineId]: !on } })} aria-label={`Generator events on ${m.machineId}`}>
+          <PillButton variant="secondary" pressed={on} className="simc-pill-sm" onClick={() => line.setSettings({ machines: { [m.machineId]: !on } })} aria-label={`Random events on ${machineName(m.machineId)}`}>
             {on ? "On" : "Off"}
           </PillButton>
         );
@@ -334,7 +343,7 @@ function MachinesCard({ line, machines, running }: { line: Line; machines: KilnS
         <h2 className="ast-card-title">
           Machines <span className="ast-muted ast-num">{machines.length}</span>
         </h2>
-        <span className="ast-caption">Held at: the condition autopilot keeps each machine in between generated events</span>
+        <span className="ast-caption">Held at: the condition the autopilot keeps each machine in between random events</span>
       </div>
       <Table className="ast-table simc-machines" columns={columns} data={machines} keyExtractor={(m) => m.machineId} />
     </section>
@@ -356,15 +365,17 @@ function EventsCard({ line, running, fleet }: { line: Line; running: Injection[]
   const rows = [...line.events].sort((a, b) => b.start - a.start);
   const columns: Column<Injection>[] = [
     { key: "at", header: "Started", width: "96px", render: (j) => <span className="ast-num">{formatClock(j.start).clock}</span> },
-    { key: "m", header: "Machine", width: "84px", render: (j) => <span className="ast-num">{code(j.machine)}</span> },
+    { key: "m", header: "Machine", width: "120px", render: (j) => <span title={code(j.machine)}>{machineName(j.machine)}</span> },
     {
       key: "ev",
       header: "Event",
       render: (j) => (
         <span className="ast-cell-stack sim-wrap">
-          <span className="ast-cell-title">{j.name}</span>
+          <span className="ast-cell-title" title={j.name}>
+            {displayName(j.name)}
+          </span>
           <span className="ast-cell-sub">
-            {KIND_LABEL[j.kind]} · {j.auto ? "Generator" : "Operator"}
+            {KIND_LABEL[j.kind]} · {j.auto ? "Random" : "Operator"}
           </span>
         </span>
       ),
@@ -388,12 +399,16 @@ function EventsCard({ line, running, fleet }: { line: Line; running: Injection[]
         const raised = f ? activeRules(f).filter((r) => expected.includes(r.id)) : [];
         if (!expected.length) {
           const any = f ? activeRules(f).length : 0;
-          return <span className="ast-muted ast-num">{any ? `${any} active on machine` : "None expected"}</span>;
+          return <span className="ast-muted ast-num">{any ? `${any} active on this machine` : "None expected"}</span>;
         }
         return raised.length ? (
-          <StatusTag tone={raised.some((r) => r.severity === "Critical") ? "bad" : "warn"} label={raised.map((r) => r.id).join(", ")} />
+          <span title={raised.map((r) => r.id).join(", ")}>
+            <StatusTag tone={raised.some((r) => r.severity === "Critical") ? "bad" : "warn"} label={raised.map((r) => r.plainTitle ?? r.name).join(", ")} />
+          </span>
         ) : (
-          <span className="ast-muted ast-num">{expected.join(", ")} pending</span>
+          <span className="ast-muted" title={expected.join(", ")}>
+            {expected.map((id) => f?.defs.ruleById[id]?.plainTitle ?? f?.defs.ruleById[id]?.name ?? id).join(", ")} not raised yet
+          </span>
         );
       },
     },
@@ -417,7 +432,7 @@ function EventsCard({ line, running, fleet }: { line: Line; running: Injection[]
         </h2>
       </div>
       {rows.length === 0 ? (
-        <p className="ast-caption sim-empty">No event running. Raise one above, or switch the generator on.</p>
+        <p className="ast-caption sim-empty">No event running. Raise one above, or switch random events on.</p>
       ) : (
         <Table className="ast-table" columns={columns} data={rows} keyExtractor={(j) => String(j.id)} />
       )}
@@ -445,7 +460,7 @@ function SignalFaultCard({ line, machines }: { line: Line; machines: KilnSimulat
   const [ramp, setRamp] = useState("10");
   const [life, setLife] = useState("30");
   const [sensor, setSensor] = useState(false);
-  const fleet = useKilnFleet();
+  const fleet = useRealtimeKilnFleet();
   if (!def) return null;
   const sigma = def.sigma || 1;
   const fallback = +(sigma * 6).toFixed(def.decimals);
@@ -454,12 +469,12 @@ function SignalFaultCard({ line, machines }: { line: Line; machines: KilnSimulat
   const valid = Number.isFinite(d) && Number(ramp) >= 0 && Number(life) >= 1;
   const freeze = shape === "freeze";
   return (
-    <section className="ast-card simc-card" aria-label="Signal fault builder">
+    <section className="ast-card simc-card" aria-label="Make a sensor fault">
       <div className="ast-card-head sim-card-head-row">
         <div className="sim-card-head-text">
-          <h2 className="ast-card-title">Signal fault</h2>
-          <span className="ast-caption ast-num">
-            {def.tag} now {now?.display ?? "—"} {def.unit} · model {now?.model !== null && now?.model !== undefined ? now.model.toFixed(def.decimals) : "—"} · σ {sigma}
+          <h2 className="ast-card-title">Sensor fault</h2>
+          <span className="ast-caption ast-num" title={def.tag}>
+            {displayName(def.name)} now {now?.display ?? "—"} {def.unit} · expected {now?.model !== null && now?.model !== undefined ? now.model.toFixed(def.decimals) : "—"} · usual spread {sigma}
           </span>
         </div>
       </div>
@@ -474,11 +489,11 @@ function SignalFaultCard({ line, machines }: { line: Line; machines: KilnSimulat
                 setTag("");
                 setDelta("");
               }}
-              options={machines.map((m) => ({ value: m.machineId, label: code(m.machineId) }))}
+              options={machines.map((m) => ({ value: m.machineId, label: machineName(m.machineId) }))}
             />
           )}
         </Field>
-        <Field label="Signal">
+        <Field label="Sensor">
           {(id) => (
             <Select
               id={id}
@@ -487,12 +502,12 @@ function SignalFaultCard({ line, machines }: { line: Line; machines: KilnSimulat
                 setTag(v);
                 setDelta("");
               }}
-              options={signals.map((s) => ({ value: s.tag, label: `${s.tag} · ${s.name}` }))}
+              options={signals.map((s) => ({ value: s.tag, label: displayName(s.name) }))}
             />
           )}
         </Field>
         <Field label="Fault">{(id) => <Select id={id} value={shape} onChange={(v) => setShape(v as SignalFaultSpec["shape"])} options={SHAPES} />}</Field>
-        <Field label={`Change${def.unit ? ` (${def.unit})` : ""}`} hint={freeze ? "Not used" : `${(d / sigma).toFixed(1)} σ`}>
+        <Field label={`Change${def.unit ? ` (${def.unit})` : ""}`} hint={freeze ? "Not used" : `${(d / sigma).toFixed(1)} × usual spread`}>
           {(id, hint) => <NumberInput id={id} describedBy={hint} value={delta === "" ? String(fallback) : delta} onChange={setDelta} step="any" disabled={freeze} />}
         </Field>
         <Field label={shape === "osc" ? "Period (min)" : shape === "spike" ? "Spike length (min)" : "Ramp (min)"}>

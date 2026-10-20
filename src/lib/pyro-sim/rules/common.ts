@@ -26,13 +26,19 @@ export interface PyroRuleDef {
   unproven?: string;
   /**
    * HOLD disclosure: the rule runs on channels or designs still on HOLD (D4 Table 6.6,
-   * MOM Table B.1). The text states when findings are also capped at Advisory.
+   * MOM Table B.1). The text states when findings are also capped at Alert.
    */
   hold?: string;
   /** D5 Table 9.4.3 fault-pattern ids this rule implements (e.g. "FP-12"). */
   fp?: string[];
   /** D5 "alternative causes" to rule out before acting on the finding. */
   alternatives?: string;
+  /** Headline anyone can read: what is wrong, in everyday words (docs/plain-language.md). */
+  plainTitle?: string;
+  /** What is happening and why it matters, in everyday words (1–2 sentences). */
+  plainWhat?: string;
+  /** What to do next, as an instruction to a person (1 sentence). */
+  plainTodo?: string;
 }
 
 export type R = Omit<PyroRuleDef, "machine">;
@@ -50,6 +56,9 @@ export const DQ = (machine: string): PyroRuleDef[] => [
     cause: "Instrument, wiring, analyser sample system or source timestamp fault",
     consequence: "Condition rules would judge a reading that no longer describes the plant",
     action: "Hold the reading out of diagnosis, check the source channel and instrument; no automatic failure call",
+    plainTitle: "A sensor reading on this machine can't be trusted",
+    plainWhat: "One of this machine's instruments has stopped updating, is stuck on one value, or shows a value that is impossible while it runs. Do not rely on that reading until it is checked.",
+    plainTodo: "Send an instrument technician to check that sensor, its wiring, and its signal before trusting the reading again.",
     inputs: [],
     spec: "SW-DQ-01",
     unproven: "That the instrument has failed: a stale or flat reading is screened out, not diagnosed",
@@ -65,6 +74,9 @@ export const DQ = (machine: string): PyroRuleDef[] => [
     cause: "Calibration drift, damaged sensor or scaling error on one instrument",
     consequence: "A false process change would be fed to every model that uses the reading",
     action: "Substitute the witness estimate, mark the instrument suspect and request calibration; vibration-vs-temperature disagreement alone is not a sensor fault",
+    plainTitle: "A sensor disagrees with the readings around it",
+    plainWhat: "One instrument on this machine shows a change that the related readings do not confirm, so it may be out of calibration or damaged. Do not rely on its reading until it is checked.",
+    plainTodo: "Ask an instrument technician to check and recalibrate that sensor; until then, go by the readings that agree.",
     inputs: [],
     spec: "SW-DQ-02",
     unproven: "Which instrument is wrong: discordance alone is not proof of instrument failure",
@@ -80,6 +92,9 @@ export const DQ = (machine: string): PyroRuleDef[] => [
     cause: "Unknown — no rule in the library explains the deviation",
     consequence: "Possible new failure mode; evidence for the engineer, not a diagnosis",
     action: "Review the signal and its neighbours; label the event so the library can learn it",
+    plainTitle: "A reading has moved far from normal for no known reason",
+    plainWhat: "A trusted reading on this machine is far outside its usual range, and none of the known problems explains it. It may be a new kind of fault, so an engineer should look at it.",
+    plainTodo: "Ask an engineer to review this reading and the ones next to it, and record what caused it.",
     inputs: [],
     unproven: "Any cause: no rule in the library explains the deviation",
   },
@@ -94,6 +109,9 @@ export const DQ = (machine: string): PyroRuleDef[] => [
     cause: "Service span reached by installation / rebuild record and duty",
     consequence: "Planned replacement window; calendar / hour / service-span due is NOT observed mechanical deterioration",
     action: "Plan the replacement or inspection in the next stop; confirm the record and life criterion",
+    plainTitle: "A part is nearly due for planned replacement",
+    plainWhat: "A part on this machine has used 90 % of its planned running hours or service time. Nothing measured shows it is worn; this is a reminder from the maintenance record.",
+    plainTodo: "Plan the replacement or inspection for the next stop, and confirm the part's record and service limit.",
     inputs: [],
     spec: "SW-ALL-01",
     owner: "Maintenance planning",
@@ -114,5 +132,8 @@ export const bearingRule = (id: string, name: string, system: string, sub: strin
   cause: `${asset} rolling-element bearing wear, lubrication breakdown or looseness`,
   consequence: "Bearing failure, shaft damage and an unplanned stop of the line",
   action: `Take a vibration spectrum on the ${asset.toLowerCase()} bearing, check grease / oil and plan the bearing change at the next stop`,
+  plainTitle: `${asset} bearing may be wearing`,
+  plainWhat: `The ${asset.toLowerCase()} is vibrating more than normal and its bearing is heating up at the same time. The bearing may be worn, short of grease, or loose; if it fails, the line stops unexpectedly.`,
+  plainTodo: `Have the ${asset.toLowerCase()} bearing vibration measured and its grease or oil checked; plan a bearing change at the next stop.`,
   inputs,
 });

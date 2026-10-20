@@ -1,6 +1,4 @@
 import { Client, Pool, QueryResult, QueryResultRow } from "pg";
-import fs from "fs";
-import path from "path";
 
 // Initialize PostgreSQL connection pool
 const connectionString =
@@ -198,82 +196,18 @@ export async function getClient() {
 }
 
 /**
- * Initializes database tables using schema.sql (automatically drops legacy pre-3NF tables if present).
+ * Brings the schema up to date by applying the versioned migrations
+ * (src/server/db/migrations). Safe to call from any number of servers.
  */
 export async function initDatabase(): Promise<{ success: boolean; message: string }> {
-  // One process at a time, and never queue behind other sessions' locks for
-  // minutes: another server running the same DDL already has it covered.
-  const client = await pool.connect();
-  let locked = false;
   try {
-    await client.query("SET lock_timeout = '5s'");
-    locked = Boolean((await client.query<{ ok: boolean }>("SELECT pg_try_advisory_lock(7346512) AS ok")).rows[0]?.ok);
-    if (!locked) return { success: true, message: "Schema initialization already running in another server." };
-
-    // Check if legacy pre-3NF tables exist (`machine_parts` or `machines` without `model_id`)
-    const legacyCheck = await client.query<{ is_legacy: boolean }>(`
-      SELECT (
-        EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'machine_parts')
-        OR (
-          EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'machines')
-          AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'machines' AND column_name = 'model_id')
-        )
-      ) AS is_legacy
-    `);
-
-    if (legacyCheck.rows[0]?.is_legacy) {
-      console.log("Migrating database from legacy schema to 3NF normalized schema...");
-      await client.query(`
-        DROP TABLE IF EXISTS
-          ai_predictions,
-          alert_acks,
-          work_orders,
-          edge_points,
-          edge_cards,
-          edge_sources,
-          edge_gateways,
-          edge_brokers,
-          edge_formats,
-          process_stages,
-          sap_equipment_records,
-          machine_rack_units,
-          rack_slots,
-          rack_chassis,
-          operating_events,
-          trend_points,
-          trend_records,
-          diagnosis_peak_frequencies,
-          diagnosis_findings,
-          diagnosis_records,
-          mapped_signals,
-          sensor_definitions,
-          machine_hotspots,
-          machine_subassemblies,
-          machine_systems,
-          machine_parts,
-          machines,
-          equipment_models,
-          hierarchy_nodes,
-          user_plant_access,
-          plants,
-          users,
-          roles
-        CASCADE;
-      `);
-    }
-
-    const schemaPath = path.join(process.cwd(), "src/server/db/schema.sql");
-    const schemaSql = fs.readFileSync(schemaPath, "utf-8");
-
-    await client.query(schemaSql);
-    return { success: true, message: "3NF Schema initialized successfully." };
+    const { runMigrations } = await import("./migrate");
+    const applied = await runMigrations();
+    return { success: true, message: applied.length ? `Applied ${applied.join(", ")}` : "Schema up to date." };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error("Database schema initialization failed:", errorMsg);
+    console.error("Database migration failed:", errorMsg);
     return { success: false, message: errorMsg };
-  } finally {
-    await client.query(`${locked ? "SELECT pg_advisory_unlock(7346512); " : ""}RESET lock_timeout`).catch(() => {});
-    client.release();
   }
 }
 
@@ -299,11 +233,12 @@ export async function isDatabaseHealthy(): Promise<{
       "machines",
       "machine_systems",
       "machine_subassemblies",
-      "sensor_definitions",
-      "mapped_signals",
-      "operating_events",
-      "diagnosis_records",
-      "trend_records",
+      "measurements",
+      "measurement_limits",
+      "rules",
+      "readings",
+      "findings",
+      "machine_events",
       "rack_chassis",
     ];
     const res = await query<{ version: string; database: string; counts: Record<string, number> }>(

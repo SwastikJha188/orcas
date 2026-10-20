@@ -2,6 +2,7 @@
 
 import React from "react";
 import "./kiln-diagrams.css";
+import { displayName } from "@/lib/display-name";
 
 /* ==========================================================================
    KLN-01 diagrams — overview + 15 sub-assemblies (D5-OSW-PE-KLN Rev. 01).
@@ -386,7 +387,7 @@ function PointMark({
       role={interactive ? "button" : undefined}
       tabIndex={interactive ? 0 : undefined}
       aria-pressed={interactive ? selected : undefined}
-      aria-label={`${point.p} ${point.tag} ${point.name}${reading ? `: ${reading.value} ${unit}, ${reading.status}` : ""}`}
+      aria-label={`${point.name} (${point.tag})${reading ? `: ${reading.value} ${unit}, ${reading.status}` : ""}`}
       onClick={() => onSelect?.(point.tag)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -402,7 +403,7 @@ function PointMark({
       <circle cx={point.x} cy={point.y} r={4.5} fill={fill} className="kd-point-dot" />
 
       <text className="kd-read-name" x={tx} y={point.ly - 4} textAnchor={anchor}>
-        {point.name}
+        {displayName(point.name)}
       </text>
       <text className="kd-read-line" x={tx} y={point.ly + 12} textAnchor={anchor}>
         {reading && (
@@ -412,7 +413,7 @@ function PointMark({
           </>
         )}
         <tspan className="kd-read-tag" dx={reading ? 8 : 0}>
-          {point.p} · {point.tag}
+          {point.p}
         </tspan>
       </text>
     </g>
@@ -1094,7 +1095,7 @@ export function KilnSubAssemblyDiagram({
         className="kd-svg"
         viewBox={`0 0 ${SUB_W} ${SUB_H}`}
         role={onSelectTag ? "group" : "img"}
-        aria-label={`${sub.name} (${sub.machine}) with ${sub.points.length} measurement points`}
+        aria-label={`${sub.name} (${sub.machine}) with ${sub.points.length} sensors`}
       >
         {renderDrawing(id, readings)}
         {sub.points.map((p) => (

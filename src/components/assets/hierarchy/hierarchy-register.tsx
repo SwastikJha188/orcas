@@ -1,5 +1,6 @@
 "use client";
 
+import { displayName } from "@/lib/display-name";
 import React, { useMemo, useState } from "react";
 import { PillButton, PillNav, Table, type Column } from "@/components/ui";
 import type { AssetsSubPage } from "../assets-view";
@@ -67,11 +68,10 @@ export function MachineRegister({
             <TypeIcon type="machine" size={14} />
           </span>
           <span className="ast-cell-stack">
-            <span className="ast-cell-title">{r.node.name}</span>
-            <span className="ast-cell-sub ast-num">
-              {r.machineId}
-              {r.machine?.type ? ` · ${r.machine.type}` : ""}
+            <span className="ast-cell-title" title={r.machineId}>
+              {displayName(r.node.name)}
             </span>
+            {r.machine?.type && <span className="ast-cell-sub">{r.machine.type}</span>}
           </span>
         </span>
       ),

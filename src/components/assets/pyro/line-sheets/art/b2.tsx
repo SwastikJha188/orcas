@@ -1,139 +1,111 @@
 /**
  * Sheet B-2 — BRN-01 · Main burner — Primary-air fan.
- * Composed as PDF page 25: centrifugal fan volute (outlet rising on the left,
- * transition piece, rectangular duct with expansion joint, damper and flanged
- * joints to the burner primary-air header), the drive-end bearing on its
- * stand, shaft and guarded coupling, the fan motor, all on one fabricated
- * base frame and concrete plinth.
+ *
+ * Panel "PRIMARY-AIR FAN" of group image 4A (page 10, panel box 842.5 105.5 –
+ * 1605.5 777.5): the centrifugal fan (outlet box and volute, impeller with
+ * four curved blades) on its pedestal, the rectangular discharge duct rising
+ * from the outlet and running right to the burner primary-air header; the
+ * drive-end bearing on its stand, the shaft and coupling, and the fan motor
+ * (terminal box, finned frame, fan cowl); all on one base frame.
  */
 import React from "react";
-import { Bolt, Coupling, CornerBolts, GroundLine, MX, MachineLabel, Motor, PAINT } from "@/components/assets/machine-kit/machine-kit";
-import { FlowArrow } from "../../drawings/clk-parts";
-import { Volute } from "../../drawings/fkp-parts";
+import { Bolt, GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
 import type { LineSheetArt } from "../types";
-import { BaseFrame, DuctElbow, DuctFlange } from "./parts-b";
+import { BaseRail, EndArrow, Flow, Head, RibCoupling, SideMotor, Stool } from "./parts-b2";
 
-const W = 824;
-const H = 704;
-const GROUND = 630;
-const BASE_Y = 593;
+const W = 763;
+const H = 672;
+const GROUND = 594;
+const BASE = { x: 91, y: 560, w: 581, h: 16.5 };
 
-const FAN = { cx: 248, cy: 450, r: 118 };
-const DUCT = { x: 184, y: 90, d: 50, rc: 50 };
-const BRG = { x: 405, y: 420, w: 61, h: 68 };
-const MOT = { x: 518, y: 392, w: 189, h: 118 };
-const SHAFT_Y = 450;
+const FAN = { cx: 233, cy: 431.5, r: 114.5 };
+const DUCT = { x0: 148, x1: 203.5, y0: 80, y1: 135, end: 726, bottom: 288.5 };
+const SHAFT_Y = 431.5;
 
 function Duct() {
-  const top = DUCT.y - DUCT.d / 2;
+  const { x0, x1, y0, y1, end, bottom } = DUCT;
+  const r = 25;
   return (
     <g>
-      {/* transition piece from the volute outlet to the duct */}
-      <path d={`M 112 291 L 232 291 L ${DUCT.x + DUCT.d / 2} 262 L ${DUCT.x - DUCT.d / 2} 262 Z`} {...PAINT.body} />
-      <line x1={140} y1={286} x2={DUCT.x - DUCT.d / 2 + 4} y2={266} {...PAINT.hair} />
-      <line x1={206} y1={286} x2={DUCT.x + DUCT.d / 2 - 4} y2={266} {...PAINT.hair} />
-      <DuctElbow x={DUCT.x} y0={262} yh={DUCT.y} x1={798} d={DUCT.d} rc={DUCT.rc} />
-      <DuctFlange x={DUCT.x} y={262} d={DUCT.d} vertical />
-      <DuctFlange x={DUCT.x} y={200} d={DUCT.d} vertical />
-      {/* expansion joint (bellows) on the vertical leg */}
-      <rect x={DUCT.x - DUCT.d / 2 - 3} y={214} width={DUCT.d + 6} height={30} rx={3} {...PAINT.raised} />
-      {[219, 224, 229, 234, 239].map((y) => (
-        <line key={y} x1={DUCT.x - DUCT.d / 2 - 1} x2={DUCT.x + DUCT.d / 2 + 1} y1={y} y2={y} stroke={MX.fine} strokeWidth={1} />
+      <path d={`M ${x0} ${bottom} V ${y0 + r} A ${r} ${r} 0 0 1 ${x0 + r} ${y0} H ${end} V ${y1} H ${x1} V ${bottom} Z`} {...PAINT.body} />
+      {/* lit inner face of the duct */}
+      <path d={`M 168 ${bottom} V 128 A 12 12 0 0 1 180 116 H ${end} V 100 H 180 A 28 28 0 0 0 152 128 V ${bottom} Z`} fill={MX.raised} opacity={0.55} />
+      {/* flanged joints */}
+      {[400, 640].map((fx) => (
+        <rect key={fx} x={fx - 2.5} y={y0 - 4} width={5} height={y1 - y0 + 8} rx={1.5} {...PAINT.raised} />
       ))}
-      {/* flanged joints along the horizontal run */}
-      {[330, 600, 760].map((x) => (
-        <DuctFlange key={x} x={x} y={DUCT.y} d={DUCT.d} />
-      ))}
-      {/* isolating damper with actuator */}
-      <rect x={440} y={top - 4} width={44} height={DUCT.d + 8} rx={3} {...PAINT.raised} />
-      <line x1={448} y1={DUCT.y + 16} x2={476} y2={DUCT.y - 16} stroke={MX.edge} strokeWidth={1.6} />
-      <circle cx={462} cy={DUCT.y} r={3} {...PAINT.shaft} />
-      <rect x={458} y={top - 14} width={8} height={10} {...PAINT.shaft} />
-      <rect x={446} y={top - 32} width={32} height={18} rx={4} {...PAINT.body} />
-      <rect x={452} y={top - 27} width={14} height={8} rx={1.5} {...PAINT.recess} />
-      <CornerBolts x={440} y={top - 4} w={44} h={DUCT.d + 8} inset={4} r={1.2} />
-      {/* duct supports */}
-      {[540, 700].map((x) => (
-        <rect key={x} x={x - 14} y={DUCT.y + DUCT.d / 2} width={28} height={6} rx={1.5} {...PAINT.body} />
-      ))}
-      <FlowArrow x1={800} y1={DUCT.y} x2={820} y2={DUCT.y} />
+      <rect x={x0 - 4} y={236} width={x1 - x0 + 8} height={5} rx={1.5} {...PAINT.raised} />
+      <Flow pts={[[175.75, 280], [175.75, 107.5], [end, 107.5]]} color={MX.air} w={1.6} />
+      <Head x={175.75} y={200} dir="up" color={MX.air} />
+      <Head x={540} y={107.5} dir="right" color={MX.air} />
+      <EndArrow x1={729} x2={751} y={107.5} />
     </g>
   );
 }
 
 function FanBody() {
   const { cx, cy, r } = FAN;
+  const blades = [20, 110, 200, 290];
   return (
     <g>
-      {/* volute pedestal */}
-      <path d={`M ${cx - 70} ${cy + 84} L ${cx + 70} ${cy + 84} L ${cx + 76} ${BASE_Y} L ${cx - 76} ${BASE_Y} Z`} {...PAINT.body} />
-      <rect x={cx - 52} y={cy + 100} width={104} height={30} rx={3} {...PAINT.recess} />
-      <Volute cx={cx} cy={cy} r={r} outH={41} dir={-1} />
-      {/* casing bolt ring, inlet cone ring */}
-      {Array.from({ length: 16 }).map((_, i) => {
-        const a = (i / 16) * Math.PI * 2 + 0.2;
-        return <Bolt key={i} x={cx + Math.cos(a) * r * 0.8} y={cy + Math.sin(a) * r * 0.8} r={1.5} />;
-      })}
-      <circle cx={cx} cy={cy} r={r * 0.71} fill="none" stroke={MX.edge} strokeWidth={1.4} />
-      {/* casing drain and inspection door */}
-      <rect x={cx - 5} y={cy + r + 4} width={10} height={8} rx={1.5} {...PAINT.shaft} />
-      <rect x={cx + 76} y={cy - 92} width={30} height={22} rx={4} transform={`rotate(38 ${cx + 91} ${cy - 81})`} {...PAINT.raised} />
-      {/* shaft line, bearing to coupling to motor */}
-      <rect x={cx + r * 0.9} y={SHAFT_Y - 5} width={MOT.x - cx - r * 0.9} height={10} rx={2} {...PAINT.shaft} />
-      <rect x={366} y={SHAFT_Y - 9} width={10} height={18} rx={2} {...PAINT.raised} />
+      {/* outlet box and volute */}
+      <path d={`M 118 288.5 H 233 V ${cy - r} A ${r} ${r} 0 1 1 118 ${cy} Z`} {...PAINT.body} />
+      {[
+        [172.5, 360],
+        [305, 371.5],
+        [161, 492.5],
+        [305, 492.5],
+      ].map(([bx, by]) => (
+        <Bolt key={`${bx}-${by}`} x={bx} y={by} r={2} />
+      ))}
+      {/* impeller: casing ring, inlet ring, curved blades, hub */}
+      <circle cx={cx} cy={cy} r={71.5} {...PAINT.recess} />
+      <circle cx={cx} cy={cy} r={71.5} fill="none" stroke={MX.edge} strokeWidth={MX.w} />
+      <circle cx={cx} cy={cy} r={57.5} fill={MX.flatBody} stroke={MX.edge} strokeWidth={MX.w} />
+      {blades.map((a) => (
+        <path
+          key={a}
+          d={`M ${cx} ${cy} C ${cx + 8} ${cy - 18} ${cx + 22} ${cy - 40} ${cx + 12} ${cy - 50} C ${cx + 2} ${cy - 40} ${cx - 10} ${cy - 22} ${cx} ${cy} Z`}
+          fill={MX.raised}
+          stroke={MX.edge}
+          strokeWidth={1}
+          transform={`rotate(${a} ${cx} ${cy})`}
+        />
+      ))}
+      <circle cx={cx} cy={cy} r={12} {...PAINT.raised} />
+      <circle cx={cx} cy={cy} r={4} fill={MX.deep} />
+      {/* pedestal */}
+      <path d="M 185 499 H 280 L 300 560 H 166 Z" {...PAINT.body} />
     </g>
   );
 }
 
-function Bearing() {
-  const { x, y, w, h } = BRG;
+function BearingAndDrive() {
   return (
     <g>
-      {/* bearing stand: legs, base plate, tie */}
-      {[x - 10, x + w + 4].map((lx) => (
-        <rect key={lx} x={lx} y={y + h + 12} width={7} height={BASE_Y - y - h - 12} rx={1.5} {...PAINT.body} />
-      ))}
-      <rect x={x - 13} y={y + h} width={w + 26} height={12} rx={2} {...PAINT.body} />
-      <rect x={x - 10} y={548} width={w + 21} height={5} rx={1.5} {...PAINT.body} />
-      <Bolt x={x - 6} y={y + h + 6} r={1.6} />
-      <Bolt x={x + w + 7} y={y + h + 6} r={1.6} />
-      {/* plummer block */}
-      <rect x={x} y={y} width={w} height={h} rx={8} {...PAINT.raised} />
-      <line x1={x + 2} x2={x + w - 2} y1={SHAFT_Y} y2={SHAFT_Y} stroke={MX.edge} strokeWidth={1.2} />
-      <rect x={x + 6} y={y + 6} width={w - 12} height={h - 12} rx={5} fill="none" stroke={MX.fine} strokeWidth={0.8} />
-      <Bolt x={x + 7} y={SHAFT_Y - 7} r={1.8} />
-      <Bolt x={x + w - 7} y={SHAFT_Y - 7} r={1.8} />
-      <Bolt x={x + 7} y={SHAFT_Y + 7} r={1.8} />
-      <Bolt x={x + w - 7} y={SHAFT_Y + 7} r={1.8} />
-      {/* grease nipple and vibration-sensor stud on the cap, RTD pocket below */}
-      <rect x={x + w - 14} y={y - 7} width={4} height={7} {...PAINT.shaft} />
-      <rect x={x + w / 2 - 6} y={y - 3} width={12} height={5} rx={1.5} {...PAINT.shaft} />
-      <rect x={x + w / 2 - 7} y={473 - 6} width={14} height={12} rx={3} {...PAINT.recess} />
-    </g>
-  );
-}
-
-function Drive() {
-  return (
-    <g>
-      {/* motor sub-base and feet */}
-      <rect x={550} y={MOT.y + MOT.h + 6} width={MOT.w - 48} height={BASE_Y - MOT.y - MOT.h - 6} rx={2} {...PAINT.body} />
-      <rect x={538} y={MOT.y + MOT.h - 2} width={150} height={9} rx={2} {...PAINT.raised} />
-      {[548, 676].map((fx) => (
-        <Bolt key={fx} x={fx} y={MOT.y + MOT.h + 3} r={1.6} />
-      ))}
-      <g transform={`translate(${2 * (MOT.x + MOT.w / 2)} 0) scale(-1 1)`}>
-        <Motor x={MOT.x} y={MOT.y} w={MOT.w} h={MOT.h} />
-      </g>
-      {/* coupling and its guard */}
-      <Coupling x={481} y={434} w={34} h={32} />
-      <rect x={476} y={424} width={42} height={52} rx={6} fill="none" stroke={MX.fine} strokeWidth={1} strokeDasharray="3 2" />
-      <rect x={566} y={540} width={MOT.w - 80} height={36} rx={3} {...PAINT.recess} />
-      {/* terminal-box gland and lifting eyes */}
-      <rect x={648} y={372} width={10} height={6} rx={1.5} {...PAINT.shaft} />
-      {[548, 676].map((ex) => (
-        <circle key={ex} cx={ex} cy={MOT.y - 3} r={4} fill="none" stroke={MX.edge} strokeWidth={2} />
-      ))}
+      {/* shaft: fan → bearing → coupling */}
+      <rect x={340} y={SHAFT_Y - 6.5} width={140} height={13} {...PAINT.shaft} />
+      {/* DE bearing on its stand */}
+      <Stool x={380} y={476.5} w={44} h={83.5} />
+      <rect x={368} y={465} width={68} height={11.5} rx={2} {...PAINT.raised} />
+      <rect x={375} y={404} width={54} height={61} rx={5} {...PAINT.body} />
+      <rect x={380} y={409} width={44} height={51} rx={3} fill="none" stroke={MX.fine} strokeWidth={0.8} />
+      <line x1={377} x2={427} y1={SHAFT_Y} y2={SHAFT_Y} stroke={MX.fine} strokeWidth={0.8} />
+      {/* coupling */}
+      <RibCoupling x={442} y={417.5} w={30.5} h={28.5} />
+      {/* fan motor on its stool */}
+      <Stool x={500} y={492.5} w={122} h={67.5} />
+      <SideMotor
+        x={476}
+        y={377.5}
+        w={170.5}
+        h={108.5}
+        tbox={[527, 354, 68, 26]}
+        cowl={[642, 388.5, 42, 86.5]}
+        win={[532, 419, 58, 27.5]}
+        fins={[393.5, 409, 424.5, 440, 455.5, 471]}
+        foot={[493, 484, 136, 8.5]}
+      />
     </g>
   );
 }
@@ -141,41 +113,42 @@ function Drive() {
 function Art() {
   return (
     <g>
-      <GroundLine x1={22} x2={804} y={GROUND} />
-      <BaseFrame x={90} y={BASE_Y} w={646} h={18} ground={GROUND} bolts={9} />
+      <GroundLine x1={30} x2={733} y={GROUND} />
+      <BaseRail {...BASE} />
       <Duct />
       <FanBody />
-      <Bearing />
-      <Drive />
+      <BearingAndDrive />
 
-      <MachineLabel x={816} y={58.7} anchor="end" size={9}>
-        TO BURNER PRIMARY-AIR HEADER (B-1)
+      <MachineLabel x={745} y={72} anchor="end" size={8.5}>
+        TO BURNER PRIMARY-AIR HEADER
       </MachineLabel>
-      <MachineLabel x={247} y={658.7} size={9}>
-        PRIMARY-AIR FAN
-      </MachineLabel>
-      <MachineLabel x={434.5} y={524} size={8.2}>
+      <MachineLabel x={401.5} y={500} size={8}>
         DE BEARING
       </MachineLabel>
-      <MachineLabel x={629.5} y={658.7} size={9}>
+      <MachineLabel x={232.5} y={621.5} size={8.5}>
+        PRIMARY-AIR FAN
+      </MachineLabel>
+      <MachineLabel x={577} y={621.5} size={8.5}>
         FAN MOTOR
       </MachineLabel>
     </g>
   );
 }
 
-/** Pad centre per point (sheet units), as on PDF page 25. */
+/** Pad centre per point (sheet units), as on group image 4A, right panel. */
 const pads: LineSheetArt["pads"] = {
-  "VIB-BRN-01": [435.5, 425],
-  "TMP-BRN-01": [435.5, 473],
-  "ELE-BRN-01": [612.5, 374],
+  "VIB-BRN-01": [401.7, 409],
+  "TMP-BRN-01": [401.7, 452.3],
+  "ELE-BRN-01": [563.7, 363],
+  "TMP-BRN-05": [594.7, 455.5],
 };
 
-/** Tag chip centre per point, as on PDF page 25. */
-const chips: NonNullable<LineSheetArt["chips"]> = {
-  "VIB-BRN-01": [357, 297.5],
-  "TMP-BRN-01": [513, 562],
-  "ELE-BRN-01": [678.5, 291.5],
+/** Plate side per point (start = plate right of the pad, end = left); stand-off slot if both sides collide. */
+const callouts: LineSheetArt["callouts"] = {
+  "VIB-BRN-01": [394, 382, "end"],
+  "TMP-BRN-01": [394, 520, "end"],
+  "ELE-BRN-01": [571, 335, "start"],
+  "TMP-BRN-05": [602, 506, "start"],
 };
 
-export const sheet: LineSheetArt = { id: "B-2", ready: true, width: W, height: H, Art, pads, chips };
+export const sheet: LineSheetArt = { id: "B-2", ready: true, width: W, height: H, Art, pads, callouts };

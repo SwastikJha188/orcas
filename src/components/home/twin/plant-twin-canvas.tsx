@@ -420,18 +420,18 @@ function Building({
                   {callout.health !== null && <b>{callout.health}/100</b>}
                 </span>
               ) : (
-                <span className="ph-twin-label-meta">Site infrastructure</span>
+                <span className="ph-twin-label-meta">Support building</span>
               )}
               {active && building.areaId && callout && (
                 <span className="ph-twin-label-more">
                   <span>
-                    Machines <b>{callout.running}/{callout.machines}</b>
+                    Running <b>{callout.running} of {callout.machines}</b>
                   </span>
                   <span>
                     Alerts <b>{callout.alerts}</b>
                   </span>
                   <span>
-                    Telemetry <b>{callout.telemetry}</b>
+                    Readings <b>{callout.telemetry === "LIVE" ? "Live" : callout.telemetry === "RECORD" ? "Saved" : "—"}</b>
                   </span>
                 </span>
               )}

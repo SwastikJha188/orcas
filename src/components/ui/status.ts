@@ -2,9 +2,9 @@
    ULTRON status vocabulary: one scale, one set of words, one tone each.
 
    Condition (machines, sub-assemblies, plants, findings):
-     Normal · Advisory · Critical   (+ Standby, No data when not judged)
+     Normal · Alert · Critical   (+ Standby, No data when not judged)
    Process limits (a signal against its limits):
-     Normal · Warning · Alarm
+     Normal · Alert · Critical
    Data validity (a sensor's reading):
      Valid · Suspect · Invalid · Stale · No data
 
@@ -15,8 +15,8 @@
 /** Status tone: drives `data-tone` → `--tone` on chips, ticks, dots and bars. */
 export type Tone = "good" | "warn" | "bad" | "idle" | "info";
 
-export type Condition = "Normal" | "Advisory" | "Critical" | "Standby" | "No data";
-export type LimitState = "Normal" | "Warning" | "Alarm";
+export type Condition = "Normal" | "Alert" | "Critical" | "Standby" | "No data";
+export type LimitState = "Normal" | "Alert" | "Critical";
 export type Validity = "Valid" | "Suspect" | "Invalid" | "Stale" | "No data";
 
 const CONDITION_SYNONYMS: Record<string, Condition> = {
@@ -32,20 +32,20 @@ const CONDITION_SYNONYMS: Record<string, Condition> = {
   cleared: "Normal",
   low: "Normal",
   minor: "Normal",
-  advisory: "Advisory",
-  warning: "Advisory",
-  warn: "Advisory",
-  alert: "Advisory",
-  "at risk": "Advisory",
-  "needs attention": "Advisory",
-  attention: "Advisory",
-  check: "Advisory",
-  watch: "Advisory",
-  elevated: "Advisory",
-  degrading: "Advisory",
-  drifting: "Advisory",
-  medium: "Advisory",
-  major: "Advisory",
+  advisory: "Alert",
+  warning: "Alert",
+  warn: "Alert",
+  alert: "Alert",
+  "at risk": "Alert",
+  "needs attention": "Alert",
+  attention: "Alert",
+  check: "Alert",
+  watch: "Alert",
+  elevated: "Alert",
+  degrading: "Alert",
+  drifting: "Alert",
+  medium: "Alert",
+  major: "Alert",
   critical: "Critical",
   alarm: "Critical",
   danger: "Critical",
@@ -75,16 +75,16 @@ export function toCondition(raw: string | null | undefined): Condition {
 }
 
 export function conditionTone(c: Condition | string | null | undefined): Tone {
-  const k = typeof c === "string" && (c === "Normal" || c === "Advisory" || c === "Critical" || c === "Standby" || c === "No data") ? c : toCondition(c);
+  const k = typeof c === "string" && (c === "Normal" || c === "Alert" || c === "Critical" || c === "Standby" || c === "No data") ? c : toCondition(c);
   if (k === "Critical") return "bad";
-  if (k === "Advisory") return "warn";
+  if (k === "Alert") return "warn";
   if (k === "Standby" || k === "No data") return "idle";
   return "good";
 }
 
-/** Worst of several conditions (Critical > Advisory > Normal > Standby > No data). */
+/** Worst of several conditions (Critical > Alert > Normal > Standby > No data). */
 export function worstCondition(list: (Condition | string)[]): Condition {
-  const rank: Record<Condition, number> = { Critical: 4, Advisory: 3, Normal: 2, Standby: 1, "No data": 0 };
+  const rank: Record<Condition, number> = { Critical: 4, Alert: 3, Normal: 2, Standby: 1, "No data": 0 };
   let worst: Condition = "No data";
   for (const raw of list) {
     const c = toCondition(raw);
@@ -100,11 +100,20 @@ export function limitTone(s: LimitState | string): Tone {
   return "good";
 }
 
-/** Raw limit words (Alert/Danger, Warn/Trip, warning/danger) → Warning / Alarm. */
+/** Raw limit words (Alert/Danger, Warn/Trip, warning/danger) → Alert / Critical. */
 export function toLimitState(raw: string | null | undefined): LimitState {
   const t = limitTone(raw ?? "");
-  return t === "bad" ? "Alarm" : t === "warn" ? "Warning" : "Normal";
+  return t === "bad" ? "Critical" : t === "warn" ? "Alert" : "Normal";
 }
+
+/** Reading-quality words people see, the same on every page (the Validity values stay the data's own words). */
+export const VALIDITY_WORDS: Record<Validity, string> = {
+  Valid: "Good",
+  Suspect: "May be wrong",
+  Invalid: "Not usable",
+  Stale: "Not updating",
+  "No data": "No reading",
+};
 
 export function validityTone(v: Validity | string): Tone {
   switch (v.toLowerCase()) {
@@ -119,6 +128,19 @@ export function validityTone(v: Validity | string): Tone {
       return "idle";
   }
 }
+
+/**
+ * Alarm states (ISA-18.2). Acknowledgement is separate from returning to
+ * normal: a cleared alarm nobody acknowledged is still unacknowledged.
+ */
+export const ALARM_STATE = {
+  confirming: "Confirming",
+  active: "Active",
+  clearing: "Clearing",
+  cleared: "Cleared",
+  acknowledged: "Acknowledged",
+  unacknowledged: "Unacknowledged",
+} as const;
 
 /** Standard action labels, so the same action reads the same everywhere. */
 export const ACTION = {

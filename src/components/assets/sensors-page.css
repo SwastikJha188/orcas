@@ -210,6 +210,10 @@
   background: var(--row-hover-bg);
 }
 
+.pg-sensors-tile:active {
+  transform: scale(0.97);
+}
+
 .pg-sensors-tile:is([data-tone="warn"], [data-tone="bad"]) {
   border-color: color-mix(in srgb, var(--tone) 45%, transparent);
 }
@@ -395,6 +399,12 @@
 .pg-sensors-input:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+.pg-sensors-input:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
 /* ---------------------------------------------------------------- map controls
@@ -609,7 +619,7 @@
 .stc-label {
   fill: var(--text-muted);
   font-family: var(--font-ui);
-  font-size: 9px;
+  font-size: var(--fs-3xs);
   font-variant-numeric: tabular-nums;
 }
 

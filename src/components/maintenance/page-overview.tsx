@@ -6,6 +6,8 @@ import { isOpenStage } from "@/lib/pms";
 import { useKilnFleet } from "@/providers/kiln-simulation-context";
 import { Empty, KpiStrip, Section } from "@/components/assets/analysis/an-ui";
 import type { PmsModel, QueueItem } from "./pms-model";
+import { useWorkOrderPriorities } from "@/lib/reference-data";
+import { checkState, partLife, useAlertChecks, useRunningHours, useServiceParts } from "./maint-types-model";
 import { machineCode, machineName } from "./pms-model";
 import { DAY, ItemCell, PM_ICON, StateWord, occurrences, setPmsFocus, startOfDay, usePmsNav } from "./pms-ui";
 
@@ -18,9 +20,44 @@ const ICON_OF = { finding: PM_ICON.finding, wo: PM_ICON.wo, plan: PM_ICON.plan }
 const DAYFMT = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "2-digit" });
 
 export function PageOverview({ pms }: { pms: PmsModel }) {
-  const { data, queue, findings, openWos, dues, now } = pms;
+  const { data, findings, openWos, dues, now } = pms;
   const nav = usePmsNav();
   const fleet = useKilnFleet();
+  const checksApi = useAlertChecks();
+  const priorities = useWorkOrderPriorities();
+  const partsApi = useServiceParts();
+  const counter = useRunningHours();
+
+  // Open checks raised by alarms stand in the queue for the alarms themselves (Predictive & planned).
+  const checks = useMemo(() => (checksApi.data ?? []).filter((c) => data?.machineIds.includes(c.machineId) && checkState(c, now).open), [checksApi.data, data, now]);
+  const queue = useMemo<QueueItem[]>(() => {
+    const items: QueueItem[] = checks.map((c) => {
+      const st = checkState(c, now);
+      return {
+        key: `c:${c.id}`,
+        kind: "finding",
+        machineId: c.machineId,
+        priority: c.priority,
+        title: c.title,
+        sub: c.places.join(", ") || (c.measurement?.tag ?? ""),
+        reason: c.summary,
+        next: "Go and check",
+        status: { label: st.label, tone: st.tone },
+        at: Date.parse(c.raisedAt),
+        ref: String(c.id),
+      };
+    });
+    // Urgency order as the database lists the priorities.
+    const rank = (id: string) => {
+      const i = priorities?.findIndex((p) => p.id === id) ?? -1;
+      return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+    };
+    return [...items, ...pms.queue.filter((q) => q.kind !== "finding")].sort((a, b) => rank(a.priority) - rank(b.priority) || a.at - b.at);
+  }, [checks, pms.queue, now, priorities]);
+  const partsDue = useMemo(
+    () => (partsApi.data ?? []).filter((p) => data?.machineIds.includes(p.machineId)).map((p) => partLife(p, counter(p.machineId), now)).filter((l) => l.state !== "ok"),
+    [partsApi.data, data, counter, now],
+  );
 
   const counts = useMemo(() => {
     const c = { week: 0, weekTasks: 0, overdue: 0, overdueTasks: 0, requests: 0, fromFindings: 0, ready: 0, blocked: 0, done7: 0 };
@@ -79,8 +116,8 @@ export function PageOverview({ pms }: { pms: PmsModel }) {
       setPmsFocus(`p:${item.ref}`);
       nav("calendar");
     } else if (item.kind === "finding") {
-      setPmsFocus(`f:${item.ref}`);
-      nav("condition");
+      setPmsFocus(`c:${item.ref}`);
+      nav("predictive");
     } else {
       setPmsFocus(`w:${item.ref}`);
       nav("work");
@@ -88,7 +125,6 @@ export function PageOverview({ pms }: { pms: PmsModel }) {
   };
 
   if (!data) return <Loading pms={pms} what="planned maintenance" />;
-  const p1 = queue.filter((q) => q.priority === "P1").length;
 
   return (
     <div className="ast-root pg-frame pm-page" style={{ "--pm-side": "340px" } as React.CSSProperties}>
@@ -96,30 +132,40 @@ export function PageOverview({ pms }: { pms: PmsModel }) {
         page
         label="Maintenance summary"
         items={[
-          { label: "Due this week", value: `${counts.week}`, foot: `${counts.weekTasks} tasks in ${counts.week} rounds` },
-          { label: "Overdue", value: `${counts.overdue}`, tone: counts.overdue ? "warn" : undefined, foot: counts.overdue ? `${counts.overdueTasks} tasks past interval` : "every round within interval" },
           {
-            label: "Work requests",
-            value: `${counts.requests}`,
-            tone: p1 ? "bad" : counts.fromFindings ? "warn" : undefined,
-            foot: counts.fromFindings ? `${counts.fromFindings} live findings not yet raised` : "awaiting technical review",
+            label: "Preventive rounds due",
+            value: `${counts.week}`,
+            tone: counts.overdue ? "warn" : undefined,
+            foot: counts.overdue ? `${counts.overdue} more overdue · ${counts.overdueTasks} tasks` : `${counts.weekTasks} tasks this week · none overdue`,
           },
-          { label: "Ready to execute", value: `${counts.ready}`, foot: `${counts.blocked ? `${counts.blocked} blocked · ` : ""}${counts.done7} completed in 7 days` },
+          {
+            label: "Checks from alarms",
+            value: `${checks.length}`,
+            tone: checks.some((c) => checkState(c, now).overdue) ? "bad" : checks.length ? "warn" : undefined,
+            foot: checks.length ? `${checks.filter((c) => checkState(c, now).overdue).length} past their response time` : "every alarm has been checked",
+          },
+          {
+            label: "Parts due for replacement",
+            value: `${partsDue.length}`,
+            tone: partsDue.some((l) => l.state === "over") ? "bad" : partsDue.length ? "warn" : undefined,
+            foot: partsDue.length ? partsDue.map((l) => l.part.name).slice(0, 2).join(" · ") : "every part within its service life",
+          },
+          { label: "Ready to start", value: `${counts.ready}`, foot: `${counts.requests ? `${counts.requests} requests to review · ` : ""}${counts.done7} completed in 7 days` },
         ]}
       />
       <div className="pg-frame-body">
         <div className="pm-split">
-          <Section id="pm-queue" title="Priority queue" right={<span className="ast-caption">Safety · criticality · due basis · readiness</span>}>
+          <Section id="pm-queue" title="Priority queue" right={<span className="ast-caption">Sorted by safety, importance, due date and readiness</span>}>
             {queue.length === 0 ? (
-              <Empty title="Nothing waiting: no findings, open work or due rounds." />
+              <Empty title="Nothing waiting: no problems, no open work and no rounds due." />
             ) : (
               <div className="ui-table-container ast-table pm-table">
                 <table className="ui-table">
                   <thead>
                     <tr>
-                      <th>Pri</th>
-                      <th className="pm-grow">Item</th>
-                      <th>Reason</th>
+                      <th title="P1 is the most urgent">Priority</th>
+                      <th className="pm-grow">What</th>
+                      <th>Why</th>
                       <th>Next step</th>
                       <th>Status</th>
                     </tr>
@@ -131,7 +177,7 @@ export function PageOverview({ pms }: { pms: PmsModel }) {
                           {q.priority}
                         </td>
                         <td className="pm-grow">
-                          <ItemCell icon={ICON_OF[q.kind]} tone={q.status.tone} title={q.title} sub={q.kind === "plan" ? q.sub : `${machineCode(q.machineId)} · ${q.sub}`} />
+                          <ItemCell icon={ICON_OF[q.kind]} tone={q.status.tone} title={q.title} sub={q.kind === "plan" ? q.sub : `${machineName(q.machineId)} · ${q.sub}`} />
                         </td>
                         <td>
                           <span className="ast-cell-text pm-wrap" title={q.reason}>
@@ -159,10 +205,10 @@ export function PageOverview({ pms }: { pms: PmsModel }) {
                   const cond = toCondition(frame?.condition ?? null);
                   const tone: Tone = conditionTone(cond);
                   const parts = [
-                    m.findings && `${m.findings} ${m.findings === 1 ? "finding" : "findings"}`,
+                    m.findings && `${m.findings} ${m.findings === 1 ? "problem" : "problems"}`,
                     m.overdue && `${m.overdue} overdue`,
                     m.due && `${m.due} rounds due`,
-                    m.wos && `${m.wos} open ${m.wos === 1 ? "order" : "orders"}`,
+                    m.wos && `${m.wos} open ${m.wos === 1 ? "work order" : "work orders"}`,
                   ].filter(Boolean);
                   return (
                     <li key={m.id}>
@@ -175,8 +221,8 @@ export function PageOverview({ pms }: { pms: PmsModel }) {
                         }}
                       >
                         <span className="ast-chip-dot" data-tone={tone} aria-hidden="true" />
-                        <span className="pm-machine-name">
-                          <b>{machineCode(m.id)}</b> {machineName(m.id)}
+                        <span className="pm-machine-name" title={machineCode(m.id)}>
+                          <b>{machineName(m.id)}</b>
                         </span>
                         <span className="pm-machine-state" data-tone={m.critical ? "bad" : m.overdue || m.findings ? "warn" : undefined}>
                           {parts.length ? parts.join(" · ") : "Nothing due"}
@@ -200,7 +246,7 @@ export function PageOverview({ pms }: { pms: PmsModel }) {
                       <span className="pm-up-title" title={o.title}>
                         {o.title}
                       </span>
-                      <span className="pm-up-state">{o.kind === "wo" ? "Scheduled" : o.isolate ? "Needs isolation" : "Planned"}</span>
+                      <span className="pm-up-state">{o.kind === "wo" ? "Scheduled" : o.isolate ? "Machine must be stopped" : "Planned"}</span>
                     </li>
                   ))}
                 </ul>
@@ -217,7 +263,18 @@ export function PageOverview({ pms }: { pms: PmsModel }) {
 export function Loading({ pms, what }: { pms: PmsModel; what: string }) {
   return (
     <section className="ast-card">
-      <Empty title={pms.loading ? `Loading ${what}…` : `${what[0].toUpperCase()}${what.slice(1)} unavailable.`}>{pms.error ?? undefined}</Empty>
+      {/* Nothing loaded and no error means this plant has no maintenance plans yet — say that, not "could not be loaded". */}
+      <Empty
+        title={
+          pms.loading
+            ? `Loading ${what}…`
+            : pms.error
+              ? `${what[0].toUpperCase()}${what.slice(1)} could not be loaded.`
+              : "This plant has no planned maintenance yet."
+        }
+      >
+        {pms.error ?? (pms.loading ? undefined : "Plans come from each machine's maintenance checklist (for example, uploaded in Configure › Onboarding).")}
+      </Empty>
     </section>
   );
 }

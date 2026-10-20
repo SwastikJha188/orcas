@@ -25,6 +25,9 @@ import type { IClientOptions, MqttClient } from "mqtt";
 import { parseMessage, templateFilter, naturalCompare } from "@/lib/edge-format";
 import { type RuntimeBrokerConfig, type RuntimeGatewayConfig, registerDetected } from "@/server/services/edge-service";
 import type { BrokerTestResult, ParsedReading, RawSample } from "@/types/edge";
+import { query } from "@/server/db";
+import { writeReadings, type ReadingIn } from "@/server/monitoring/readings";
+import { setting } from "@/server/monitoring/settings";
 import type {
   BrokerState,
   BrokerStatus,
@@ -757,8 +760,62 @@ class MqttRuntime {
     // brokers deliver, so a 2 Hz × N-rack fleet cannot flood a browser.
     const tick = setInterval(() => this.flush(), TICK_MS);
     const resync = setInterval(() => void this.reload(), SYNC_MS);
-    for (const t of [sweep, tick, resync]) t.unref?.();
-    this.timers.push(sweep, tick, resync);
+    const record = setInterval(() => void this.recordReadings(), RECORD_CHECK_MS);
+    for (const t of [sweep, tick, resync, record]) t.unref?.();
+    this.timers.push(sweep, tick, resync, record);
+  }
+
+  // -------------------------------------------------------------- readings
+  /** Last persisted sample per measurement key, so each sample is written once. */
+  private persisted = new Map<string, string>();
+  private lastRecordMs = 0;
+  private recording = false;
+
+  /**
+   * Writes the latest value of every live channel that is mapped to a
+   * measurement (edge_points.measurement_id) into `readings`, once per publish
+   * period (system setting readings.publish_period_s). The acquisition time is
+   * the gateway's sample time when it sends one, else the receipt time, and is
+   * marked accordingly. Invalid or stale channels are not written: missing is
+   * missing, never zero.
+   */
+  private async recordReadings(): Promise<void> {
+    if (this.recording) return;
+    this.recording = true;
+    try {
+      const periodMs = (await setting("readings.publish_period_s")) * 1000;
+      if (Date.now() - this.lastRecordMs < periodMs) return;
+      this.lastRecordMs = Date.now();
+      const bindings = await query<{ broker_id: string | null; code: string; rack: string; slot: string; channel: string; measurement_id: string; value_kind: string }>(
+        `SELECT g.broker_id, g.code, s.code AS rack, p.slot, p.channel, p.measurement_id, m.value_kind
+           FROM edge_points p
+           JOIN edge_sources s ON s.id = p.source_id
+           JOIN edge_gateways g ON g.id = s.gateway_id
+           JOIN measurements m ON m.id = p.measurement_id
+          WHERE p.enabled AND g.enabled`,
+      );
+      const byKey = new Map(bindings.rows.map((b) => [`${b.broker_id ?? ""}|${b.code}|${b.rack}|${b.slot}|${b.channel}`, b]));
+      const rows: ReadingIn[] = [];
+      for (const c of this.connections) {
+        for (const m of c.store.measurements.values()) {
+          if (!m.valid || !m.fresh) continue;
+          const b = byKey.get(`${m.brokerId}|${m.gatewayId}|${m.rackId}|${m.slot}|${m.channel}`);
+          if (!b) continue;
+          const at = m.sampledAt ?? m.updatedAt;
+          if (this.persisted.get(m.key) === at) continue;
+          this.persisted.set(m.key, at);
+          const state = b.value_kind === "state" ? (m.display ?? (m.value !== null ? String(m.value) : null)) : null;
+          const value = b.value_kind === "state" ? null : m.value;
+          if (value === null && state === null) continue;
+          rows.push({ measurementId: b.measurement_id, acquiredAt: Date.parse(at), value, state, quality: "GOOD", timeSource: m.sampledAt ? "device" : "server" });
+        }
+      }
+      if (rows.length) await writeReadings(rows);
+    } catch (err) {
+      console.error("[mqtt] recording readings failed:", (err as Error).message);
+    } finally {
+      this.recording = false;
+    }
   }
 
   /** Stop timers and close every connection (tests, hot-reload replacement). */
@@ -968,7 +1025,9 @@ export async function testBrokerConnection(config: RuntimeBrokerConfig): Promise
 // ---------------------------------------------------------------- singleton
 type LegacyRuntime = { client?: { end?: (force?: boolean) => unknown } | null; timers?: NodeJS.Timeout[] };
 /** Identity of the runtime's shape; see getMqttRuntime. */
-const RUNTIME_VERSION = 14;
+/** How often the recorder checks whether a publish period has passed. */
+const RECORD_CHECK_MS = 5_000;
+const RUNTIME_VERSION = 15;
 
 const globalForMqtt = globalThis as typeof globalThis & { __orcasMqttV2?: MqttRuntime; __orcasMqtt?: LegacyRuntime };
 

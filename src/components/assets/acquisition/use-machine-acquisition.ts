@@ -68,7 +68,7 @@ async function poll(machineId: string) {
     const res = await fetch(`/api/edge/machines/${encodeURIComponent(machineId)}`, { cache: "no-store" });
     const body = await res.json().catch(() => null);
     if (!res.ok || !body?.data) {
-      emit(e, { loading: false, error: body?.error?.message ?? `Request failed (HTTP ${res.status})` });
+      emit(e, { loading: false, error: body?.error?.message ?? `Could not load the live readings (server error ${res.status})` });
     } else {
       const data = body.data as MachineAcquisition;
       let history = e.state.history;
@@ -87,7 +87,7 @@ async function poll(machineId: string) {
       emit(e, { data, history, loading: false, error: null });
     }
   } catch (err) {
-    emit(e, { loading: false, error: err instanceof Error ? err.message : "Network error" });
+    emit(e, { loading: false, error: err instanceof Error ? err.message : "Could not reach the server" });
   } finally {
     e.inflight = false;
     schedule(machineId, e);

@@ -70,7 +70,7 @@ type PointFilter = "all" | "live" | "down" | "unmapped";
 
 export function DevicesOverview({ sectionNav, onOpenHierarchy, onOpenSection }: DevicesOverviewProps) {
   const { registry, snapshot, loading, error, refresh, stream } = useEdge();
-  const { navigateToMachine, setActiveTab } = useIndustrialData();
+  const { navigateToMachine } = useIndustrialData();
   const clock = useClock(5000);
   const now = Math.max(clock, snapshot ? Date.parse(snapshot.serverNow) : 0);
   const [pointFilter, setPointFilter] = useState<PointFilter>("all");
@@ -106,9 +106,9 @@ export function DevicesOverview({ sectionNav, onOpenHierarchy, onOpenSection }: 
           <li>Overview</li>
         </ol>
         <div className="ast-title-row">
-          <h1 className="ast-title">Edge network</h1>
+          <h1 className="ast-title">How sensor data reaches ULTRON</h1>
           {status}
-          {stream !== "open" && <StatusTag tone="warn" label={stream === "connecting" ? "Live feed connecting" : "Live feed retrying"} />}
+          {stream !== "open" && <StatusTag tone="warn" label={stream === "connecting" ? "Live updates connecting" : "Live updates reconnecting"} />}
         </div>
       </div>
       <div className="pg-actions">
@@ -132,7 +132,7 @@ export function DevicesOverview({ sectionNav, onOpenHierarchy, onOpenSection }: 
             "Loading device registry…"
           ) : (
             <>
-              <strong>Device registry unavailable. Retry.</strong>
+              <strong>The list of devices could not be loaded. Try again.</strong>
               <PillButton variant="secondary" onClick={() => void refresh()}>
                 Retry
               </PillButton>
@@ -147,13 +147,13 @@ export function DevicesOverview({ sectionNav, onOpenHierarchy, onOpenSection }: 
   const degraded = lanes.filter((l) => l.tone === "warn").length;
   const [sumTone, sumLabel]: [Tone, string] =
     lanes.length === 0
-      ? ["idle", "No gateways"]
+      ? ["idle", "No data collectors"]
       : broken > 0
-        ? ["bad", `${broken} of ${lanes.length} paths broken`]
+        ? ["bad", `Data stops on ${broken} of ${lanes.length} paths`]
         : degraded > 0
-          ? ["warn", `${degraded} of ${lanes.length} paths degraded`]
+          ? ["warn", `${degraded} of ${lanes.length} paths partly working`]
           : lanes.every((l) => l.tone === "idle")
-            ? ["idle", "All gateways disabled"]
+            ? ["idle", "All data collectors switched off"]
             : ["good", "Data reaching ULTRON"];
 
   const metrics = snapshot?.metrics ?? null;
@@ -168,12 +168,12 @@ export function DevicesOverview({ sectionNav, onOpenHierarchy, onOpenSection }: 
       {sectionNav}
 
       {/* ------------------------------------------------ KPI strip */}
-      <KpiCards className="pg-devices-kpis" label="Edge link summary">
-        {(["broker", "gateway", "source", "point"] as Layer[]).map((layer) => {
+      <KpiCards className="pg-devices-kpis" label="Data path summary">
+        {(["gateway", "source", "point"] as Layer[]).map((layer) => {
           const c = totals[layer];
           const active = activeOf(c);
           const segs = linkSegments(c);
-          const label = layer === "broker" ? "Brokers connected" : layer === "point" ? "Points live" : `${LAYER_LABEL[layer]}s online`;
+          const label = layer === "point" ? "Reading points live" : `${LAYER_LABEL[layer]}s online`;
           return (
             <KpiCard
               key={layer}
@@ -186,48 +186,44 @@ export function DevicesOverview({ sectionNav, onOpenHierarchy, onOpenSection }: 
                 <>
                   {active > 0 && <SegmentBar segments={segs} label={segmentText(segs)} />}
                   {layer === "point"
-                    ? `${nf.format(alerts)} alert · ${nf.format(dangers)} danger · ${nf.format(unmapped)} not mapped`
+                    ? `${nf.format(alerts)} alert · ${nf.format(dangers)} critical · ${nf.format(unmapped)} not linked to a machine`
                     : layer === "source"
-                      ? `${nf.format(c.online)} streaming · ${nf.format(activeOf(totals.card))} cards, ${nf.format(totals.card.online)} reporting`
-                      : c.disabled > 0
-                        ? `${nf.format(c.disabled)} disabled`
-                        : active === 0
-                          ? "None configured"
-                          : segmentText(segs)}
+                      ? `${nf.format(c.online)} sending · ${nf.format(activeOf(totals.card))} sensor cards, ${nf.format(totals.card.online)} sending`
+                      : `${nf.format(totals.broker.online)} of ${nf.format(activeOf(totals.broker))} data connections working${c.disabled > 0 ? ` · ${nf.format(c.disabled)} switched off` : ""}`}
                 </>
               }
             />
           );
         })}
         <KpiCard
-          label="Ingest throughput"
+          label="Messages received"
           value={metrics ? rate(metrics.messagesPerSecond) : "—"}
-          unit="msg/s"
+          unit="per second"
           footClassName="ast-kpi-foot ast-caption ast-num"
           foot={
             metrics
-              ? `p50 ${metrics.latencyP50Ms !== null ? `${nf.format(Math.round(metrics.latencyP50Ms))} ms` : "—"} · ${nf.format(metrics.quarantined)} quarantined · last ${ago(metrics.lastMessageAt, now)}`
-              : "Waiting for the ingest runtime"
+              ? `typical delay ${metrics.latencyP50Ms !== null ? `${nf.format(Math.round(metrics.latencyP50Ms))} ms` : "—"} · ${nf.format(metrics.quarantined)} set aside as unreadable · last ${ago(metrics.lastMessageAt, now)}`
+              : "Waiting for the data receiver to start"
           }
         />
       </KpiCards>
 
       {/* ------------------------------------------------ primary visual */}
-      <section className="ast-card pg-devices-path" aria-label="Data path by gateway">
+      <section className="ast-card pg-devices-path" aria-label="Data path for each data collector">
         <div className="ast-card-head">
-          <h2 className="ast-card-title">Data path by gateway</h2>
-          <span className="ast-caption">First broken layer marked · worst first</span>
+          <h2 className="ast-card-title">Data path for each data collector</h2>
+          <span className="ast-caption">Where data stops is marked · worst first</span>
         </div>
         {lanes.length === 0 ? (
           <div className="ast-empty pg-devices-empty">
-            <strong>No gateways registered</strong>
-            Connect the edge gateway that publishes the plant&rsquo;s racks, PLCs and SCADA to a broker.
+            <strong>No data collectors registered</strong>
+            Connect the data collector (gateway) that sends the plant&rsquo;s sensor readings to a data connection (MQTT broker).
             <PillButton variant="secondary" icon={<IconPlus size={13} />} onClick={() => onOpenHierarchy({ connect: true })}>
-              Connect gateway
+              Connect a data collector
             </PillButton>
           </div>
         ) : (
-          <div className="pg-devices-lanes" role="table" aria-label="Data path per gateway">
+          <div className="pg-devices-lanes" role="table" aria-label="Data path for each data collector">
             <div className="pg-devices-lane pg-devices-lane-head" role="row">
               {LAYERS.map((layer) => {
                 const c = totals[layer];
@@ -244,7 +240,7 @@ export function DevicesOverview({ sectionNav, onOpenHierarchy, onOpenSection }: 
                 );
               })}
               <div className="pg-devices-col-head" role="columnheader">
-                <span className="pg-devices-col-name">Feeds</span>
+                <span className="pg-devices-col-name">Machines fed</span>
               </div>
             </div>
             {lanes.map((lane) => (
@@ -254,29 +250,32 @@ export function DevicesOverview({ sectionNav, onOpenHierarchy, onOpenSection }: 
         )}
       </section>
 
+      {/* With no data collector registered there is no path to check: the first card's next step is all there is. */}
+      {lanes.length > 0 && (
+        <>
       {/* ------------------------------------------------ breaks */}
       <section className="ast-card pg-table-card" aria-label="Where data stops">
         <div className="ast-card-head">
           <h2 className="ast-card-title">Where data stops</h2>
-          <span className="ast-caption ast-num">{breaks.length === 0 ? "No broken links" : `${nf.format(breaks.length)} root causes`}</span>
+          <span className="ast-caption ast-num">{breaks.length === 0 ? "No broken links" : `${nf.format(breaks.length)} places where data stops`}</span>
         </div>
         {breaks.length === 0 ? (
-          <p className="pg-devices-note">Every enabled broker, gateway, source and point is reporting.</p>
+          <p className="pg-devices-note">Every data connection, data collector, device and reading point that is switched on is sending data.</p>
         ) : (
           <BreaksTable rows={breaks} now={now} onOpen={openBreak} />
         )}
       </section>
 
       {/* ------------------------------------------------ points */}
-      <section className="ast-card pg-table-card" aria-label="Points and the machines they feed">
+      <section className="ast-card pg-table-card" aria-label="Reading points and the machines they feed">
         <div className="ast-card-head pg-devices-points-head">
-          <h2 className="ast-card-title">Points → machines</h2>
+          <h2 className="ast-card-title">Reading points and their machines</h2>
           <PillNav
             items={[
               { id: "all", label: `All ${points.length}` },
               { id: "live", label: `Live ${totals.point.online}` },
               { id: "down", label: `Not live ${ptActive - totals.point.online}` },
-              { id: "unmapped", label: `Not mapped ${unmapped}` },
+              { id: "unmapped", label: `No machine ${unmapped}` },
             ]}
             activeId={pointFilter}
             onChange={(id) => setPointFilter(id as PointFilter)}
@@ -291,23 +290,8 @@ export function DevicesOverview({ sectionNav, onOpenHierarchy, onOpenSection }: 
           onMachine={openMachine}
         />
       </section>
-
-      {/* ------------------------------------------------ related */}
-      <nav className="pg-devices-related" aria-label="Related pages">
-        <span className="ast-caption">Related</span>
-        <PillButton variant="secondary" onClick={() => onOpenHierarchy()}>
-          Hierarchy · configure gateways, sources, cards
-        </PillButton>
-        <PillButton variant="secondary" onClick={() => onOpenSection("formats")}>
-          Data formats
-        </PillButton>
-        <PillButton variant="secondary" onClick={() => onOpenSection("mqtt")}>
-          MQTT diagnostics
-        </PillButton>
-        <PillButton variant="secondary" onClick={() => setActiveTab("assets")}>
-          Assets
-        </PillButton>
-      </nav>
+        </>
+      )}
     </div>
   );
 }
@@ -341,7 +325,7 @@ function LaneRow({ lane, now, onOpen, onMachine }: { lane: Lane; now: number; on
                 className="pg-devices-node pg-devices-node-btn"
                 data-tone={tone}
                 onClick={onOpen}
-                aria-label={`Open gateway ${lane.gateway.code} in the hierarchy, ${LINK_LABEL[c.status]}`}
+                aria-label={`Open data collector ${lane.gateway.name || lane.gateway.code} in the device tree, ${LINK_LABEL[c.status]}`}
               >
                 {node}
               </button>
@@ -355,7 +339,7 @@ function LaneRow({ lane, now, onOpen, onMachine }: { lane: Lane; now: number; on
       })}
       <div className="pg-devices-cell pg-devices-feeds" role="cell">
         {lane.machines.length === 0 ? (
-          <span className="ast-muted ast-caption">No machine mapped</span>
+          <span className="ast-muted ast-caption">No machine linked</span>
         ) : (
           lane.machines.map((m) => (
             <button key={m.id} type="button" className="pg-devices-machine" onClick={() => onMachine(m.id)} aria-label={`Open ${m.name} sensors`}>
@@ -369,7 +353,7 @@ function LaneRow({ lane, now, onOpen, onMachine }: { lane: Lane; now: number; on
           {lane.reason && <span className="pg-devices-reason">{lane.reason}</span>}
           <span className="ast-muted">
             seen {ago(lane.lastSeenAt, now)}
-            {lane.messages !== null ? ` · ${nf.format(lane.messages)} msgs` : ""}
+            {lane.messages !== null ? ` · ${nf.format(lane.messages)} messages` : ""}
             {lane.lost ? ` · ${nf.format(lane.lost)} lost` : ""}
           </span>
         </div>
@@ -391,7 +375,7 @@ function BreaksTable({ rows, now, onOpen }: { rows: BreakRow[]; now: number; onO
   const columns: Column<BreakRow>[] = [
     {
       key: "item",
-      header: "Link",
+      header: "Where",
       render: (r) => (
         <span className="pg-devices-lead">
           <span className="ast-badge" data-tone={r.tone}>
@@ -405,7 +389,7 @@ function BreaksTable({ rows, now, onOpen }: { rows: BreakRow[]; now: number; onO
       ),
     },
     { key: "path", header: "Path", render: (r) => <span className="ast-cell-text ast-num">{r.path}</span> },
-    { key: "state", header: "State", render: (r) => <StatusTag tone={r.tone} label={r.tone === "info" ? "Not registered" : LINK_LABEL[r.status]} /> },
+    { key: "state", header: "Status", render: (r) => <StatusTag tone={r.tone} label={r.tone === "info" ? "Not registered" : LINK_LABEL[r.status]} /> },
     { key: "reason", header: "Reason", render: (r) => <span className="ast-cell-text pg-wrap">{r.reason}</span> },
     { key: "seen", header: "Last data", render: (r) => <span className="ast-num ast-muted">{ago(r.lastSeenAt, now)}</span> },
     {
@@ -414,7 +398,7 @@ function BreaksTable({ rows, now, onOpen }: { rows: BreakRow[]; now: number; onO
       width: "120px",
       render: (r) => (
         <span className="pg-devices-open">
-          {r.target.kind === "mqtt" ? "MQTT" : "Hierarchy"}
+          {r.target.kind === "mqtt" ? "Data connections" : "Device tree"}
           <Chevron />
         </span>
       ),
@@ -428,7 +412,7 @@ function PointsTable({ rows, now, onOpen, onMachine }: { rows: PointRow[]; now: 
   const columns: Column<PointRow>[] = [
     {
       key: "point",
-      header: "Point",
+      header: "Reading point",
       render: (r) => (
         <span className="pg-devices-lead">
           <span className="ast-badge" data-tone={READING_TONE[r.reading.status]}>
@@ -443,7 +427,7 @@ function PointsTable({ rows, now, onOpen, onMachine }: { rows: PointRow[]; now: 
     },
     {
       key: "path",
-      header: "Gateway › source · card · ch",
+      header: "Data collector › device · card · channel",
       render: (r) => (
         <span className="ast-cell-text ast-num">
           {r.gateway?.code ?? "—"} › {r.source?.code ?? "—"} · {r.point.slot} · {r.point.channel}
@@ -463,11 +447,11 @@ function PointsTable({ rows, now, onOpen, onMachine }: { rows: PointRow[]; now: 
           <span className="ast-muted">—</span>
         ),
     },
-    { key: "state", header: "State", render: (r) => <StatusTag tone={READING_TONE[r.reading.status]} label={READING_LABEL[r.reading.status]} /> },
+    { key: "state", header: "Status", render: (r) => <StatusTag tone={READING_TONE[r.reading.status]} label={READING_LABEL[r.reading.status]} /> },
     { key: "updated", header: "Updated", render: (r) => <span className="ast-num ast-muted">{ago(r.reading.updatedAt, now)}</span> },
     {
       key: "feeds",
-      header: "Feeds",
+      header: "Machine",
       render: (r) =>
         r.machine ? (
           <button
@@ -484,7 +468,7 @@ function PointsTable({ rows, now, onOpen, onMachine }: { rows: PointRow[]; now: 
             {r.point.signalTag && <span className="pg-devices-machine-sig ast-num">{r.point.signalTag}</span>}
           </button>
         ) : (
-          <span className="ast-muted ast-caption">Not mapped</span>
+          <span className="ast-muted ast-caption">No machine linked</span>
         ),
     },
   ];

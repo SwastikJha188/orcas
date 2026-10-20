@@ -1,158 +1,326 @@
 "use client";
 
 /**
- * Machine sub-page · Analysis — why the machine behaves as it does.
+ * Machine sub-page · Analysis — "Why is it happening, why will it happen,
+ * and what does it affect?"
  *
- * Follows the D5 §8.1 analytics pipeline (data quality → reference model →
- * sensor validation → rules → confirmation → diagnosis) and the AI capability
- * specifications (condition monitoring, expected behaviour, unknown anomaly,
- * issue source & fault diagnosis, degradation, explainable AI, maintenance
- * recommendations). Layout: header → summary strip → scroll-spy index →
- * Detection · Mechanism · Explanation · Feedback · Model quality, one card
- * each; sections without data for this machine are hidden.
+ *   Header → four KPIs (faults now, failures predicted within 6 months,
+ *   first deviation, unexplained deviations) → one issue at a time, picked
+ *   from a fixed-order list of the faults Diagnosis shows and the failures
+ *   Prognosis predicts → Why it is happening / Why it will happen → What it
+ *   affects → Past episodes → Unexplained deviations.
  *
- * Diagnosis owns the fault list, actions and rule / alarm board; Prognosis
- * owns RUL, risk and forecasts; AssetIQ · Accuracy owns prediction accuracy.
- * This page links to them with one summary line rather than duplicating them.
+ * Diagnosis says what is wrong, Prognosis what will happen; both link here
+ * ("Why →") with the rule or sub-assembly, and this page opens on it.
  */
 
-import React, { useMemo } from "react";
+import { useComponentScope, type ComponentScope } from "../component-scope";
+import React, { useEffect, useMemo, useState } from "react";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useKilnSimulationFor, useLiveMachineStatus } from "@/providers/kiln-simulation-context";
 import { conditionTone, toCondition } from "@/components/ui/status";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { formatLocalTime } from "@/lib/time";
-import { simTimeMs } from "@/lib/kiln-sim/engine";
+import { formatDuration, simTimeMs } from "@/lib/kiln-sim/engine";
+import { defsFor } from "@/lib/live-defs";
 import type { AssetMachine } from "../assets-data";
 import type { AssetsSubPage } from "../assets-view";
 import { useMachineInsights } from "../use-machine-insights";
-import { PillButton } from "@/components/ui";
-import { Empty, KpiStrip, PageHeader, SectionIndex, openActions, type AnalysisModuleId, type SectionIndexItem } from "./an-ui";
-import { SECTION_IDS, detectionRows, isAnomalous, liveRules, machineFaults, machineSources, type SectionProps } from "./an-derive";
-import { isConditionRule } from "@/lib/plant-defs";
-import { useAnalysisKpis } from "./an-summary";
-import { AnDetection } from "./an-detection";
-import { AnFaults } from "./an-faults";
-import { AnExplain } from "./an-explain";
-import { AnActions, useFeedbackLabels } from "./an-actions";
-import { AnQuality, useMachineLedger } from "./an-quality";
+import { useMachineCatalog } from "../use-machine-catalog";
+import { kilnHealthModel } from "../health-derive";
+import { rulRows } from "../prognosis/prognosis-derive";
+import { signalForecastRows } from "../prognosis/prog-signals";
+import { PillNav } from "@/components/ui";
+import { focusLayer, focusSensorOn, LAYER_FOCUS_EVENT, readLayerFocus, type LayerFocusPayload } from "../sensor-focus";
+import { Empty, KpiStrip, PageHeader, Section, scrollToSection, type AnalysisModuleId, type KpiItem } from "./an-ui";
+import { useFeedbackLabels } from "./an-actions";
+import { buildIssues, deviationOrder, impactFor, issueFor, unexplained } from "./an-issues";
+import { IssueHead, PastEpisodes, UnexplainedTable, WhatItAffects, WhyHappening, WhyWillHappen, pastEpisodes } from "./an-issue-view";
+import { useFaultLibrary } from "../fault-library";
 import "./analysis-page.css";
+import "../prognosis/prognosis-page.css";
 
 export type { AnalysisModuleId };
 
 /** sessionStorage key another page can set to open Analysis at a section id. */
 export const ANALYSIS_ANCHOR_KEY = "ultron.analysis.anchor";
 
+/** Section ids (the why-section keeps the id other pages already link to). */
+export const AN_SECTIONS = {
+  issue: "an-issue",
+  why: "an-diagnosis",
+  impact: "an-impact",
+  episodes: "an-episodes",
+  unexplained: "an-unexplained",
+} as const;
+
 export interface MachineAnalysisPageProps {
   machine: AssetMachine;
+  onNavigateToDiagnosis?: (ruleId?: string | null, component?: string | null, tag?: string | null) => void;
+  onNavigateToPrognosis?: (ruleId?: string | null, component?: string | null, tag?: string | null) => void;
+  onNavigateToSensors?: () => void;
+  onNavigateToTrends?: () => void;
+  onNavigateToOverview?: () => void;
+  /** Component the page is filtered to (null: the whole machine). */
+  component?: ComponentScope | null;
 }
 
-export function MachineAnalysisPage({ machine }: MachineAnalysisPageProps) {
+export function MachineAnalysisPage({
+  machine,
+  onNavigateToDiagnosis,
+  onNavigateToPrognosis,
+  onNavigateToSensors,
+  onNavigateToTrends,
+  onNavigateToOverview,
+  component: scopeProp,
+}: MachineAnalysisPageProps) {
+  // The machine's component filter (shared by its pages) unless the host passes one.
+  const sharedScope = useComponentScope(machine).selected;
+  const scope = scopeProp !== undefined ? scopeProp : sharedScope;
   const { setActiveSubPage } = useIndustrialData();
   const insights = useMachineInsights(machine);
   const frame = useKilnSimulationFor(machine.id)?.frame ?? null;
+  const catalog = useMachineCatalog(machine);
   const tz = useSiteTimeZone({ machineId: machine.id });
-  const ledger = useMachineLedger(machine.id);
   const live = useLiveMachineStatus(machine.id, { health: machine.health, status: machine.status });
   const condition = toCondition(live.status);
   const feedback = useFeedbackLabels(machine.id);
-  const go = (sub: AssetsSubPage) => setActiveSubPage(sub);
+  const library = useFaultLibrary(machine.id);
 
-  const data = insights.data;
-  const a = data?.analysis ?? null;
+  /* ------------------------------- Model -------------------------------- */
+  const data = insights.data?.prognosis ?? null;
+  const analysis = insights.data?.analysis ?? null;
+  const defs = frame?.defs ?? defsFor(machine.id);
+  const rul = useMemo(() => (data ? rulRows(data, analysis) : []), [data, analysis]);
+  const forecastRows = useMemo(() => (data ? signalForecastRows(data, defs) : []), [data, defs]);
+  // Component filter (Assets component bar): its issues and its sensors' deviations only.
+  const compTags = useMemo(() => (scope ? new Set(scope.tags) : null), [scope]);
+  const issues = useMemo(() => {
+    const all = buildIssues(frame, rul, defs);
+    return scope ? all.filter((i) => i.subIds.includes(scope.id) || i.life.some((r) => r.id === scope.id)) : all;
+  }, [frame, rul, defs, scope]);
+  const contributions = useMemo(() => (frame ? kilnHealthModel(frame, catalog).contributions : null), [frame, catalog]);
+  const unknown = useMemo(() => (frame ? unexplained(frame) : []).filter((u) => !compTags || compTags.has(u.tag)), [frame, compTags]);
+  const chain = useMemo(
+    () => (frame ? deviationOrder(frame).sort((a, b) => b.minutesAgo - a.minutesAgo) : []).filter((c) => !compTags || c.tags.some((t) => compTags.has(t))),
+    [frame, compTags],
+  );
+
+  /* ------------------------------ Selection ------------------------------ */
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [wanted, setWanted] = useState<{ ruleId: string | null; component: string | null } | null>(() => {
+    const f = readLayerFocus(false);
+    return f.ruleId || f.component ? { ruleId: f.ruleId, component: f.component } : null;
+  });
+  useEffect(() => {
+    const onFocus = (ev: Event) => {
+      const d = (ev as CustomEvent<LayerFocusPayload>).detail;
+      if (d?.ruleId || d?.component) setWanted({ ruleId: d.ruleId ?? null, component: d.component ?? null });
+    };
+    window.addEventListener(LAYER_FOCUS_EVENT, onFocus);
+    return () => window.removeEventListener(LAYER_FOCUS_EVENT, onFocus);
+  }, [machine.id]);
+  // Resolve a request from another page once its issue exists.
+  useEffect(() => {
+    if (!wanted || issues.length === 0) return;
+    const hit = issueFor(issues, wanted.ruleId, wanted.component);
+    if (hit) setSelectedKey(hit.key);
+    setWanted(null);
+  }, [wanted, issues]);
+  const issue = issues.find((i) => i.key === selectedKey) ?? issues[0] ?? null;
+
+  // A section requested by another page (Diagnosis "Why →" sends an-diagnosis): scroll once it renders.
+  const ready = issue !== null;
+  useEffect(() => {
+    if (!ready) return;
+    let id: string | null = null;
+    try {
+      id = sessionStorage.getItem(ANALYSIS_ANCHOR_KEY);
+      sessionStorage.removeItem(ANALYSIS_ANCHOR_KEY);
+    } catch {
+      /* storage unavailable */
+    }
+    if (!id) return;
+    const t = window.setTimeout(() => scrollToSection(id as string), 120);
+    return () => window.clearTimeout(t);
+  }, [ready]);
+
+  /* ----------------------------- Navigation ----------------------------- */
+  const go = (sub: AssetsSubPage) => {
+    if (sub === "sensors" && onNavigateToSensors) return onNavigateToSensors();
+    if (sub === "trends" && onNavigateToTrends) return onNavigateToTrends();
+    if (sub === "overview" && onNavigateToOverview) return onNavigateToOverview();
+    setActiveSubPage(sub);
+  };
+  const openTrend = (tag: string) => {
+    focusSensorOn("trends", tag);
+    go("trends");
+  };
+  const ruleId = issue?.rule?.id ?? null;
+  const component = issue?.where ?? null;
+  const toDiagnosis = () => {
+    focusLayer({ ruleId, component, section: "dx-diagnosis" });
+    if (onNavigateToDiagnosis) onNavigateToDiagnosis(ruleId, component, null);
+    else setActiveSubPage("diagnosis");
+  };
+  const toPrognosis = () => {
+    focusLayer({ ruleId, component, section: "prog-life" });
+    if (onNavigateToPrognosis) onNavigateToPrognosis(ruleId, component, null);
+    else setActiveSubPage("prognosis");
+  };
+
+  /* -------------------------------- KPIs -------------------------------- */
+  const faults = issues.filter((i) => i.kind === "fault");
+  const predicted = issues.filter((i) => i.kind === "predicted");
+  const confirming = faults.filter((i) => i.rule?.status === "PENDING").length;
+  const first = chain[0] ?? null;
+  const kpis: KpiItem[] = [
+    {
+      label: "Problems now",
+      value: frame ? String(faults.length) : "—",
+      foot: frame ? `${faults.length - confirming} confirmed · ${confirming} being checked` : "No live data for this machine",
+      tone: faults.length - confirming > 0 ? "bad" : undefined,
+    },
+    {
+      label: "Parts that may fail in 6 months",
+      value: String(predicted.length),
+      unit: "parts",
+      foot: predicted[0] ? `First: ${predicted[0].where}` : "None apart from the problems now",
+      tone: predicted.length ? "warn" : undefined,
+    },
+    {
+      label: "Where it started",
+      value: first ? first.name : "None",
+      text: true,
+      foot: first
+        ? `${first.minutesAgo > 0 ? `${formatDuration(first.minutesAgo)} ago` : "Just now"} · ${first.tags.length} sensor${first.tags.length === 1 ? "" : "s"} off expected`
+        : "Every sensor reads as expected",
+    },
+    {
+      label: "Unusual readings, cause unknown",
+      value: frame ? String(unknown.length) : "—",
+      unit: "sensors",
+      foot: "Off expected, and no known problem explains them",
+      tone: unknown.length ? "warn" : undefined,
+    },
+  ];
 
   const inferredAt = frame
     ? formatLocalTime(simTimeMs(frame.t), { seconds: false, zone: true, timeZone: tz.timeZone })
-    : data?.generatedAt
-      ? Number.isNaN(Date.parse(data.generatedAt))
-        ? data.generatedAt
-        : formatLocalTime(data.generatedAt, { date: true, seconds: false, zone: true, timeZone: tz.timeZone })
+    : insights.data?.generatedAt
+      ? Number.isNaN(Date.parse(insights.data.generatedAt))
+        ? insights.data.generatedAt
+        : formatLocalTime(insights.data.generatedAt, { date: true, seconds: false, zone: true, timeZone: tz.timeZone })
       : null;
-
-  const rows = useMemo(() => (frame ? detectionRows(frame) : []), [frame]);
   const pl = frame?.pipeline;
-
-  // Which sections have data for this machine (empty sections are hidden).
-  const faults = a ? machineFaults(a) : [];
-  const hyps = a ? faults.length + machineSources(a).filter((s) => !faults.some((f) => f.id === s.id)).length : 0;
-  const anomalies = frame ? rows.filter(isAnomalous).length : (data?.prognosis.anomalies.length ?? 0);
-  const actions = a ? openActions(a) : [];
-  const show = {
-    detection: Boolean(a) && (frame !== null || anomalies > 0),
-    diagnosis: hyps > 0,
-    explanation: Boolean(a?.features.length),
-    // Same inputs AnActions renders: the open-actions line and one label card per finding.
-    actions: actions.length > 0 || (frame ? liveRules(frame).some((r) => isConditionRule(r)) : faults.length > 0),
-    quality: frame !== null || (ledger.stats?.made ?? 0) > 0,
-  };
-  const index: (SectionIndexItem & { on: boolean })[] = [
-    { id: SECTION_IDS.detection, label: "Detection", tone: anomalies ? "warn" : undefined, on: show.detection },
-    { id: SECTION_IDS.diagnosis, label: "Mechanism", tone: faults.some((f) => f.severity === "Critical") ? "bad" : faults.length ? "warn" : undefined, on: show.diagnosis },
-    { id: SECTION_IDS.explanation, label: "Explanation", on: show.explanation },
-    { id: SECTION_IDS.actions, label: "Feedback", on: show.actions },
-    { id: SECTION_IDS.quality, label: "Model quality", tone: pl && pl.invalid + pl.suspect > 0 ? "warn" : undefined, on: show.quality },
-  ];
-  const visible = index.filter((i) => i.on);
-
-  const props: SectionProps | null = data ? { machine, insights: data, frame, go } : null;
+  // Sensors working (not invalid or suspect): the machine's from the engine, a part's from its own sensors.
+  const working = useMemo(() => {
+    if (!frame) return null;
+    if (!compTags) return pl ? { ok: pl.valid, of: pl.valid + pl.held + pl.invalid + pl.suspect } : null;
+    const mine = [...compTags].map((t) => frame.signals[t]).filter(Boolean);
+    return { ok: mine.filter((x) => x.quality !== "Invalid" && x.quality !== "Suspect").length, of: mine.length };
+  }, [frame, pl, compTags]);
+  // Checks (rules) watching the machine, or only those on the picked part.
+  const checks = frame ? (scope ? frame.rules.filter((r) => r.subs.includes(scope.id)).length : frame.rules.length) : 0;
+  const impact = issue ? impactFor(issue, frame, contributions, rul) : [];
+  const past = issue ? pastEpisodes(issue, frame) : [];
 
   return (
     <div className="ast-root pg-frame pg-analysis" aria-label="Analysis">
       <PageHeader
-        title="Analysis"
+        title="Why it is happening"
         status={{ label: condition, tone: conditionTone(condition) }}
         meta={[
-          { label: "Model", value: frame ? `Reference model · ${frame.rules.length} rules` : data ? "Stored snapshot" : "—" },
+          { label: "Checks", value: frame ? `${checks} known problems watched` : insights.data ? "Saved snapshot" : "—" },
           { label: "Updated", value: inferredAt ?? "—" },
-          pl && { label: "Inputs valid", value: `${pl.valid} / ${pl.valid + pl.held + pl.invalid + pl.suspect}` },
+          working && { label: "Sensors working", value: `${working.ok} of ${working.of}` },
+          scope && { label: "Part", value: scope.name },
         ]}
-        actions={
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <PillButton variant="secondary" onClick={() => go("diagnosis")}>
-              Diagnosis
-            </PillButton>
-            <PillButton variant="secondary" onClick={() => go("prognosis")}>
-              Prognosis
-            </PillButton>
-            <PillButton variant="secondary" onClick={() => go("sensors")}>
-              Sensors
-            </PillButton>
-          </div>
-        }
       />
 
-      {insights.isLoading && !data ? (
+      {insights.isLoading && !insights.data && !frame ? (
         <section className="ast-card pg-analysis-section" role="status" aria-live="polite">
           <Empty title="Loading analysis…" />
         </section>
-      ) : insights.isError && !data ? (
-        <section className="ast-card pg-analysis-section" role="alert">
-          <Empty title="Analysis unavailable. Retry." />
-        </section>
-      ) : !props ? (
-        <section className="ast-card pg-analysis-section">
-          <Empty title="No model output for this machine." />
-        </section>
       ) : (
         <>
-          <AnalysisKpis insights={props.insights} frame={frame} />
-          {visible.length > 1 && <SectionIndex items={visible} label="Analysis sections" pendingKey={ANALYSIS_ANCHOR_KEY} />}
-          <div className="pg-frame-body pg-analysis-body">
-            {show.detection && <AnDetection {...props} />}
-            {show.diagnosis && <AnFaults {...props} />}
-            {show.explanation && <AnExplain {...props} />}
-            {show.actions && <AnActions {...props} feedback={feedback} />}
-            {show.quality && <AnQuality {...props} ledger={ledger} />}
-          </div>
+          <KpiStrip page items={kpis} label="Analysis summary" />
+
+          {issue ? (
+            <>
+              <Section id={AN_SECTIONS.issue} title={issues.length > 1 ? `Problems (${issues.length})` : "Problem"}>
+                {/* One problem: its title below says it; the picker would only repeat it. */}
+                {issues.length > 1 && (
+                  <PillNav
+                    items={issues.map((i) => ({ id: i.key, label: i.rule ? i.title : `May fail: ${i.title}` }))}
+                    activeId={issue.key}
+                    onChange={(k) => {
+                      setSelectedKey(k);
+                      const next = issues.find((i) => i.key === k);
+                      if (next?.rule) focusLayer({ ruleId: next.rule.id });
+                    }}
+                    arrows
+                    ariaLabel="Problems"
+                  />
+                )}
+                <IssueHead issue={issue} frame={frame} feedback={feedback} machineId={machine.id} />
+              </Section>
+
+              <Section
+                id={AN_SECTIONS.why}
+                title={issue.kind === "fault" ? "Why it is happening" : "Why it will happen"}
+                right={
+                  <button type="button" className="pg-diag-inline-link" onClick={issue.kind === "fault" ? toDiagnosis : toPrognosis}>
+                    {issue.kind === "fault" ? "See its sensors →" : "See time left →"}
+                  </button>
+                }
+              >
+                {issue.kind === "fault" && frame ? (
+                  <WhyHappening issue={issue} frame={frame} library={library} onOpenTrend={openTrend} />
+                ) : data ? (
+                  <WhyWillHappen issue={issue} data={data} forecastRows={forecastRows} onOpenTrend={openTrend} />
+                ) : (
+                  <Empty title="No forecast is available for this machine." />
+                )}
+              </Section>
+
+              {issue.kind === "fault" && data && issue.life.length > 0 && (
+                <Section id="an-heading" title="Where it is heading">
+                  <WhyWillHappen issue={issue} data={data} forecastRows={forecastRows} onOpenTrend={openTrend} />
+                </Section>
+              )}
+
+              <Section id={AN_SECTIONS.impact} title={issue.kind === "fault" ? "What it affects" : "What it will affect"}>
+                <WhatItAffects issue={issue} frame={frame} impact={impact} library={library} />
+              </Section>
+
+              {past.length > 0 && (
+                <Section id={AN_SECTIONS.episodes} title="Past times this happened">
+                  <PastEpisodes rows={past} />
+                </Section>
+              )}
+            </>
+          ) : (
+            <section className="ast-card pg-analysis-section">
+              <Empty
+                title={
+                  scope
+                    ? `Nothing to explain for ${scope.name}: no problem has been found on it, and no failure is expected in the next 6 months.`
+                    : "Nothing to explain: no problem has been found, and no failure is expected in the next 6 months."
+                }
+              />
+            </section>
+          )}
+
+          {unknown.length > 0 && (
+            <Section id={AN_SECTIONS.unexplained} title="Unusual readings, cause unknown">
+              <UnexplainedTable rows={unknown} onOpenTrend={openTrend} />
+            </Section>
+          )}
         </>
       )}
     </div>
   );
-}
-
-/** Page KPI strip (a component so its hooks run only once data is in). */
-function AnalysisKpis(props: Pick<SectionProps, "insights" | "frame">) {
-  return <KpiStrip page items={useAnalysisKpis(props)} label="Analysis summary" />;
 }
 
 export default MachineAnalysisPage;

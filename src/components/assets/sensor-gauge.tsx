@@ -56,9 +56,9 @@ export function twoSidedValues(b: TwoSided): number[] {
   return [b.alarmLo, b.warnLo, b.warnHi, b.alarmHi].filter((v): v is number => v !== undefined && Number.isFinite(v));
 }
 
-/** "≤ 30 / ≥ 85": the warning or alarm side pair of a two-sided limit. */
+/** "≤ 30 or ≥ 85": the readings that trip the warning or alarm side pair of a two-sided limit. */
 export function twoSidedText(lo: number | undefined, hi: number | undefined): string {
-  return [lo !== undefined ? `≤ ${lo}` : null, hi !== undefined ? `≥ ${hi}` : null].filter(Boolean).join(" / ") || "—";
+  return [lo !== undefined ? `≤ ${lo}` : null, hi !== undefined ? `≥ ${hi}` : null].filter(Boolean).join(" or ") || "—";
 }
 
 /**
@@ -177,8 +177,8 @@ export function LimitBar({ sensor, scale }: { sensor: DetailedSensorInfo; scale:
   const pct = (v: number) => `${scale.at(v) * 100}%`;
   const b = scale.band;
   const limits = b
-    ? `warning ${twoSidedText(b.warnLo, b.warnHi)}, alarm ${twoSidedText(b.alarmLo, b.alarmHi)}`
-    : `warning ${scale.warn}, alarm ${scale.alarm}`;
+    ? `Alert at ${twoSidedText(b.warnLo, b.warnHi)}, Critical at ${twoSidedText(b.alarmLo, b.alarmHi)}`
+    : `Alert at ${scale.warn}, Critical at ${scale.alarm}`;
   // Band zones sit at both ends: round only the end each one touches.
   const radius = (a: number, z: number) =>
     `${a <= scale.min ? "var(--corner-pill)" : "0"} ${z >= scale.max ? "var(--corner-pill)" : "0"} ${z >= scale.max ? "var(--corner-pill)" : "0"} ${a <= scale.min ? "var(--corner-pill)" : "0"}`;

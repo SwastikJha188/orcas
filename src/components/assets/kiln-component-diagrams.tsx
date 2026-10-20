@@ -5,6 +5,7 @@ import { DIAGRAM as D, diagramStateColor } from "./kiln-diagram-theme";
 import { CornerBolts, Fan, GearWheel, MX, MachinePad, MachineSvg, PAINT } from "./machine-kit/machine-kit";
 import { SUBASSEMBLY_DRAWINGS } from "./pyro/pyro-subassemblies";
 import "./diagnosis/health.css";
+import { displayName } from "@/lib/display-name";
 
 export interface DiagramPin {
   id: string; // e.g. "P1"
@@ -12,7 +13,7 @@ export interface DiagramPin {
   label: string;
   value: string;
   unit: string;
-  status: "Normal" | "Advisory" | "Critical";
+  status: "Normal" | "Alert" | "Critical";
   x: number; // SVG coordinate
   y: number;
   calloutX?: number; // Leader line destination
@@ -202,6 +203,12 @@ export function LinearScale({
 
 const CALLOUT_W = 140;
 const CALLOUT_H = 30;
+/** Callout head: drawing point and sensor name, clipped to the callout box (the tag stays in the tooltip). */
+const CALLOUT_CHARS = 28;
+function calloutName(pin: DiagramPin): string {
+  const text = `${pin.id} · ${displayName(pin.label)}`;
+  return text.length > CALLOUT_CHARS ? `${text.slice(0, CALLOUT_CHARS - 1).trimEnd()}…` : text;
+}
 
 export function DiagramPinLayer({
   pins,
@@ -237,7 +244,7 @@ export function DiagramPinLayer({
             role={interactive ? "button" : undefined}
             tabIndex={interactive ? 0 : undefined}
             aria-pressed={interactive ? selected : undefined}
-            aria-label={`${pin.tag} ${pin.label}: ${pin.value} ${pin.unit}, ${pin.status}`}
+            aria-label={`${displayName(pin.label)} (${pin.tag}): ${pin.value} ${pin.unit}, ${pin.status}`}
             style={{ cursor: interactive ? "pointer" : "default", outline: "none" }}
             onClick={() => onSelectPin?.(pin)}
             onKeyDown={(e) => {
@@ -249,7 +256,7 @@ export function DiagramPinLayer({
             onMouseEnter={() => setHovered(pin.tag)}
             onMouseLeave={() => setHovered(null)}
           >
-            <title>{`${pin.tag} · ${pin.label}`}</title>
+            <title>{`${pin.id} · ${pin.tag} · ${pin.label}`}</title>
             {hasCallout && (
               <path
                 d={`M ${pin.x} ${pin.y} L ${callX} ${callY}`}
@@ -272,39 +279,6 @@ export function DiagramPinLayer({
             />
             <MachinePad x={pin.x} y={pin.y} status={pin.status} selected={hot && !selected} />
 
-            {!hasCallout && hot && (() => {
-              const badgeText = `${pin.id || pin.tag} · ${pin.value} ${pin.unit !== "state" ? pin.unit : ""}`.trim();
-              const pillW = Math.max(36, badgeText.length * 4.8 + 12);
-              const placeLeft = pin.x > 520;
-              const bx = placeLeft ? pin.x - 10 - pillW : pin.x + 10;
-              const by = pin.y - 8;
-              return (
-                <g pointerEvents="none">
-                  <rect
-                    x={bx}
-                    y={by}
-                    width={pillW}
-                    height={16}
-                    rx={4}
-                    fill={D.surface}
-                    stroke={color}
-                    strokeWidth={1}
-                  />
-                  <text
-                    x={bx + pillW / 2}
-                    y={by + 10.8}
-                    textAnchor="middle"
-                    fill={D.ink}
-                    fontSize={7}
-                    fontWeight={600}
-                    letterSpacing="0.04em"
-                  >
-                    {badgeText}
-                  </text>
-                </g>
-              );
-            })()}
-
             {hasCallout && (
               <g>
                 <rect
@@ -318,13 +292,13 @@ export function DiagramPinLayer({
                   strokeWidth={1}
                 />
                 <rect x={barX} y={callY - 9} width={2.5} height={18} rx={1.25} fill={color} />
-                <text x={textX} y={callY - 3} fill={D.muted} fontSize={8} letterSpacing="0.04em">
-                  {pin.id} · {pin.tag}
+                <text x={textX} y={callY - 3.5} fill={D.muted} fontSize={8} letterSpacing="0.04em">
+                  {calloutName(pin)}
                 </text>
-                <text x={textX} y={callY + 10} fill={D.ink} fontSize={11} fontWeight={600}>
+                <text x={textX} y={callY + 10.5} fill={D.ink} fontSize={12.5} fontWeight={700}>
                   {pin.value}
                   {pin.unit && pin.unit !== "state" && (
-                    <tspan fill={D.muted} fontSize={8.5} fontWeight={400} dx={3}>
+                    <tspan fill={D.muted} fontSize={9.5} fontWeight={500} dx={3}>
                       {pin.unit}
                     </tspan>
                   )}

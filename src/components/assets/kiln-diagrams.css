@@ -42,7 +42,7 @@
 .kd-hair,
 .kd-flow {
   vector-effect: non-scaling-stroke;
-  transition: stroke 140ms ease;
+  transition: stroke var(--dur-fast) var(--ease-out);
 }
 .kd-body { fill: var(--kd-body); stroke: var(--kd-stroke); stroke-width: 1.25; }
 .kd-raised { fill: var(--kd-raised); stroke: var(--kd-stroke); stroke-width: 1.25; }
@@ -61,13 +61,13 @@
   fill: var(--kd-label);
   font-size: var(--fs-3xs);
   font-weight: 500;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.02em;
 }
 .kd-heading {
   fill: var(--kd-label);
   font-size: var(--fs-xs);
   font-weight: 500;
-  letter-spacing: 0.24em;
+  letter-spacing: 0.02em;
 }
 .kd-tick { fill: var(--kd-label); font-size: var(--fs-3xs); }
 
@@ -75,14 +75,14 @@
 .kd-point { cursor: default; outline: none; }
 .kd-point[role="button"] { cursor: pointer; }
 .kd-point-hit { fill: transparent; }
-.kd-point-ring { fill: none; stroke: var(--kd-ink); stroke-width: 1; opacity: 0; transition: opacity 140ms ease; }
+.kd-point-ring { fill: none; stroke: var(--kd-ink); stroke-width: 1; opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
 .kd-point-dot { stroke: var(--kd-canvas); stroke-width: 1.5; }
-.kd-leader { fill: none; stroke: var(--kd-hair); stroke-width: 1; transition: stroke 140ms ease; }
+.kd-leader { fill: none; stroke: var(--kd-hair); stroke-width: 1; transition: stroke var(--dur-fast) var(--ease-out); }
 .kd-read-name { fill: var(--kd-ink-2); font-size: var(--fs-xs); font-weight: 500; }
 .kd-read-line { font-size: var(--fs-3xs); }
 .kd-read-value { fill: var(--kd-ink); font-size: var(--fs-base); font-weight: 600; }
 .kd-read-unit { fill: var(--kd-label); font-size: var(--fs-2xs); }
-.kd-read-tag { fill: var(--kd-label); letter-spacing: 0.08em; }
+.kd-read-tag { fill: var(--kd-label); letter-spacing: 0.02em; }
 
 .kd-point:hover .kd-leader,
 .kd-point.is-selected .kd-leader,
@@ -98,8 +98,8 @@
   fill: var(--kd-label);
   font-size: var(--fs-2xs);
   font-weight: 500;
-  letter-spacing: 0.16em;
-  transition: fill 140ms ease;
+  letter-spacing: 0.02em;
+  transition: fill var(--dur-fast) var(--ease-out);
 }
 .kd-region-dot { font-size: var(--fs-3xs); }
 .kd-region.is-interactive:hover :is(.kd-body, .kd-raised, .kd-stroke, .kd-flow),

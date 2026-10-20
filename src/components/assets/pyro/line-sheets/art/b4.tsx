@@ -1,157 +1,93 @@
 /**
  * Sheet B-4 — BRN-01 · Main burner — Coal conveying blower and line.
- * Composed as PDF page 27: Roots (positive-displacement) blower with inlet
- * filter-silencer and two counter-rotating lobe rotors, discharge riser with
- * silencer, non-return valve and safety relief valve, coupling and blower
- * motor on a common base frame; the coal conveying line with the kiln coal
- * feeder's rotary airlock dropping coal in, line pressure transmitter, and the
- * coal + conveying-air stream on to the burner.
+ *
+ * Panel "COAL CONVEYING BLOWER AND LINE" of group image 4B (page 11, panel
+ * box 842.5 105.5 – 1605.5 777.5): the Roots blower (casing with its two
+ * lobed rotors) and the blower motor coupled on one base frame; the
+ * conveying line rising from the blower and running right to the burner, the
+ * kiln coal feeder dropping coal into it, and the line pressure transmitter.
  */
 import React from "react";
-import { Bolt, Coupling, CornerBolts, GroundLine, MX, MachineLabel, Motor, PAINT } from "@/components/assets/machine-kit/machine-kit";
-import { Flange, FlowArrow, Pipe, Transmitter } from "../../drawings/clk-parts";
+import { CornerBolts, GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
+import { Pipe } from "../../drawings/clk-parts";
 import type { LineSheetArt } from "../types";
-import { BaseFrame, CoalPipe } from "./parts-b";
+import { BaseRail, EndArrow, Flow, Head, RibCoupling, SideMotor, Stool } from "./parts-b2";
 
-const W = 824;
-const H = 704;
-const GROUND = 630;
-const BASE_Y = 593;
+const W = 763;
+const H = 672;
+const GROUND = 594;
 
-const BLW = { x: 120, y: 420, w: 196, h: 173 };
-const ROT = { y: 507, l: 188, r: 256, rad: 47 };
-const MOT = { x: 390, y: 450, w: 177, h: 113 };
-const RISER_X = 212;
-const LINE_Y = 225;
-const DROP_X = 466;
+const BLOWER = { x: 118, y: 405, w: 176, h: 155 };
+const ROTORS: Array<[number, number]> = [
+  [179, 482.5],
+  [240, 482.5],
+];
+const LINE_X = 206;
+const LINE_Y = 229.5;
+const EDGE = 726;
+const DROP_X = 429;
+const SHAFT_Y = 482.5;
 
-/** Two-lobe rotor (peanut) at (cx, cy), rotated `a` degrees. */
-function Rotor({ cx, cy, a }: { cx: number; cy: number; a: number }) {
+/** Two-lobe rotor seen end-on, as the lens shape of the group image. */
+function Lobe({ cx, cy }: { cx: number; cy: number }) {
+  return <path d={`M ${cx - 26} ${cy} Q ${cx} ${cy - 22} ${cx + 26} ${cy} Q ${cx} ${cy + 22} ${cx - 26} ${cy} Z`} {...PAINT.raised} />;
+}
+
+function LineAndFeeder() {
   return (
-    <g transform={`rotate(${a} ${cx} ${cy})`}>
-      <ellipse cx={cx - 17} cy={cy} rx={20} ry={13} {...PAINT.raised} />
-      <ellipse cx={cx + 17} cy={cy} rx={20} ry={13} {...PAINT.raised} />
-      <rect x={cx - 14} y={cy - 8} width={28} height={16} fill={MX.raised} />
-      <circle cx={cx} cy={cy} r={6} {...PAINT.shaft} />
-      <circle cx={cx} cy={cy} r={2} fill={MX.deep} />
+    <g>
+      {/* conveying line: blower outlet → riser → to burner */}
+      <Pipe pts={[[LINE_X, BLOWER.y + 2], [LINE_X, LINE_Y], [EDGE, LINE_Y]]} w={20} />
+      {[300, 660].map((fx) => (
+        <rect key={fx} x={fx - 2.5} y={LINE_Y - 14} width={5} height={28} rx={1.5} {...PAINT.raised} />
+      ))}
+      <rect x={LINE_X - 14} y={330} width={28} height={5} rx={1.5} {...PAINT.raised} />
+      {/* kiln coal feeder and its drop into the line */}
+      <rect x={DROP_X - 2.5} y={195} width={5} height={26} {...PAINT.shaft} />
+      <rect x={388.5} y={141.5} width={81} height={54} rx={6} {...PAINT.body} />
+      <rect x={395} y={148} width={68} height={41} rx={4} fill="none" stroke={MX.fine} strokeWidth={0.8} />
+      {/* line pressure transmitter on its impulse stem */}
+      <rect x={589.5} y={203} width={3} height={18} {...PAINT.shaft} />
+      <rect x={581} y={187.5} width={19.5} height={16} rx={3} {...PAINT.body} />
+      {/* coal + conveying air */}
+      <Flow pts={[[LINE_X, BLOWER.y], [LINE_X, LINE_Y], [EDGE, LINE_Y]]} color={MX.material} w={2} />
+      <Flow pts={[[DROP_X, 196], [DROP_X, LINE_Y]]} color={MX.material} w={2} />
+      <Head x={LINE_X} y={300} dir="up" color={MX.material} />
+      <Head x={DROP_X} y={226} dir="down" color={MX.material} s={0.8} />
+      <Head x={520} y={LINE_Y} dir="right" color={MX.material} />
+      <EndArrow x1={729} x2={751} y={LINE_Y} />
     </g>
   );
 }
 
-function Blower() {
-  const { x, y, w, h } = BLW;
-  const mx = (ROT.l + ROT.r) / 2;
-  const dy = Math.sqrt(ROT.rad ** 2 - ((ROT.r - ROT.l) / 2) ** 2);
-  const lobes = `M ${mx} ${ROT.y - dy} A ${ROT.rad} ${ROT.rad} 0 1 0 ${mx} ${ROT.y + dy} A ${ROT.rad} ${ROT.rad} 0 1 0 ${mx} ${ROT.y - dy} Z`;
+function BlowerSet() {
+  const { x, y, w, h } = BLOWER;
   return (
     <g>
-      {/* inlet filter-silencer on the suction side */}
-      <rect x={104} y={452} width={18} height={18} rx={2} {...PAINT.body} />
-      <rect x={66} y={424} width={40} height={74} rx={8} {...PAINT.cylinderV} />
-      <rect x={62} y={418} width={48} height={9} rx={3} {...PAINT.raised} />
-      {[440, 452, 464, 476, 488].map((ly) => (
-        <line key={ly} x1={72} x2={100} y1={ly} y2={ly} stroke={MX.fine} strokeWidth={0.8} />
+      {/* Roots blower casing with its rotors */}
+      <rect x={x} y={y} width={w} height={h} rx={10} {...PAINT.body} />
+      <CornerBolts x={x} y={y} w={w} h={h} inset={9} r={1.6} />
+      {ROTORS.map(([cx, cy]) => (
+        <circle key={cx} cx={cx} cy={cy} r={42.5} fill="none" stroke={MX.edge} strokeWidth={MX.w} />
       ))}
-      {/* casing */}
-      <rect x={x} y={y} width={w} height={h} rx={14} {...PAINT.body} />
-      <rect x={x + 7} y={y + 7} width={w - 14} height={h - 14} rx={9} fill="none" stroke={MX.fine} strokeWidth={MX.wFine} />
-      <path d={lobes} {...PAINT.recess} />
-      <Rotor cx={ROT.l} cy={ROT.y} a={0} />
-      <Rotor cx={ROT.r} cy={ROT.y} a={90} />
-      {Array.from({ length: 12 }).map((_, i) => (
-        <Bolt key={i} x={x + 18 + i * ((w - 36) / 11)} y={y + h - 10} r={1.3} />
+      {ROTORS.map(([cx, cy]) => (
+        <Lobe key={cx} cx={cx} cy={cy} />
       ))}
-      <CornerBolts x={x} y={y} w={w} h={h} inset={11} r={1.8} />
-      {/* outlet flange, accelerometer stud on the headplate, oil sight glass */}
-      <rect x={RISER_X - 17} y={y - 4} width={34} height={8} rx={2} {...PAINT.raised} />
-      <rect x={220} y={430} width={11} height={11} rx={2} {...PAINT.shaft} />
-      <circle cx={x + w - 22} cy={y + h - 28} r={5} {...PAINT.recess} />
-      <circle cx={x + w - 22} cy={y + h - 27} r={2.5} fill={MX.material} opacity={0.7} />
-      {/* drive shaft */}
-      <rect x={x + w} y={ROT.y - 5} width={352 - x - w} height={10} rx={2} {...PAINT.shaft} />
-    </g>
-  );
-}
-
-function Riser() {
-  return (
-    <g>
-      <Pipe pts={[[RISER_X, BLW.y], [RISER_X, LINE_Y], [DROP_X, LINE_Y]]} w={22} />
-      <CoalPipe pts={[[DROP_X, LINE_Y], [798, LINE_Y]]} w={22} />
-      {/* discharge silencer */}
-      <rect x={RISER_X - 22} y={328} width={44} height={66} rx={8} {...PAINT.cylinderV} />
-      <rect x={RISER_X - 25} y={324} width={50} height={7} rx={2} {...PAINT.raised} />
-      <rect x={RISER_X - 25} y={391} width={50} height={7} rx={2} {...PAINT.raised} />
-      {[344, 361, 378].map((y) => (
-        <line key={y} x1={RISER_X - 20} x2={RISER_X + 20} y1={y} y2={y} stroke={MX.fine} strokeWidth={0.8} />
-      ))}
-      {/* non-return valve */}
-      <rect x={RISER_X - 15} y={292} width={30} height={20} rx={4} {...PAINT.raised} />
-      <path d={`M ${RISER_X - 6} 307 L ${RISER_X} 297 L ${RISER_X + 6} 307`} fill="none" stroke={MX.edge} strokeWidth={1.4} strokeLinejoin="round" />
-      {/* safety relief valve on a side branch */}
-      <rect x={RISER_X + 11} y={264} width={14} height={7} {...PAINT.shaft} />
-      <rect x={RISER_X + 24} y={258} width={14} height={19} rx={3} {...PAINT.raised} />
-      <rect x={RISER_X + 27} y={240} width={8} height={18} rx={2} {...PAINT.body} />
-      {[244, 249, 254].map((y) => (
-        <line key={y} x1={RISER_X + 27} x2={RISER_X + 35} y1={y} y2={y + 2} stroke={MX.fine} strokeWidth={0.8} />
-      ))}
-      <Flange x={RISER_X} y={280} w={22} vertical />
-      {[330, 560, 740].map((x) => (
-        <Flange key={x} x={x} y={LINE_Y} w={22} />
-      ))}
-      {/* pipe supports */}
-      {[400, 660].map((x) => (
-        <rect key={x} x={x - 10} y={LINE_Y + 11} width={20} height={6} rx={1.5} {...PAINT.body} />
-      ))}
-      <Transmitter x={645.5} y={LINE_Y - 11} dir="up" len={34} />
-      <rect x={638} y={LINE_Y - 15} width={15} height={5} rx={1.5} {...PAINT.raised} />
-      <FlowArrow x1={800} y1={LINE_Y} x2={821} y2={LINE_Y} />
-    </g>
-  );
-}
-
-function Feeder() {
-  return (
-    <g>
-      {/* feeder discharge housing */}
-      <rect x={420} y={128} width={91} height={52} rx={8} {...PAINT.body} />
-      <rect x={432} y={138} width={67} height={24} rx={3} {...PAINT.recess} />
-      <path d="M 436 160 Q 466 150 495 158 L 495 160 Z" {...PAINT.material} opacity={0.8} />
-      <CornerBolts x={420} y={128} w={91} h={52} inset={5} r={1.3} />
-      {/* rotary airlock into the line */}
-      <rect x={DROP_X - 8} y={180} width={16} height={6} {...PAINT.body} />
-      <rect x={DROP_X - 16} y={186} width={32} height={20} rx={4} {...PAINT.raised} />
-      <circle cx={DROP_X} cy={196} r={7} {...PAINT.recess} />
-      {[0, 60, 120].map((a) => (
-        <line key={a} x1={DROP_X - 7} y1={196} x2={DROP_X + 7} y2={196} stroke={MX.edge} strokeWidth={1.1} transform={`rotate(${a} ${DROP_X} 196)`} />
-      ))}
-      <rect x={DROP_X + 16} y={192} width={12} height={8} rx={1.5} {...PAINT.shaft} />
-      <rect x={DROP_X - 6} y={206} width={12} height={9} {...PAINT.body} />
-    </g>
-  );
-}
-
-function Drive() {
-  return (
-    <g>
-      <Coupling x={352} y={492} w={31} h={30} />
-      <rect x={348} y={484} width={39} height={46} rx={6} fill="none" stroke={MX.fine} strokeWidth={1} strokeDasharray="3 2" />
-      {/* motor feet */}
-      <rect x={404} y={MOT.y + MOT.h - 2} width={150} height={8} rx={2} {...PAINT.raised} />
-      {[414, 528].map((fx) => (
-        <g key={fx}>
-          <rect x={fx} y={MOT.y + MOT.h + 6} width={16} height={BASE_Y - MOT.y - MOT.h - 6} rx={1.5} {...PAINT.body} />
-          <Bolt x={fx + 8} y={MOT.y + MOT.h + 2} r={1.5} />
-        </g>
-      ))}
-      <g transform={`translate(${2 * (MOT.x + MOT.w / 2)} 0) scale(-1 1)`}>
-        <Motor x={MOT.x} y={MOT.y} w={MOT.w} h={MOT.h} terminalBox={false} />
-      </g>
-      {/* terminal box with cable gland, lifting eye */}
-      <rect x={462} y={423} width={68} height={28} rx={5} {...PAINT.body} />
-      <rect x={468} y={429} width={56} height={16} rx={3} fill="none" stroke={MX.fine} strokeWidth={0.8} />
-      <rect x={530} y={432} width={9} height={8} rx={1.5} {...PAINT.shaft} />
-      <circle cx={420} cy={MOT.y - 3} r={4} fill="none" stroke={MX.edge} strokeWidth={2} />
+      {/* shaft, coupling, motor */}
+      <rect x={x + w} y={SHAFT_Y - 6.5} width={70} height={13} {...PAINT.shaft} />
+      <RibCoupling x={327.5} y={469} w={27.5} h={27} />
+      <Stool x={392} y={539} w={100} h={22} />
+      <SideMotor
+        x={361}
+        y={431.5}
+        w={159}
+        h={102.5}
+        tbox={[409, 410, 63.5, 24]}
+        cowl={[516, 442, 40, 80.5]}
+        win={[414, 471, 53.5, 26.5]}
+        fins={[446.5, 461, 475.5, 490, 504.5, 519]}
+        foot={[377.5, 532, 126.5, 7]}
+      />
     </g>
   );
 }
@@ -159,47 +95,44 @@ function Drive() {
 function Art() {
   return (
     <g>
-      <GroundLine x1={22} x2={804} y={GROUND} />
-      {[96, 330, 590].map((x) => (
-        <rect key={x} x={x} y={BASE_Y + 18} width={20} height={GROUND - BASE_Y - 18} rx={1} fill={MX.flatBody} stroke={MX.fine} strokeWidth={MX.wFine} />
-      ))}
-      <BaseFrame x={90} y={BASE_Y} w={526} h={18} ground={BASE_Y + 18} bolts={7} />
-      <Riser />
-      <Feeder />
-      <Blower />
-      <Drive />
+      <GroundLine x1={30} x2={733} y={GROUND} />
+      <BaseRail x={91} y={561} w={473} h={15.5} />
+      <LineAndFeeder />
+      <BlowerSet />
 
-      <MachineLabel x={217} y={621.2} size={9}>
-        ROOTS BLOWER
+      <MachineLabel x={428.5} y={135} size={8.5}>
+        FROM KILN COAL FEEDER
       </MachineLabel>
-      <MachineLabel x={494} y={621.2} size={9}>
-        BLOWER MOTOR
-      </MachineLabel>
-      <MachineLabel x={464.5} y={119} size={8.2}>
-        FROM KILN COAL FEEDER (B-3)
-      </MachineLabel>
-      <MachineLabel x={796} y={206} anchor="end" size={8.2}>
+      <MachineLabel x={570} y={212} anchor="start" size={8}>
         COAL + CONVEYING AIR
       </MachineLabel>
-      <MachineLabel x={816} y={253.7} anchor="end" size={9}>
-        TO BURNER (B-1)
+      <MachineLabel x={745} y={257} anchor="end" size={8.5}>
+        TO BURNER
+      </MachineLabel>
+      <MachineLabel x={206} y={588} size={8.5}>
+        ROOTS BLOWER
+      </MachineLabel>
+      <MachineLabel x={455.5} y={588} size={8.5}>
+        BLOWER MOTOR
       </MachineLabel>
     </g>
   );
 }
 
-/** Pad centre per point (sheet units), as on PDF page 27. */
+/** Pad centre per point (sheet units), as on group image 4B, right panel. */
 const pads: LineSheetArt["pads"] = {
-  "PRS-BRN-04": [645.5, 170],
-  "VIB-BRN-02": [225.5, 435.5],
-  "ELE-BRN-02": [495.5, 437],
+  "PRS-BRN-04": [590.7, 179.3],
+  "VIB-BRN-02": [212.7, 418.5],
+  "ELE-BRN-02": [455.7, 418.5],
+  "TMP-BRN-06": [472, 504.7],
 };
 
-/** Tag chip centre per point, as on PDF page 27. */
-const chips: NonNullable<LineSheetArt["chips"]> = {
-  "PRS-BRN-04": [708.5, 125],
-  "VIB-BRN-02": [147, 338],
-  "ELE-BRN-02": [558.5, 330.5],
+/** Plate side per point (start = plate right of the pad, end = left); stand-off slot if both sides collide. */
+const callouts: LineSheetArt["callouts"] = {
+  "PRS-BRN-04": [598, 153, "start"],
+  "VIB-BRN-02": [220, 386, "start"],
+  "ELE-BRN-02": [463, 390, "start"],
+  "TMP-BRN-06": [529, 514.5, "start"],
 };
 
-export const sheet: LineSheetArt = { id: "B-4", ready: true, width: W, height: H, Art, pads, chips };
+export const sheet: LineSheetArt = { id: "B-4", ready: true, width: W, height: H, Art, pads, callouts };

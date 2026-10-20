@@ -32,26 +32,26 @@ export const EMPTY_FIELDS: FormatFields = {
 };
 
 export const FIELD_META: Record<keyof FormatFields, { label: string; hint: string }> = {
-  rack: { label: "Rack", hint: "Source id: rack, PLC, SCADA node" },
-  rackName: { label: "Rack name", hint: "Its display name; “PLC”, “SCADA”… in it sets the kind" },
-  card: { label: "Card", hint: "Slot / module id" },
-  channel: { label: "Channel", hint: "Channel or tag id within the card" },
-  value: { label: "Value", hint: "The reading; empty = the record itself" },
-  unit: { label: "Unit", hint: "Engineering unit, or =°C" },
+  rack: { label: "Device", hint: "Device ID: rack, controller (PLC) or SCADA node" },
+  rackName: { label: "Device name", hint: "Its display name; a name containing “PLC” or “SCADA” sets the device type" },
+  card: { label: "Card", hint: "Card slot or module ID" },
+  channel: { label: "Channel", hint: "Channel or tag ID on the card" },
+  value: { label: "Value", hint: "The reading itself; empty = the whole record" },
+  unit: { label: "Unit", hint: "Unit of measure, or a fixed one such as =°C" },
   name: { label: "Name", hint: "Sensor or tag description" },
-  cardType: { label: "Card type", hint: "Module model or measurement type" },
-  quality: { label: "Quality", hint: "true / good / OPC 192+ = valid" },
-  timestamp: { label: "Timestamp", hint: "Source time of the sample" },
-  alert: { label: "Warning limit", hint: "First threshold" },
-  danger: { label: "Alarm limit", hint: "Second threshold" },
+  cardType: { label: "Card type", hint: "Module model or what it measures" },
+  quality: { label: "Quality", hint: "true, good, or OPC quality 192 and above count as valid" },
+  timestamp: { label: "Time", hint: "When the device took the reading" },
+  alert: { label: "Warning limit", hint: "First limit (warning)" },
+  danger: { label: "Alarm limit", hint: "Second limit (alarm)" },
 };
 
 export const TIMESTAMP_OPTIONS: { value: TimestampFormat; label: string }[] = [
   { value: "iso", label: "ISO 8601 text" },
-  { value: "epoch_ms", label: "Epoch milliseconds" },
-  { value: "epoch_s", label: "Epoch seconds" },
-  { value: "epoch_us", label: "Epoch microseconds" },
-  { value: "none", label: "None (time received)" },
+  { value: "epoch_ms", label: "Unix time in milliseconds" },
+  { value: "epoch_s", label: "Unix time in seconds" },
+  { value: "epoch_us", label: "Unix time in microseconds" },
+  { value: "none", label: "None (use the time it arrived)" },
 ];
 
 export const TIMESTAMP_LABEL: Record<TimestampFormat, string> = Object.fromEntries(
@@ -101,13 +101,13 @@ const base = { timestampFormat: "iso" as TimestampFormat, defaults: { rack: "R1"
 export const PRESETS: Preset[] = [
   {
     id: "per-topic",
-    label: "One value per topic",
+    label: "One value per channel",
     hint: "site/{gateway}/{rack}/{card}/{channel} · payload is the value",
     draft: { ...base, topic: "site/{gateway}/{rack}/{card}/{channel}", records: "", fields: { ...EMPTY_FIELDS, value: "$value" }, timestampFormat: "none" },
   },
   {
     id: "array",
-    label: "Array of readings",
+    label: "List of readings",
     hint: "plant/{gateway}/data · readings[]",
     draft: {
       ...base,
@@ -124,7 +124,7 @@ export const PRESETS: Preset[] = [
   },
   {
     id: "nested",
-    label: "Nested racks › cards › channels",
+    label: "Devices › cards › channels",
     hint: "racks[*].cards[*].channels[*]",
     draft: {
       ...base,

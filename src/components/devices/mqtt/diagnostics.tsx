@@ -112,15 +112,15 @@ export function Diagnostics({
   const trafficInView = inScope(traffic);
 
   return (
-    <section className="mq-diag" aria-label="Diagnostics">
+    <section className="mq-diag" aria-label="Connection checks">
       <div className="mq-toolbar">
         <PillNav
           items={[
-            { id: "gateways", label: `Gateways ${gateways.length}` },
+            { id: "gateways", label: `Data collectors ${gateways.length}` },
             { id: "readings", label: `Readings ${measurements.length}` },
             { id: "alarms", label: `Alarms ${alarms.filter((a) => a.state === "ACTIVE").length}` },
-            { id: "traffic", label: "Traffic" },
-            { id: "quarantine", label: `Quarantine ${quarantine.length}` },
+            { id: "traffic", label: "All messages" },
+            { id: "quarantine", label: `Set aside ${quarantine.length}` },
           ]}
           activeId={section}
           onChange={(id) => setSection(id as Section)}
@@ -149,7 +149,7 @@ export function Diagnostics({
                   </PillButton>
                 </span>
               ) : (
-                <PillButton variant="secondary" onClick={() => setConfirmClear(true)} disabled={traffic.length === 0} title="Empties the captured traffic list in this view; brokers are not affected">
+                <PillButton variant="secondary" onClick={() => setConfirmClear(true)} disabled={traffic.length === 0} title="Empties the message list on this screen only; the data connections are not affected">
                   Clear…
                 </PillButton>
               )}
@@ -159,8 +159,8 @@ export function Diagnostics({
       </div>
 
       {rows.length > 1 && (
-        <div className="mq-filter" aria-label="Broker filter">
-          <span className="ast-caption">Broker</span>
+        <div className="mq-filter" aria-label="Show data connection">
+          <span className="ast-caption">Data connection</span>
           <PillNav
             items={[{ id: "all", label: "All" }, ...rows.map((r) => ({ id: r.broker.id, label: r.broker.name }))]}
             activeId={filter}
@@ -199,8 +199,8 @@ function NoData({ ctx, title, waiting }: { ctx: Ctx; title: string; waiting: Rea
   if (enabled.length === 0) {
     const one = ctx.inView.length === 1 ? ctx.inView[0].broker.name : null;
     return (
-      <EmptyCard title={one ? `${one} is disabled` : "No broker enabled"}>
-        Enable a broker to start receiving. Use the switch on its row in the list above.
+      <EmptyCard title={one ? `${one} is switched off` : "No data connection is switched on"}>
+        Switch a data connection on to start receiving readings. Use the switch on its row in the list above.
       </EmptyCard>
     );
   }
@@ -208,8 +208,8 @@ function NoData({ ctx, title, waiting }: { ctx: Ctx; title: string; waiting: Rea
   if (connected.length === 0) {
     const errors = enabled.map((r) => r.status?.lastError).filter((e): e is string => Boolean(e));
     return (
-      <EmptyCard title={enabled.length === 1 ? `${enabled[0].broker.name} is not connected` : "No broker connected"}>
-        {errors.length > 0 ? errors.join(" · ") : "Waiting for the broker to accept the connection."}
+      <EmptyCard title={enabled.length === 1 ? `${enabled[0].broker.name} is not connected` : "No data connection is connected"}>
+        {errors.length > 0 ? errors.join(" · ") : "Waiting for the message server to accept the connection."}
       </EmptyCard>
     );
   }
@@ -219,7 +219,7 @@ function NoData({ ctx, title, waiting }: { ctx: Ctx; title: string; waiting: Rea
       <span>{waiting}</span>
       {filters.length > 0 && (
         <span className="mq-subs">
-          <span className="ast-caption">Subscribed to</span>
+          <span className="ast-caption">Listening on channels</span>
           {[...new Set(filters)].map((f) => (
             <code key={f}>{f}</code>
           ))}
@@ -246,7 +246,7 @@ function GatewayLabel({ ctx, brokerId, gatewayId }: { ctx: Ctx; brokerId: string
 }
 
 function brokerColumn<T extends { brokerId: string }>(ctx: Ctx): Column<T>[] {
-  return ctx.showBroker ? [{ key: "broker", header: "Broker", render: (r: T) => <BrokerCell ctx={ctx} brokerId={r.brokerId} /> }] : [];
+  return ctx.showBroker ? [{ key: "broker", header: "Data connection", render: (r: T) => <BrokerCell ctx={ctx} brokerId={r.brokerId} /> }] : [];
 }
 
 // ---------------------------------------------------------------- gateways
@@ -295,7 +295,7 @@ function GatewaysTable({ ctx, gateways, racks }: { ctx: Ctx; gateways: MqttGatew
       const ok = result.response.status === "COMPLETED";
       setPing((p) => ({
         ...p,
-        [row.key]: { busy: false, tone: ok ? "good" : "bad", text: ok ? `Pong · ${nf.format(result.roundTripMs)} ms` : result.response.message ?? result.response.status },
+        [row.key]: { busy: false, tone: ok ? "good" : "bad", text: ok ? `Replied in ${nf.format(result.roundTripMs)} ms` : result.response.message ?? result.response.status },
       }));
     } catch (err) {
       setPing((p) => ({ ...p, [row.key]: { busy: false, tone: "bad", text: (err as Error).message } }));
@@ -305,7 +305,7 @@ function GatewaysTable({ ctx, gateways, racks }: { ctx: Ctx; gateways: MqttGatew
   const columns: Column<RackRow>[] = [
     {
       key: "source",
-      header: "Source · gateway",
+      header: "Device · data collector",
       render: (r) => {
         const state = r.rack?.state ?? r.gateway?.state ?? "OFFLINE";
         const registered = registeredGateway(ctx.registry, r.brokerId, r.gatewayId);
@@ -315,11 +315,11 @@ function GatewaysTable({ ctx, gateways, racks }: { ctx: Ctx; gateways: MqttGatew
               <IconGateway />
             </span>
             <span className="ast-cell-stack">
-              <span className="ast-cell-title">{r.rack ? r.rack.rackId : <span className="ast-muted">No sources reported</span>}</span>
+              <span className="ast-cell-title">{r.rack ? r.rack.rackId : <span className="ast-muted">No devices reported</span>}</span>
               <GatewayLabel ctx={ctx} brokerId={r.brokerId} gatewayId={r.gatewayId} />
             </span>
             {!registered && (
-              <span title="Register it under Devices › Hierarchy">
+              <span title="Register it under Devices › Device tree">
                 <StatusTag tone="warn" label="Not registered" />
               </span>
             )}
@@ -328,10 +328,10 @@ function GatewaysTable({ ctx, gateways, racks }: { ctx: Ctx; gateways: MqttGatew
       },
     },
     ...brokerColumn<RackRow>(ctx),
-    { key: "ip", header: "Gateway IP", render: (r) => <span className="ast-num">{r.gateway?.ip || "—"}</span> },
+    { key: "ip", header: "Collector IP address", render: (r) => <span className="ast-num">{r.gateway?.ip || "—"}</span> },
     {
       key: "link",
-      header: "Link",
+      header: "Connection",
       render: (r) => {
         const state = r.rack?.state ?? r.gateway?.state;
         return state ? <StatusTag tone={LIVE_LINK_TONE[state]} label={LIVE_LINK_LABEL[state]} /> : "—";
@@ -343,17 +343,17 @@ function GatewaysTable({ ctx, gateways, racks }: { ctx: Ctx; gateways: MqttGatew
       render: (r) =>
         r.rack ? (
           <span className="ast-cell-stack">
-            <span className="ast-cell-text">{r.rack.dataCurrent ? "Current" : "Not current"}</span>
+            <span className="ast-cell-text">{r.rack.dataCurrent ? "Up to date" : "Out of date"}</span>
             {r.rack.reason && <span className="ast-cell-sub">{r.rack.reason}</span>}
           </span>
         ) : (
           <span className="ast-muted">—</span>
         ),
     },
-    { key: "slots", header: "Slots", width: "64px", render: (r) => <span className="ast-num">{r.rack?.slotCount ? nf.format(r.rack.slotCount) : "—"}</span> },
+    { key: "slots", header: "Cards", width: "64px", render: (r) => <span className="ast-num">{r.rack?.slotCount ? nf.format(r.rack.slotCount) : "—"}</span> },
     {
       key: "seq",
-      header: "Sequence",
+      header: "Lost messages",
       render: (r) => {
         const g = r.gateway;
         if (!g) return <span className="ast-muted">—</span>;
@@ -403,9 +403,9 @@ function GatewaysTable({ ctx, gateways, racks }: { ctx: Ctx; gateways: MqttGatew
                 className="mq-reveal"
                 disabled={result?.busy}
                 onClick={() => void runPing(r)}
-                aria-label={`Ping ${r.rack?.rackId} on ${r.gatewayId}`}
+                aria-label={`Check that ${r.rack?.rackId} on ${r.gatewayId} replies`}
               >
-                Ping
+                Test reply
               </PillButton>
             )}
           </span>
@@ -418,13 +418,13 @@ function GatewaysTable({ ctx, gateways, racks }: { ctx: Ctx; gateways: MqttGatew
     return (
       <NoData
         ctx={ctx}
-        title="No gateway has published yet"
-        waiting="Retained status, topology and health appear here as soon as a gateway connects."
+        title="No data collector has sent anything yet"
+        waiting="Each data collector's status, devices and health appear here as soon as it connects."
       />
     );
   }
   return (
-    <section className="ast-card pg-table-card" aria-label="Gateways and sources">
+    <section className="ast-card pg-table-card" aria-label="Data collectors and devices">
       <Table className="ast-table" columns={columns} data={rows} keyExtractor={(r) => r.key} />
     </section>
   );
@@ -432,9 +432,9 @@ function GatewaysTable({ ctx, gateways, racks }: { ctx: Ctx; gateways: MqttGatew
 
 // ---------------------------------------------------------------- readings
 function readingTone(m: MqttMeasurement): [Tone, string] {
-  if (!m.valid || !m.fresh) return ["warn", "Stale"];
-  if (m.dangerActive) return ["bad", "Alarm"];
-  if (m.alertActive) return ["warn", "Warning"];
+  if (!m.valid || !m.fresh) return ["warn", "Old data"];
+  if (m.dangerActive) return ["bad", "Critical"];
+  if (m.alertActive) return ["warn", "Alert"];
   return ["good", "Normal"];
 }
 
@@ -446,7 +446,7 @@ function ReadingsTable({ ctx, measurements, history }: { ctx: Ctx; measurements:
   const columns: Column<MqttMeasurement>[] = [
     {
       key: "point",
-      header: "Point",
+      header: "Reading point",
       render: (m) => (
         <span className="mq-lead">
           <span className="ast-badge" data-tone={readingTone(m)[0]}>
@@ -497,7 +497,7 @@ function ReadingsTable({ ctx, measurements, history }: { ctx: Ctx; measurements:
     },
     {
       key: "limits",
-      header: "Warning / alarm",
+      header: "Warning and alarm limits",
       render: (m) => (
         <span className="ast-num ast-muted">
           {limit(m.alertThreshold, m.unit)} / {limit(m.dangerThreshold, m.unit)}
@@ -506,7 +506,7 @@ function ReadingsTable({ ctx, measurements, history }: { ctx: Ctx; measurements:
     },
     {
       key: "state",
-      header: "State",
+      header: "Status",
       render: (m) => {
         const [tone, label] = readingTone(m);
         return <StatusTag tone={tone} label={label} />;
@@ -514,7 +514,7 @@ function ReadingsTable({ ctx, measurements, history }: { ctx: Ctx; measurements:
     },
     {
       key: "rack",
-      header: "Source",
+      header: "Device",
       render: (m) => (
         <span className="ast-cell-stack">
           <span className="ast-cell-text">{m.rackId}</span>
@@ -533,7 +533,7 @@ function ReadingsTable({ ctx, measurements, history }: { ctx: Ctx; measurements:
         title="No live readings"
         waiting={
           <>
-            A reading appears once a source publishes telemetry with <code>measurement_valid</code>, an OK channel status and current data.
+            A reading appears once a device sends a valid, current measurement (<code>measurement_valid</code>) with an OK channel status.
           </>
         }
       />
@@ -556,19 +556,19 @@ function AlarmsTable({ ctx, alarms }: { ctx: Ctx; alarms: MqttAlarm[] }) {
       render: (a) => (
         <StatusTag
           tone={a.state === "CLEARED" ? "idle" : a.severity === "CRITICAL" ? "bad" : "warn"}
-          label={a.state === "CLEARED" ? "Cleared" : a.severity === "CRITICAL" ? "Critical" : "Warning"}
+          label={a.state === "CLEARED" ? "Cleared" : a.severity === "CRITICAL" ? "Critical" : "Alert"}
         />
       ),
     },
     { key: "message", header: "Alarm", render: (a) => <span className="pg-wrap ast-cell-title">{a.message ?? "Alarm"}</span> },
     {
       key: "point",
-      header: "Point",
-      render: (a) => <span className="ast-num ast-muted">{a.slot !== null ? `Slot ${a.slot}${a.channel !== null ? ` · Ch ${a.channel}` : ""}` : "—"}</span>,
+      header: "Reading point",
+      render: (a) => <span className="ast-num ast-muted">{a.slot !== null ? `Card slot ${a.slot}${a.channel !== null ? ` · channel ${a.channel}` : ""}` : "—"}</span>,
     },
     {
       key: "value",
-      header: "Value / limit",
+      header: "Value and limit",
       render: (a) => (
         <span className="ast-num">
           {a.value !== null ? nf.format(a.value) : "—"}
@@ -579,7 +579,7 @@ function AlarmsTable({ ctx, alarms }: { ctx: Ctx; alarms: MqttAlarm[] }) {
     },
     {
       key: "rack",
-      header: "Source",
+      header: "Device",
       render: (a) => (
         <span className="ast-cell-stack">
           <span className="ast-cell-text">{a.rackId}</span>
@@ -597,7 +597,7 @@ function AlarmsTable({ ctx, alarms }: { ctx: Ctx; alarms: MqttAlarm[] }) {
         title="No alarms received"
         waiting={
           <>
-            Gateway alarm events (<code>events/alarm</code>) are listed here as they arrive.
+            Alarms sent by data collectors (on the <code>events/alarm</code> channel) are listed here as they arrive.
           </>
         }
       />
@@ -616,7 +616,7 @@ function TrafficTable({ ctx, traffic, paused }: { ctx: Ctx; traffic: MqttTraffic
     { key: "at", header: "Received (your time)", width: "140px", render: (t) => <span className="ast-num ast-muted">{clock(t.at)}</span> },
     {
       key: "topic",
-      header: "Topic",
+      header: "Message channel (topic)",
       render: (t) => (
         <span className="ast-cell-stack">
           <span className="ast-cell-title mq-topic" title={t.topic}>
@@ -630,7 +630,7 @@ function TrafficTable({ ctx, traffic, paused }: { ctx: Ctx; traffic: MqttTraffic
     { key: "bytes", header: "Size", width: "90px", render: (t) => <span className="ast-num">{bytes(t.bytes)}</span> },
     {
       key: "latency",
-      header: "Latency",
+      header: "Delay",
       width: "90px",
       render: (t) => <span className="ast-num">{t.latencyMs !== null ? `${nf.format(Math.round(t.latencyMs))} ms` : "—"}</span>,
     },
@@ -640,24 +640,24 @@ function TrafficTable({ ctx, traffic, paused }: { ctx: Ctx; traffic: MqttTraffic
       render: (t) => (
         <span className="mq-flags">
           {t.outcome === "quarantined" ? (
-            <StatusTag tone="bad" label="Quarantined" />
+            <StatusTag tone="bad" label="Set aside" />
           ) : t.duplicate ? (
             <StatusTag tone="idle" label="Duplicate" />
           ) : (
             <StatusTag tone="good" label="Accepted" />
           )}
-          {t.retained && <StatusTag tone="info" label="Retained" />}
-          {t.replayed && <StatusTag tone="warn" label="Replayed" />}
+          {t.retained && <StatusTag tone="info" label="Stored copy" />}
+          {t.replayed && <StatusTag tone="warn" label="Sent again" />}
         </span>
       ),
     },
   ];
   if (traffic.length === 0) {
-    if (paused) return <EmptyCard title="Feed paused">Resume to list new messages. Messages that arrive while paused are not kept.</EmptyCard>;
-    return <NoData ctx={ctx} title="Waiting for messages" waiting="Every message the broker delivers is listed here, newest first." />;
+    if (paused) return <EmptyCard title="List paused">Resume to list new messages. Messages that arrive while paused are not kept.</EmptyCard>;
+    return <NoData ctx={ctx} title="Waiting for messages" waiting="Every message the data connection receives is listed here, newest first." />;
   }
   return (
-    <section className="ast-card pg-table-card" aria-label="Message traffic">
+    <section className="ast-card pg-table-card" aria-label="All messages">
       <Table className="ast-table" columns={columns} data={traffic} keyExtractor={(t) => String(t.id)} />
     </section>
   );
@@ -669,7 +669,7 @@ function QuarantineTable({ ctx, entries }: { ctx: Ctx; entries: MqttQuarantineEn
     { key: "at", header: "Received (your time)", width: "140px", render: (q) => <span className="ast-num ast-muted">{clock(q.at)}</span> },
     {
       key: "topic",
-      header: "Topic",
+      header: "Message channel (topic)",
       render: (q) => (
         <span className="ast-cell-title mq-topic" title={q.topic}>
           {shortTopic(q.topic, ctx.status.get(q.brokerId)?.topicPrefix)}
@@ -681,13 +681,13 @@ function QuarantineTable({ ctx, entries }: { ctx: Ctx; entries: MqttQuarantineEn
   ];
   if (entries.length === 0) {
     return (
-      <EmptyCard title="Nothing quarantined">
-        Messages that fail the topic, envelope, schema or identity checks are held here instead of reaching live state.
+      <EmptyCard title="Nothing set aside">
+        Messages with the wrong channel, the wrong format or an unknown sender are kept here instead of being used as live readings.
       </EmptyCard>
     );
   }
   return (
-    <section className="ast-card pg-table-card" aria-label="Quarantine">
+    <section className="ast-card pg-table-card" aria-label="Messages set aside">
       <Table className="ast-table" columns={columns} data={entries} keyExtractor={(q) => `${q.brokerId}/${q.id}`} />
     </section>
   );

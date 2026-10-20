@@ -7,30 +7,22 @@
    ========================================================================== */
 
 .pg-ov {
-  gap: 14px;
+  gap: 10px;
 }
 
 .pg-ov-body {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 14px;
   min-width: 0;
-  padding-bottom: 24px;
+  padding-bottom: 0;
 }
 
-/* ------------------------------------------------------ top machine hero card */
-.pg-ov-machine-sec {
-  --ov-pad-t: 12px;
-  --ov-pad-x: 16px;
-  display: flex;
-  flex-direction: column;
+/* Non-scrollable Overview workspace: the full screen IS the CAD canvas (.mx-canvas), with the header bar and pill toggles embedded directly inside it. */
+:root .assets-machine-workspace[data-subpage="overview"] {
+  overflow: hidden;
+  padding: 10px 16px 12px;
   gap: 10px;
-  padding: var(--ov-pad-t) var(--ov-pad-x) 14px;
-}
-
-/* The whole card is the drawing canvas: header, sheet tabs, zoom and the drawing all sit on
-   its grid. (.ast-card's background shorthand would drop the grid, hence the (0,2,0) rule.) */
-.pg-ov-machine-sec.mx-canvas {
   background-color: var(--mx-canvas);
   background-image:
     linear-gradient(var(--mx-grid-major) 1px, transparent 1px),
@@ -47,20 +39,98 @@
     -1px -1px,
     -1px -1px,
     -1px -1px;
-  border: 1px solid var(--card-border);
-  border-radius: var(--corner-card);
 }
 
-/* One screen: the section ends at the bottom of the visible workspace (height set by
-   useFitHeight); everything inside flexes so the drawing gets the rest, whole. */
+:root .assets-machine-workspace[data-subpage="overview"] > .ast-head {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--mx-hud-border, var(--border-subtle));
+}
+
+:root .assets-machine-workspace[data-subpage="overview"] > .subpage-content,
+:root .assets-machine-workspace[data-subpage="overview"] .pg-ov {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Toggled subpage stage (Sub-assembly, Operating point, Status by area + Key figures): fits 100% of viewport inside the canvas without page scroll. */
+.pg-ov-subpage-stage {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.pg-ov-subpage-stage > .pg-frame-kpis {
+  flex: 0 0 auto;
+}
+
+.pg-ov-subpage-panel {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pg-ov-subpage-panel > .pg-analysis-section {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pg-ov-subpage-panel .pg-analysis-section-body {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.pg-ov-subpage-panel .pg-ov-groups,
+.pg-ov-subpage-panel .pg-ov-flush {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ------------------------------------------------------ top machine hero card */
+.pg-ov-machine-sec {
+  --ov-pad-t: 0px;
+  --ov-pad-x: 0px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0;
+}
+
+/* Seamless inside the full-screen Overview canvas: no nested card box or second border. */
+.pg-ov-machine-sec.mx-canvas {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* One screen: fills 100% of the remaining workspace height below the embedded header bar;
+   everything inside flexes so the drawing gets the rest, whole. */
 .pg-ov-machine-sec[data-fit] {
-  height: calc(var(--ov-fit-h, calc(100dvh - 140px)) - var(--ov-trim, 0px));
-  min-height: 320px;
+  flex: 1 1 0;
+  height: 100%;
+  min-height: 0;
 }
 
 @media (max-width: 759px) {
+  :root .assets-machine-workspace[data-subpage="overview"] {
+    overflow-y: auto;
+  }
   .pg-ov-machine-sec {
-    --ov-pad-x: 14px;
+    --ov-pad-x: 10px;
   }
 }
 
@@ -324,7 +394,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 44px 0 6px;
+  padding: 32px 0 2px;
 }
 
 .pg-ov-canvas .mx-vp-hud-top {
@@ -355,13 +425,6 @@
   flex: 1 1 0;
 }
 
-.pg-ov-canvas .mx-vp-gizmo {
-  left: 0;
-  bottom: 0;
-  transform: scale(0.7);
-  transform-origin: left bottom;
-}
-
 /* A plain drawing fills the canvas at its own proportions (contain): edge to edge on
    the binding side, never cropped, at any screen size. */
 .pg-ov-machine-sec[data-fit] .mx-vp-stage > svg {
@@ -383,7 +446,7 @@
   min-width: 0;
   flex-shrink: 0;
   padding: 6px 12px;
-  border-radius: var(--corner-sm, 6px);
+  border-radius: var(--corner-sm);
   border: 1px solid var(--border-subtle);
   background: var(--surface-bg);
 }
@@ -431,6 +494,15 @@
 
 .pg-ov-note-more:hover {
   background: var(--row-hover-bg);
+}
+
+.pg-ov-note-more:active {
+  transform: scale(0.97);
+}
+
+.pg-ov-note-more:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
 .pg-ov-hint {
@@ -533,6 +605,10 @@
 .pg-ov-step-reset:hover {
   background: var(--bg-surface-elevated);
   border-color: var(--border-hover);
+}
+
+.pg-ov-step-reset:active {
+  transform: scale(0.97);
 }
 
 /* Sub-assembly grid list */
@@ -653,6 +729,10 @@
   color: var(--page-fg);
 }
 
+.pg-ov-icon-btn:active {
+  transform: scale(0.97);
+}
+
 /* ------------------------------------------------- divider list table */
 .pg-ov-table {
   width: 100%;
@@ -738,12 +818,6 @@
 .pg-ov-name {
   font-weight: 500;
   color: var(--dx-ink, var(--page-fg)) !important;
-}
-
-.pg-ov-tag {
-  font-size: var(--fs-sm);
-  color: var(--text-muted) !important;
-  white-space: nowrap;
 }
 
 .pg-ov-val {

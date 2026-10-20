@@ -1,5 +1,7 @@
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { query } from "@/server/db";
+import { ensureMigrations } from "@/server/db/migrate";
+import { setting } from "@/server/monitoring/settings";
 
 /**
  * Sign-in for ULTRON accounts: scrypt password hashes on `users.password_hash`
@@ -12,11 +14,13 @@ import { query } from "@/server/db";
  */
 
 export const SESSION_COOKIE = "ultron_session";
-export const SESSION_DAYS = 7;
+
+/** Session length in days (system setting auth.session_days). */
+export const sessionDays = () => setting("auth.session_days");
 
 const g = globalThis as typeof globalThis & { __ultronAuthReady?: Promise<void> };
 
-function hashPassword(password: string, salt = randomBytes(16).toString("hex")): string {
+export function hashPassword(password: string, salt = randomBytes(16).toString("hex")): string {
   return `scrypt$${salt}$${scryptSync(password, salt, 32).toString("hex")}`;
 }
 
@@ -42,14 +46,8 @@ function demoCredentials(): Array<{ email: string; password: string }> {
 }
 
 async function setup(): Promise<void> {
-  await query("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT");
-  await query(`CREATE TABLE IF NOT EXISTS user_sessions (
-    id VARCHAR(96) PRIMARY KEY,
-    user_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    expires_at TIMESTAMP WITH TIME ZONE NOT NULL
-  )`);
-  await query("CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id)");
+  // users.password_hash and user_sessions come from the schema migrations.
+  await ensureMigrations();
   // Hash the configured demo passwords into their accounts (only when they changed).
   for (const { email, password } of demoCredentials()) {
     const row = (await query<{ id: string; password_hash: string | null }>("SELECT id, password_hash FROM users WHERE lower(email) = $1", [email])).rows[0];
@@ -79,7 +77,7 @@ export async function signIn(email: string, password: string): Promise<{ token: 
   const ok = verifyPassword(password, row?.password_hash ?? hashPassword("x"));
   if (!row || !ok || row.status === "Inactive") return null;
   const token = randomBytes(32).toString("hex");
-  await query("INSERT INTO user_sessions (id, user_id, expires_at) VALUES ($1, $2, NOW() + ($3 || ' days')::interval)", [token, row.id, String(SESSION_DAYS)]);
+  await query("INSERT INTO user_sessions (id, user_id, expires_at) VALUES ($1, $2, NOW() + ($3 || ' days')::interval)", [token, row.id, String(await sessionDays())]);
   await query("UPDATE users SET last_active_at = NOW() WHERE id = $1", [row.id]);
   return { token, userId: row.id };
 }
@@ -90,6 +88,19 @@ export async function sessionUser(token: string | undefined): Promise<string | n
   await ensureAuth();
   const row = (await query<{ user_id: string }>("SELECT user_id FROM user_sessions WHERE id = $1 AND expires_at > NOW()", [token])).rows[0];
   return row?.user_id ?? null;
+}
+
+/** Shortest password an account may be given. */
+export const MIN_PASSWORD_LENGTH = 8;
+
+/**
+ * Sets a user's password and ends their other sessions (all of them unless
+ * `keepToken` is the caller's own session).
+ */
+export async function setPassword(userId: string, password: string, keepToken?: string): Promise<void> {
+  await ensureAuth();
+  await query("UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1", [userId, hashPassword(password)]);
+  await query("DELETE FROM user_sessions WHERE user_id = $1 AND id <> $2", [userId, keepToken ?? ""]);
 }
 
 export async function signOut(token: string | undefined): Promise<void> {

@@ -476,20 +476,21 @@ function caption(d: Data): string {
     }
     case "pressure":
     case "speed":
-      return ref !== null && Number.isFinite(ref) ? `Ref ${fmt(ref)}${u} · Δ ${d.value - ref >= 0 ? "+" : "−"}${fmt(Math.abs(d.value - ref))}` : `${fmt(Math.min(...d.vals))} – ${fmt(Math.max(...d.vals))}${u}`;
+      return ref !== null && Number.isFinite(ref) ? `Expected ${fmt(ref)}${u} · now ${d.value - ref >= 0 ? "+" : "−"}${fmt(Math.abs(d.value - ref))} from it` : `${fmt(Math.min(...d.vals))} – ${fmt(Math.max(...d.vals))}${u}`;
     case "flow":
-      return ref !== null && Number.isFinite(ref) ? `Set point ${fmt(ref)}${u} · Δ ${d.value - ref >= 0 ? "+" : "−"}${fmt(Math.abs(d.value - ref))}` : `${fmt(Math.min(...d.vals))} – ${fmt(Math.max(...d.vals))}${u}`;
+      return ref !== null && Number.isFinite(ref) ? `Target ${fmt(ref)}${u} · now ${d.value - ref >= 0 ? "+" : "−"}${fmt(Math.abs(d.value - ref))} off target` : `${fmt(Math.min(...d.vals))} – ${fmt(Math.max(...d.vals))}${u}`;
     case "vibration": {
       const b = isoBounds({ warn: d.g?.warn ?? null, alarm: d.g?.alarm ?? null });
       const z = d.value >= b.cd ? "D" : d.value >= b.bc ? "C" : b.ab !== null && d.value < b.ab ? "A" : "B";
-      return `Zone ${z} · ISO 10816-3 · ${win}`;
+      const word = { A: "as new", B: "acceptable", C: "rough", D: "damaging" }[z];
+      return `Shaking ${word} (zone ${z}) · ${win}`;
     }
     case "position":
-      return `Travel ${fmt(Math.min(...d.vals))} – ${fmt(Math.max(...d.vals))}${u} · ${win}`;
+      return `Moved between ${fmt(Math.min(...d.vals))} and ${fmt(Math.max(...d.vals))}${u} · ${win}`;
     case "temperature":
     case "level": {
       const delta = d.value - first;
-      return `${delta >= 0 ? "+" : "−"}${fmt(Math.abs(delta))}${u} · ${win}`;
+      return `${delta >= 0 ? "+" : "−"}${fmt(Math.abs(delta))}${u} in ${win}`;
     }
     default:
       return `${fmt(Math.min(...d.vals))} – ${fmt(Math.max(...d.vals))}${u} · ${win}`;
@@ -497,16 +498,16 @@ function caption(d: Data): string {
 }
 
 const KIND_LABEL: Record<ChartKind, string> = {
-  state: "state timeline",
-  load: "load columns",
+  state: "on and off over time",
+  load: "load bars",
   pressure: "pressure dial and trend",
-  speed: "tachometer and deviation from reference",
+  speed: "speed dial and difference from expected",
   temperature: "thermometer and trend",
-  vibration: "trend over ISO 10816-3 zones",
-  level: "vessel level and trend",
-  flow: "flow against set point",
-  position: "travel position",
-  analyser: "analyser samples",
+  vibration: "trend over vibration severity zones (ISO 10816-3)",
+  level: "fill level and trend",
+  flow: "flow against its target",
+  position: "position over time",
+  analyser: "analyser readings",
   trend: "trend",
 };
 
@@ -589,7 +590,7 @@ export function SensorTileChart({
   const text = caption(d);
   return (
     <span ref={ref} className="stc" data-kind={kind} data-tone={tone}>
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${tagOf(s)} ${KIND_LABEL[kind]} · ${text}`}>
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${s.name}: ${KIND_LABEL[kind]} · ${text}`}>
         {body}
       </svg>
       <span className="stc-caption ast-caption ast-num">{text}</span>

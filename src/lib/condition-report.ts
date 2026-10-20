@@ -17,7 +17,7 @@ export interface ReportFinding {
   name: string;
   /** Times the rule was confirmed in the period. */
   confirmed: number;
-  worst: "Advisory" | "Critical";
+  worst: "Alert" | "Critical";
   /** Simulated minute of the last confirmation. */
   lastT: number;
 }
@@ -78,7 +78,7 @@ export function recordFrames<T extends Record<string, SimFrame>>(frames: T): T {
         fromT: f.t,
         toT: f.t,
         minutes: 0,
-        minutesIn: { Healthy: 0, Advisory: 0, Critical: 0 },
+        minutesIn: { Healthy: 0, Alert: 0, Critical: 0 },
         healthStart: f.overall,
         healthNow: f.overall,
         healthMin: f.overall,
@@ -115,7 +115,7 @@ export function recordFrames<T extends Record<string, SimFrame>>(frames: T): T {
       const prev = a.prevStatus.get(r.id) ?? "QUIET";
       a.prevStatus.set(r.id, r.status);
       if (r.status !== "ACTIVE" || prev === "ACTIVE" || !isConditionRule(r)) continue;
-      const sev = r.severity === "Critical" ? "Critical" : "Advisory";
+      const sev = r.severity === "Critical" ? "Critical" : "Alert";
       const cur = a.findings.get(r.id);
       if (cur) {
         cur.confirmed += 1;

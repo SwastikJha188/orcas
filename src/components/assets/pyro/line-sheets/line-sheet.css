@@ -19,7 +19,7 @@
 }
 
 .lsh-draw {
-  border-radius: var(--corner-card, 14px);
+  border-radius: var(--corner-card);
   overflow: hidden;
   padding: 6px;
 }
@@ -48,12 +48,17 @@
   fill: transparent;
   stroke: transparent;
   stroke-width: 1;
-  transition: stroke 0.15s ease, fill 0.15s ease;
+  transition: stroke var(--dur-fast) var(--ease-out), fill var(--dur-fast) var(--ease-out);
 }
 
 .lsh-link:hover .lsh-link-hit {
   fill: var(--hover-faint);
   stroke: var(--mx-fine);
+}
+
+/* PYR-0 sub-assembly areas: click opens the component's summary (above the machine hotspots). */
+.lhl-area {
+  cursor: pointer;
 }
 
 /* ---------------------------------------------------------------- panel */
@@ -143,12 +148,13 @@
 }
 
 .lsh-tag {
-  font-family: var(--font-mono);
+  min-width: 0;
   font-size: var(--fs-sm);
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
   color: var(--dx-ink);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .lsh-req {
@@ -178,6 +184,11 @@
   color: var(--dx-ink);
   white-space: nowrap;
   text-align: right;
+}
+
+.lsh-detail .lsh-val {
+  font-size: var(--fs-md);
+  font-weight: 600;
 }
 
 .lsh-val[data-tone="warn"] {
@@ -359,13 +370,22 @@
   padding: 4px 10px;
   margin: 0 -10px;
   border: none;
-  border-radius: var(--corner-row, 10px);
+  border-radius: var(--corner-row);
   background: transparent;
   color: var(--page-fg);
   font: inherit;
   font-size: var(--fs-sm);
   text-align: left;
   cursor: pointer;
+}
+
+.lsh-index-item:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.lsh-index-item:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
 }
 
 .lsh-index-item:disabled {

@@ -25,7 +25,7 @@ export type SensorTypeCode =
   | "STS"
   | "OPT";
 
-export type ChannelStatus = "Normal" | "Advisory" | "Critical";
+export type ChannelStatus = "Normal" | "Alert" | "Critical";
 
 /** Minimum module positions drawn for a chassis (72 HP of 6 HP modules). */
 export const CHASSIS_POSITIONS = 12;
@@ -105,10 +105,6 @@ export interface RackChassisInfo {
   ipAddress: string;
   protocol: string;
   firmware: string;
-  uptime: string;
-  psuStatus: string;
-  packetLoss: string;
-  latency: string;
 }
 
 /** One channel, normalised from either source of truth. */
@@ -198,7 +194,7 @@ function moduleType(cardType: string | null, first: SensorTypeCode): SensorTypeC
 }
 
 function asStatus(s: string): ChannelStatus {
-  return s === "Critical" ? "Critical" : s === "Advisory" ? "Advisory" : "Normal";
+  return s === "Critical" ? "Critical" : s === "Alert" ? "Alert" : "Normal";
 }
 
 /** Readable type of a card family ("IEPE-8", "PLC-RTD-01", "AI-8"). */

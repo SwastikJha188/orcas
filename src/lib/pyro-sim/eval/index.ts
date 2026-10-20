@@ -4,7 +4,7 @@
  * every other machine's findings to know which deviations are covered).
  */
 import { PYRO_MACHINES } from "../signals";
-import { PYRO_SERVICE_COMPONENTS, SERVICE_DUE_SHARE, serviceUsed } from "../service-life";
+import { servicePartsOf, serviceUsed } from "../service-life";
 import type { EvalContext } from "./context";
 import { evalFed } from "./fed";
 import { evalPhc } from "./phc";
@@ -33,18 +33,18 @@ export {
 
 const MACHINE_IDS = PYRO_MACHINES.map((m) => m.id);
 
-/** SW-ALL-01: component service records (demo) — calendar / hour due, not deterioration. */
+/** SW-ALL-01: part service records (database) — calendar / hour due, not deterioration. */
 function evalServiceLife({ t, H }: EvalContext): void {
   for (const id of MACHINE_IDS) {
-    const due = PYRO_SERVICE_COMPONENTS.filter((c) => c.machine === id && serviceUsed(c, t) >= SERVICE_DUE_SHARE);
+    const due = servicePartsOf(id).filter((c) => serviceUsed(c, t) >= c.dueShare);
     if (due.length)
       H(id, "SW-ALL-01", {
-        severity: "Advisory",
+        severity: "Alert",
         evidence: due
-          .map((c) => `${c.name} ${(serviceUsed(c, t) * 100).toFixed(0)} % of ${c.life.toLocaleString("en-GB")} ${c.basis === "h" ? "h" : "days"} (installed ${c.installed}, demo record)`)
+          .map((c) => `${c.name} ${(serviceUsed(c, t) * 100).toFixed(0)} % of ${c.life.toLocaleString("en-GB")} ${c.basis === "h" ? "h" : "days"}${c.installed ? ` (installed ${c.installed})` : ""}`)
           .join(" · "),
         tags: [],
-        subs: [...new Set(due.map((c) => c.sub))],
+        subs: [...new Set(due.flatMap((c) => (c.sub ? [c.sub] : [])))],
         stateRule: true,
       });
   }

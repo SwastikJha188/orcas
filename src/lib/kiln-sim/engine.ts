@@ -52,6 +52,10 @@ export interface LiveSignal {
   limitSeverity: Severity;
   /** The limit branch that fired ("+ 14 % over model", "pair split + 12 K"); pyro line only, null when within limits. */
   limitNote?: string | null;
+  /** The limit state of this very reading (limitSeverity may be the debounced one people see). */
+  limitNow?: Severity;
+  /** Side the shown limit was crossed on (pyro line). */
+  limitDir?: "high" | "low" | null;
   /** Limit severity, raised to the severity of any confirmed finding the signal is evidence for. */
   status: Severity;
   quality: Quality;
@@ -91,6 +95,12 @@ export interface RuleState {
   cause: string;
   consequence: string;
   action: string;
+  /** Headline anyone can read: what is wrong, in everyday words (docs/plain-language.md). */
+  plainTitle?: string;
+  /** What is happening and why it matters, in everyday words (1–2 sentences). */
+  plainWhat?: string;
+  /** What to do next, as an instruction to a person (1 sentence). */
+  plainTodo?: string;
   /** Simulated minute the rule was confirmed. */
   since: number | null;
   /** Default action owner (role) when no work order names one. */
@@ -140,7 +150,7 @@ export interface SimFrame {
   subs: Record<string, HealthCell>;
   systems: Record<string, HealthCell>;
   overall: number;
-  condition: "Healthy" | "Advisory" | "Critical";
+  condition: "Healthy" | "Alert" | "Critical";
   pipeline: {
     valid: number;
     held: number;
@@ -208,6 +218,12 @@ export interface SimFrame {
    * Optional (pyro line only).
    */
   shiftValidity?: { current: ShiftValidityLog | null; previous: ShiftValidityLog | null };
+  /**
+   * Run state of each drive / fan / pump of this machine that has run feedback
+   * (MCC current, status point), as the edge sees it: id → state, with the
+   * unit's label and the tags it governs. Optional (pyro line only).
+   */
+  equipment?: Record<string, { label: string; state: "run" | "stopped" | "tripped"; tags: string[] }>;
 }
 
 export interface ShiftValidityLog {
@@ -280,7 +296,7 @@ function mulberry32(seed: number): Rng {
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-const sevRank: Record<Severity, number> = { Normal: 0, Advisory: 1, Critical: 2 };
+const sevRank: Record<Severity, number> = { Normal: 0, Alert: 1, Critical: 2 };
 const maxSev = (a: Severity, b: Severity): Severity => (sevRank[a] >= sevRank[b] ? a : b);
 
 /* ------------------------------------------------------------------ */
@@ -1242,7 +1258,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
     const f = s.flags[tag];
     if (!f) {
       s.flags[tag] = { rule, note, since: t, clean: 0 };
-      pushEvent(s, { kind: "quality", severity: "Advisory", title: `${tag} marked ${rule === "R-DQ-01" ? "invalid" : "suspect"}`, detail: note });
+      pushEvent(s, { kind: "quality", severity: "Alert", title: `${tag} marked ${rule === "R-DQ-01" ? "invalid" : "suspect"}`, detail: note });
     } else {
       f.note = note;
       f.rule = rule;
@@ -1300,7 +1316,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
     if (best) {
       const sl = slope(s.hist[best.tag], 15) ?? 0;
       hits["R-SUP-02"] = {
-        severity: best.r > 14 || measured[best.tag] >= 75 ? "Critical" : "Advisory",
+        severity: best.r > 14 || measured[best.tag] >= 75 ? "Critical" : "Alert",
         evidence: `${best.tag} +${best.r.toFixed(1)} K above model, heating ${(sl * 60).toFixed(1)} K/h · thrust normal (${fmtZ(tz)})`,
         tags: [best.tag],
         subs: [best.st.sub],
@@ -1322,7 +1338,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
     if (best && best.split > 4.5 && tz > 2 && good("PRS-KLN-07") && !hits["R-SUP-02"] && s.rules["R-SUP-02"].status === "QUIET") {
       const hotter = res(best.a) > res(best.b) ? best.a : best.b;
       hits["R-SUP-01"] = {
-        severity: best.split > 8 || measured[hotter] >= 75 ? "Critical" : "Advisory",
+        severity: best.split > 8 || measured[hotter] >= 75 ? "Critical" : "Alert",
         evidence: `Station ${best.st.n} ${best.side} pair split ${best.split.toFixed(1)} K (compensated) · thrust ${fmtZ(tz)}`,
         tags: [best.a, best.b, "PRS-KLN-07"],
         subs: [best.st.sub, "thrust"],
@@ -1337,7 +1353,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
     const rs = tags.map(res);
     if (rs.every((r) => r > 3.5)) {
       hits["R-SUP-05"] = {
-        severity: rs.every((r) => r > 7) ? "Critical" : "Advisory",
+        severity: rs.every((r) => r > 7) ? "Critical" : "Alert",
         evidence: `All four station ${st.n} bearings above model (min +${Math.min(...rs).toFixed(1)} K)`,
         tags,
         subs: [st.sub],
@@ -1348,7 +1364,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
   if (good("PRS-KLN-07") && z("PRS-KLN-07") < -5) {
     const pos = measured["POS-KLN-01"];
     hits["R-SUP-03"] = {
-      severity: pos < -12 || states["POS-KLN-02"] === "LIMIT" || measured["PRS-KLN-07"] <= 30 ? "Critical" : "Advisory",
+      severity: pos < -12 || states["POS-KLN-02"] === "LIMIT" || measured["PRS-KLN-07"] <= 30 ? "Critical" : "Alert",
       evidence: `Thrust pressure ${measured["PRS-KLN-07"].toFixed(0)} bar (${fmtZ(z("PRS-KLN-07"))}) · axial ${pos.toFixed(1)} mm`,
       tags: ["PRS-KLN-07", "POS-KLN-01", "POS-KLN-02"],
       lead: { tag: "PRS-KLN-07", target: measured["PRS-KLN-07"] > 30 ? 30 : 20 },
@@ -1361,7 +1377,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
     const range6h = h.length >= HISTORY_LEN ? Math.max(...h) - Math.min(...h) : Infinity;
     if ((Math.abs(pos) > 22 || range6h < 3) && !hits["R-SUP-03"]) {
       hits["R-SUP-04"] = {
-        severity: Math.abs(pos) > 30 ? "Critical" : "Advisory",
+        severity: Math.abs(pos) > 30 ? "Critical" : "Alert",
         evidence: Math.abs(pos) > 22 ? `LVDT ${pos.toFixed(1)} mm beyond ±22 mm` : `Only ${range6h.toFixed(1)} mm floating movement in 6 h`,
         tags: ["POS-KLN-01", "PRS-KLN-07"],
         lead: { tag: "POS-KLN-01", target: pos < 0 ? (pos > -30 ? -30 : -40) : pos < 30 ? 30 : 40 },
@@ -1380,7 +1396,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
       const rt = ratio(vib);
       if (rt > 1.4 && meanRes(tmp, 10) > 1.5 && s.rules["R-DRV-06"].status === "QUIET") {
         hits["R-DRV-01"] = {
-          severity: rt > 2.2 || measured[vib] >= 4.5 ? "Critical" : "Advisory",
+          severity: rt > 2.2 || measured[vib] >= 4.5 ? "Critical" : "Alert",
           evidence: `${label} vibration ×${rt.toFixed(2)} model with bearing +${meanRes(tmp, 10).toFixed(1)} K`,
           tags: [vib, tmp],
           subs: [sub],
@@ -1395,7 +1411,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
     const r2 = ratio("VIB-KLN-02");
     if (r1 > 1.3 && r2 > 1.3 && meanRes("TMP-KLN-19", 10) < 1.5 && meanRes("TMP-KLN-22", 10) < 1.5) {
       hits["R-DRV-06"] = {
-        severity: r1 > 1.9 && r2 > 1.9 ? "Critical" : "Advisory",
+        severity: r1 > 1.9 && r2 > 1.9 ? "Critical" : "Alert",
         evidence: `Both coupling sides up together: motor DE ×${r1.toFixed(2)}, gearbox input ×${r2.toFixed(2)}`,
         tags: ["VIB-KLN-01", "VIB-KLN-02"],
         lead: { tag: "VIB-KLN-02", target: 4.5 },
@@ -1405,7 +1421,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
   // R-DRV-07 Gearbox oil cooling loss
   if (good("TMP-KLN-15", "ELE-KLN-01") && res("TMP-KLN-15") > 4 && Math.abs(z("ELE-KLN-01")) < 3) {
     hits["R-DRV-07"] = {
-      severity: measured["TMP-KLN-15"] >= 75 ? "Critical" : "Advisory",
+      severity: measured["TMP-KLN-15"] >= 75 ? "Critical" : "Alert",
       evidence: `Oil +${res("TMP-KLN-15").toFixed(1)} K above model at normal torque · pressure ${fmtZ(z("PRS-KLN-04"))} (explained by hot oil)`,
       tags: ["TMP-KLN-15", "PRS-KLN-04", "TMP-KLN-22", "TMP-KLN-23"],
       lead: { tag: "TMP-KLN-15", target: measured["TMP-KLN-15"] < 75 ? 75 : 85 },
@@ -1414,7 +1430,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
   // R-DRV-08 Drive overload / drag
   if (good("ELE-KLN-01", "TMP-KLN-21", "TMP-KLN-15") && z("ELE-KLN-01") > 4 && res("TMP-KLN-21") > 4 && res("TMP-KLN-15") > 1.5 && coldBandResidual > -15) {
     hits["R-DRV-08"] = {
-      severity: measured["ELE-KLN-01"] >= 90 || measured["TMP-KLN-21"] >= 130 ? "Critical" : "Advisory",
+      severity: measured["ELE-KLN-01"] >= 90 || measured["TMP-KLN-21"] >= 130 ? "Critical" : "Alert",
       evidence: `Torque ${fmtZ(z("ELE-KLN-01"))} with winding +${res("TMP-KLN-21").toFixed(1)} K and oil +${res("TMP-KLN-15").toFixed(1)} K following · no cold band`,
       tags: ["ELE-KLN-01", "TMP-KLN-21", "TMP-KLN-15", "TMP-KLN-22", "TMP-KLN-23"],
       lead: { tag: "ELE-KLN-01", target: measured["ELE-KLN-01"] < 90 ? 90 : 105 },
@@ -1425,7 +1441,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
     const rt = ratio("VIB-KLN-04");
     const spray = states["STS-KLN-05"];
     hits["R-DRV-02"] = {
-      severity: rt > 1.9 || measured["VIB-KLN-04"] >= 5.6 ? "Critical" : "Advisory",
+      severity: rt > 1.9 || measured["VIB-KLN-04"] >= 5.6 ? "Critical" : "Alert",
       evidence: `Pinion vibration ×${rt.toFixed(2)} model at steady torque · cause ranked: ${spray === "OK" ? "misalignment / runout (spray OK)" : "lubrication starvation (spray FAULT)"}`,
       tags: ["VIB-KLN-04", "STS-KLN-05"],
       lead: { tag: "VIB-KLN-04", target: measured["VIB-KLN-04"] < 5.6 ? 5.6 : 9 },
@@ -1438,7 +1454,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
     const pz = good("PRS-KLN-04") ? z("PRS-KLN-04") : 0;
     if (pz < -5 || noFlow || low) {
       hits["R-DRV-03"] = {
-        severity: noFlow || low || measured["PRS-KLN-04"] <= 0.8 ? "Critical" : "Advisory",
+        severity: noFlow || low || measured["PRS-KLN-04"] <= 0.8 ? "Critical" : "Alert",
         evidence: `Oil pressure ${measured["PRS-KLN-04"].toFixed(2)} bar (${fmtZ(pz)} below what oil temperature explains)${noFlow ? " · flow switch NO FLOW" : ""}${low ? " · level LOW" : ""}`,
         tags: ["PRS-KLN-04", "FLO-KLN-05", "LEV-KLN-01", "TMP-KLN-15"],
         lead: { tag: "PRS-KLN-04", target: measured["PRS-KLN-04"] > 1.2 ? 1.2 : 0.8 },
@@ -1446,7 +1462,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
     }
   }
   if (states["STS-KLN-05"] === "FAULT") hits["R-DRV-04"] = { severity: "Critical", evidence: "Girth-gear spray controller reports FAULT", tags: ["STS-KLN-05"], stateRule: true };
-  if (states["STS-KLN-11"] !== "READY") hits["R-DRV-05"] = { severity: "Advisory", evidence: "Auxiliary drive reports NOT READY", tags: ["STS-KLN-11"], stateRule: true };
+  if (states["STS-KLN-11"] !== "READY") hits["R-DRV-05"] = { severity: "Alert", evidence: "Auxiliary drive reports NOT READY", tags: ["STS-KLN-11"], stateRule: true };
   // R-SHL-01 Refractory hot spot
   if (good("CAL-KLN-03")) {
     const r = res("CAL-KLN-03");
@@ -1454,7 +1470,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
     if (r > 12.5) {
       const idx = shellProfile.indexOf(Math.max(...shellProfile));
       hits["R-SHL-01"] = {
-        severity: measured["CAL-KLN-03"] >= 380 || sl > 20 ? "Critical" : "Advisory",
+        severity: measured["CAL-KLN-03"] >= 380 || sl > 20 ? "Critical" : "Alert",
         evidence: `Shell max ${measured["CAL-KLN-03"].toFixed(0)} °C at ${(idx * 0.5).toFixed(1)} m, +${r.toFixed(0)} K above profile, rising ${sl.toFixed(0)} K/h`,
         tags: ["CAL-KLN-03"],
         lead: { tag: "CAL-KLN-03", target: measured["CAL-KLN-03"] < 380 ? 380 : 420 },
@@ -1464,7 +1480,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
   // R-SHL-02 Ring / coating build-up
   if (good("CAL-KLN-03", "ELE-KLN-01") && coldBandResidual < -15 && z("ELE-KLN-01") > 2.5 && ratio("VIB-KLN-01") < 1.25 && ratio("VIB-KLN-02") < 1.25) {
     hits["R-SHL-02"] = {
-      severity: measured["ELE-KLN-01"] >= 90 ? "Critical" : "Advisory",
+      severity: measured["ELE-KLN-01"] >= 90 ? "Critical" : "Alert",
       evidence: `Cold band 29–37 m ${coldBandResidual.toFixed(0)} K vs model · torque ${fmtZ(z("ELE-KLN-01"))} · drive vibration normal`,
       tags: ["CAL-KLN-03", "ELE-KLN-01", "TMP-KLN-21", "TMP-KLN-15"],
       lead: { tag: "ELE-KLN-01", target: 90 },
@@ -1474,7 +1490,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
   if (good("GAS-KLN-01", "TMP-KLN-13") && z("GAS-KLN-01") > 3 && res("TMP-KLN-13") < -8 && steadyProcess) {
     const fa = measured["CAL-KLN-06"];
     hits["R-SHL-03"] = {
-      severity: fa >= 1.0 ? "Critical" : "Advisory",
+      severity: fa >= 1.0 ? "Critical" : "Alert",
       evidence: `O₂ +${res("GAS-KLN-01").toFixed(2)} vol% above model with inlet ${res("TMP-KLN-13").toFixed(0)} K below · false-air index ${fa.toFixed(2)}`,
       tags: ["GAS-KLN-01", "TMP-KLN-13", "PRS-KLN-01", "CAL-KLN-06"],
       lead: { tag: "CAL-KLN-06", target: fa < 0.5 ? 0.5 : 1.0 },
@@ -1484,12 +1500,12 @@ export function stepSim(s: SimState, emit = true): SimFrame {
   if (states["STS-KLN-10"] === "STOPPED") {
     hits["R-SHL-04"] = { severity: "Critical", evidence: `Seal cooling fan STOPPED · hood ${measured["PRS-KLN-03"].toFixed(2)} mbar`, tags: ["STS-KLN-10", "PRS-KLN-03"], stateRule: true };
   } else if (good("PRS-KLN-03") && res("PRS-KLN-03") > 0.12) {
-    hits["R-SHL-04"] = { severity: "Advisory", evidence: `Hood pressure ${fmtZ(z("PRS-KLN-03"))} toward positive`, tags: ["PRS-KLN-03"], lead: { tag: "PRS-KLN-03", target: 0 } };
+    hits["R-SHL-04"] = { severity: "Alert", evidence: `Hood pressure ${fmtZ(z("PRS-KLN-03"))} toward positive`, tags: ["PRS-KLN-03"], lead: { tag: "PRS-KLN-03", target: 0 } };
   }
   // R-SHL-05 Seal overlap low
   if (good("POS-KLN-01") && measured["CAL-KLN-07"] < 10) {
     hits["R-SHL-05"] = {
-      severity: measured["CAL-KLN-07"] < 5 ? "Critical" : "Advisory",
+      severity: measured["CAL-KLN-07"] < 5 ? "Critical" : "Alert",
       evidence: `Seal overlap margin ${measured["CAL-KLN-07"].toFixed(1)} mm (< 10 mm)`,
       tags: ["CAL-KLN-07", "POS-KLN-01"],
       lead: { tag: "CAL-KLN-07", target: measured["CAL-KLN-07"] > 5 ? 5 : 0 },
@@ -1499,11 +1515,11 @@ export function stepSim(s: SimState, emit = true): SimFrame {
   {
     const dq1 = Object.entries(s.flags).filter(([, f]) => f.rule === "R-DQ-01");
     if (dq1.length) {
-      hits["R-DQ-01"] = { severity: "Advisory", evidence: dq1.map(([tg, f]) => `${tg}: ${f.note}`).join(" · "), tags: dq1.map(([tg]) => tg), stateRule: true };
+      hits["R-DQ-01"] = { severity: "Alert", evidence: dq1.map(([tg, f]) => `${tg}: ${f.note}`).join(" · "), tags: dq1.map(([tg]) => tg), stateRule: true };
     }
     const dq2f = Object.entries(s.flags).filter(([, f]) => f.rule === "R-DQ-02");
     if (dq2f.length) {
-      hits["R-DQ-02"] = { severity: "Advisory", evidence: dq2f.map(([tg, f]) => `${tg}: ${f.note}`).join(" · "), tags: dq2f.map(([tg]) => tg) };
+      hits["R-DQ-02"] = { severity: "Alert", evidence: dq2f.map(([tg, f]) => `${tg}: ${f.note}`).join(" · "), tags: dq2f.map(([tg]) => tg) };
     }
   }
   // R-ANM-01 Unclassified deviation
@@ -1515,7 +1531,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
     }
     const far = ANALOG.filter((d) => good(d.tag) && !covered.has(d.tag) && Math.abs(z(d.tag)) > 10).map((d) => d.tag);
     if (far.length) {
-      hits["R-ANM-01"] = { severity: "Advisory", evidence: `No known pattern: ${far.map((tg) => `${tg} ${fmtZ(z(tg))}`).join(", ")}`, tags: far };
+      hits["R-ANM-01"] = { severity: "Alert", evidence: `No known pattern: ${far.map((tg) => `${tg} ${fmtZ(z(tg))}`).join(", ")}`, tags: far };
     }
   }
 
@@ -1566,7 +1582,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
   for (const def of RULES) {
     const mem = s.rules[def.id];
     if (mem.status !== "ACTIVE") continue;
-    for (const tg of mem.tags) ruleSevByTag[tg] = maxSev(ruleSevByTag[tg] ?? "Normal", def.category === "Data quality" ? "Advisory" : mem.severity);
+    for (const tg of mem.tags) ruleSevByTag[tg] = maxSev(ruleSevByTag[tg] ?? "Normal", def.category === "Data quality" ? "Alert" : mem.severity);
   }
 
   const signals: Record<string, LiveSignal> = {};
@@ -1606,7 +1622,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
       if (Math.abs(sl) > def.sigma * 0.02 && Math.sign(gap) === Math.sign(sl) && Math.abs(gap / sl) < 72 * 60) ttl = formatDuration(gap / sl);
     }
     let status = maxSev(ls, ruleSevByTag[def.tag] ?? "Normal");
-    if (q !== "Good") status = maxSev(status, "Advisory");
+    if (q !== "Good") status = maxSev(status, "Alert");
     // Instrument alarms: announced only for trusted readings, and not during warm-up.
     if (q === "Good" && !def.calculated && t > 0) trackLimit(s, def, ls, displayValue(def, v, null));
     signals[def.tag] = {
@@ -1669,6 +1685,9 @@ export function stepSim(s: SimState, emit = true): SimFrame {
       cause: def.cause,
       consequence: def.consequence,
       action: def.action,
+      plainTitle: def.plainTitle,
+      plainWhat: def.plainWhat,
+      plainTodo: def.plainTodo,
       since: mem.since,
     };
   });
@@ -1682,7 +1701,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
       const sg = signals[def.tag];
       if (sg.quality !== "Good") continue;
       if (sg.z !== null) penalty += Math.min(12, Math.max(0, Math.abs(sg.z) - 3.0) * 1.4);
-      penalty += sg.limitSeverity === "Critical" ? 22 : sg.limitSeverity === "Advisory" ? 9 : 0;
+      penalty += sg.limitSeverity === "Critical" ? 22 : sg.limitSeverity === "Alert" ? 9 : 0;
     }
     for (const r of rules) {
       if (r.status === "QUIET" || r.category === "Data quality" || r.category === "Anomaly") continue;
@@ -1699,7 +1718,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
     const h = prevInt !== undefined && Math.abs(sm2 - prevInt) < 0.7 ? prevInt : Math.round(sm2);
     s.smooth[intKey] = h;
     const activeHere = rules.filter((r) => r.status === "ACTIVE" && r.subs.includes(sa.id) && r.category !== "Data quality" && r.category !== "Anomaly");
-    let status: Severity = h < 60 ? "Critical" : h < 85 ? "Advisory" : "Normal";
+    let status: Severity = h < 60 ? "Critical" : h < 85 ? "Alert" : "Normal";
     for (const r of activeHere) status = maxSev(status, r.severity);
     subs[sa.id] = { id: sa.id, name: sa.name, health: h, status };
   }
@@ -1716,7 +1735,7 @@ export function stepSim(s: SimState, emit = true): SimFrame {
   const overall = Math.round(0.5 * (scored.reduce((a, c) => a + c.health, 0) / scored.length) + 0.5 * Math.min(...scored.map((c) => c.health)));
   const anyCrit = rules.some((r) => r.status === "ACTIVE" && r.severity === "Critical" && r.category !== "Data quality");
   const anyAdv = rules.some((r) => r.status === "ACTIVE" && r.category !== "Data quality");
-  const condition: SimFrame["condition"] = anyCrit || overall < 60 ? "Critical" : anyAdv || overall < 85 ? "Advisory" : "Healthy";
+  const condition: SimFrame["condition"] = anyCrit || overall < 60 ? "Critical" : anyAdv || overall < 85 ? "Alert" : "Healthy";
 
   s.healthHist.overall.push(overall);
   for (const sy of SYSTEMS) s.healthHist[sy.id].push(systems[sy.id].health);

@@ -1,14 +1,26 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { invalidateApi } from "@/lib/api-cache";
-import { PRIMARY_KILN_ID, useKilnSimulation, usePrimaryMachineId } from "@/providers/kiln-simulation-context";
+import { invalidateApi, revalidateApi, useApi } from "@/lib/api-cache";
+import { useWorkOrderPriorities } from "@/lib/reference-data";
+import type { FindingDto, WorkOrderPriorityDto } from "@/types/monitoring";
+import { isRuleFinding, journalState, raisedAlarms, raisedKey } from "@/lib/alarm-journal";
+import { acknowledgeFinding } from "@/lib/monitoring-client";
+import { simTimeMs } from "@/lib/kiln-sim/engine";
+import { DISPLAY_MS, useKilnFleet, useKilnSimulation, usePrimaryMachineId } from "@/providers/kiln-simulation-context";
+import { useIndustrialData } from "@/providers/industrial-data-context";
 
 /* ==========================================================================
    Suggestion -> action loop for the active plant's primary machine (KLN-01 on
    the kiln-seal plant, PYR-KLN-01 on the pyro line). Alerts are the live rule
    findings; acknowledgements and work orders persist in Postgres through /api.
    Starting a mitigation or completing a repair drives the simulation's recovery.
+
+   The alarm journal is the server evaluation's rule findings (/api/findings)
+   for every live machine of the plant: the server opens and clears them from
+   stored readings, and a finding that cleared before anyone acknowledged it
+   stays unacknowledged until someone does (ISA-18.2). Acknowledgements are
+   finding acknowledgements; nothing here records alarms from the browser.
    ========================================================================== */
 
 export type WorkOrderStatus = "open" | "in_progress" | "done" | "cancelled";
@@ -37,7 +49,7 @@ export interface OpsAlert {
   ruleId: string;
   name: string;
   status: "ACTIVE" | "PENDING";
-  severity: "Normal" | "Advisory" | "Critical";
+  severity: "Normal" | "Alert" | "Critical";
   priority: "P1" | "P2" | "P3" | "P4";
   confidence: number;
   evidence: string;
@@ -62,16 +74,22 @@ export interface KilnOps {
   updateWorkOrder: (id: number, patch: { status?: WorkOrderStatus; notes?: string; assignee?: string }) => Promise<void>;
   /** Active alerts nobody has acknowledged. */
   unread: number;
+  /** Alarm journal per live machine of the plant: its rule findings from the database (open, and cleared in the last day). */
+  journal: Record<string, FindingDto[]>;
+  /** Acknowledge an alarm on any live machine of the plant, raised or already cleared. */
+  acknowledgeAlarm: (machineId: string, ruleId: string) => Promise<void>;
 }
 
 const EMPTY: KilnOps = {
-  machineId: PRIMARY_KILN_ID,
+  machineId: "",
   alerts: [],
   workOrders: [],
   acknowledge: async () => {},
   createWorkOrder: async () => null,
   updateWorkOrder: async () => {},
   unread: 0,
+  journal: {},
+  acknowledgeAlarm: async () => {},
 };
 
 const OpsContext = createContext<KilnOps>(EMPTY);
@@ -90,10 +108,15 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   return body.data;
 }
 
+const plantIso = (t: number) => new Date(simTimeMs(t)).toISOString();
+
 type ActionKind = "acknowledge" | "mitigate" | "repair";
 type SimWithActions = { performAction?: (ruleId: string, kind: ActionKind) => unknown };
 
-const DUE: Record<string, string> = { P1: "Within 4 h", P2: "Within 24 h", P3: "Within 7 days", P4: "Next planned outage" };
+/** Due label of a work-order priority, as the priority table words it ("Within 4 h", "Next planned outage"); null while priorities load. */
+function dueLabel(priorities: readonly WorkOrderPriorityDto[] | null, id: string): string | null {
+  return priorities?.find((p) => p.id === id)?.description ?? null;
+}
 
 /**
  * The simulated plant restarts healthy on every page load, so work orders still
@@ -115,7 +138,7 @@ function closeStaleOnce(machineId: string): Promise<void> {
             .map((w) =>
               api<OpsWorkOrder>(`/api/work-orders/${w.id}`, {
                 method: "PATCH",
-                body: JSON.stringify({ status: "cancelled", notes: `${w.notes ? `${w.notes} ` : ""}Closed: the simulation restarted and this fault is no longer on the plant.` }),
+                body: JSON.stringify({ status: "cancelled", notes: `${w.notes ? `${w.notes} ` : ""}Closed: this fault is no longer on the plant.` }),
               }).catch(() => w),
             ),
         ),
@@ -131,8 +154,19 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
   const machineId = usePrimaryMachineId();
   const sim = useKilnSimulation();
   const frame = sim?.machineId === machineId ? sim.frame : null;
+  const fleet = useKilnFleet();
+  const fleetRef = useRef(fleet);
+  fleetRef.current = fleet;
+  const priorities = useWorkOrderPriorities();
+  const prioritiesRef = useRef(priorities);
+  prioritiesRef.current = priorities;
   const [workOrders, setWorkOrders] = useState<OpsWorkOrder[]>([]);
-  const [acks, setAcks] = useState<Set<string>>(new Set());
+  /** Optimistic acknowledgements, `machine|rule@since`: one occurrence, so a recurrence alerts again. */
+  const [localAcks, setLocalAcks] = useState<Set<string>>(new Set());
+  /** Finding ids acknowledged here and not yet confirmed by a reload. */
+  const [ackedIds, setAckedIds] = useState<Map<number, string>>(new Map());
+  /** `machine|rule` acknowledged before the server evaluation opened its finding: applied once it appears. */
+  const pendingAcks = useRef(new Map<string, string>());
 
   // Load from the database for the active plant's primary machine.
   const machineRef = useRef(machineId);
@@ -140,16 +174,12 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let live = true;
     setWorkOrders([]);
-    setAcks(new Set());
     const target = machineId;
     closeStaleOnce(target)
       .then(() => api<OpsWorkOrder[]>(`/api/work-orders?machineId=${encodeURIComponent(target)}`))
       .then((rows) => {
         if (live) setWorkOrders(rows);
       })
-      .catch(() => {});
-    api<Array<{ ruleId: string }>>(`/api/alerts/ack?machineId=${encodeURIComponent(target)}`)
-      .then((rows) => live && setAcks(new Set(rows.map((r) => r.ruleId))))
       .catch(() => {});
     return () => {
       live = false;
@@ -166,34 +196,124 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
   const workOrdersRef = useRef(workOrders);
   workOrdersRef.current = workOrders;
 
-  // Actions this provider sent to the simulation; the event mirror skips them.
+  // Actions this provider sent to a simulation (`machine|rule|kind`); the event mirrors skip them.
   const selfActions = useRef(new Set<string>());
   const perform = useCallback((ruleId: string, kind: ActionKind) => {
-    selfActions.current.add(`${ruleId}|${kind}`);
+    selfActions.current.add(`${machineRef.current}|${ruleId}|${kind}`);
     (simRef.current as unknown as SimWithActions | null)?.performAction?.(ruleId, kind);
   }, []);
 
-  // Rule transitions: clear stale acks when a rule returns to QUIET.
-  const prevRef = useRef<{ machineId: string; status: Map<string, string> } | null>(null);
+  /* ---------------------------- Alarm journal ---------------------------- */
+  // The plant's findings from the server evaluation: open ones and those cleared in
+  // the last day (the window moves on the hour, so the URL stays put between polls).
+  const { selectedPlantId } = useIndustrialData();
+  const sinceHour = Math.floor((Date.now() - 24 * 3_600_000) / 3_600_000) * 3_600_000;
+  const journalUrl = selectedPlantId
+    ? `/api/findings?plantId=${encodeURIComponent(selectedPlantId)}&status=all&since=${new Date(sinceHour).toISOString()}&limit=1000`
+    : null;
+  const findings = useApi<FindingDto[]>(journalUrl, { refreshMs: DISPLAY_MS });
+  const journal = useMemo(() => {
+    const out: Record<string, FindingDto[]> = {};
+    for (const mid of Object.keys(fleet)) out[mid] = [];
+    for (const f of findings.data ?? []) {
+      if (!out[f.machineId] || !isRuleFinding(f)) continue;
+      const at = ackedIds.get(f.id);
+      out[f.machineId].push(f.acknowledgement || at === undefined ? f : { ...f, acknowledgement: { by: null, at, note: null } });
+    }
+    return out;
+  }, [findings.data, fleet, ackedIds]);
+  const journalRef = useRef(journal);
+  journalRef.current = journal;
+
+  // A raise or clear on any live machine: read the journal again (the evaluation may already have it).
+  const plantRaisedKey = Object.entries(fleet)
+    .map(([mid, s]) => `${mid}:${raisedKey(raisedAlarms(s.frame))}`)
+    .join(";");
   useEffect(() => {
-    const prev = prevRef.current?.machineId === machineId ? prevRef.current.status : null;
-    const next = new Map(rules.map((r) => [r.id, r.status]));
-    prevRef.current = { machineId, status: next };
-    if (!prev || rules.length === 0) return;
-    for (const r of rules) {
-      const before = prev.get(r.id);
-      if (!before) continue;
-      if (r.status === "QUIET" && before !== "QUIET") {
-        setAcks((s) => {
-          if (!s.has(r.id)) return s;
-          const n = new Set(s);
-          n.delete(r.id);
-          return n;
-        });
-        fetch(`/api/alerts/ack?machineId=${encodeURIComponent(machineId)}&ruleId=${encodeURIComponent(r.id)}`, { method: "DELETE" }).catch(() => {});
+    if (journalUrl) void revalidateApi(journalUrl);
+  }, [journalUrl, plantRaisedKey]);
+
+  /** Acknowledge the rule's unacknowledged findings on a machine; optimistic until the reload confirms. */
+  const ackFindings = useCallback((list: FindingDto[], at: string) => {
+    if (!list.length) return Promise.resolve();
+    setAckedIds((m) => {
+      const n = new Map(m);
+      for (const f of list) n.set(f.id, at);
+      return n;
+    });
+    return Promise.all(
+      list.map((f) =>
+        acknowledgeFinding(f.id).catch(() =>
+          setAckedIds((m) => {
+            const n = new Map(m);
+            n.delete(f.id);
+            return n;
+          }),
+        ),
+      ),
+    ).then(() => undefined);
+  }, []);
+
+  // Acknowledgements made before the evaluation opened the finding: apply them once it is there.
+  useEffect(() => {
+    for (const [key, at] of pendingAcks.current) {
+      const [mid, ruleId] = key.split("|");
+      const raised = fleetRef.current[mid]?.frame.rules.some((x) => x.id === ruleId && x.status !== "QUIET");
+      const open = (journal[mid] ?? []).filter((f) => f.rule?.code === ruleId && f.clearedAt === null && !f.acknowledgement);
+      if (open.length) void ackFindings(open, at);
+      if (open.length || !raised) pendingAcks.current.delete(key);
+    }
+  }, [journal, ackFindings]);
+
+  /** Record an acknowledgement (the engine already knows, or was told by the caller). */
+  const recordAck = useCallback(
+    (mid: string, ruleId: string, t: number) => {
+      const r = fleetRef.current[mid]?.frame.rules.find((x) => x.id === ruleId);
+      const local = r && r.status !== "QUIET" ? `${mid}|${ruleId}@${r.since}` : null;
+      const at = plantIso(t);
+      if (local) setLocalAcks((set) => new Set(set).add(local));
+      const targets = (journalRef.current[mid] ?? []).filter((f) => f.rule?.code === ruleId && !f.acknowledgement);
+      if (local && !targets.some((f) => f.clearedAt === null)) pendingAcks.current.set(`${mid}|${ruleId}`, at);
+      return ackFindings(targets, at);
+    },
+    [ackFindings],
+  );
+
+  const acknowledgeAlarm = useCallback(
+    async (mid: string, ruleId: string) => {
+      const s = fleetRef.current[mid];
+      const r = s?.frame.rules.find((x) => x.id === ruleId);
+      // A cleared alarm is acknowledged in the journal only: the engine has nothing raised to act on.
+      if (s && r && r.status !== "QUIET") {
+        selfActions.current.add(`${mid}|${ruleId}|acknowledge`);
+        s.performAction(ruleId, "acknowledge");
+      }
+      await recordAck(mid, ruleId, s?.frame.t ?? 0);
+    },
+    [recordAck],
+  );
+
+  // Acknowledgements the engines made themselves (autopilot crew) on the plant's
+  // other machines; the primary machine's are mirrored with its work orders below.
+  const seenAcks = useRef(new Map<string, Set<string>>());
+  useEffect(() => {
+    for (const [mid, s] of Object.entries(fleet)) {
+      if (mid === machineId) continue;
+      const events = s.frame.events;
+      const keyOf = (e: (typeof events)[number]) => `${e.t}|${e.title}`;
+      const seen = seenAcks.current.get(mid);
+      seenAcks.current.set(mid, new Set(events.map(keyOf)));
+      if (!seen) continue;
+      for (const e of events) {
+        const a = e.action;
+        if (a?.kind !== "acknowledge" || seen.has(keyOf(e))) continue;
+        if (!a.auto && selfActions.current.delete(`${mid}|${a.ruleId}|acknowledge`)) continue;
+        void recordAck(mid, a.ruleId, e.t);
       }
     }
-  }, [rules, machineId]);
+  }, [fleet, machineId, recordAck]);
+
+  const primaryJournal = useMemo(() => journalState(frame, journal[machineId] ?? []), [frame, journal, machineId]);
 
   const alerts = useMemo<OpsAlert[]>(() => {
     const out: OpsAlert[] = [];
@@ -216,30 +336,21 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
         timeToLimit: r.timeToLimit,
         since: r.since,
         subs: r.subs as string[],
-        acknowledged: acks.has(r.id),
+        acknowledged: primaryJournal.acked.has(r.id) || localAcks.has(`${machineId}|${r.id}@${r.since}`),
         workOrderId: wo?.id ?? null,
       });
     }
-    const pr = { P1: 0, P2: 1, P3: 2, P4: 3 } as const;
-    return out.sort((a, b) => (a.status === b.status ? 0 : a.status === "ACTIVE" ? -1 : 1) || pr[a.priority] - pr[b.priority]);
-  }, [rules, acks, workOrders, machineId]);
+    // Priority order as stored (most urgent first); unknown or still loading sorts last.
+    const pr = (id: string) => {
+      const i = priorities ? priorities.findIndex((p) => p.id === id) : -1;
+      return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+    };
+    return out.sort((a, b) => (a.status === b.status ? 0 : a.status === "ACTIVE" ? -1 : 1) || pr(a.priority) - pr(b.priority));
+  }, [rules, primaryJournal, localAcks, workOrders, machineId, priorities]);
+  const alertsRef = useRef(alerts);
+  alertsRef.current = alerts;
 
-  const acknowledge = useCallback(
-    async (ruleId: string) => {
-      setAcks((s) => new Set(s).add(ruleId));
-      perform(ruleId, "acknowledge");
-      try {
-        await api("/api/alerts/ack", { method: "POST", body: JSON.stringify({ ruleId, machineId: machineRef.current, simTime: tRef.current }) });
-      } catch {
-        setAcks((s) => {
-          const n = new Set(s);
-          n.delete(ruleId);
-          return n;
-        });
-      }
-    },
-    [perform],
-  );
+  const acknowledge = useCallback((ruleId: string) => acknowledgeAlarm(machineRef.current, ruleId), [acknowledgeAlarm]);
 
   const createWorkOrder = useCallback(
     async (ruleId: string, kind?: WorkOrderKind) => {
@@ -260,7 +371,7 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
             component: rule.subs.join(", ") || rule.name,
             priority: rule.priority,
             actionKind,
-            dueLabel: DUE[rule.priority] ?? null,
+            dueLabel: dueLabel(prioritiesRef.current, rule.priority),
             assignee: actionKind === "repair" ? "Mechanical crew" : "Control room",
             notes: `${rule.name}. Likely cause: ${rule.cause}.`,
             simTime: tRef.current,
@@ -268,13 +379,13 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
         });
         setWorkOrders((list) => [wo, ...list]);
         // Raising a work order also acknowledges the finding.
-        if (!acks.has(ruleId)) void acknowledge(ruleId);
+        if (!alertsRef.current.find((a) => a.ruleId === ruleId)?.acknowledged) void acknowledge(ruleId);
         return wo;
       } catch {
         return null;
       }
     },
-    [acks, acknowledge],
+    [acknowledge],
   );
 
   const updateWorkOrder = useCallback(
@@ -317,7 +428,7 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
     for (const e of events) seenEvents.current.add(keyOf(e));
     for (const e of fresh) {
       const a = e.action!;
-      const selfKey = `${a.ruleId}|${a.kind}`;
+      const selfKey = `${target}|${a.ruleId}|${a.kind}`;
       if (!a.auto && selfActions.current.has(selfKey)) {
         selfActions.current.delete(selfKey);
         continue;
@@ -340,7 +451,7 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
             component: rule ? rule.subs.join(", ") || rule.name : null,
             priority: rule?.priority ?? "P2",
             actionKind: kind,
-            dueLabel: rule ? DUE[rule.priority] ?? null : null,
+            dueLabel: rule ? dueLabel(prioritiesRef.current, rule.priority) : null,
             assignee: `${kind === "repair" ? "Mechanical crew" : "Control room"}${a.auto ? " (autopilot)" : ""}`,
             notes: e.detail,
             simTime: e.t,
@@ -352,8 +463,7 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
       void (async () => {
         try {
           if (a.kind === "acknowledge") {
-            setAcks((set) => new Set(set).add(a.ruleId));
-            await api("/api/alerts/ack", { method: "POST", body: JSON.stringify({ ruleId: a.ruleId, machineId: target, simTime: e.t }) });
+            await recordAck(target, a.ruleId, e.t);
           } else if (a.kind === "mitigate") {
             const wo = openFor("mitigate");
             if (wo) await save(wo.id, { status: "in_progress" });
@@ -374,7 +484,7 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
         }
       })();
     }
-  }, [events, machineId]);
+  }, [events, machineId, recordAck]);
 
   // Copilot: window.dispatchEvent(new CustomEvent("ultron:create-work-order", { detail: { ruleId } })).
   const createRef = useRef(createWorkOrder);
@@ -391,8 +501,8 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
   const unread = useMemo(() => alerts.filter((a) => a.status === "ACTIVE" && !a.acknowledged).length, [alerts]);
 
   const value = useMemo<KilnOps>(
-    () => ({ machineId, alerts, workOrders, acknowledge, createWorkOrder, updateWorkOrder, unread }),
-    [machineId, alerts, workOrders, acknowledge, createWorkOrder, updateWorkOrder, unread],
+    () => ({ machineId, alerts, workOrders, acknowledge, createWorkOrder, updateWorkOrder, unread, journal, acknowledgeAlarm }),
+    [machineId, alerts, workOrders, acknowledge, createWorkOrder, updateWorkOrder, unread, journal, acknowledgeAlarm],
   );
 
   return <OpsContext.Provider value={value}>{children}</OpsContext.Provider>;

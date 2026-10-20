@@ -14,18 +14,21 @@
  */
 
 import { useApi } from "@/lib/api-cache";
+import { displayName } from "@/lib/display-name";
 import type { DiagnosisRecord } from "./assets-data";
 import type { CatalogSensorView } from "./use-machine-catalog";
 import type { RuleState, SimFrame } from "@/lib/kiln-sim/engine";
 import { formatDuration } from "@/lib/kiln-sim/engine";
 import { isRelativeLimit, limitPair, type SignalDef } from "@/lib/kiln-sim/signals";
 import type { PlantDefs } from "@/lib/plant-defs";
+import type { WorkOrderPriorityDto } from "@/types/monitoring";
 import { twoSided, type TwoSided } from "./sensor-gauge";
+import { VALIDITY_WORDS } from "@/components/ui/status";
 
-export type Severity = "Normal" | "Advisory" | "Critical";
+export type Severity = "Normal" | "Alert" | "Critical";
 export type Tone = "good" | "warn" | "bad" | "idle" | "info";
 
-export const toneOf = (sev: Severity): Tone => (sev === "Critical" ? "bad" : sev === "Advisory" ? "warn" : "good");
+export const toneOf = (sev: Severity): Tone => (sev === "Critical" ? "bad" : sev === "Alert" ? "warn" : "good");
 
 /** Rules clear after this many consecutive clean samples (D5 §9.2). */
 export const HYSTERESIS_SAMPLES = 4;
@@ -146,7 +149,7 @@ export function toDxSensors(sensors: CatalogSensorView[], defs?: PlantDefs | nul
     return {
       tag: s.tag,
       point: s.point,
-      name: s.name,
+      name: displayName(s.name),
       systemId: s.systemId,
       subAssembly: s.subAssembly,
       component: s.component,
@@ -185,7 +188,7 @@ export function dxSensorsFromFrame(frame: SimFrame): DxSensor[] {
     out.push({
       tag: def.tag,
       point: def.point,
-      name: def.name,
+      name: displayName(def.name),
       systemId: def.system,
       subAssembly: subs.find((x) => x.id === def.sub)?.name ?? def.sub,
       component: def.instrument,
@@ -211,11 +214,20 @@ export function dxSensorsFromFrame(frame: SimFrame): DxSensor[] {
 }
 
 export const VALIDITY_LABEL: Record<Validity, string> = {
-  valid: "Valid",
-  suspect: "Suspect",
-  invalid: "Invalid",
-  stale: "Stale",
-  unvalidated: "Not validated",
+  valid: VALIDITY_WORDS.Valid,
+  suspect: VALIDITY_WORDS.Suspect,
+  invalid: VALIDITY_WORDS.Invalid,
+  stale: VALIDITY_WORDS.Stale,
+  unvalidated: "Not checked",
+};
+
+/** What each validity word means, in everyday words (tooltips next to the word). */
+export const VALIDITY_HELP: Record<Validity, string> = {
+  valid: "The reading passed its checks and is trusted",
+  suspect: "The reading may be wrong: it does not fit what the other readings suggest",
+  invalid: "The reading is wrong or out of range and is not used",
+  stale: "The sensor has stopped updating: the value is old",
+  unvalidated: "There is no live check for this reading",
 };
 
 export const VALIDITY_TONE: Record<Validity, Tone> = {
@@ -278,9 +290,13 @@ export function ackedFromEvents(frame: SimFrame): Set<string> {
   return out;
 }
 
-const SEV_RANK: Record<Severity, number> = { Critical: 0, Advisory: 1, Normal: 2 };
+const SEV_RANK: Record<Severity, number> = { Critical: 0, Alert: 1, Normal: 2 };
 const STATE_RANK: Record<AlarmState, number> = { active: 0, clearing: 1, confirming: 2 };
-const PRIO_RANK: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
+/** Position of a priority id in the DB order (most urgent first); unknown ids, or priorities still loading, sort last. */
+function prioRank(id: string | null | undefined, priorities: readonly WorkOrderPriorityDto[] | null): number {
+  const i = id && priorities ? priorities.findIndex((p) => p.id === id) : -1;
+  return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+}
 
 function subNames(subs: string[], defs: PlantDefs): string {
   return subs.map((x) => defs.subassemblies.find((sa) => sa.id === x)?.name ?? x).join(", ");
@@ -288,7 +304,7 @@ function subNames(subs: string[], defs: PlantDefs): string {
 
 const usefulTtl = (v: string | null | undefined) => (v && v !== "—" ? v : null);
 
-export function buildAlarms(frame: SimFrame, acked: Set<string>): DxAlarm[] {
+export function buildAlarms(frame: SimFrame, acked: Set<string>, priorities: readonly WorkOrderPriorityDto[] | null): DxAlarm[] {
   const out: DxAlarm[] = [];
   for (const r of frame.rules) {
     const state = alarmStateOf(r);
@@ -320,7 +336,7 @@ export function buildAlarms(frame: SimFrame, acked: Set<string>): DxAlarm[] {
       SEV_RANK[a.severity] - SEV_RANK[b.severity] ||
       STATE_RANK[a.state] - STATE_RANK[b.state] ||
       Number(a.acknowledged) - Number(b.acknowledged) ||
-      (PRIO_RANK[a.priority] ?? 3) - (PRIO_RANK[b.priority] ?? 3) ||
+      prioRank(a.priority, priorities) - prioRank(b.priority, priorities) ||
       a.ruleId.localeCompare(b.ruleId),
   );
 }
@@ -477,8 +493,8 @@ export function faultModesFromCatalog(sensors: DxSensor[]): FaultMode[] {
   return Array.from(byRule.entries())
     .map(([id, { reason, tags }]) => {
       const sevs = tags.map((t) => byTag.get(t)?.severity ?? "Normal");
-      const expected: Severity = sevs.includes("Critical") ? "Critical" : "Advisory";
-      // Full weight for a sensor at the expected severity, 0.6 for Advisory where Critical is expected.
+      const expected: Severity = sevs.includes("Critical") ? "Critical" : "Alert";
+      // Full weight for a sensor at the expected severity, 0.6 for Alert where Critical is expected.
       const hit = sevs.reduce((acc, sev) => acc + (sev === "Normal" ? 0 : sev === "Critical" || sev === expected ? 1 : 0.6), 0);
       return { id, name: reason.ruleName || id, expected, score: Math.round((hit / tags.length) * 100), signature: tags, reason };
     })
@@ -494,6 +510,7 @@ export function buildFindings(
   record: DiagnosisRecord | null,
   modes: FaultMode[],
   sensors: DxSensor[],
+  priorities: readonly WorkOrderPriorityDto[] | null,
   defs: PlantDefs | null = frame?.defs ?? null,
 ): Finding[] {
   const out: Finding[] = [];
@@ -551,7 +568,7 @@ export function buildFindings(
     (a, b) =>
       F_STATE_RANK[a.state] - F_STATE_RANK[b.state] ||
       SEV_RANK[a.severity] - SEV_RANK[b.severity] ||
-      (PRIO_RANK[a.priority ?? "P4"] ?? 3) - (PRIO_RANK[b.priority ?? "P4"] ?? 3) ||
+      prioRank(a.priority, priorities) - prioRank(b.priority, priorities) ||
       (b.probability ?? -1) - (a.probability ?? -1),
   );
 }
@@ -587,12 +604,9 @@ export function alternativesFor(f: Finding, open: Finding[], byTag: Map<string, 
 /* Alarm response window                                                */
 /* ------------------------------------------------------------------ */
 
-/** Time-to-respond per priority, sim minutes (P1 4 h · P2 24 h · P3 7 d). */
-export const PRIORITY_RESPONSE_MIN: Record<string, number> = { P1: 240, P2: 1440, P3: 10080 };
-
-/** Response time left for a raised alarm, or "overdue". */
-export function responseLeft(a: DxAlarm, t: number): string | null {
-  const due = PRIORITY_RESPONSE_MIN[a.priority];
+/** Response time left for a raised alarm (its priority's DB response time, sim minutes), or "overdue"; null while priorities load. */
+export function responseLeft(a: DxAlarm, t: number, priorities: readonly WorkOrderPriorityDto[] | null): string | null {
+  const due = priorities?.find((p) => p.id === a.priority)?.responseMinutes;
   if (!due || a.since === null || a.state === "confirming") return null;
   const left = due - (t - a.since);
   return left <= 0 ? "overdue" : formatDuration(left);

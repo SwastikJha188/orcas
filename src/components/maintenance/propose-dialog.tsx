@@ -2,9 +2,9 @@
 
 import React, { useEffect, useState } from "react";
 import { Dialog, Field, FieldGrid, PillButton, Select, TextArea, TextInput } from "@/components/ui";
-import { PRIORITY_LABEL } from "@/lib/pms";
+import { useWorkOrderPriorities } from "@/lib/reference-data";
 import type { PmsFinding, PmsModel } from "./pms-model";
-import { machineCode } from "./pms-model";
+import { machineName, priorityOptions } from "./pms-model";
 
 /* Propose a work request: from a live finding (prefilled with its evidence) or by hand. */
 
@@ -24,10 +24,13 @@ export function ProposeDialog({
   onClose: () => void;
   onPropose: PmsModel["propose"];
 }) {
+  const priorities = useWorkOrderPriorities();
+  // A manual request starts at the configured default priority; a finding brings its own.
+  const fallback = priorities?.find((p) => p.defaultNew)?.id ?? "";
   const [machine, setMachine] = useState("");
   const [title, setTitle] = useState("");
   const [component, setComponent] = useState("");
-  const [priority, setPriority] = useState("P3");
+  const [priority, setPriority] = useState(fallback);
   const [mode, setMode] = useState("");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
@@ -37,14 +40,22 @@ export function ProposeDialog({
     setMachine(finding?.machineId ?? defaultMachine ?? machineIds[0] ?? "");
     setTitle(finding ? finding.action : "");
     setComponent(finding ? finding.subs.join(", ") : "");
-    setPriority(finding ? finding.priority : "P3");
+    setPriority(finding ? finding.priority : fallback);
     setMode("");
     setNotes(finding ? `${finding.name}. Evidence: ${finding.evidence}. Likely cause: ${finding.cause}.` : "");
     setErr(null);
     // Only when opened: the live finding re-renders every tick.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, finding?.ruleId]);
+  // Priorities that arrive after opening fill an empty choice only.
+  useEffect(() => {
+    if (open && !priority && fallback) setPriority(fallback);
+  }, [open, priority, fallback]);
   const submit = async () => {
+    if (!priority) {
+      setErr("Choose a priority");
+      return;
+    }
     if (!title.trim()) {
       setErr("Describe the work requested");
       return;
@@ -68,8 +79,8 @@ export function ProposeDialog({
     <Dialog
       open={open}
       onClose={onClose}
-      title={finding ? "Propose work request" : "New work request"}
-      subtitle={finding ? `${machineCode(finding.machineId)} · finding ${finding.ruleId} · ${finding.name}` : "Manual request · reviewed before planning"}
+      title={finding ? "Ask for a repair" : "New work request"}
+      subtitle={finding ? `${machineName(finding.machineId)} · ${finding.plainTitle || finding.name}` : "An engineer reviews it before it is planned"}
       busy={busy}
       onSubmit={() => void submit()}
       width={600}
@@ -79,7 +90,7 @@ export function ProposeDialog({
             Cancel
           </PillButton>
           <PillButton type="submit" loading={busy}>
-            Propose request
+            Send request
           </PillButton>
         </>
       }
@@ -87,22 +98,22 @@ export function ProposeDialog({
       <FieldGrid>
         {!finding && (
           <Field label="Machine" wide>
-            {(fid, d) => <Select id={fid} describedBy={d} value={machine} onChange={setMachine} options={machineIds.map((m) => ({ value: m, label: machineCode(m) }))} />}
+            {(fid, d) => <Select id={fid} describedBy={d} value={machine} onChange={setMachine} options={machineIds.map((m) => ({ value: m, label: machineName(m) }))} />}
           </Field>
         )}
         <Field label="Suggested work" wide required>
           {(fid, d) => <TextInput id={fid} describedBy={d} value={title} onChange={setTitle} placeholder="Inspect gear coupling condition" />}
         </Field>
-        <Field label="Equipment / component">
+        <Field label="Part of the machine">
           {(fid, d) => <TextInput id={fid} describedBy={d} value={component} onChange={setComponent} />}
         </Field>
-        <Field label="Suggested priority" hint="Reviewed against site policy">
-          {(fid, d) => <Select id={fid} describedBy={d} value={priority} onChange={setPriority} options={["P1", "P2", "P3", "P4"].map((p) => ({ value: p, label: `${p} · ${PRIORITY_LABEL[p]}` }))} />}
+        <Field label="Suggested priority" hint="An engineer checks it against site rules">
+          {(fid, d) => <Select id={fid} describedBy={d} value={priority} onChange={setPriority} options={priorityOptions(priorities, priority)} />}
         </Field>
-        <Field label="Work mode">
-          {(fid, d) => <Select id={fid} describedBy={d} value={mode} onChange={setMode} options={[{ value: "", label: "Decide in planning" }, { value: "Run", label: "Operating checks" }, { value: "Isolate", label: "Isolation (plant permit)" }]} />}
+        <Field label="How the work is done">
+          {(fid, d) => <Select id={fid} describedBy={d} value={mode} onChange={setMode} options={[{ value: "", label: "Decide later, when planning" }, { value: "Run", label: "Checks while the machine runs" }, { value: "Isolate", label: "Machine stopped and locked off (permit needed)" }]} />}
         </Field>
-        <Field label="Evidence and notes" wide>
+        <Field label="What was seen, and notes" wide>
           {(fid, d) => <TextArea id={fid} describedBy={d} value={notes} onChange={setNotes} rows={3} />}
         </Field>
       </FieldGrid>

@@ -7,11 +7,16 @@ import { sheet as f2 } from "./f2";
 import { sheet as f3 } from "./f3";
 import { sheet as f4 } from "./f4";
 import { sheet as f5 } from "./f5";
+import { sheet as f6 } from "./f6";
+import { sheet as f7 } from "./f7";
 import { sheet as p0 } from "./p0";
 import { sheet as p1 } from "./p1";
 import { sheet as p2 } from "./p2";
 import { sheet as p3 } from "./p3";
 import { sheet as p4 } from "./p4";
+import { sheet as p5 } from "./p5";
+import { sheet as g1 } from "./g1";
+import { sheet as g2 } from "./g2";
 import { sheet as k0 } from "./k0";
 import { sheet as k1 } from "./k1";
 import { sheet as k2 } from "./k2";
@@ -40,5 +45,5 @@ import { sheet as h3 } from "./h3";
 import { v0, v1, v2, v3, v4, v5, v6, v7 } from "./v0";
 
 export const LINE_SHEET_ART: Record<string, LineSheetArt> = Object.fromEntries(
-  [pyr0, f0, f1, f2, f3, f4, f5, p0, p1, p2, p3, p4, k0, k1, k2, k3, k4, k5, k6, k7, k8, k9, b0, b1, b2, b3, b4, c0, c1, c2, c3, c4, c5, h0, h1, h2, h3, v0, v1, v2, v3, v4, v5, v6, v7].map((s) => [s.id, s]),
+  [pyr0, f0, f1, f2, f3, f4, f5, f6, f7, p0, p1, p2, p3, p4, p5, g1, g2, k0, k1, k2, k3, k4, k5, k6, k7, k8, k9, b0, b1, b2, b3, b4, c0, c1, c2, c3, c4, c5, h0, h1, h2, h3, v0, v1, v2, v3, v4, v5, v6, v7].map((s) => [s.id, s]),
 );

@@ -73,7 +73,7 @@ export function EdgeNetwork({ ix, gateways, discovered, plantLabel, now, section
     <>
       <ContentsHead
         crumbs={[{ label: "Devices" }, { label: plantLabel }]}
-        title="Edge network"
+        title="Data collectors and devices"
         badge={
           <>
             <IconNetwork size={12} />
@@ -100,15 +100,15 @@ export function EdgeNetwork({ ix, gateways, discovered, plantLabel, now, section
 
       {gateways.length === 0 ? (
         <div className="ast-card ast-empty">
-          <strong className="hx-empty-title">No gateways{plantLabel === "All plants" ? "" : ` in ${plantLabel}`}</strong>
-          Connect the edge gateway that publishes this plant&rsquo;s racks, PLCs and SCADA to a broker. Its racks and cards are read from the first data it sends.
+          <strong className="hx-empty-title">No data collectors{plantLabel === "All plants" ? "" : ` in ${plantLabel}`}</strong>
+          Connect the data collector (gateway) that sends this plant&rsquo;s sensor readings to a data connection (MQTT broker). Its devices and sensor cards are found from the first data it sends.
           <PillButton variant="secondary" icon={<IconPlus size={13} />} onClick={onConnect}>
-            Connect gateway
+            Connect a data collector
           </PillButton>
         </div>
       ) : (
         <>
-          <div className="dv-summary" aria-label="Network summary">
+          <div className="dv-summary" aria-label="Summary">
             <div className="hx-stat">
               <span className="hx-stat-label">Gateways online</span>
               <span className="hx-stat-value ast-num">
@@ -118,24 +118,24 @@ export function EdgeNetwork({ ix, gateways, discovered, plantLabel, now, section
               <SegmentSummary segments={linkSegments(gwLinks)} />
             </div>
             <div className="hx-stat">
-              <span className="hx-stat-label">Brokers connected</span>
+              <span className="hx-stat-label">Data connections working</span>
               <span className="hx-stat-value ast-num">
                 {connected}
                 <span className="ast-unit">/ {brokers.length}</span>
               </span>
               <span className="hx-legend ast-num">
-                {brokers.length === 0 ? "None configured" : `${enabledBrokers} enabled · ${brokers.length - enabledBrokers} disabled`}
+                {brokers.length === 0 ? "None set up" : `${enabledBrokers} on · ${brokers.length - enabledBrokers} off`}
               </span>
             </div>
           </div>
 
           <div className="hx-toolbar">
-            <SearchPill value={query} onChange={setQuery} placeholder="Search gateways, sources, tags" label="Search gateways, sources and tags" />
+            <SearchPill value={query} onChange={setQuery} placeholder="Search collectors, devices, sensors" label="Search data collectors, devices and sensor tags" />
             <PillNav
               items={[
                 { id: "all", label: `All ${gateways.length + sources.length}` },
-                { id: "gateways", label: `Gateways ${gateways.length}` },
-                { id: "sources", label: `Sources ${sources.length}` },
+                { id: "gateways", label: `Data collectors ${gateways.length}` },
+                { id: "sources", label: `Devices ${sources.length}` },
               ]}
               activeId={filter}
               onChange={(id) => setFilter(id as Filter)}
@@ -159,7 +159,7 @@ export function EdgeNetwork({ ix, gateways, discovered, plantLabel, now, section
           ) : (
             <>
               {showGateways && (
-                <section className="hx-section" aria-label="Gateways">
+                <section className="hx-section" aria-label="Data collectors">
                   <h2 className="ast-section-label">
                     Gateways<span>{shownGateways.length}</span>
                   </h2>
@@ -171,7 +171,7 @@ export function EdgeNetwork({ ix, gateways, discovered, plantLabel, now, section
                 </section>
               )}
               {showSources && (
-                <section className="hx-section" aria-label="Sources">
+                <section className="hx-section" aria-label="Devices">
                   <h2 className="ast-section-label">
                     Sources<span>{shownSources.length}</span>
                   </h2>
@@ -188,7 +188,7 @@ export function EdgeNetwork({ ix, gateways, discovered, plantLabel, now, section
       )}
 
       {discovered.length > 0 && filter !== "sources" && (
-        <section className="hx-section" aria-label="Discovered gateways">
+        <section className="hx-section" aria-label="Data collectors found but not registered">
           <h2 className="ast-section-label">
             Discovered<span>{discovered.length} publishing, not registered</span>
           </h2>
@@ -202,7 +202,7 @@ export function EdgeNetwork({ ix, gateways, discovered, plantLabel, now, section
                   type="button"
                   className="ast-card ast-tile hx-card dv-card"
                   onClick={() => onSelect({ type: "discovered", brokerId: d.brokerId, gatewayId: d.gatewayId })}
-                  aria-label={`Open discovered gateway ${d.gatewayId}, not registered, ${plural(d.rackIds.length, "rack")} reported`}
+                  aria-label={`Open data collector ${d.gatewayId}, found but not registered, ${plural(d.rackIds.length, "device")} reported`}
                 >
                   <div className="ast-tile-top">
                     <span className="ast-icon-tile" data-tone={t}>

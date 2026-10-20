@@ -369,6 +369,8 @@ export interface EdgeMapInput {
   dangerLimit: number | null;
   /** Used only when the rack is not yet a source. */
   sourceKind?: SourceKind;
+  /** Component (sub-assembly id) a new sensor sits on; required when the machine has more than one. */
+  subassemblyId?: string;
 }
 
 export interface EdgeMapResult {

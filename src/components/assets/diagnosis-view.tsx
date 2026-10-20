@@ -4,62 +4,60 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { PillButton } from "@/components/ui";
 import type { AssetMachine } from "./assets-data";
 import type { AssetsSubPage } from "./assets-view";
-import type { Tone } from "./assets-shell-ui";
 import { useIndustrialData } from "@/providers/industrial-data-context";
-import { useKilnSimulationFor, useLiveMachineStatus } from "@/providers/kiln-simulation-context";
-import { conditionTone as toneOfCondition, toCondition } from "@/components/ui/status";
+import { isLiveMachine, useKilnSimulationFor, useLiveMachineStatus } from "@/providers/kiln-simulation-context";
+import { conditionTone, toCondition } from "@/components/ui/status";
 import { useKilnOps } from "@/providers/kiln-ops-context";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { formatLocalTime } from "@/lib/time";
 import { simTimeMs } from "@/lib/kiln-sim/engine";
-import { defsFor } from "@/lib/live-defs";
+import { journalState } from "@/lib/alarm-journal";
 import { useMachineCatalog } from "./use-machine-catalog";
-import { focusSensorOn } from "./sensor-focus";
-import { KpiStrip, PageHeader, SectionIndex, Section, scrollToSection, type PageMetaItem, type SectionIndexItem } from "./analysis/an-ui";
-import {
-  ackedFromEvents,
-  buildAlarms,
-  buildFindings,
-  type Finding,
-  dxSensorsFromFrame,
-  faultModesFromCatalog,
-  isOpenFinding,
-  ruleInputs,
-  toDxSensors,
-  useDiagnosisRecord,
-  type DxSensor,
-} from "./diagnosis-model";
-import { diagnosisKpis } from "./diagnosis-summary";
-import { AlarmCards, type Shelf } from "./diagnosis-alarms";
-import { FaultCandidates, type Feedback } from "./diagnosis-findings";
-import { EvidenceCards } from "./diagnosis-evidence";
+import { DIAGNOSIS_SUB_KEY, focusLayer, focusSensorOn, LAYER_FOCUS_EVENT, readLayerFocus, type LayerFocusPayload } from "./sensor-focus";
+import { useMachineInsights } from "./use-machine-insights";
+import { rulRows } from "./prognosis/prognosis-derive";
+import { KpiStrip, PageHeader, Section, type KpiItem, type PageMetaItem } from "./analysis/an-ui";
+import { ackedFromEvents, dxSensorsFromFrame, toDxSensors, useDiagnosisRecord } from "./diagnosis-model";
+import { buildSensorRows, diagnosisTotals, inDefinitionOrder, type SensorRow } from "./diagnosis-rows";
+import { defsFor } from "@/lib/live-defs";
+import { SensorDiagnosisTable } from "./diagnosis-sensor-table";
+import { SubassemblyHealthTable, type SubRow } from "./diagnosis-subassemblies";
+import { bandOf, kilnHealthModel, storedHealthModel } from "./health-derive";
+import { useHealthBands } from "@/lib/reference-data";
+import { FindingsSection } from "./monitoring/findings-section";
 import "./diagnosis/overview-tab.css";
 import "./analysis/analysis-page.css";
+import "./prognosis/prognosis-page.css";
 import "./diagnosis-page.css";
+import { NewCaseDialog } from "@/components/problems/new-case-dialog";
+import { openCase } from "@/components/problems/cases-api";
 
 /* ==========================================================================
-   Diagnosis — "What is wrong with this machine now, and what should be done
-   now?" One scrolling page with a sticky section index:
+   Diagnosis — "What is wrong with this machine, how bad, and where?"
 
-   Alarms · Diagnosis (machine faults, then data-quality / service items)
-   · Evidence (signal validity)
+   Header · four totals (machine health, active alarms, unacknowledged,
+   invalid sensors) · sub-assembly health in definition order (a row filters
+   the sensors) · every mapped sensor in fixed order: reading now and over
+   6 h, alarm limit, validity, and the faults it is evidence for with their
+   match %. Rows in alarm are red. Alarm log last.
 
-   Live machines (kiln fleet, pyro line) read the live rule engine and the
-   rule library in `frame.defs` (persistence 2–4 samples / 1 critical,
-   hysteresis 4 clean samples, sensor validation). Other machines read the
-   stored AssetIQ record and the DB failure-mode library; what they lack is
-   named in each section. The work-order loop (KilnOps) runs on the
-   active plant's primary machine (KLN-01 / PYR-KLN-01); other live machines
-   acknowledge through their engine. Why (root cause, XAI)
-   lives on Analysis and what next (RUL, forecasts) on Prognosis — linked.
+   The former Health page lives here now (machine and sub-assembly scores).
+   Why a fault happens lives on Analysis; when it gets worse, on Prognosis.
    ========================================================================== */
 
 export interface DiagnosisViewProps {
   machine: AssetMachine;
   /** Optional overrides; by default the page navigates through the data context. */
-  onNavigateToSensors?: () => void;
   onNavigateToTrends?: (metricKey?: string) => void;
+  /** @deprecated Health is part of Diagnosis now; ignored. */
   onNavigateToHealth?: () => void;
+  onNavigateToAnalysis?: (ruleId?: string | null, component?: string | null, tag?: string | null) => void;
+  onNavigateToPrognosis?: (ruleId?: string | null, component?: string | null, tag?: string | null) => void;
+  externalScope?: { id: string; label: string; tags: string[] } | null;
+  /** Component (sub-assembly id) the page is filtered to; undefined leaves the filter to the page. */
+  componentId?: string | null;
+  /** The page's own sub-assembly pick, so the machine's other pages follow it. */
+  onComponentChange?: (subId: string | null) => void;
 }
 
 /** sessionStorage key another page can set to open Diagnosis at a section. */
@@ -67,43 +65,68 @@ export const DIAGNOSIS_SECTION_KEY = "ultron.diagnosis.section";
 /** sessionStorage key another page (Copilot, alerts) sets to open Diagnosis on one rule. */
 export const DIAGNOSIS_RULE_KEY = "ultron.diagnosis.rule";
 
-const SEV_RANK = { Critical: 0, Advisory: 1, Normal: 2 } as const;
-
-export function DiagnosisView({ machine, onNavigateToSensors, onNavigateToTrends }: DiagnosisViewProps) {
-  const { setActiveSubPage } = useIndustrialData();
+export function DiagnosisView({
+  machine,
+  onNavigateToTrends,
+  onNavigateToAnalysis,
+  onNavigateToPrognosis,
+  externalScope = null,
+  componentId,
+  onComponentChange,
+}: DiagnosisViewProps) {
+  const { setActiveSubPage, selectedComponentId, selectComponent, setActiveTab } = useIndustrialData();
+  // The machine's component filter (shared by its pages) unless the host passes one.
+  const compId = componentId !== undefined ? componentId : selectedComponentId;
   const simulation = useKilnSimulationFor(machine.id);
   const frame = simulation?.frame ?? null;
   const ops = useKilnOps();
   const opsOn = machine.id === ops.machineId && frame !== null;
   const tz = useSiteTimeZone({ machineId: machine.id });
+  const bands = useHealthBands(machine.healthModelId);
   const catalog = useMachineCatalog(machine);
-  const diagnosis = useDiagnosisRecord(machine.id);
+  const diagnosis = useDiagnosisRecord(machine.id, frame === null);
 
-  const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
   /** Optimistic acknowledgements: rule id → the `since` they were made against. */
   const [localAcks, setLocalAcks] = useState<Map<string, number | null>>(new Map());
-  /** Shelved alarms and fault feedback: kept in this browser only (no backend yet). */
-  const [shelved, setShelved] = useState<Map<string, Shelf>>(new Map());
-  const [feedback, setFeedback] = useState<Map<string, Feedback>>(new Map());
-  /** Rule requested by another page on arrival (read once, then cleared). */
-  const [focusRuleId, setFocusRuleId] = useState<string | null>(null);
+  const [onlyAlarm, setOnlyAlarm] = useState(false);
+  const [scopeToPart, setScopeToPart] = useState(true);
+  /** Rule another page asked to open on (filters the table to its sensors). */
+  const [ruleFilter, setRuleFilter] = useState<string | null>(null);
+  /** Sub-assembly picked in the health table (filters the sensor table). */
+  const [subFilter, setSubFilter] = useState<string | null>(compId ?? null);
+  const [caseOpen, setCaseOpen] = useState(false);
+  // The component filter drives the sub-assembly filter; a pick here becomes the machine's component filter.
   useEffect(() => {
-    let id: string | null = null;
+    setSubFilter(compId ?? null);
+  }, [compId]);
+  const chooseSub = (id: string | null) => {
+    setSubFilter(id);
+    if (onComponentChange) onComponentChange(id);
+    else if (componentId === undefined) selectComponent(machine.id, id);
+  };
+  /** Sub-assembly name Prognosis asked for, until the sub-assemblies are known. */
+  const [pendingSub, setPendingSub] = useState<string | null>(null);
+
+  useEffect(() => {
+    const { ruleId } = readLayerFocus(true);
+    if (ruleId) setRuleFilter(ruleId);
     try {
-      id = sessionStorage.getItem(DIAGNOSIS_RULE_KEY);
-      if (id) sessionStorage.removeItem(DIAGNOSIS_RULE_KEY);
+      const sub = sessionStorage.getItem(DIAGNOSIS_SUB_KEY);
+      if (sub) setPendingSub(sub);
+      sessionStorage.removeItem(DIAGNOSIS_SUB_KEY);
+      sessionStorage.removeItem(DIAGNOSIS_SECTION_KEY);
     } catch {
       /* storage unavailable */
     }
-    if (!id) return;
-    const rule = id;
-    // Deferred so the sections exist before scrolling.
-    const timer = window.setTimeout(() => {
-      setFocusRuleId(rule);
-      setSelectedRuleId(rule);
-      scrollToSection("dx-diagnosis");
-    }, 120);
-    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const onFocus = (ev: Event) => {
+      const detail = (ev as CustomEvent<LayerFocusPayload>).detail;
+      if (detail?.ruleId) setRuleFilter(detail.ruleId);
+    };
+    window.addEventListener(LAYER_FOCUS_EVENT, onFocus);
+    return () => window.removeEventListener(LAYER_FOCUS_EVENT, onFocus);
   }, []);
 
   /* ------------------------------ Navigation ----------------------------- */
@@ -113,30 +136,38 @@ export function DiagnosisView({ machine, onNavigateToSensors, onNavigateToTrends
     if (onNavigateToTrends) onNavigateToTrends(tag);
     else go("trends");
   };
-  const openSensor = (tag?: string) => {
-    focusSensorOn("sensors", tag);
-    if (onNavigateToSensors) onNavigateToSensors();
-    else go("sensors");
+  const openReason = (ruleId?: string | null, component?: string | null, tag?: string | null) => {
+    focusLayer({ ruleId, component, tag, section: "an-diagnosis" });
+    if (onNavigateToAnalysis) onNavigateToAnalysis(ruleId, component, tag);
+    else go("analysis");
+  };
+  const openPrognosis = (ruleId?: string | null, component?: string | null, tag?: string | null) => {
+    focusLayer({ ruleId, component, tag, section: "prog-life" });
+    if (onNavigateToPrognosis) onNavigateToPrognosis(ruleId, component, tag);
+    else go("prognosis");
   };
 
   const fmtT = useCallback(
     (t: number) => formatLocalTime(simTimeMs(t), { seconds: true, timeZone: tz.timeZone }),
     [tz.timeZone],
   );
+  const fmtClock = useCallback((ms: number) => formatLocalTime(ms, { seconds: false, timeZone: tz.timeZone }), [tz.timeZone]);
 
   /* -------------------------------- Model -------------------------------- */
+  // One fixed row order whichever source is loaded (engine first, DB catalog after).
+  const orderDefs = frame?.defs ?? defsFor(machine.id);
   const sensors = useMemo(
-    () => (catalog.sensors.length === 0 && frame ? dxSensorsFromFrame(frame) : toDxSensors(catalog.sensors, frame?.defs ?? null)),
-    [catalog.sensors, frame],
+    () =>
+      inDefinitionOrder(
+        catalog.sensors.length === 0 && frame ? dxSensorsFromFrame(frame) : toDxSensors(catalog.sensors, frame?.defs ?? null),
+        orderDefs,
+      ),
+    [catalog.sensors, frame, orderDefs],
   );
-  const byTag = useMemo(() => new Map(sensors.map((s) => [s.tag, s])), [sensors]);
-  const modes = useMemo(() => (frame ? [] : faultModesFromCatalog(sensors)), [frame, sensors]);
-  const findings = useMemo(
-    () => buildFindings(frame, diagnosis.record, modes, sensors, frame?.defs ?? defsFor(machine.id)),
-    [frame, diagnosis.record, modes, sensors, machine.id],
-  );
-  const open = useMemo(() => findings.filter(isOpenFinding), [findings]);
-  const lead = open[0] ?? null;
+
+  // Alarm journal (the server's rule findings): acknowledgements, and cleared alarms nobody acknowledged.
+  const occurrences = ops.journal[machine.id];
+  const journal = useMemo(() => journalState(frame, frame ? (occurrences ?? []) : []), [frame, occurrences]);
 
   const opsAcks = useMemo(
     () => (opsOn ? ops.alerts.filter((a) => a.acknowledged).map((a) => a.ruleId) : []),
@@ -145,6 +176,7 @@ export function DiagnosisView({ machine, onNavigateToSensors, onNavigateToTrends
   const acked = useMemo(() => {
     const s = frame ? ackedFromEvents(frame) : new Set<string>();
     for (const id of opsAcks) s.add(id);
+    for (const id of journal.acked) s.add(id);
     if (frame) {
       for (const [id, since] of localAcks) {
         const r = frame.rules.find((x) => x.id === id);
@@ -152,234 +184,253 @@ export function DiagnosisView({ machine, onNavigateToSensors, onNavigateToTrends
       }
     }
     return s;
-  }, [frame, opsAcks, localAcks]);
-
-  const alarms = useMemo(() => (frame ? buildAlarms(frame, acked) : []), [frame, acked]);
-
-  // Shelves auto-return when their time is up or the alarm has cleared.
-  const activeShelves = useMemo(() => {
-    const now = Date.now();
-    const m = new Map<string, Shelf>();
-    for (const [id, sh] of shelved) if (sh.until > now && alarms.some((a) => a.ruleId === id && a.since === sh.since)) m.set(id, sh);
-    return m;
-  }, [shelved, alarms]);
-
-  const shelve = (ruleId: string, ms: number, reason: string) => {
-    const a = alarms.find((x) => x.ruleId === ruleId);
-    setShelved((m) => new Map(m).set(ruleId, { until: Date.now() + ms, reason, since: a?.since ?? null }));
-  };
-  const unshelve = (ruleId: string) => {
-    setShelved((m) => {
-      const n = new Map(m);
-      n.delete(ruleId);
-      return n;
-    });
-  };
-  const giveFeedback = (f: Finding, v: Feedback) => setFeedback((m) => new Map(m).set(f.key, v));
-  const onsetOf = (f: Finding) => {
-    if (!frame || !f.ruleId) return null;
-    const a = alarms.find((x) => x.ruleId === f.ruleId);
-    if (!a) return null;
-    if (a.state === "confirming") return `${a.persistence} sample${a.persistence === 1 ? "" : "s"} ago`;
-    return a.since !== null ? fmtT(a.since) : null;
-  };
+  }, [frame, opsAcks, localAcks, journal]);
 
   const acknowledge = useCallback(
     (ruleId: string) => {
       if (!simulation) return;
       const r = simulation.frame.rules.find((x) => x.id === ruleId);
-      setLocalAcks((m) => new Map(m).set(ruleId, r?.since ?? null));
-      if (opsOn) void ops.acknowledge(ruleId);
-      else simulation.performAction(ruleId, "acknowledge");
+      if (r && r.status !== "QUIET") setLocalAcks((m) => new Map(m).set(ruleId, r.since));
+      // Raised or already cleared: the ops loop tells the engine (when raised) and records it in the journal.
+      void ops.acknowledgeAlarm(machine.id, ruleId);
     },
-    [simulation, opsOn, ops],
+    [simulation, ops, machine.id],
   );
 
-  // Which open rules cite each sensor as evidence.
-  const citedBy = useMemo(() => {
-    const m = new Map<string, string[]>();
-    for (const f of open) {
-      if (!f.ruleId) continue;
-      for (const t of f.tags) m.set(t, [...(m.get(t) ?? []), f.ruleId]);
-    }
-    return m;
-  }, [open]);
+  const rows = useMemo(() => buildSensorRows(sensors, frame, acked, journal.cleared), [sensors, frame, acked, journal]);
 
-  // Evidence scope: the selected rule's sensors, else everything cited, in excursion or not trusted.
-  const scopeTags = useMemo<string[] | null>(() => {
-    if (!selectedRuleId) return null;
-    const f = findings.find((x) => x.ruleId === selectedRuleId && x.tags.length > 0);
-    if (f) return f.tags;
-    if (frame) return ruleInputs(selectedRuleId, frame.defs);
-    return modes.find((m) => m.id === selectedRuleId)?.signature ?? [];
-  }, [selectedRuleId, findings, frame, modes]);
+  // Machine health (merged from the former Health page): the same roll-up, per sub-assembly, in definition order.
+  const health = useMemo(() => (frame ? kilnHealthModel(frame, catalog) : storedHealthModel(catalog)), [frame, catalog]);
+  const subOf = useCallback(
+    (r: { s: { tag: string; subAssembly: string } }) =>
+      frame?.defs.signalByTag[r.s.tag]?.sub ?? health.subs.find((x) => x.name === r.s.subAssembly)?.id ?? null,
+    [frame, health.subs],
+  );
+  // A part picked (Assets part bar): its rules and its sensors only, so the totals describe that part.
+  const totals = useMemo(() => {
+    if (!subFilter) return diagnosisTotals(frame, acked, sensors, journal.cleared);
+    const subsOf = (id: string) => frame?.rules.find((r) => r.id === id)?.subs ?? frame?.defs.ruleById[id]?.subs ?? [];
+    const mine = sensors.filter((s) => subOf({ s }) === subFilter);
+    return diagnosisTotals(frame, acked, mine, journal.cleared, (id) => subsOf(id).includes(subFilter));
+  }, [frame, acked, sensors, journal, subFilter, subOf]);
+  const subRows = useMemo<SubRow[]>(
+    () =>
+      health.subs.map((sub) => {
+        const mine = rows.filter((r) => subOf(r) === sub.id);
+        return { sub, sensors: mine.length, inAlarm: mine.filter((r) => r.inAlarm).length };
+      }),
+    [health.subs, rows, subOf],
+  );
+  useEffect(() => {
+    if (!pendingSub || health.subs.length === 0) return;
+    const want = pendingSub.toLowerCase();
+    const hit = health.subs.find((x) => x.name.toLowerCase() === want) ?? health.subs.find((x) => want.includes(x.name.toLowerCase()));
+    if (hit) chooseSub(hit.id);
+    setPendingSub(null);
+  }, [pendingSub, health.subs]);
 
-  const evidence = useMemo<DxSensor[]>(() => {
-    if (scopeTags) return scopeTags.map((t) => byTag.get(t)).filter((s): s is DxSensor => !!s);
-    const list = sensors.filter(
-      (s) => citedBy.has(s.tag) || s.severity !== "Normal" || s.validity === "suspect" || s.validity === "invalid" || s.validity === "stale",
-    );
-    const flagged = (x: DxSensor) => (x.validity === "invalid" || x.validity === "stale" ? 0 : x.validity === "suspect" ? 1 : 2);
-    return list.sort((a, b) => flagged(a) - flagged(b) || SEV_RANK[a.severity] - SEV_RANK[b.severity]);
-  }, [scopeTags, sensors, byTag, citedBy]);
+  // Failure chance per sub-assembly: Prognosis's remaining-life estimate (same rows as its RUL table).
+  const insights = useMachineInsights(machine);
+  // A live machine shows the stored snapshot until its engine starts: wait for the live estimate instead.
+  const liveMachine = isLiveMachine(machine.id);
+  const rul = useMemo(
+    () =>
+      insights.data?.prognosis && (frame || !liveMachine) ? rulRows(insights.data.prognosis, insights.data.analysis ?? null) : [],
+    [insights.data, frame, liveMachine],
+  );
+  const lifeFor = useCallback(
+    (r: SensorRow) => {
+      const id = subOf(r);
+      const hit = (id ? rul.find((x) => x.id === id) : undefined) ?? rul.find((x) => x.name === r.s.subAssembly);
+      return hit?.band ? { band: hit.band, name: hit.name } : null;
+    },
+    [rul, subOf],
+  );
 
-  const selectRule = (ruleId: string | null) => setSelectedRuleId(ruleId);
+  const subName = subFilter ? (health.subs.find((x) => x.id === subFilter)?.name ?? subFilter) : null;
+
+  const partTags = useMemo(
+    () => (externalScope && scopeToPart && externalScope.tags.length > 0 ? new Set(externalScope.tags) : null),
+    [externalScope, scopeToPart],
+  );
+  const ruleDef = ruleFilter ? frame?.defs.ruleById[ruleFilter] : undefined;
+  const ruleName = ruleFilter
+    ? (rows.flatMap((r) => r.faults).find((f) => f.ruleId === ruleFilter)?.name ?? (ruleDef ? ruleDef.plainTitle || ruleDef.name : ruleFilter))
+    : null;
+  const shown = useMemo(
+    () =>
+      rows.filter(
+        (r) =>
+          (!onlyAlarm || r.inAlarm) &&
+          (!subFilter || subOf(r) === subFilter) &&
+          (!partTags || partTags.has(r.s.tag)) &&
+          (!ruleFilter || r.faults.some((f) => f.ruleId === ruleFilter) || (frame?.defs.ruleById[ruleFilter]?.inputs ?? []).includes(r.s.tag)),
+      ),
+    [rows, onlyAlarm, subFilter, subOf, partTags, ruleFilter, frame],
+  );
+  const inAlarm = rows.filter((r) => r.inAlarm).length;
 
   /* ------------------------------- Header -------------------------------- */
-  const record = diagnosis.record;
   // One machine condition everywhere: the same source as the header on every machine page.
   const live = useLiveMachineStatus(machine.id, { health: machine.health, status: machine.status });
   const condition = toCondition(live.status);
-  const conditionTone: Tone = toneOfCondition(condition);
 
-  const leadTag = lead?.tags[0] ?? null;
-  const kpis = diagnosisKpis({ frame, alarms, open, sensors, loading: (diagnosis.loading && !frame) || catalog.isLoading });
-
-  const raised = alarms.filter((a) => a.state !== "confirming");
-  const alarmTone: Tone = raised.some((a) => a.severity === "Critical") ? "bad" : raised.length ? "warn" : "idle";
-  const evidenceTone: Tone = sensors.some((x) => x.validity === "invalid" || x.validity === "stale")
-    ? "bad"
-    : sensors.some((x) => x.validity === "suspect")
-      ? "warn"
-      : "idle";
-
-  const show = {
-    alarms: frame !== null,
-    diagnosis: open.length > 0 || frame !== null || modes.length > 0,
-    evidence: sensors.length > 0,
-  };
-  const indexItems: SectionIndexItem[] = [
-    ...(show.alarms ? [{ id: "dx-alarms", label: "Alarms", tone: alarmTone }] : []),
-    ...(show.diagnosis ? [{ id: "dx-diagnosis", label: "Diagnosis" }] : []),
-    ...(show.evidence ? [{ id: "dx-evidence", label: "Evidence", tone: evidenceTone }] : []),
-  ];
-
-  const scopeChip = selectedRuleId ? (
-    <span className="pg-diag-scope">
-      <button type="button" className="dxo-filter-chip" onClick={() => scrollToSection("dx-evidence")} title="Show the evidence for this rule">
-        {selectedRuleId}
-      </button>
-      <button type="button" className="dxo-icon-btn" aria-label={`Clear selection ${selectedRuleId}`} onClick={() => setSelectedRuleId(null)}>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-          <path d="M18 6 6 18M6 6l12 12" />
-        </svg>
-      </button>
-    </span>
-  ) : null;
+  const leadRow = rows.find((r) => r.inAlarm) ?? null;
+  const leadTag = leadRow?.s.tag ?? null;
+  const record = diagnosis.record;
 
   const meta: PageMetaItem[] = frame
     ? [
-        { label: "Rules", value: String(frame.rules.length) },
-        { label: "Sampling", value: "1 / plant min (sim.)" },
-        { label: "Evaluated", value: fmtT(frame.t), title: tz.label },
+        subFilter
+          ? { label: "Checks running", value: String(frame.rules.filter((r) => r.subs.includes(subFilter)).length), title: "Automatic checks (rules) watching this part" }
+          : { label: "Checks running", value: String(frame.rules.length), title: "Automatic checks (rules) watching this machine" },
+        { label: "Readings", value: "Every minute" },
+        { label: "Last checked", value: fmtT(frame.t), title: tz.label },
+        ...(subName ? [{ label: "Part", value: subName }] : []),
       ]
     : record
       ? [
-          { label: "Source", value: "Stored AssetIQ record" },
-          { label: "Engine", value: record.engineVersion },
+          { label: "Source", value: "Last saved report" },
+          { label: "Made by", value: record.engineVersion, title: "Version of the analysis that made the report" },
         ]
-      : [{ label: "Source", value: diagnosis.loading ? "Loading diagnosis…" : "None" }];
+      : [{ label: "Source", value: diagnosis.loading ? "Loading diagnosis…" : "No saved report" }];
+
+  const loading = catalog.isLoading && sensors.length === 0;
+  const part = subFilter ? (health.subs.find((x) => x.id === subFilter) ?? null) : null;
+  const partRow = part ? subRows.find((x) => x.sub.id === part.id) : undefined;
+  const healthValue = subFilter ? (part?.health ?? null) : live.health;
+  const score = healthValue === null ? null : Math.round(healthValue);
+  const scoredSubs = health.subs.filter((x) => x.scored && x.health !== null);
+  const below = bands ? scoredSubs.filter((x) => (x.health as number) < bands.advisory).length : null;
+  const scoreBand = score === null ? null : bandOf(score, bands);
+  const kpis: KpiItem[] = [
+    {
+      label: subFilter ? "Part health" : "Machine health",
+      value: score === null ? "—" : String(score),
+      unit: score === null ? undefined : "/100",
+      bar: score ?? undefined,
+      tone: scoreBand === "Critical" ? "bad" : scoreBand === "Alert" ? "warn" : undefined,
+      foot: subFilter
+        ? partRow
+          ? `${partRow.sensors} sensors · ${partRow.inAlarm} in alarm`
+          : "No score for this part yet"
+        : !scoredSubs.length
+          ? "No part scores yet"
+          : bands && below !== null
+            ? `${below} of ${scoredSubs.length} parts score below ${bands.advisory}`
+            : `${scoredSubs.length} parts scored`,
+    },
+    {
+      label: "Problems found",
+      value: frame ? String(totals.active) : "—",
+      foot: frame ? `${totals.confirming} being confirmed` : "No live checks",
+      tone: totals.active ? "bad" : undefined,
+    },
+    {
+      label: "Not acknowledged",
+      value: frame ? String(totals.unacked) : "—",
+      foot: frame ? `${totals.activeUnacked} still on · ${totals.clearedUnacked} back to normal` : "No live checks",
+      tone: totals.unacked ? "bad" : undefined,
+    },
+    {
+      label: "Untrusted sensors",
+      value: loading ? "…" : String(totals.invalid),
+      unit: `of ${partRow ? partRow.sensors : sensors.length}`,
+      foot: `${totals.stale} not updating · ${totals.suspect} may be wrong`,
+      tone: totals.invalid ? "bad" : undefined,
+    },
+  ];
+
+  const tableRight = (
+    <span className="pg-dx-filters">
+      <span className="ast-num pg-diag-muted">
+        {partRow ? `${partRow.sensors} sensors · ${partRow.inAlarm} in alarm` : `${sensors.length} sensors · ${inAlarm} in alarm`}
+      </span>
+      {externalScope && (
+        <button type="button" className="dxo-filter-chip" aria-pressed={scopeToPart} onClick={() => setScopeToPart((v) => !v)}>
+          {scopeToPart ? `Part: ${externalScope.label}` : "Whole machine"}
+        </button>
+      )}
+      {subName && componentId !== undefined && (
+        <button type="button" className="dxo-filter-chip" onClick={() => chooseSub(null)} aria-label={`Clear filter ${subName}`}>
+          {subName} ×
+        </button>
+      )}
+      {ruleFilter && (
+        <button type="button" className="dxo-filter-chip" onClick={() => setRuleFilter(null)} aria-label={`Clear filter ${ruleName}`}>
+          {ruleName} ×
+        </button>
+      )}
+      <button type="button" className="dxo-filter-chip" aria-pressed={onlyAlarm} onClick={() => setOnlyAlarm((v) => !v)}>
+        Only in alarm
+      </button>
+    </span>
+  );
 
   return (
     <div className="dxo-root ast-root pg-frame pg-diag" aria-label="Diagnosis">
       <PageHeader
         title="Diagnosis"
-        status={{ label: condition, tone: conditionTone }}
+        status={{ label: condition, tone: conditionTone(condition) }}
         meta={meta}
         actions={
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          // Page links and popups are in the machine bar above; this page's own trend and starting a case stay.
+          <>
             {leadTag && (
               <PillButton variant="secondary" onClick={() => openTrend(leadTag)}>
-                {`Trend ${leadTag}`}
+                {`Open trend: ${leadRow?.s.name ?? leadTag} ↗`}
               </PillButton>
             )}
-            <PillButton variant="secondary" onClick={() => go("sensors")}>
-              Sensors
+            <PillButton variant="secondary" onClick={() => setCaseOpen(true)} title="Follow a problem you have seen as a case: owner, checks, maintenance, and a checked fix">
+              Start a case
             </PillButton>
-            <PillButton variant="secondary" onClick={() => go("prognosis")}>
-              Prognosis
-            </PillButton>
-            <PillButton variant="secondary" onClick={() => go("analysis")}>
-              Analysis
-            </PillButton>
-          </div>
+          </>
         }
       />
+      <NewCaseDialog
+        open={caseOpen}
+        onClose={() => setCaseOpen(false)}
+        onCreated={(id) => {
+          setCaseOpen(false);
+          openCase(id, setActiveTab);
+        }}
+        preset={{ machineId: machine.id, partId: subFilter }}
+      />
 
-      <KpiStrip page items={kpis} label="Diagnosis status" />
+      <KpiStrip page items={kpis} label="Diagnosis totals" />
 
-      {indexItems.length > 1 && <SectionIndex items={indexItems} label="Diagnosis sections" pendingKey={DIAGNOSIS_SECTION_KEY} right={scopeChip} />}
-
-      {show.alarms && frame && (
-        <Section bare id="dx-alarms" title="Alarms">
-          <AlarmCards
-            alarms={alarms}
-            shelved={activeShelves}
-            t={frame.t}
-            fmtT={fmtT}
-            byTag={byTag}
-            selectedRuleId={selectedRuleId}
-            onSelect={(id) => selectRule(id)}
-            onAcknowledge={acknowledge}
-            onShelve={shelve}
-            onUnshelve={unshelve}
-            workOrders={opsOn ? ops.workOrders : null}
-            onWorkOrder={opsOn ? (id) => void ops.createWorkOrder(id) : undefined}
-          />
+      {subRows.length > 0 && !subFilter && (
+        <Section id="dx-health" title="Parts">
+          <SubassemblyHealthTable rows={subRows} selectedId={subFilter} onSelect={chooseSub} bands={bands} />
         </Section>
       )}
 
-      {show.diagnosis && (
-        <Section bare id="dx-diagnosis" title="Diagnosis">
-          {open.length > 0 ? (
-            <FaultCandidates
-              findings={open}
-              live={frame !== null}
-              byTag={byTag}
-              onsetOf={onsetOf}
-              focusRuleId={focusRuleId}
-              selectedRuleId={selectedRuleId}
-              onSelect={(id) => selectRule(id)}
-              feedback={feedback}
-              onFeedback={giveFeedback}
-              onAnalysis={() => go("analysis")}
-              onPrognosis={() => go("prognosis")}
-            />
-          ) : (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <p className="pg-diag-missing" style={{ margin: 0 }}>No machine fault present.</p>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <PillButton variant="secondary" onClick={() => go("prognosis")}>
-                  Open Prognosis
-                </PillButton>
-                <PillButton variant="secondary" onClick={() => go("analysis")}>
-                  Open Analysis
-                </PillButton>
-              </div>
-            </div>
-          )}
-        </Section>
-      )}
-
-      {show.evidence && (
-        <Section bare id="dx-evidence" title="Evidence">
-          <EvidenceCards
-            sensors={evidence}
-            allSensors={sensors}
+      <Section id="dx-diagnosis" title="Sensors" right={tableRight}>
+        {loading ? (
+          <p className="pg-diag-missing">Loading sensors…</p>
+        ) : sensors.length === 0 ? (
+          <p className="pg-diag-missing">No sensors are linked to this machine yet.</p>
+        ) : shown.length === 0 ? (
+          <p className="pg-diag-missing">{onlyAlarm ? "No sensor is in alarm." : "No sensor matches this filter."}</p>
+        ) : (
+          <SensorDiagnosisTable
+            rows={shown}
             frame={frame}
-            scopeLabel={selectedRuleId}
-            citedBy={citedBy}
-            onClearScope={() => setSelectedRuleId(null)}
+            fmtT={fmtT}
+            fmtClock={fmtClock}
+            workOrders={opsOn ? ops.workOrders : null}
+            onAcknowledge={acknowledge}
+            onWorkOrder={opsOn ? (id) => void ops.createWorkOrder(id) : undefined}
             onOpenTrend={openTrend}
-            onOpenSensor={openSensor}
-            loading={catalog.isLoading}
+            onWhy={(f, tag) => openReason(f.ruleId, f.where, tag)}
+            lifeFor={lifeFor}
+            onOpenLife={(name, tag) => openPrognosis(null, name, tag)}
           />
-        </Section>
-      )}
+        )}
+      </Section>
 
-      {!frame && !diagnosis.loading && !catalog.isLoading && sensors.length === 0 && !record && (
-        <p className="pg-diag-missing">No mapped sensors, live rule engine or stored diagnosis record for this machine.</p>
-      )}
+      {/* Findings and events from the server evaluation; not in the Home console embed (externalScope). */}
+      {!externalScope && <FindingsSection machineId={machine.id} />}
     </div>
   );
 }

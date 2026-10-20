@@ -6,6 +6,7 @@ import type { AssetMachine } from "./assets-data";
 import { isLiveMachine, useKilnSimulationFor } from "@/providers/kiln-simulation-context";
 import { useMachineAcquisition } from "./acquisition/use-machine-acquisition";
 import type { MachineAcquisition } from "@/types/edge";
+import type { MeasurementDto } from "@/types/monitoring";
 import type { LiveSignal } from "@/lib/kiln-sim/engine";
 
 export interface CatalogSensorView {
@@ -21,7 +22,7 @@ export interface CatalogSensorView {
   unit: string;
   value: string;
   numericValue: number;
-  status: "Normal" | "Advisory" | "Critical";
+  status: "Normal" | "Alert" | "Critical";
   x: number | null;
   y: number | null;
   instrument: string;
@@ -63,7 +64,7 @@ interface ApiCatalogResponse {
     name: string;
     shortName: string;
     health: number;
-    status: "Normal" | "Advisory" | "Critical";
+    status: "Normal" | "Alert" | "Critical";
     bbox: { x: number; y: number; width: number; height: number };
     sensorCount: number;
   }>;
@@ -73,7 +74,7 @@ interface ApiCatalogResponse {
     name: string;
     shortName: string;
     health: number;
-    status: "Normal" | "Advisory" | "Critical";
+    status: "Normal" | "Alert" | "Critical";
     criticality: string;
     sensorTags: string[];
     sensorCount: number;
@@ -84,7 +85,7 @@ interface ApiCatalogResponse {
     unit: string;
     currentValue: string;
     numericValue: number;
-    status: "Normal" | "Advisory" | "Critical";
+    status: "Normal" | "Alert" | "Critical";
     component: string | null;
     position: string | null;
     instrument: string;
@@ -178,7 +179,7 @@ export function useMachineCatalog(machine: AssetMachine): MachineCatalog {
 
 type MqttReading = [tag: string, value: string, numeric: number | null, status: CatalogSensorView["status"]];
 
-const MQTT_STATUS = { normal: "Normal", alert: "Advisory", danger: "Critical" } as const;
+const MQTT_STATUS = { normal: "Normal", alert: "Alert", danger: "Critical" } as const;
 
 function formatReading(v: number): string {
   const a = Math.abs(v);
@@ -217,10 +218,44 @@ function useMqttOverlay(base: MachineCatalog, machineId: string): MachineCatalog
   }, [base, key]);
 }
 
-/** The stored PostgreSQL catalog, without live values. */
+/* ---------------------------------------------------------------- measurements
+   GET /api/measurements?machineId= — per-measurement specification (range,
+   accuracy, priority, install status), the full engineering limit (values,
+   basis texts, approval) and the accepted reference band. */
+
+export interface MachineMeasurements {
+  list: MeasurementDto[];
+  byTag: ReadonlyMap<string, MeasurementDto>;
+  isLoading: boolean;
+}
+
+const EMPTY_MEASUREMENTS: MeasurementDto[] = [];
+
+export function useMachineMeasurements(machineId: string | null | undefined): MachineMeasurements {
+  const { data, isLoading } = useApi<MeasurementDto[]>(machineId ? `/api/measurements?machineId=${encodeURIComponent(machineId)}` : null);
+  const list = Array.isArray(data) ? data : EMPTY_MEASUREMENTS;
+  return useMemo(() => ({ list, byTag: new Map(list.map((m) => [m.tag, m])), isLoading }), [list, isLoading]);
+}
+
+/**
+ * Rule code → the measurement tags the DB lists as its inputs (catalog
+ * `sensors[].reasons[]`: the rules each sensor feeds, with the rule's other inputs).
+ */
+export function ruleInputsOf(sensors: ReadonlyArray<Pick<CatalogSensorView, "tag" | "reasons">>): Map<string, string[]> {
+  const out = new Map<string, Set<string>>();
+  for (const s of sensors)
+    for (const r of s.reasons) {
+      const set = out.get(r.ruleId) ?? out.set(r.ruleId, new Set()).get(r.ruleId)!;
+      set.add(s.tag);
+      for (const t of r.crossCheckSensors ?? []) set.add(t);
+    }
+  return new Map([...out].map(([k, v]) => [k, [...v]]));
+}
+
 /** The DB catalog alone (no live overlay): which sensors exist, names, units, limits, locations. */
 export function useStoredCatalog(machine: AssetMachine): MachineCatalog {
-  const { data, isLoading } = useApi<ApiCatalogResponse | null>(`/api/catalog?machineId=${encodeURIComponent(machine.id)}`);
+  // No id yet (a placeholder machine while the plant loads): ask nothing rather than a 400.
+  const { data, isLoading } = useApi<ApiCatalogResponse | null>(machine.id ? `/api/catalog?machineId=${encodeURIComponent(machine.id)}` : null);
   const live = data && Array.isArray(data.sensors) && data.sensors.length > 0 ? data : null;
 
   return useMemo(() => {
@@ -255,18 +290,18 @@ export function useStoredCatalog(machine: AssetMachine): MachineCatalog {
       cardId: s.cardSlot,
       modbusAddress: s.modbusAddress,
       sampleRate: s.sampleRate,
-      source: s.source || "Existing",
-      priority: s.priority || "Required",
+      source: s.source || "",
+      priority: s.priority || "",
       accuracy: s.accuracy || "",
       rangeVal: s.rangeVal || "",
-      normalThreshold: s.normalThreshold || "Nominal",
-      warningThreshold: s.warningThreshold || "Warning",
-      alarmThreshold: s.alarmThreshold || "Alarm",
+      normalThreshold: s.normalThreshold || "—",
+      warningThreshold: s.warningThreshold || "—",
+      alarmThreshold: s.alarmThreshold || "—",
       warningVal: toNumber(s.warningVal, 0),
       alarmVal: toNumber(s.alarmVal, 0),
       maxScale: toNumber(s.maxScale, 100),
-      nominalBand: s.nominalBand || "Nominal",
-      standard: s.standard || "Asset Baseline",
+      nominalBand: s.nominalBand || "—",
+      standard: s.standard || "",
       reasons: Array.isArray(s.reasons) ? s.reasons : [],
     }));
     return {

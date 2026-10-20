@@ -200,7 +200,7 @@ export function ConnectWizard({ open, ix, now, onClose, onCommissioned }: Connec
       const t = raw.trim();
       if (!t) return;
       const problem = filterProblem(t, seen);
-      if (problem) topicErrors[i] = problem === "Already subscribed" ? "Listed twice" : problem;
+      if (problem) topicErrors[i] = problem === "Already listening on this channel" ? "Listed twice" : problem;
       seen.push(t);
     });
     if (typed.length === 0) topicErrors[0] = "Type a topic, e.g. plant/line1/#";
@@ -282,8 +282,8 @@ export function ConnectWizard({ open, ix, now, onClose, onCommissioned }: Connec
     ? null
     : live?.state !== "connected"
       ? live?.lastError
-        ? `Cannot reach ${broker?.host ?? "the broker"}: ${live.lastError}`
-        : `Connecting to ${broker ? addressOf(broker) : "the broker"}…`
+        ? `Cannot reach ${broker?.host ?? "the message server"}: ${live.lastError}`
+        : `Connecting to ${broker ? addressOf(broker) : "the message server"}…`
       : samples.length === 0
         ? "Connected. Waiting for the first message…"
         : `Receiving · ${fmt(total)} ${total === 1 ? "message" : "messages"} on ${fmt(samples.length)} ${samples.length === 1 ? "topic" : "topics"}${
@@ -297,8 +297,8 @@ export function ConnectWizard({ open, ix, now, onClose, onCommissioned }: Connec
       busy={busy}
       onSubmit={gateway ? onClose : connect}
       width={720}
-      title="Connect gateway"
-      subtitle={gateway ? `${gateway.code} on ${broker ? addressOf(broker) : "broker"}` : "Broker and topics"}
+      title="Connect a data collector"
+      subtitle={gateway ? `${gateway.code} on ${broker ? addressOf(broker) : "message server"}` : "Where its messages arrive (MQTT broker) and on which channels (topics)"}
       footer={
         gateway ? (
           <PillButton type="submit" variant="primary">
@@ -318,12 +318,12 @@ export function ConnectWizard({ open, ix, now, onClose, onCommissioned }: Connec
     >
       {!gateway ? (
         <FieldGrid>
-          <Field label="Broker" required error={errors.broker} hint="Host and port, e.g. 10.14.22.5:1883">
+          <Field label="Message server (MQTT broker)" required error={errors.broker} hint="Address and port, e.g. 10.14.22.5:1883">
             {(id, d) => <TextInput id={id} describedBy={d} value={brokerText} onChange={setBrokerText} mono placeholder="10.14.22.5:1883" disabled={busy} />}
           </Field>
           <div className="ui-field" data-wide role="group" aria-labelledby="connect-topics-label">
             <span className="ui-field-label" id="connect-topics-label">
-              Topics
+              Message channels (topics)
               <span className="ui-field-req" aria-hidden="true">
                 *
               </span>
@@ -340,7 +340,7 @@ export function ConnectWizard({ open, ix, now, onClose, onCommissioned }: Connec
                   disabled={busy}
                 />
                 {topics.length > 1 && (
-                  <PillButton variant="secondary" onClick={() => setTopics((prev) => prev.filter((_, j) => j !== i))} disabled={busy} aria-label={`Remove topic ${i + 1}`}>
+                  <PillButton variant="secondary" onClick={() => setTopics((prev) => prev.filter((_, j) => j !== i))} disabled={busy} aria-label={`Remove channel ${i + 1}`}>
                     Remove
                   </PillButton>
                 )}
@@ -355,7 +355,7 @@ export function ConnectWizard({ open, ix, now, onClose, onCommissioned }: Connec
               <PillButton variant="secondary" icon={<IconPlus size={13} />} onClick={() => setTopics((prev) => [...prev, ""])} disabled={busy || topics.length >= MAX_TOPICS}>
                 Add topic
               </PillButton>
-              <span className="ui-field-note">+ matches one level, # everything below</span>
+              <span className="ui-field-note">In a channel, + matches any one level and # matches everything below</span>
             </div>
           </div>
         </FieldGrid>
@@ -366,10 +366,10 @@ export function ConnectWizard({ open, ix, now, onClose, onCommissioned }: Connec
             <span className="ast-caption">{status}</span>
           </div>
           {shape === "raw" && !failure && (
-            <p className="ast-caption">These messages are not one JSON reading each (no device and value keys), so they are kept as raw messages. Pick a data format for the gateway to read them.</p>
+            <p className="ast-caption">These messages are not one reading each (they have no device and value fields), so they are kept as they arrive. Pick a message format so the data collector&apos;s readings can be read.</p>
           )}
           {racks.length > 0 && (
-            <ul className="dv-connect-racks" aria-label="Racks and cards">
+            <ul className="dv-connect-racks" aria-label="Devices and cards found">
               {racks.map((r) => (
                 <li key={r.code}>
                   <span className="ast-cell-title">{r.name}</span>

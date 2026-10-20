@@ -1,0 +1,279 @@
+/* Machine quick look (PYR-0 line sheet → machine summary). Shell = .opc-detail-modal. */
+
+.opc-detail-modal.mql {
+  width: min(1040px, 100%);
+}
+
+.mql-code {
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+
+.mql-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Diagnosis across the top, then Sensors · Prognosis · Analysis; cards in a row share height. */
+.mql-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 12px;
+}
+.mql-grid > .pg-analysis-section {
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.mql-open {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.mql-open:hover {
+  color: var(--text-primary);
+}
+
+.mql-empty {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+/* ------------------------------------------------------------ rows */
+.mql-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mql-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px 32px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 30px;
+  padding: 0 4px;
+  border: 0;
+  border-bottom: 1px solid var(--card-border);
+  border-radius: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+.mql-list > li:last-child .mql-row,
+.mql-list > li.mql-row:last-child {
+  border-bottom: 0;
+}
+button.mql-row:hover {
+  background: var(--surface-subtle, var(--bg-surface-elevated));
+}
+.mql-row.is-static {
+  grid-template-columns: minmax(0, 1fr) auto;
+  cursor: default;
+}
+.mql-row.is-issue {
+  grid-template-columns: 6px minmax(0, 1fr);
+  padding-block: 6px;
+}
+.mql-issue {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.mql-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mql-where {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.mql-val {
+  text-align: right;
+  font-size: var(--fs-sm);
+}
+.mql-val small {
+  color: var(--text-secondary);
+  font-size: var(--fs-2xs);
+}
+.mql-row[data-tone="bad"] .mql-val,
+.mql-row.is-static[data-tone="bad"] .mql-name {
+  color: var(--status-danger);
+}
+.mql-row[data-tone="warn"] .mql-val {
+  color: var(--status-warning);
+}
+.mql-more {
+  padding: 6px 4px 0;
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+
+/* Health bar: neutral fill, toned only when abnormal. */
+.mql-bar {
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--card-border);
+  overflow: hidden;
+}
+.mql-bar > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--tone, var(--text-secondary));
+}
+
+/* ------------------------------------------------------------ sensors */
+.mql-validity {
+  display: flex;
+  gap: 2px;
+  height: 6px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--card-border);
+}
+.mql-validity > i {
+  flex-basis: 0;
+  background: var(--tone);
+}
+.mql-validity > i[data-tone="idle"] {
+  background: var(--text-secondary);
+  opacity: 0.55;
+}
+.mql-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+.mql-legend b {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.mql-legend [data-tone] b {
+  color: var(--tone);
+}
+
+/* ------------------------------------------------------------ prognosis */
+.mql-caption {
+  margin-bottom: -6px;
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+.mql-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.mql-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mql-fact-label {
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.mql-fact-value {
+  font-size: var(--fs-4xl);
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+.mql-fact[data-tone] .mql-fact-value {
+  color: var(--tone);
+}
+.mql-fact-value small {
+  margin-left: 2px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.mql-dl {
+  display: flex;
+  flex-direction: column;
+  margin: auto 0 0;
+}
+.mql-dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 4px;
+  border-top: 1px solid var(--card-border);
+  font-size: var(--fs-sm);
+}
+.mql-dl dt {
+  color: var(--text-secondary);
+}
+.mql-dl dd {
+  margin: 0;
+  text-align: right;
+  color: var(--text-primary);
+}
+
+#mql-diagnosis {
+  grid-column: 1 / -1;
+}
+/* Sub-assemblies read down, then across, in definition order. */
+.mql-list.is-cols {
+  display: block;
+  columns: 2;
+  column-gap: 32px;
+}
+.mql-list.is-cols > li {
+  break-inside: avoid;
+}
+
+@media (max-width: 760px) {
+  .mql-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mql-list.is-cols {
+    columns: 1;
+  }
+}
+
+.mql-grid .pg-analysis-section-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ------------------------------------------------------------ sub-assembly quick look (PYR-0 badge) */
+.opc-detail-modal.mql.mql-part {
+  width: min(880px, 100%);
+}
+.mql-grid.mql-grid-part {
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+}
+.mql-row.mql-part-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+.mql-band {
+  font-size: var(--fs-2xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}

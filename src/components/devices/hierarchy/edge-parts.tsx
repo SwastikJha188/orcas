@@ -132,13 +132,13 @@ export function GatewayCard({ ix, gw, now, onOpen }: { ix: EdgeIndex; gw: EdgeGa
       className="ast-card ast-tile hx-card dv-card"
       data-disabled={!gw.enabled || undefined}
       onClick={onOpen}
-      aria-label={`Open gateway ${gw.name}, ${gw.code}, ${LINK_LABEL[link.status]}, ${plural(sources.length, "source")}`}
+      aria-label={`Open data collector ${gw.name}, ${gw.code}, ${LINK_LABEL[link.status]}, ${plural(sources.length, "device")}`}
     >
       <div className="ast-tile-top">
         <span className="ast-icon-tile" data-tone={link.status === "waiting" || link.status === "disabled" ? undefined : tone}>
           <IconGateway size={14} />
         </span>
-        <span className="hx-type-tag">Gateway</span>
+        <span className="hx-type-tag" title="Data collector (gateway)">Data collector</span>
       </div>
       <div className="hx-card-body">
         <span className="ast-tile-name">{gw.name}</span>
@@ -147,16 +147,16 @@ export function GatewayCard({ ix, gw, now, onOpen }: { ix: EdgeIndex; gw: EdgeGa
           {gw.ipAddress ? ` · ${gw.ipAddress}` : ""}
         </span>
         <span className="hx-card-meta">
-          {site ?? "No site"} · {broker ? broker.name : "No broker"}
+          {site ?? "No site"} · {broker ? broker.name : "No data connection"}
         </span>
       </div>
       <dl className="hx-facts">
         <div>
-          <dt>Sources</dt>
+          <dt>Devices</dt>
           <dd className="ast-num">{sources.length}</dd>
         </div>
         <div>
-          <dt>Points</dt>
+          <dt>Reading points</dt>
           <dd className="ast-num">{points.length}</dd>
         </div>
         <div>
@@ -164,7 +164,7 @@ export function GatewayCard({ ix, gw, now, onOpen }: { ix: EdgeIndex; gw: EdgeGa
           <dd className="ast-num">{ago(link.lastSeenAt, now)}</dd>
         </div>
       </dl>
-      {sources.length > 0 && <SegmentBar label={`Sources: ${segmentText(segments)}`} segments={segments} />}
+      {sources.length > 0 && <SegmentBar label={`Devices: ${segmentText(segments)}`} segments={segments} />}
       <LinkFoot tone={tone} label={LINK_LABEL[link.status]} />
     </button>
   );
@@ -185,7 +185,7 @@ export function SourceCard({ ix, src, now, showGateway, onOpen }: { ix: EdgeInde
       className="ast-card ast-tile hx-card dv-card"
       data-disabled={!src.enabled || undefined}
       onClick={onOpen}
-      aria-label={`Open ${SOURCE_KIND_LABEL[src.kind]} ${src.code}, ${src.name}, ${LINK_LABEL[link.status]}, ${plural(points.length, "point")}`}
+      aria-label={`Open ${SOURCE_KIND_LABEL[src.kind]} ${src.code}, ${src.name}, ${LINK_LABEL[link.status]}, ${plural(points.length, "reading point")}`}
     >
       <div className="ast-tile-top">
         <span className="ast-icon-tile" data-tone={link.status === "waiting" || link.status === "disabled" ? undefined : tone}>
@@ -200,17 +200,17 @@ export function SourceCard({ ix, src, now, showGateway, onOpen }: { ix: EdgeInde
           {showGateway && gw ? ` · ${gw.code}` : ""}
         </span>
         <span className="hx-card-meta">
-          {src.endpoint ?? "No endpoint"}
+          {src.endpoint ?? "No network address"}
           {src.machineId ? ` · ${machine ?? src.machineId}` : ""}
         </span>
       </div>
       <dl className="hx-facts">
         <div>
-          <dt>Points</dt>
+          <dt>Reading points</dt>
           <dd className="ast-num">{points.length}</dd>
         </div>
         <div>
-          <dt>Warning / alarm</dt>
+          <dt>Warnings and alarms</dt>
           <dd className="ast-num pg-tone-value" data-tone={readings.danger ? "bad" : readings.alert ? "warn" : undefined}>
             {flagged === 0 ? "0" : `${readings.alert} / ${readings.danger}`}
           </dd>
@@ -220,7 +220,7 @@ export function SourceCard({ ix, src, now, showGateway, onOpen }: { ix: EdgeInde
           <dd className="ast-num">{ago(link.lastSeenAt, now)}</dd>
         </div>
       </dl>
-      {points.length > 0 && <SegmentBar label={`Points: ${segmentText(segments)}`} segments={segments} />}
+      {points.length > 0 && <SegmentBar label={`Reading points: ${segmentText(segments)}`} segments={segments} />}
       <LinkFoot tone={tone} label={LINK_LABEL[link.status]} />
     </button>
   );

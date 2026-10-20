@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { accessFail, requestScope } from "@/app/api/_lib/respond";
+import { requireMachine } from "@/server/services/access-service";
 import {
   PredictionInputError,
   createPrediction,
@@ -21,7 +23,9 @@ const fail = (error: unknown, code: string, fallback: string) => {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const machineId = searchParams.get("machineId") || "KLN-01";
+    const machineId = searchParams.get("machineId");
+    if (!machineId) return NextResponse.json({ error: { code: "INVALID_INPUT", message: "machineId is required" } }, { status: 400 });
+    requireMachine(await requestScope(request), machineId);
     const limit = Number(searchParams.get("limit") ?? 200);
     const [items, stats] = await Promise.all([
       listPredictions(machineId, Number.isFinite(limit) ? limit : 200),
@@ -29,17 +33,19 @@ export async function GET(request: NextRequest) {
     ]);
     return NextResponse.json({ data: { items, stats } });
   } catch (error) {
-    return fail(error, "PREDICTIONS_FETCH_ERROR", "Failed to load predictions");
+    return accessFail(error) ?? fail(error, "PREDICTIONS_FETCH_ERROR", "Failed to load predictions");
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => null);
-    const data = await createPrediction(parseNewPrediction(body));
+    const input = parseNewPrediction(body);
+    requireMachine(await requestScope(request), input.machineId);
+    const data = await createPrediction(input);
     return NextResponse.json({ data }, { status: 201 });
   } catch (error) {
-    return fail(error, "PREDICTION_CREATE_ERROR", "Failed to record prediction");
+    return accessFail(error) ?? fail(error, "PREDICTION_CREATE_ERROR", "Failed to record prediction");
   }
 }
 
@@ -48,9 +54,10 @@ export async function PATCH(request: NextRequest) {
   try {
     const body = (await request.json().catch(() => null)) as { machineId?: string; keepRunId?: string } | null;
     if (!body?.machineId || !body.keepRunId) throw new PredictionInputError("machineId and keepRunId are required");
+    requireMachine(await requestScope(request), body.machineId);
     const voided = await voidOtherRuns(body.machineId, body.keepRunId);
     return NextResponse.json({ data: { voided } });
   } catch (error) {
-    return fail(error, "PREDICTION_VOID_ERROR", "Failed to void stale predictions");
+    return accessFail(error) ?? fail(error, "PREDICTION_VOID_ERROR", "Failed to void stale predictions");
   }
 }

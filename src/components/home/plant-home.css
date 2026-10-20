@@ -527,7 +527,7 @@
    below glides down with it; the negative margin takes back the list gap
    while the slot is closed. The card drops in from above inside the slot. */
 .ph-feed-slot {
-  --slot-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --slot-ease: var(--ease-out);
   display: grid;
   grid-template-rows: 1fr;
   min-width: 0;
@@ -539,22 +539,22 @@
 }
 
 .ph-feed-slot[data-phase="enter"] {
-  animation: ph-slot-open 420ms var(--slot-ease) var(--enter-delay, 0ms) both;
+  animation: ph-slot-open var(--dur-modal) var(--slot-ease) var(--enter-delay, 0ms) both;
 }
 
 .ph-feed-slot[data-phase="enter"] > .ph-alert {
   animation:
-    ph-card-drop 420ms var(--slot-ease) var(--enter-delay, 0ms) both,
-    ph-card-settle 1600ms ease-out var(--enter-delay, 0ms) both;
+    ph-card-drop var(--dur-modal) var(--slot-ease) var(--enter-delay, 0ms) both,
+    ph-card-settle var(--dur-modal) var(--ease-out) var(--enter-delay, 0ms) both;
 }
 
 .ph-feed-slot[data-phase="leave"] {
   pointer-events: none;
-  animation: ph-slot-close 380ms var(--slot-ease) both;
+  animation: ph-slot-close var(--dur-fast) var(--slot-ease) both;
 }
 
 .ph-feed-slot[data-phase="leave"] > .ph-alert {
-  animation: ph-card-lift 300ms ease-in both;
+  animation: ph-card-lift var(--dur-fast) var(--ease-out) both;
 }
 
 @keyframes ph-slot-open {
@@ -1344,13 +1344,13 @@ button.ph-alert-row:hover {
 }
 
 .ph-gauge-compact .ph-gauge-value {
-  font-size: 30px;
+  font-size: var(--fs-8xl);
   line-height: 32px;
 }
 
 .ph-gauge-compact .ph-gauge-target {
   margin-top: 2px;
-  font-size: 10px;
+  font-size: var(--fs-2xs);
 }
 
 /* Wider & taller Alerts card below Health on the right side */

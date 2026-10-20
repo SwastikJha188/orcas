@@ -1,0 +1,1 @@
+[["OFF","Only under verified isolation (LOTO)"],["OFF / RUN","Depends on the installation"],["Planned stop","At a planned stop"],["RUN","While running · DCS review or guarded external observation"],["RUN + STOP","Trend while running, isolated inspection at a stop"]]

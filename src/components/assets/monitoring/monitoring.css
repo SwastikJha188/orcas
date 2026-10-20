@@ -1,0 +1,178 @@
+/* Findings, events and reference sets (server monitoring records). */
+
+.mon-line {
+  margin: 0 0 8px;
+  padding: 0 16px;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.ui-dialog-body .mon-line {
+  padding: 0;
+  margin: 0;
+}
+
+.mon-nowrap {
+  white-space: nowrap;
+}
+
+/* Long stored text in a table cell: one line, or two, with the full text on hover. */
+.mon-one-line {
+  max-width: 420px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mon-clamp {
+  max-width: 560px;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.mon-table .ui-table tbody td {
+  vertical-align: top;
+}
+
+/* Detail facts: label over value, two columns. */
+.mon-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 24px;
+  margin: 0;
+}
+
+.mon-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mon-fact dt {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.mon-fact dd {
+  margin: 0;
+  font-size: var(--fs-md);
+  color: var(--dx-ink, var(--page-fg));
+  overflow-wrap: anywhere;
+}
+
+.mon-evidence {
+  margin: 0;
+  font-size: var(--fs-md);
+  color: var(--page-fg);
+}
+
+.mon-label {
+  color: var(--text-muted);
+  margin-right: 6px;
+}
+
+.mon-head {
+  margin: 4px 0 -6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--separator);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--dx-ink, var(--page-fg));
+}
+
+.mon-inline-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.mon-inline-form > .ui-field {
+  flex: 1 1 auto;
+}
+
+.mon-entries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mon-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--separator);
+}
+
+.mon-entry:last-child {
+  border-bottom: 0;
+}
+
+.mon-entry-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: var(--fs-sm);
+  color: var(--dx-ink, var(--page-fg));
+}
+
+.mon-entry-body {
+  font-size: var(--fs-md);
+  color: var(--page-fg);
+  white-space: pre-wrap;
+}
+
+.mon-entry-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mon-form-foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Reference sets: list, then the selected set's values. */
+.mon-subhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 16px 0 4px;
+  padding: 12px 16px 0;
+  border-top: 1px solid var(--separator);
+}
+
+.mon-subhead-title {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--dx-ink, var(--page-fg));
+}
+
+.mon-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+@media (max-width: 640px) {
+  .mon-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mon-inline-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

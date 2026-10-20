@@ -12,6 +12,7 @@ const config = [
       "**/node_modules/**",
       "**/LiquidGlassSkill-main/**",
       "**/out/**",
+      "onboarding-work/**",
       "next-env.d.ts",
     ],
   },

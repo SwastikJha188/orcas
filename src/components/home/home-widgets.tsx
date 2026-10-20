@@ -3,7 +3,7 @@
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { StatusTag } from "@/components/ui/status-tag";
 import { PillButton, PillNav } from "@/components/ui";
-import { healthTone, type Tone } from "@/components/assets/assets-shell-ui";
+import { healthTone, useMachineHealthBands, type Tone } from "@/components/assets/assets-shell-ui";
 import { smoothPath } from "@/components/ui/sparkline";
 import { HEALTH_STEP_MS, type HealthPoint } from "@/lib/health-recorder";
 import type { Distribution } from "@/components/assets/hierarchy/hierarchy-model";
@@ -80,13 +80,13 @@ function gaugeArc(from: number, to: number, r: number) {
 export function conditionSummary(dist: Distribution): { tone: Tone; label: string } {
   const list: Condition[] = [];
   if (dist.critical > 0) list.push("Critical");
-  if (dist.atRisk > 0) list.push("Advisory");
+  if (dist.atRisk > 0) list.push("Alert");
   if (dist.healthy > 0) list.push("Normal");
   if (dist.offline > 0) list.push("Standby");
   const worst = worstCondition(list);
   const tone = conditionTone(worst);
   if (worst === "Critical") return { tone, label: `${dist.critical} critical` };
-  if (worst === "Advisory") return { tone, label: `${dist.atRisk} advisory` };
+  if (worst === "Alert") return { tone, label: `${dist.atRisk} on alert` };
   return { tone, label: worst };
 }
 
@@ -95,6 +95,7 @@ export function PlantHealthGauge({
   dist,
   title = "Plant health",
   compact = false,
+  machineId,
 }: {
   score: number | null;
   dist: Distribution;
@@ -102,9 +103,12 @@ export function PlantHealthGauge({
   title?: string;
   /** Smaller card footprint for Operator View. */
   compact?: boolean;
+  /** Machine whose health model bands the score; omitted = the plant's primary machine. */
+  machineId?: string | null;
 }) {
+  const bands = useMachineHealthBands(machineId);
   const value = Math.max(0, Math.min(100, score ?? 0));
-  const tone: Tone = score === null ? "idle" : healthTone(value);
+  const tone: Tone = score === null ? "idle" : healthTone(value, bands);
   const chip = conditionSummary(dist);
   const gap = 0.006;
   const t = HEALTH_TARGET / 100;
@@ -150,7 +154,7 @@ export function PlantHealthGauge({
             {score ?? "—"}
             <span className="ph-gauge-of">/100</span>
           </span>
-          <span className="ph-gauge-target ast-num">TARGET {HEALTH_TARGET}</span>
+          <span className="ph-gauge-target ast-num">GOAL {HEALTH_TARGET}</span>
         </div>
       </div>
     </section>
@@ -183,13 +187,25 @@ export interface HomeAlert {
   t: number | null;
   /** Where a stored alert comes from (e.g. "operating_events · DCS log"); null for live rules. */
   origin?: string | null;
+  /** Sub-assemblies the alert is raised on (live rules / limits), for pinning it on the drawing. */
+  subs?: string[];
+  /** Measurement tags carrying the evidence, first the leading one. */
+  tags?: string[];
+  /** Everyday-words headline (docs/plain-language.md); falls back to `finding`. */
+  plainTitle?: string;
+  /** What is happening and why it matters, in everyday words. */
+  plainWhat?: string;
+  /** What to do next, in everyday words. */
+  plainTodo?: string;
+  /** The part it is on, in everyday words ("Bucket elevator"). */
+  where?: string;
 }
 
 /** One entry of the live plant activity stream (rules raised and cleared, crew actions, signal quality). */
 export interface HomeActivity {
   id: string;
   clock: string;
-  /** Short machine label shown beside the time ("KLN-02"). */
+  /** Short machine name shown beside the time ("Rotary kiln"). */
   machine: string;
   machineId: string;
   tag: string;
@@ -298,19 +314,19 @@ export function AlertsFeed({
         <h2 className="ast-card-title">
           Alerts
           {activity.length > 0 && (
-            <span className="ph-live" title="Live from the plant simulation">
+            <span className="ph-live" title="Updates live from the plant">
               <i aria-hidden="true" />
               Live
             </span>
           )}
         </h2>
         <span className="ast-caption ast-num">
-          {active.length} active · {danger} critical
+          {active.length} open · {danger} critical
         </span>
       </div>
       {error && (
-        <div className="ast-empty" role="alert">
-          <strong>Stored alerts unavailable. Retry.</strong>
+        <div className="ast-empty" role="alert" title={error}>
+          <strong>Could not load saved alerts. Reload the page to try again.</strong>
         </div>
       )}
       {alerts.length === 0 && activity.length === 0 ? (
@@ -320,13 +336,13 @@ export function AlertsFeed({
           </div>
         ) : (
           <div className="ast-empty">
-            <strong>No active alerts.</strong>
+            <strong>No alerts right now. Everything is running normally.</strong>
           </div>
         )
       ) : (
         <div className="ph-alert-list">
           {alerts.length === 0 && (
-            <div className="ph-feed-quiet ast-caption">No active alerts.</div>
+            <div className="ph-feed-quiet ast-caption">No alerts right now.</div>
           )}
           <ul className="ph-feed">
           {shownAlerts.map(({ item: a, phase, delay }) => {
@@ -338,18 +354,19 @@ export function AlertsFeed({
                 <div className="ph-alert" data-tone={tone} data-cleared={a.cleared ? "" : undefined}>
                   <button type="button" className="ph-alert-row" aria-expanded={expanded} onClick={toggleExpand}>
                     <span className="ph-alert-top">
-                      <span className="ph-alert-age ast-num">{a.age ?? "on record"}</span>
-                      <span className="ph-alert-machine">{a.machine}</span>
-                      <span className="ph-level">{a.cleared ? "CLEARED" : a.level === "danger" ? "CRITICAL" : "ADVISORY"}</span>
+                      <span className="ph-alert-age ast-num">{a.age ?? "start unknown"}</span>
+                      <span className="ph-alert-machine">{a.where ? `${a.machine} · ${a.where}` : a.machine}</span>
+                      <span className="ph-level">{a.cleared ? "CLEARED" : a.level === "danger" ? "CRITICAL" : "ALERT"}</span>
                     </span>
-                    <span className="ph-alert-finding">{a.finding}</span>
+                    <span className="ph-alert-finding" title={a.plainTitle ? a.finding : undefined}>{a.plainTitle ?? a.finding}</span>
                     <span className="ph-alert-reading ast-num">{a.reading}</span>
                   </button>
                   {expanded && (
                     <div className="ph-alert-more">
-                      <p>{a.recommendation}</p>
+                      {a.plainWhat && <p>{a.plainWhat}</p>}
+                      <p title={a.plainTodo ? a.recommendation : undefined}>{a.plainTodo ?? a.recommendation}</p>
                       <span className="ast-caption ast-num">
-                        {a.raised ? `Raised ${a.raised}` : "On record"}
+                        {a.raised ? `Started ${a.raised}` : "Start time unknown"}
                         {a.origin ? ` · ${a.origin}` : ""}
                         {a.cleared ? ` · cleared ${a.cleared}` : ""} · {a.machineId}
                       </span>
@@ -362,22 +379,22 @@ export function AlertsFeed({
                           return (
                             <>
                               {!live.acknowledged && (
-                                <PillButton variant="secondary" onClick={() => void ops.acknowledge(live.ruleId)}>
+                                <PillButton variant="secondary" title="Mark as seen so others know someone is on it" onClick={() => void ops.acknowledge(live.ruleId)}>
                                   Acknowledge
                                 </PillButton>
                               )}
                               {live.workOrderId === null ? (
-                                <PillButton variant="primary" onClick={() => void ops.createWorkOrder(live.ruleId)}>
+                                <PillButton variant="primary" title="Create a repair job for the maintenance team" onClick={() => void ops.createWorkOrder(live.ruleId)}>
                                   Create work order
                                 </PillButton>
                               ) : (
-                                <span className="ast-caption ast-num">WO-{live.workOrderId} raised</span>
+                                <span className="ast-caption ast-num">Work order WO-{live.workOrderId} created</span>
                               )}
                             </>
                           );
                         })()}
                         <PillButton variant="secondary" onClick={() => onOpen(a.machineId)}>
-                          Open in Diagnosis
+                          See what is wrong
                         </PillButton>
                       </div>
                     </div>
@@ -419,7 +436,8 @@ export function AlertsFeed({
 
 /* ULTRON PlantTrendCard: the same card as the machine's health history — a
    spline on a fixed 40–100 axis over dashed gridlines, the score's own bands
-   behind it (danger < 55, alert 55–60), coloured by the level it sits in. */
+   behind it (the health model's Critical and Alert bands, from the DB),
+   coloured by the level it sits in. */
 const PERIODS = [
   { id: "60", label: "1h", minutes: 60 },
   { id: "180", label: "3h", minutes: 180 },
@@ -428,12 +446,6 @@ const PERIODS = [
 const PERIOD_KEY = "ultron.plant_trend.period";
 const AXIS_LO = 40;
 const AXIS_HI = 100;
-const DANGER_BELOW = 55;
-const ALERT_BELOW = 60;
-
-function levelTone(v: number): Tone {
-  return v < DANGER_BELOW ? "bad" : v < ALERT_BELOW ? "warn" : "good";
-}
 
 function formatSpan(minutes: number) {
   if (minutes < 60) return `${Math.max(1, Math.round(minutes))} min`;
@@ -478,6 +490,7 @@ export function HealthTrendCard({
   track,
   height,
   compact = false,
+  machineId,
 }: {
   /** Recorded health on the real clock from `from` (epoch ms) to now (`@/lib/health-recorder`). */
   track: (from: number) => HealthPoint[];
@@ -485,7 +498,10 @@ export function HealthTrendCard({
   height?: number;
   /** Smaller card footprint for Operator View. */
   compact?: boolean;
+  /** Machine whose health model bands the trend; omitted = the plant's primary machine. */
+  machineId?: string | null;
 }) {
+  const bands = useMachineHealthBands(machineId);
   const [period, setPeriod] = useState("360");
   useEffect(() => {
     try {
@@ -515,7 +531,7 @@ export function HealthTrendCard({
   const firstAt = raw.find((p) => p.v !== null)?.t ?? null;
   const latest = points.length ? points[points.length - 1].v : null;
   const delta = points.length >= 2 ? Math.round(points[points.length - 1].v - points[0].v) : null;
-  const tone: Tone = latest === null ? "idle" : levelTone(latest);
+  const tone: Tone = latest === null ? "idle" : healthTone(latest, bands);
   // The window reaches back before the recording started (page opened recently, or closed for a while).
   const partial = firstAt !== null && firstAt - from > GAP_MS;
   // The change is measured over what was recorded, not the whole window.
@@ -552,14 +568,14 @@ export function HealthTrendCard({
         <div className="ph-head-text">
           <h2 className="ast-card-title">Health over time</h2>
           <span className="ph-sub">
-            {partial && firstAt !== null ? `Condition score · last ${spanLabel} · recorded since ${clockOf(firstAt)}` : `Condition score · last ${spanLabel}`}
+            {partial && firstAt !== null ? `Health score out of 100 · last ${spanLabel} · recorded since ${clockOf(firstAt)}` : `Health score out of 100 · last ${spanLabel}`}
           </span>
         </div>
         <div className="ph-head-stack">
           {delta !== null && (
             <span className="ph-move ast-num">
               <b data-tone={delta > 0 ? "good" : delta < 0 ? "bad" : undefined}>{delta === 0 ? "±0" : `${delta > 0 ? "+" : "−"}${Math.abs(delta)}`}</b>{" "}
-              {delta === 0 ? `steady over ${deltaSpan}` : `over ${deltaSpan}`}
+              {delta === 0 ? `no change in ${deltaSpan}` : `in ${deltaSpan}`}
             </span>
           )}
           <PillNav items={PERIODS} activeId={period} onChange={choose} className="ph-head-nav" />
@@ -567,7 +583,7 @@ export function HealthTrendCard({
       </div>
       <div ref={ref} className="ph-chart ph-chart-fill" style={height ? { height, flex: "none" } : undefined}>
         {points.length < 2 ? (
-          <span className="ph-sub">Recording health on the plant clock — the trend draws after the first {HEALTH_STEP_MS / 1000} s.</span>
+          <span className="ph-sub">Recording health now. The line appears after {HEALTH_STEP_MS / 1000} seconds.</span>
         ) : (
           <svg
             width={width}
@@ -590,8 +606,12 @@ export function HealthTrendCard({
                 <stop offset="1" className="ph-stop" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <rect className="ph-band" data-tone="bad" x={padL} width={width - padL - padR} y={y(DANGER_BELOW)} height={y(AXIS_LO) - y(DANGER_BELOW)} />
-            <rect className="ph-band" data-tone="warn" x={padL} width={width - padL - padR} y={y(ALERT_BELOW)} height={y(DANGER_BELOW) - y(ALERT_BELOW)} />
+            {bands && (
+              <>
+                <rect className="ph-band" data-tone="bad" x={padL} width={width - padL - padR} y={y(bands.critical)} height={y(AXIS_LO) - y(bands.critical)} />
+                <rect className="ph-band" data-tone="warn" x={padL} width={width - padL - padR} y={y(bands.advisory)} height={y(bands.critical) - y(bands.advisory)} />
+              </>
+            )}
             {[40, 60, 80, 100].map((v) => (
               <g key={v}>
                 <line className="ph-grid dashed" x1={padL} x2={width - padR} y1={y(v)} y2={y(v)} />

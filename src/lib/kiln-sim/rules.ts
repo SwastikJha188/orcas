@@ -31,6 +31,12 @@ export interface RuleDef {
   action: string;
   /** Tags the rule reads. */
   inputs: string[];
+  /** Headline anyone can read: what is wrong, in everyday words (docs/plain-language.md). */
+  plainTitle?: string;
+  /** What is happening and why it matters, in everyday words (1–2 sentences). */
+  plainWhat?: string;
+  /** What to do next, as an instruction to a person (1 sentence). */
+  plainTodo?: string;
 }
 
 export const RULES: RuleDef[] = [
@@ -44,6 +50,9 @@ export const RULES: RuleDef[] = [
     cause: "Roller skew from settlement or wrong adjustment",
     consequence: "Tyre and roller surface wear, bearing overheating, axial load on thrust roller",
     action: "Check roller skew with the tyre-roller contact survey; re-adjust roller at the next stop",
+    plainTitle: "Kiln support rollers may be set at a skewed angle",
+    plainWhat: "The rollers the kiln turns on may be set at a slight angle, so their bearings slowly heat up and the roller that stops the kiln sliding downhill pushes harder. This wears rollers and heats bearings.",
+    plainTodo: "Check how each roller meets its riding ring and re-set any skewed roller at the next stop.",
     inputs: ["TMP-KLN-01", "TMP-KLN-02", "TMP-KLN-03", "TMP-KLN-04", "TMP-KLN-05", "TMP-KLN-06", "TMP-KLN-07", "TMP-KLN-08", "TMP-KLN-09", "TMP-KLN-10", "TMP-KLN-11", "TMP-KLN-12", "PRS-KLN-07"],
   },
   {
@@ -56,6 +65,9 @@ export const RULES: RuleDef[] = [
     cause: "Oil bath level or cooling water loss on one bearing",
     consequence: "Bearing seizure and roller shaft damage; oil-fire risk",
     action: "Check oil-bath level and cooling water on the hot bearing now; prepare to top up or switch cooling",
+    plainTitle: "One kiln roller bearing is heating up fast",
+    plainWhat: "One bearing of a roller the kiln turns on is heating quickly, likely from low oil or lost cooling water. It may seize and damage the roller shaft, and hot oil could catch fire.",
+    plainTodo: "Check the oil level and cooling water on the hot bearing now, and be ready to top up oil or switch cooling.",
     inputs: ["TMP-KLN-01", "TMP-KLN-02", "TMP-KLN-03", "TMP-KLN-04", "TMP-KLN-05", "TMP-KLN-06", "TMP-KLN-07", "TMP-KLN-08", "TMP-KLN-09", "TMP-KLN-10", "TMP-KLN-11", "TMP-KLN-12"],
   },
   {
@@ -68,6 +80,9 @@ export const RULES: RuleDef[] = [
     cause: "Alignment or foundation change shifting load onto one station",
     consequence: "Overloaded station bearings and shell ovality",
     action: "Schedule a kiln alignment survey; compare tyre clearance at the affected station",
+    plainTitle: "One kiln support station is carrying too much weight",
+    plainWhat: "All four bearings at one roller station that holds up the kiln are running hotter together. The kiln may have shifted out of line, overloading those bearings and pushing the tube out of round.",
+    plainTodo: "Book a kiln alignment survey and measure the riding ring clearance at the affected station.",
     inputs: ["TMP-KLN-01", "TMP-KLN-02", "TMP-KLN-03", "TMP-KLN-04", "TMP-KLN-05", "TMP-KLN-06", "TMP-KLN-07", "TMP-KLN-08", "TMP-KLN-09", "TMP-KLN-10", "TMP-KLN-11", "TMP-KLN-12"],
   },
   {
@@ -80,6 +95,9 @@ export const RULES: RuleDef[] = [
     cause: "Hydraulic pump, valve or leak in the thrust power unit",
     consequence: "Loss of axial control; kiln drifts onto the lower limit",
     action: "Inspect the thrust HPU: pump, relief valve and cylinder seals; restore pressure before the limit",
+    plainTitle: "Kiln is losing the pressure that holds it in place",
+    plainWhat: "The hydraulic unit behind the thrust roller (stops the kiln sliding downhill) is losing pressure, likely from a pump, valve, or leak problem. The kiln may drift down onto its lower stop.",
+    plainTodo: "Check the hydraulic pump unit, its relief valve, and cylinder seals, and restore pressure before the kiln reaches its stop.",
     inputs: ["PRS-KLN-07", "POS-KLN-01", "POS-KLN-02"],
   },
   {
@@ -92,6 +110,9 @@ export const RULES: RuleDef[] = [
     cause: "Thrust control set-point or roller skew pushing the kiln off centre",
     consequence: "Uneven tyre and roller wear; seal travel consumed",
     action: "Check thrust control set-point and roller skew; restore floating within ±20 mm",
+    plainTitle: "Kiln is off centre or not moving back and forth",
+    plainWhat: "The kiln should drift slowly back and forth along its length, but it is over 22 mm off centre or has moved under 3 mm in six hours. Rings and rollers then wear unevenly and the end seals run short.",
+    plainTodo: "Check the thrust control setting and roller angles, and bring the kiln back to within 20 mm of centre.",
     inputs: ["POS-KLN-01", "PRS-KLN-07"],
   },
   {
@@ -104,6 +125,9 @@ export const RULES: RuleDef[] = [
     cause: "Bearing fatigue or grease / oil degradation",
     consequence: "Bearing failure; gearbox repair has weeks of lead time",
     action: "Take an envelope spectrum on the bearing; plan bearing inspection at the next stop",
+    plainTitle: "A bearing in the kiln drive may be failing",
+    plainWhat: "Vibration in the motor or gearbox that turns the kiln is well above normal, with temperature rising too. A bearing may be worn or its lubricant breaking down, and a gearbox repair can take weeks.",
+    plainTodo: "Take a detailed vibration reading on the bearing and plan to inspect it at the next stop.",
     inputs: ["VIB-KLN-01", "VIB-KLN-02", "VIB-KLN-03", "TMP-KLN-19", "TMP-KLN-22", "TMP-KLN-23"],
   },
   {
@@ -116,6 +140,9 @@ export const RULES: RuleDef[] = [
     cause: "Thermal growth or base settling",
     consequence: "Coupling and bearing damage on motor and gearbox",
     action: "Laser-align the motor–gearbox coupling at the next stop",
+    plainTitle: "Kiln motor and gearbox may be out of line",
+    plainWhat: "Vibration is up on both sides of the coupling that joins the kiln's drive motor to its gearbox. Heat or a settling base may have pushed them out of line, damaging the coupling and bearings.",
+    plainTodo: "Re-align the motor and gearbox coupling with a laser tool at the next stop.",
     inputs: ["VIB-KLN-01", "VIB-KLN-02"],
   },
   {
@@ -128,6 +155,9 @@ export const RULES: RuleDef[] = [
     cause: "Fouled oil cooler or cooling water loss",
     consequence: "Oil degradation and gearbox bearing overheating",
     action: "Check cooler water flow and ΔT; clean the cooler; take an oil sample",
+    plainTitle: "Kiln gearbox oil is running too hot",
+    plainWhat: "The oil in the gearbox that turns the kiln is hotter than expected at normal load. Its oil cooler may be dirty or short of cooling water. Hot oil breaks down and overheats the gearbox bearings.",
+    plainTodo: "Check the water flow and temperature difference across the oil cooler, clean the cooler, and take an oil sample.",
     inputs: ["TMP-KLN-15", "ELE-KLN-01", "PRS-KLN-04", "TMP-KLN-22", "TMP-KLN-23"],
   },
   {
@@ -140,6 +170,9 @@ export const RULES: RuleDef[] = [
     cause: "Rubbing or friction in the drive train",
     consequence: "Motor overheating and drive trip",
     action: "Walk down the drive for rubbing; check girth-gear guard and pinion bearings",
+    plainTitle: "Kiln drive is working harder than it should",
+    plainWhat: "The motor turning the kiln is pulling more force than expected, and its windings and gearbox oil are warming too. Something in the drive may be rubbing, and the motor may overheat and trip.",
+    plainTodo: "Walk along the drive looking for rubbing, and check the ring gear guard and the drive gear bearings.",
     inputs: ["ELE-KLN-01", "TMP-KLN-21", "TMP-KLN-15", "TMP-KLN-22", "TMP-KLN-23"],
   },
   {
@@ -152,6 +185,9 @@ export const RULES: RuleDef[] = [
     cause: "Misalignment, runout or spray failure",
     consequence: "Girth-gear and pinion tooth damage",
     action: "Check pinion alignment and tooth contact pattern; verify spray",
+    plainTitle: "Kiln drive gear teeth may be wearing",
+    plainWhat: "The small gear that drives the large ring gear around the kiln is vibrating well above normal. It may be out of line, running out of true, or missing its lubricant spray, which damages the teeth.",
+    plainTodo: "Check the drive gear's alignment and how its teeth meet the ring gear, and make sure the lubricant spray is working.",
     inputs: ["VIB-KLN-04", "STS-KLN-05"],
   },
   {
@@ -164,6 +200,9 @@ export const RULES: RuleDef[] = [
     cause: "Pump wear, filter blockage, leak or low level",
     consequence: "Gearbox bearing and gear damage within minutes of oil loss",
     action: "Start standby pump; check filter ΔP and tank level immediately",
+    plainTitle: "Kiln gearbox is losing its oil supply",
+    plainWhat: "Oil pressure in the gearbox that turns the kiln is dropping. The oil pump may be worn, the filter blocked, or oil leaking or low. Without oil, gears and bearings are damaged within minutes.",
+    plainTodo: "Start the standby oil pump now, then check whether the oil filter is blocked and how full the oil tank is.",
     inputs: ["PRS-KLN-04", "FLO-KLN-05", "LEV-KLN-01", "TMP-KLN-15"],
   },
   {
@@ -176,6 +215,9 @@ export const RULES: RuleDef[] = [
     cause: "Spray controller, air supply or empty reservoir",
     consequence: "Open gear runs dry; accelerated tooth wear",
     action: "Restore the spray system; check reservoir and air supply",
+    plainTitle: "Kiln ring gear is not getting lubricant",
+    plainWhat: "The spray that coats the large ring gear around the kiln with lubricant has a fault, possibly its controller, air supply, or an empty tank. The open gear then runs dry and its teeth wear fast.",
+    plainTodo: "Get the gear spray working again, checking the lubricant tank and its air supply.",
     inputs: ["STS-KLN-05"],
   },
   {
@@ -188,6 +230,9 @@ export const RULES: RuleDef[] = [
     cause: "Power, clutch or engine fault on the auxiliary drive",
     consequence: "Hot kiln cannot be turned after a main-drive stop; shell bends",
     action: "Restore auxiliary drive readiness before the next planned stop",
+    plainTitle: "Kiln backup drive is not ready",
+    plainWhat: "The backup drive that turns the kiln when the main motor stops is not ready, possibly from a power, clutch, or engine fault. A hot kiln that cannot be turned after a stop will bend.",
+    plainTodo: "Get the backup drive ready again before the next planned stop.",
     inputs: ["STS-KLN-11"],
   },
   {
@@ -200,6 +245,9 @@ export const RULES: RuleDef[] = [
     cause: "Refractory spalling or chemical attack",
     consequence: "Shell overheating and deformation; emergency stop",
     action: "Confirm with a handheld pyrometer; prepare shell cooling fans; plan a refractory stop",
+    plainTitle: "Hot spot on the kiln shell",
+    plainWhat: "Part of the kiln's steel shell is hotter than expected or heating fast. The heat-proof brick lining inside may have broken away there. The shell can overheat and warp, forcing an emergency stop.",
+    plainTodo: "Confirm the hot spot with a handheld temperature gun, get the shell cooling fans ready, and plan a stop to reline.",
     inputs: ["CAL-KLN-03", "STS-KLN-08"],
   },
   {
@@ -212,6 +260,9 @@ export const RULES: RuleDef[] = [
     cause: "Sulfur / alkali cycle or burner setting",
     consequence: "Material flow restriction and torque rise",
     action: "Review burner momentum and raw-meal chemistry; plan a ring-removal strategy",
+    plainTitle: "Material may be building up inside the kiln",
+    plainWhat: "A cooler band on the kiln shell and higher drive force suggest a ring of material is building up inside, likely from the feed chemistry or burner setting. It blocks material flow and loads the drive.",
+    plainTodo: "Review the burner setting and the raw material chemistry, and plan how to remove the ring.",
     inputs: ["CAL-KLN-03", "ELE-KLN-01", "STS-KLN-08", "TMP-KLN-21", "TMP-KLN-15"],
   },
   {
@@ -224,6 +275,9 @@ export const RULES: RuleDef[] = [
     cause: "Lamella or block wear on the inlet seal",
     consequence: "Fuel lost to false air; unstable combustion",
     action: "Inspect the inlet seal lamellae; adjust or replace worn segments",
+    plainTitle: "Air may be leaking in at the kiln's feed-end seal",
+    plainWhat: "Oxygen is up and the gas at the kiln's feed end is cooler, so the seal between the turning kiln and its fixed housing may be worn and letting in air. This wastes fuel and unsettles the flame.",
+    plainTodo: "Inspect the plates of the feed-end seal and adjust or replace worn sections.",
     inputs: ["GAS-KLN-01", "TMP-KLN-13", "PRS-KLN-01", "CAL-KLN-06"],
   },
   {
@@ -236,6 +290,9 @@ export const RULES: RuleDef[] = [
     cause: "Fan stop or seal plate wear",
     consequence: "Outlet seal plates overheat; hot dust released at the hood",
     action: "Restart the seal cooling fan; check hood draft and seal plates",
+    plainTitle: "Kiln outlet seal may be overheating or leaking",
+    plainWhat: "The fan that cools the seal at the kiln's discharge end has stopped, or the hood there is losing its suction. The seal plates may overheat and hot dust can blow out at the hood.",
+    plainTodo: "Restart the seal cooling fan, then check the hood suction and the seal plates.",
     inputs: ["STS-KLN-10", "PRS-KLN-03"],
   },
   {
@@ -248,6 +305,9 @@ export const RULES: RuleDef[] = [
     cause: "Excess axial travel",
     consequence: "Seal disengages; false air and spillage",
     action: "Bring the kiln back toward centre with thrust control",
+    plainTitle: "Kiln has moved too far for its end seals",
+    plainWhat: "The kiln has shifted so far along its length that its end seals are running out of overlap. If a seal pulls clear, outside air leaks in and material spills out.",
+    plainTodo: "Use the thrust control to bring the kiln back toward the centre.",
     inputs: ["CAL-KLN-07", "POS-KLN-01"],
   },
   {
@@ -260,6 +320,9 @@ export const RULES: RuleDef[] = [
     cause: "Instrument, cable or analyser fault",
     consequence: "Affected signals are invalid; dependent rules are held",
     action: "Walk down the instrument and its cabling; check analyser probe or scanner window",
+    plainTitle: "A sensor reading cannot be trusted",
+    plainWhat: "A sensor is stuck, out of range, or reading zero vibration, or a gas analyser or shell scanner has a fault, likely in the instrument or its cable. Checks that rely on it are paused.",
+    plainTodo: "Check the sensor and its cable, and check the gas analyser probe or the shell scanner window.",
     inputs: [],
   },
   {
@@ -272,6 +335,9 @@ export const RULES: RuleDef[] = [
     cause: "Sensor drift, offset or calibration error",
     consequence: "Sensor isolated; the model substitutes witness estimates",
     action: "Calibrate or replace the flagged instrument; machine health unaffected",
+    plainTitle: "A sensor may be reading wrong",
+    plainWhat: "One sensor jumped implausibly or disagrees with related readings, so it has likely drifted or lost calibration. It is set aside and estimated from the others; the kiln itself is fine.",
+    plainTodo: "Calibrate or replace the flagged sensor.",
     inputs: [],
   },
   {
@@ -284,6 +350,9 @@ export const RULES: RuleDef[] = [
     cause: "Unknown — no supported fault pattern matches",
     consequence: "Investigation required",
     action: "Investigate the deviating signals; review recent operating changes",
+    plainTitle: "Unusual readings that match no known problem",
+    plainWhat: "Some readings are far from what is expected but match no known fault pattern. The cause is unknown and needs someone to look into it.",
+    plainTodo: "Look at the readings that moved and check what changed in how the kiln was run recently.",
     inputs: [],
   },
 ];

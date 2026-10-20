@@ -1,185 +1,88 @@
 /**
  * Sheet K-9 — KLN-01 · Rotary kiln — Outlet and hood.
  *
- * Composed as PDF page 22: the outlet end of the shell on tyre 3 / station 3
- * with the flame burning back from the burner tip; the cow shell (cooling
- * shroud, shown cut away) with its top and bottom air plenums around the
- * shell end, fed by the outlet cooling fan (volute, impeller, motor on a base
- * plate) through a flanged duct; the lamellar sector-plate seal (in section)
- * between shell and hood; the refractory-lined kiln hood with the burner pipe,
- * the burning-zone pyrometer on its roof sighting into the kiln, the hood
- * temperature and pressure tappings, clinker falling to the cooler throat and
- * secondary air rising from it.
+ * Panel "OUTLET AND HOOD" of group image 3A (page 7, panel box 1106.5 91 –
+ * 1612.5 540): the kiln shell outlet end on tyre 3 / station 3 with the flame
+ * inside, the cow shell (cooling shroud) round the outlet fed by the outlet
+ * cooling fan below, the outlet seal ring, the kiln hood with its lining, the
+ * burner pipe through the hood, the burning-zone pyrometer on the hood roof
+ * with its sight line into the flame, secondary air rising into the hood and
+ * clinker falling to the cooler.
  */
 import React from "react";
-import { Bolt, CornerBolts, Fan, GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
-import { Refractory, SideMotor } from "../../sheets/sb-parts";
+import { Bolt, CornerBolts, GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
+import { Volute } from "../../drawings/fkp-parts";
 import type { LineSheetArt } from "../types";
-import { Arrow, BoltFlange, KilnShell, Pier, RollerPair, Tyre } from "./parts-kb";
+import { ThermoProbe } from "./parts-ka";
+import { KilnShell, Pier, RollerPair, Tyre } from "./parts-kb";
+import { DashBox, Flow, FlowArrow, Glow, HotFace, ToneLabel, Transmitter } from "./parts-k2";
 
-const W = 824;
-const H = 704;
+const W = 506;
+const H = 449;
+const GROUND = 414;
 
-const SHELL = { x: 23.5, y: 248, w: 479.5, h: 135.5 };
-const AXIS = SHELL.y + SHELL.h / 2;
-const GROUND = 660;
-const HOOD = { x: 518.5, y: 98, w: 240, h: 517.5 };
-/* outlet cooling fan */
-const FAN = { cx: 440, cy: 547, r: 37 };
-const DUCT_X = 413;
+const SHELL = { x: 22.5, y: 169, w: 292.5, h: 80 };
+const HOOD = { x: 315, y: 81, w: 142, h: 305.5 };
+const COW = { x: 217, y: 155, w: 94, h: 109 };
+const FAN = { cx: 270, cy: 347, r: 24 };
 
-function KilnEnd() {
+function OutletEnd() {
   return (
     <g>
-      <Pier cx={143} top={456.5} bottom={GROUND} wTop={101.5} wBot={120} />
-      <RollerPair cx={143} cy={420} r={20} gap={57} frameY={444} frameW={129.5} frameH={12.5} />
-      <KilnShell x={SHELL.x} y={SHELL.y} w={SHELL.w} h={SHELL.h} seam={68.5} />
-      <Tyre cx={143.25} y={239} w={30.5} h={153.5} shellTop={SHELL.y} shellBot={SHELL.y + SHELL.h} />
-    </g>
-  );
-}
-
-/** Flame from the burner tip back into the burning zone (brass, soft layers). */
-function Flame() {
-  const layers: Array<[number, number, number, number]> = [
-    [400, 150, 44, 0.1],
-    [430, 118, 36, 0.14],
-    [458, 88, 28, 0.2],
-    [480, 62, 21, 0.3],
-    [496, 40, 13, 0.42],
-  ];
-  return (
-    <g aria-hidden="true">
-      {layers.map(([cx, rx, ry, o]) => (
-        <ellipse key={cx} cx={cx} cy={AXIS} rx={rx} ry={ry} fill={MX.material} opacity={o} />
-      ))}
-    </g>
-  );
-}
-
-function CowShell() {
-  const x0 = 353;
-  const x1 = 511;
-  const plenum = (y: number) => (
-    <g>
-      <rect x={x0} y={y} width={x1 - x0 - 8} height={21} rx={5} {...PAINT.body} />
-      {Array.from({ length: 9 }).map((_, i) => (
-        <rect key={i} x={x0 + 10 + i * 15.5} y={y + (y < AXIS ? 15 : 2)} width={9} height={4} rx={1} {...PAINT.recess} />
-      ))}
-      <Bolt x={x0 + 5} y={y + 10.5} r={1.2} />
-      <Bolt x={x1 - 13} y={y + 10.5} r={1.2} />
-    </g>
-  );
-  return (
-    <g>
-      {/* shroud outline, cut away over the shell */}
-      <rect x={x0} y={223} width={x1 - x0} height={185.5} rx={10} fill="none" stroke={MX.edge} strokeWidth={1.2} strokeDasharray="7 4" />
-      {plenum(223)}
-      {plenum(387.5)}
-      {/* surface thermometer boss on the top plenum */}
-      <rect x={444} y={216} width={13} height={8} rx={1.5} {...PAINT.raised} />
-    </g>
-  );
-}
-
-function SectorSeal() {
-  const stack = (y0: number, y1: number) => (
-    <g>
-      <rect x={486} y={y0} width={21} height={y1 - y0} rx={3} {...PAINT.recess} />
-      {Array.from({ length: Math.floor((y1 - y0) / 5) }).map((_, i) => (
-        <rect key={i} x={488} y={y0 + 2 + i * 5} width={17} height={4} rx={0.8} fill={MX.raised} stroke={MX.edge} strokeWidth={0.6} />
-      ))}
-    </g>
-  );
-  return (
-    <g>
-      {stack(258.5, 290)}
-      {stack(341.5, 372.5)}
-      <rect x={505} y={252} width={14} height={127} rx={3} {...PAINT.body} />
+      <Pier cx={93.5} top={293} bottom={GROUND} wTop={59.5} wBot={71} />
+      <RollerPair cx={93.25} cy={272.5} r={11.5} gap={33.5} frameY={285.5} frameW={76.5} frameH={7.5} />
+      <KilnShell x={SHELL.x} y={SHELL.y} w={SHELL.w} h={SHELL.h} seam={30.5} />
+      <Glow cx={290} cy={209} rx={110} ry={30} core={0.55} />
+      <Glow cx={287.5} cy={209} rx={50} ry={15} core={1} />
+      <Tyre cx={93} y={164} w={18} h={91} shellTop={SHELL.y} shellBot={SHELL.y + SHELL.h} />
+      {/* outlet seal ring */}
+      <rect x={297} y={175.5} width={11} height={68} rx={2.5} {...PAINT.raised} />
+      <rect x={297} y={175.5} width={11} height={68} rx={2.5} fill={MX.heat} opacity={0.45} />
     </g>
   );
 }
 
 function CoolingFan() {
-  const { cx, cy, r } = FAN;
-  const ow = 20;
-  const yj = cy - Math.sqrt(r * r - (r - ow) * (r - ow));
-  const top = 490;
   return (
     <g>
-      {/* duct from the fan to the bottom plenum */}
-      <rect x={DUCT_X - 9.25} y={408.5} width={18.5} height={top - 408.5} {...PAINT.cylinderV} />
-      <BoltFlange x={DUCT_X} y={413} w={18.5} />
-      <BoltFlange x={DUCT_X} y={486} w={18.5} />
-      {/* base plate, pedestals, motor */}
-      <rect x={353} y={600} width={150} height={11} rx={2} {...PAINT.body} />
-      {[360, 380, 420, 460, 496].map((bx) => (
-        <Bolt key={bx} x={bx} y={605.5} r={1.3} />
+      {/* supply duct up into the cow shell, temperature tap on it */}
+      <rect x={248} y={COW.y + COW.h} width={10} height={FAN.cy - FAN.r - 2 - COW.y - COW.h} {...PAINT.cylinderV} />
+      <rect x={244.5} y={COW.y + COW.h} width={17} height={4} rx={1.2} {...PAINT.raised} />
+      <rect x={217.5} y={378} width={88.5} height={6.5} rx={1.5} {...PAINT.raised} />
+      <Bolt x={223} y={381.2} r={1.2} />
+      <Bolt x={300} y={381.2} r={1.2} />
+      <Volute cx={FAN.cx} cy={FAN.cy} r={FAN.r} outH={2} dir={-1} />
+      {/* fan motor */}
+      <rect x={296} y={339} width={8} height={7} {...PAINT.shaft} />
+      <rect x={303} y={330} width={14} height={30} rx={4} {...PAINT.body} />
+      {[336, 341, 346, 351, 355].map((y) => (
+        <line key={y} x1={305.5} x2={314.5} y1={y} y2={y} {...PAINT.hair} />
       ))}
-      <path d={`M ${cx - r * 0.6} ${cy + r * 0.6} H ${cx + r * 0.6} L ${cx + r * 0.75} 600 H ${cx - r * 0.75} Z`} {...PAINT.body} />
-      <rect x={cx} y={cy - 3} width={48} height={6} rx={1.5} {...PAINT.shaft} />
-      <rect x={480} y={538} width={8} height={18} rx={2} {...PAINT.raised} />
-      <SideMotor x={490} y={533} w={26} h={28} flip />
-      <rect x={490} y={561} width={24} height={39} rx={1.5} {...PAINT.body} />
-      {/* volute */}
-      <path d={`M ${cx - r} ${top} L ${cx - r} ${cy} A ${r} ${r} 0 1 0 ${cx - r + ow} ${yj.toFixed(1)} L ${cx - r + ow} ${top} Z`} {...PAINT.body} />
-      <circle cx={cx} cy={cy} r={r * 0.8} fill="none" stroke={MX.fine} strokeWidth={MX.wFine} />
-      {Array.from({ length: 8 }).map((_, i) => {
-        const a = (i / 8) * Math.PI * 2 + 0.4;
-        return <Bolt key={i} x={cx + Math.cos(a) * r * 0.9} y={cy + Math.sin(a) * r * 0.9} r={1.3} />;
-      })}
-      <Fan cx={cx} cy={cy} r={r * 0.62} />
+      <rect x={300} y={360} width={18} height={18} rx={1.5} fill={MX.flatBody} stroke={MX.fine} strokeWidth={MX.wFine} />
     </g>
   );
 }
 
 function Hood() {
-  const { x, y, w, h } = HOOD;
-  const lumps: Array<[number, number, number]> = [];
-  for (let i = 0; i < 22; i++) {
-    const t = i / 21;
-    lumps.push([+(551 + 26 * t + ((i * 7) % 5) * 2.2).toFixed(1), +(386 + 208 * t).toFixed(1), 1.8 + ((i * 5) % 3) * 0.6]);
-  }
   return (
     <g>
-      {/* roof pyrometer and its sight line into the burning zone */}
-      <rect x={615} y={67.5} width={46} height={30.5} rx={5} {...PAINT.raised} />
-      <rect x={608} y={93} width={60} height={6} rx={1.5} {...PAINT.body} />
-      <rect x={x} y={y} width={w} height={h} rx={12} {...PAINT.body} />
-      <rect x={x + 6} y={y + 6} width={w - 12} height={h - 12} rx={8} fill="none" stroke={MX.fine} strokeWidth={MX.wFine} />
-      <CornerBolts x={x} y={y} w={w} h={h} inset={12} r={2} />
-      <Refractory x={x} y={113} w={25.5} h={487.5} course={7} brick={13} />
-      {/* stiffener ribs */}
-      {[690].map((rx) => (
-        <g key={rx}>
-          <line x1={rx} x2={rx} y1={y + 8} y2={y + h - 8} {...PAINT.hair} />
-          <line x1={rx + 4} x2={rx + 4} y1={y + 8} y2={y + h - 8} {...PAINT.hair} />
-        </g>
-      ))}
-      {/* inspection door */}
-      <rect x={620} y={150} width={56} height={70} rx={5} {...PAINT.raised} />
-      <rect x={626} y={156} width={44} height={58} rx={3} fill="none" stroke={MX.fine} strokeWidth={0.8} />
-      <CornerBolts x={620} y={150} w={56} h={70} inset={4} r={1.2} />
-      <rect x={668} y={180} width={10} height={10} rx={2} {...PAINT.shaft} />
-      {/* cooler throat with falling clinker */}
-      <rect x={556} y={598} width={184} height={17.5} rx={3} {...PAINT.recess} />
-      {lumps.map(([lx, ly, lr]) => (
-        <circle key={`${lx}-${ly}`} cx={lx} cy={ly} r={lr} {...PAINT.material} />
-      ))}
-      {/* hood temperature thermowell and pressure tapping through the right wall */}
-      {[188, 480.5].map((ty) => (
-        <g key={ty}>
-          <rect x={725} y={ty - 2} width={36} height={4} {...PAINT.shaft} />
-          <rect x={758.5} y={ty - 7} width={11} height={14} rx={2.5} {...PAINT.raised} />
-        </g>
-      ))}
-      {/* burner pipe through the hood wall */}
-      <rect x={548.5} y={306} width={273.5} height={19} rx={3} {...PAINT.shaft} />
-      <rect x={541} y={303} width={9} height={25} rx={2.5} {...PAINT.raised} />
-      {[700, 756, 790].map((fx) => (
-        <rect key={fx} x={fx - 2.5} y={301} width={5} height={29} rx={1.2} {...PAINT.raised} />
-      ))}
-      <line x1={622.5} y1={98} x2={422.5} y2={300} stroke={MX.label} strokeWidth={1} strokeDasharray="3 4" opacity={0.85} />
+      <rect x={HOOD.x} y={HOOD.y} width={HOOD.w} height={HOOD.h} rx={8} {...PAINT.body} />
+      <HotFace x={HOOD.x} y={90} w={15} h={288} rx={4} heat={0.5} />
+      <CornerBolts x={HOOD.x} y={HOOD.y} w={HOOD.w} h={HOOD.h} inset={7} r={1.4} />
+      {/* burner pipe through the hood */}
+      <rect x={331} y={203.5} width={164} height={12.5} rx={2} {...PAINT.cylinder} />
+      <rect x={HOOD.x + HOOD.w - 3} y={199} width={7} height={21.5} rx={1.5} {...PAINT.raised} />
+      {/* burning-zone pyrometer on the hood roof, sight line into the flame */}
+      <rect x={372} y={62.5} width={28} height={18.5} rx={3} {...PAINT.body} />
+      <rect x={372} y={62.5} width={28} height={18.5} rx={3} fill={MX.air} opacity={0.35} />
+      <Flow pts={[[380, 81], [257.5, 200]]} color={MX.air} dash="4 3" w={1} opacity={0.85} />
+      {/* hood thermocouple and pressure tap through the right wall */}
+      <ThermoProbe x={HOOD.x + HOOD.w + 12} y={134} len={28} dir={-1} head={10} />
+      <rect x={441.5} y={305.5} width={25} height={3} {...PAINT.shaft} />
+      <Transmitter x={472} y={307} w={11} h={14} />
+      {/* secondary air up into the hood, clinker down to the cooler */}
+      <FlowArrow x1={355} y1={405} x2={355} y2={372} color={MX.air} />
+      <FlowArrow x1={390.5} y1={369} x2={390.5} y2={405} color={MX.material} />
     </g>
   );
 }
@@ -187,44 +90,53 @@ function Hood() {
 function Art() {
   return (
     <g>
-      <KilnEnd />
-      <Flame />
-      <CowShell />
-      <SectorSeal />
+      <GroundLine x1={22.5} x2={484} y={GROUND} />
+      <OutletEnd />
       <CoolingFan />
       <Hood />
-      <GroundLine x1={22.5} x2={803.5} y={GROUND} />
-      <Arrow x1={585.5} y1={647} x2={585.5} y2={598} />
-      <Arrow x1={645.5} y1={600} x2={645.5} y2={648} />
+      <DashBox x={COW.x} y={COW.y} w={COW.w} h={COW.h} color={MX.air} rx={6} />
 
-      <MachineLabel x={88.5} y={677.6} anchor="start" size={8.2}>TYRE 3 / STATION 3</MachineLabel>
-      <MachineLabel x={398} y={426.6} anchor="end" size={8.2}>COW SHELL (COOLING SHROUD)</MachineLabel>
-      <MachineLabel x={552} y={264} anchor="start" size={7.5}>SECTOR PLATES</MachineLabel>
-      <MachineLabel x={375.5} y={629} anchor="start" size={8.2}>OUTLET COOLING FAN</MachineLabel>
-      <MachineLabel x={721} y={299} anchor="start" size={8.2}>BURNER (B-1)</MachineLabel>
-      <MachineLabel x={660.5} y={644} anchor="start" size={8.2}>CLINKER TO COOLER</MachineLabel>
-      <MachineLabel x={490} y={644} anchor="start" size={8.2}>SECONDARY AIR</MachineLabel>
-      <MachineLabel x={605} y={538.7} anchor="start" size={9}>KILN HOOD</MachineLabel>
+      <ToneLabel x={243} y={277} color={MX.air} anchor="end" size={6}>
+        COW SHELL (COOLING SHROUD)
+      </ToneLabel>
+      <MachineLabel x={266} y={396} size={6}>
+        OUTLET COOLING FAN
+      </MachineLabel>
+      <MachineLabel x={385.5} y={342} size={6.5} tone="ink">
+        KILN HOOD
+      </MachineLabel>
+      <MachineLabel x={466} y={197} size={6}>
+        BURNER
+      </MachineLabel>
+      <ToneLabel x={349} y={404} color={MX.air} anchor="end" size={6}>
+        SECONDARY AIR
+      </ToneLabel>
+      <ToneLabel x={398} y={404} color={MX.material} size={6}>
+        CLINKER TO COOLER
+      </ToneLabel>
+      <MachineLabel x={93} y={426} size={6}>
+        TYRE 3 / STATION 3
+      </MachineLabel>
     </g>
   );
 }
 
-/** Pad centre per point (sheet units), as on PDF page 22. */
+/** Pad centre per point (sheet units), as on group image 3A, right panel. */
 const pads: LineSheetArt["pads"] = {
-  "TMP-KLN-25": [412, 450.5],
-  "TMP-KLN-26": [450.5, 222.5],
-  "TMP-KLN-14": [638, 83],
-  "TMP-KLN-27": [731.5, 188],
-  "PRS-KLN-03": [731.5, 480.5],
+  "TMP-KLN-25": [252.5, 289],
+  "TMP-KLN-26": [275, 154.5],
+  "TMP-KLN-14": [386, 71.5],
+  "TMP-KLN-27": [441.5, 134],
+  "PRS-KLN-03": [441.5, 307],
 };
 
-/** Tag chip centre per point, as on PDF page 22. */
-const chips: NonNullable<LineSheetArt["chips"]> = {
-  "TMP-KLN-25": [333.5, 488],
-  "TMP-KLN-26": [387, 162.5],
-  "TMP-KLN-14": [537, 30.5],
-  "TMP-KLN-27": [653, 128],
-  "PRS-KLN-03": [787.5, 548],
+/** Plate side per point (end = plate left of the pad, along the shell or across the hood). */
+const callouts: LineSheetArt["callouts"] = {
+  "TMP-KLN-25": [240, 289, "end"],
+  "TMP-KLN-26": [263, 154.5, "end"],
+  "TMP-KLN-14": [374, 71.5, "end"],
+  "TMP-KLN-27": [429, 134, "end"],
+  "PRS-KLN-03": [429, 307, "end"],
 };
 
-export const sheet: LineSheetArt = { id: "K-9", ready: true, width: W, height: H, Art, pads, chips };
+export const sheet: LineSheetArt = { id: "K-9", ready: true, width: W, height: H, Art, pads, callouts };

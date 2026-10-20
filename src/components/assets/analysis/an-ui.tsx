@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { StatusTag } from "@/components/ui/status-tag";
 import { alertTone, Fact, type FactItem } from "@/components/ui/kpi";
 import { PillButton } from "@/components/ui/pill-button";
@@ -9,6 +10,7 @@ import { useIndustrialData } from "@/providers/industrial-data-context";
 import type { AssetMachine } from "../assets-data";
 import type { AssetsSubPage } from "../assets-view";
 import type { Tone } from "../assets-shell-ui";
+import type { WorkOrderPriorityDto } from "@/types/monitoring";
 import { focusSensorOn } from "../sensor-focus";
 import "./analysis-page.css";
 
@@ -54,17 +56,21 @@ export const realFaults = (d: AnalysisData) => d.faults.filter((f) => f.id !== "
 export const realSources = (d: AnalysisData) => d.sources.filter((s) => s.id !== "src-baseline" && s.severity !== "Normal");
 export const openActions = (d: AnalysisData) => d.actions.filter((a) => a.id !== "routine");
 
-export const PRIORITIES = ["Immediate", "High", "Medium", "Low"] as const;
-export type Priority = (typeof PRIORITIES)[number];
+/** Work-order priority name (DB `useWorkOrderPriorities`, most urgent first). */
+export type Priority = string;
 
-export const PRIORITY_TONE: Record<Priority, Tone> = {
-  Immediate: "bad",
-  High: "warn",
-  Medium: "info",
-  Low: "idle",
-};
+/** Position of a priority name in the DB order (0 = most urgent); unknown names, or priorities still loading, sort last. */
+export function priorityRank(name: string, priorities: readonly WorkOrderPriorityDto[] | null): number {
+  const i = priorities ? priorities.findIndex((p) => p.name === name) : -1;
+  return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+}
 
-export const sevTone = (s: Severity): Tone => (s === "Critical" ? "bad" : s === "Advisory" ? "warn" : "good");
+const RANK_TONE: Tone[] = ["bad", "warn", "info"];
+
+/** Tone of a priority by its urgency rank: the three most urgent bad / warn / info, the rest idle. */
+export const priorityTone = (name: string, priorities: readonly WorkOrderPriorityDto[] | null): Tone => RANK_TONE[priorityRank(name, priorities)] ?? "idle";
+
+export const sevTone = (s: Severity): Tone => (s === "Critical" ? "bad" : s === "Alert" ? "warn" : "good");
 export const stageTone = (stage: number): Tone => (stage >= 4 ? "bad" : stage >= 3 ? "warn" : "good");
 export const STAGE_MAX = 5;
 
@@ -111,6 +117,14 @@ export interface PageMetaItem {
 }
 
 /**
+ * Where page headers render. The Assets workspace provides its second bar here, so a
+ * machine page's header sits in the bar row (the Operator view's sheet row) and the
+ * page toggle stays in the third bar on every page. Null (popups, elsewhere): in place.
+ */
+export const PageHeaderSlot = createContext<HTMLElement | null>(null);
+const CONDITION_WORDS = ["Normal", "Alert", "Critical"] as const;
+
+/**
  * One row: h2 title + inline status (dot + label, tinted only when not
  * Normal) + muted `Label value` meta pairs (max 4) + right-aligned actions
  * (pill buttons, max 3). Meta wraps under the title only on narrow widths.
@@ -128,16 +142,20 @@ export function PageHeader({
   meta?: (PageMetaItem | null | false | undefined | "")[];
   actions?: React.ReactNode;
 }) {
-  const t = status ? alertTone(status.tone) : undefined;
+  const slot = useContext(PageHeaderSlot);
+  // In the Assets bar the machine's condition sits in the status bar right below: a bare
+  // Normal / Alert / Critical here would only repeat it. Page-own statuses still show.
+  const shown = slot && status && (CONDITION_WORDS as readonly string[]).includes(status.label) ? null : status;
+  const t = shown ? alertTone(shown.tone) : undefined;
   const pairs = meta.filter(Boolean).slice(0, 4) as PageMetaItem[];
-  return (
+  const head = (
     <header className="pg-frame-head">
       <div className="pg-frame-head-main">
         <h2 className="pg-frame-title">{title}</h2>
-        {status && (
+        {shown && (
           <span className="pg-frame-status" data-tone={t}>
             <span className="ast-chip-dot" aria-hidden="true" />
-            {status.label}
+            {shown.label}
           </span>
         )}
         {pairs.length > 0 && (
@@ -145,7 +163,8 @@ export function PageHeader({
             {pairs.map((m) => (
               <div key={m.label} title={m.title ?? (typeof m.value === "string" ? m.value : undefined)}>
                 <dt>{m.label}</dt>
-                <dd className="ast-num">{m.value}</dd>
+                {/* Numbers and times in the number font; plain words stay in the UI font. */}
+                <dd className={typeof m.value === "string" && !/\d/.test(m.value) ? undefined : "ast-num"}>{m.value}</dd>
               </div>
             ))}
           </dl>
@@ -154,6 +173,7 @@ export function PageHeader({
       {actions && <div className="pg-frame-actions">{actions}</div>}
     </header>
   );
+  return slot ? createPortal(head, slot) : head;
 }
 
 /* ------------------------------------------------------------------ */
@@ -204,7 +224,18 @@ export function Empty({ title, children }: { title: string; children?: React.Rea
 
 export function Chevron({ className = "" }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg
+      className={className}
+      viewBox="0 0 16 16"
+      width="12"
+      height="12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
       <path d="M6 3.5 10.5 8 6 12.5" />
     </svg>
   );
@@ -241,9 +272,7 @@ const ICON_PATHS: Record<Exclude<AnalysisModuleId, "overview"> | "sensor" | "det
   ),
   fault: <path d="M1 8h3l1.5-4 3 8 2-6 1.5 2H15" />,
   degradation: <path d="M1.5 3.5h3v3h3v3h3v3h4" />,
-  maintenance: (
-    <path d="M10.2 2.2a3.2 3.2 0 0 0-3.9 4.3L2 10.8a1.3 1.3 0 0 0 1.8 1.8l4.3-4.3a3.2 3.2 0 0 0 4.3-3.9l-2 2-1.8-.4-.4-1.8z" />
-  ),
+  maintenance: <path d="M10.2 2.2a3.2 3.2 0 0 0-3.9 4.3L2 10.8a1.3 1.3 0 0 0 1.8 1.8l4.3-4.3a3.2 3.2 0 0 0 4.3-3.9l-2 2-1.8-.4-.4-1.8z" />,
   xai: (
     <>
       <circle cx="8" cy="3" r="1.6" />
@@ -260,10 +289,19 @@ const ICON_PATHS: Record<Exclude<AnalysisModuleId, "overview"> | "sensor" | "det
   ),
 };
 
-
 export function Icon({ id }: { id: keyof typeof ICON_PATHS }) {
   return (
-    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
       {ICON_PATHS[id]}
     </svg>
   );
@@ -279,16 +317,30 @@ export function Badge({ id, tone }: { id: keyof typeof ICON_PATHS; tone?: Tone }
 }
 
 /** Leading badge + title + muted sub line, for table cells. */
-export function ItemCell({ icon, tone, title, sub }: { icon: keyof typeof ICON_PATHS; tone?: Tone; title: string; sub?: string }) {
+export function ItemCell({
+  icon,
+  tone,
+  title,
+  sub,
+  titleTip,
+  subTip,
+}: {
+  icon: keyof typeof ICON_PATHS;
+  tone?: Tone;
+  title: string;
+  sub?: string;
+  /** Tooltips when they differ from the text (e.g. the raw text with IDs). */ titleTip?: string;
+  subTip?: string;
+}) {
   return (
     <span className="pg-analysis-item">
       <Badge id={icon} tone={tone} />
       <span className="ast-cell-stack">
-        <span className="ast-cell-title" title={title}>
+        <span className="ast-cell-title" title={titleTip ?? title}>
           {title}
         </span>
         {sub && (
-          <span className="ast-cell-sub" title={sub}>
+          <span className="ast-cell-sub" title={subTip ?? sub}>
             {sub}
           </span>
         )}
@@ -340,8 +392,7 @@ function scrollParent(el: HTMLElement | null): HTMLElement | null {
 /** The section most recently requested through the index (honoured when the page cannot scroll it to the top). */
 let requestedSection: string | null = null;
 
-const prefersReducedMotion = () =>
-  typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+const prefersReducedMotion = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
 /** Scroll a section into view (sections carry scroll-margin for the sticky index). */
 export function scrollToSection(id: string): void {
@@ -429,17 +480,7 @@ export function useScrollSpy(ids: string[], anchorRef: React.RefObject<HTMLEleme
  * tabs). Scrolls to a section on click. On mount it honours a `#section-id`
  * hash or a pending anchor stored in sessionStorage under `pendingKey`.
  */
-export function SectionIndex({
-  items,
-  label,
-  pendingKey,
-  right,
-}: {
-  items: SectionIndexItem[];
-  label: string;
-  pendingKey?: string;
-  right?: React.ReactNode;
-}) {
+export function SectionIndex({ items, label, pendingKey, right }: { items: SectionIndexItem[]; label: string; pendingKey?: string; right?: React.ReactNode }) {
   const ref = useRef<HTMLElement | null>(null);
   const ids = items.map((i) => i.id);
   const active = useScrollSpy(ids, ref);
@@ -541,7 +582,7 @@ export function Section({
  * Derived-value marker: a tiny muted suffix (default "est."), never a pill.
  * "AI" / "model" / "calc." labels are normalised to "est.".
  */
-export function AiTag({ label = "est.", title = "Estimated by the model" }: { label?: string; title?: string }) {
+export function AiTag({ label = "est.", title = "Estimated, not measured" }: { label?: string; title?: string }) {
   const text = /^(ai|model|calc\.?)$/i.test(label.trim()) ? "est." : label;
   return (
     <span className="pg-analysis-ai" title={title}>
@@ -570,7 +611,7 @@ export function ConfidenceMeter({
     <span
       className={`pg-analysis-conf ${compact ? "is-compact" : ""}`}
       title={basis ? `${label}: ${basis}` : label}
-      aria-label={`${label} ${v === null ? "not validated" : `${Math.round(v)} %`}${basis ? ` (${basis})` : ""}`}
+      aria-label={`${label} ${v === null ? "not yet checked" : `${Math.round(v)} %`}${basis ? ` (${basis})` : ""}`}
       role="img"
     >
       {!compact && <span className="pg-analysis-conf-label">{label}</span>}
@@ -608,7 +649,7 @@ export function EvidenceChip({
       className="pg-analysis-ev"
       data-tone={t}
       onClick={open}
-      title={title ?? `Open ${tag} in ${page === "trends" ? "Trends" : "Sensors"}${detail ? ` · ${detail}` : ""}`}
+      title={title ?? `Open this sensor (${tag}) in ${page === "trends" ? "the trend chart" : "the sensor list"}${detail ? ` · ${detail}` : ""}`}
     >
       {t && <span className="ast-chip-dot" aria-hidden="true" />}
       <span className="pg-analysis-ev-tag">{tag}</span>
@@ -728,18 +769,7 @@ export function CausalChain({ steps, label = "Finding chain" }: { steps: ChainSt
 }
 
 /** Pointer to the page that owns the content: one row of facts and a link. Not a card. */
-export function PointerCard({
-  title,
-  facts,
-  action,
-  onOpen,
-}: {
-  title: string;
-  caption?: string;
-  facts: FactItem[];
-  action: string;
-  onOpen: () => void;
-}) {
+export function PointerCard({ title, facts, action, onOpen }: { title: string; caption?: string; facts: FactItem[]; action: string; onOpen: () => void }) {
   return (
     <div className="pg-analysis-pointer" role="group" aria-label={title}>
       <div className="pg-analysis-pointer-facts">
@@ -770,7 +800,7 @@ export function useElementWidth<T extends HTMLElement>(initial = 720): [React.Re
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const update = () => setW(Math.max(240, el.offsetWidth)) /* layout px; rects are zoomed on TV */;
+    const update = () => setW(Math.max(240, el.offsetWidth)); /* layout px; rects are zoomed on TV */
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);

@@ -116,7 +116,7 @@ export function bearingHit(c: EvalContext, machine: string, id: string, groups: 
   }
   if (!best) return;
   c.H(machine, id, {
-    severity: best.rt > 2.2 || measured[best.vib] >= warn ? "Critical" : "Advisory",
+    severity: best.rt > 2.2 || measured[best.vib] >= warn ? "Critical" : "Alert",
     evidence: `${best.label} vibration ×${best.rt.toFixed(2)} model${best.tmp ? ` with bearing +${best.dt.toFixed(1)} K` : ""}`,
     tags: best.tmp ? [best.vib, best.tmp] : [best.vib],
     subs: [best.sub],

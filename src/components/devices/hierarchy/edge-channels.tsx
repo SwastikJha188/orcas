@@ -31,7 +31,7 @@ export function MappingChip({ ch, onClick }: { ch: DetectedChannel; onClick?: ()
   const text = `${p.machineId ?? "No machine"} · ${p.signalTag ?? p.tag}`;
   if (!onClick) return <span className="dv-chip ast-num">{text}</span>;
   return (
-    <button type="button" className="dv-chip ast-num" onClick={onClick} aria-label={`Edit mapping of channel ${ch.id}: ${text}`} title="Edit mapping">
+    <button type="button" className="dv-chip ast-num" onClick={onClick} aria-label={`Change which machine channel ${ch.id} feeds: ${text}`} title="Change which machine this feeds">
       {text}
     </button>
   );
@@ -57,7 +57,7 @@ function CardTile({ gw, card, onMap, onOpen }: { gw: EdgeGateway; card: Detected
         Card {card.id}
         {card.isNew && <span className="dv-new">New</span>}
       </span>
-      <span className="dv-tile-type">{card.cardType ?? "Type not reported"}</span>
+      <span className="dv-tile-type">{card.cardType ?? "Type not sent"}</span>
       <span className="dv-tile-count ast-num">
         {card.config?.channelCount != null ? `${card.live}/${card.config.channelCount}` : card.channels.length} ch · {card.mapped} mapped
       </span>
@@ -88,7 +88,7 @@ function CardTile({ gw, card, onMap, onOpen }: { gw: EdgeGateway; card: Detected
               {ch.point ? (
                 <MappingChip ch={ch} onClick={() => onMap(mapTarget(gw, ch))} />
               ) : (
-                <button type="button" className="dv-map-btn" onClick={() => onMap(mapTarget(gw, ch))} aria-label={`Map ${ch.rack} card ${ch.card} channel ${ch.id}`}>
+                <button type="button" className="dv-map-btn" onClick={() => onMap(mapTarget(gw, ch))} aria-label={`Link ${ch.rack} card ${ch.card} channel ${ch.id} to a machine`}>
                   Map
                 </button>
               )}
@@ -121,17 +121,17 @@ export function DetectedSection({ gw, detection, subscription, now, onRegister, 
   const { heard, racks } = detection;
   const silent = heard.channels === 0 && heard.racks === 0;
   return (
-    <section className="hx-section" aria-label="Detected from data">
+    <section className="hx-section" aria-label="Found in the incoming data">
       <div className="dv-section-head">
         <h2 className="ast-section-label">
-          Detected from data
+          Found in the incoming data
           <span className="ast-num">
-            {silent ? "nothing received yet" : `${plural(heard.racks, "rack")} · ${plural(heard.cards, "card")} · ${plural(heard.channels, "channel")} detected`}
+            {silent ? "nothing received yet" : `${plural(heard.racks, "device")} · ${plural(heard.cards, "card")} · ${plural(heard.channels, "channel")} found`}
           </span>
         </h2>
         {pending.sources + pending.cards > 0 && (
-          <PillButton variant="primary" onClick={onAddDetected} disabled={adding} aria-label={`Register ${plural(pending.sources, "detected source")} and ${plural(pending.cards, "card")}`}>
-            {adding ? "Adding…" : `Add detected · ${[pending.sources ? plural(pending.sources, "source") : null, pending.cards ? plural(pending.cards, "card") : null].filter(Boolean).join(" · ")}`}
+          <PillButton variant="primary" onClick={onAddDetected} disabled={adding} aria-label={`Register ${plural(pending.sources, "found device")} and ${plural(pending.cards, "card")}`}>
+            {adding ? "Adding…" : `Add what was found · ${[pending.sources ? plural(pending.sources, "device") : null, pending.cards ? plural(pending.cards, "card") : null].filter(Boolean).join(" · ")}`}
           </PillButton>
         )}
       </div>
@@ -181,7 +181,7 @@ export function DetectedSection({ gw, detection, subscription, now, onRegister, 
                   {!r.source && (
                     <>
                       <span className="dv-new">New</span>
-                      <PillButton variant="secondary" onClick={() => onRegister(r.rackId)} aria-label={`Register rack ${r.rackId} as a source`}>
+                      <PillButton variant="secondary" onClick={() => onRegister(r.rackId)} aria-label={`Register ${r.rackId} as a device`}>
                         Register
                       </PillButton>
                     </>
@@ -189,7 +189,7 @@ export function DetectedSection({ gw, detection, subscription, now, onRegister, 
                 </span>
               </div>
               {r.cards.length === 0 ? (
-                <span className="ast-caption">Rack status received; no channel readings yet.</span>
+                <span className="ast-caption">Device status received; no channel readings yet.</span>
               ) : (
                 <div className="dv-tiles">
                   {r.cards.map((c) => (
@@ -205,7 +205,7 @@ export function DetectedSection({ gw, detection, subscription, now, onRegister, 
 }
 
 // ---------------------------------------------------------------- channel table (card page)
-const SIM_TONE: Record<LiveSignal["status"], "good" | "warn" | "bad"> = { Normal: "good", Advisory: "warn", Critical: "bad" };
+const SIM_TONE: Record<LiveSignal["status"], "good" | "warn" | "bad"> = { Normal: "good", Alert: "warn", Critical: "bad" };
 
 /**
  * The KLN-01 simulation's signal for a channel mapped to the kiln that has
@@ -260,8 +260,8 @@ export function ChannelTable({
             <IconSensor size={14} />
           </span>
           <span className="ast-cell-stack">
-            <span className="ast-cell-title ast-num">{multiCard ? `${ch.card} · Ch ${ch.id}` : `Ch ${ch.id}`}</span>
-            <span className="ast-cell-sub">{ch.label ?? "Unnamed in payload"}</span>
+            <span className="ast-cell-title ast-num">{multiCard ? `${ch.card} · channel ${ch.id}` : `Channel ${ch.id}`}</span>
+            <span className="ast-cell-sub">{ch.label ?? "No name in the message"}</span>
           </span>
         </span>
       ),
@@ -296,7 +296,7 @@ export function ChannelTable({
     },
     {
       key: "limits",
-      header: "Warning / alarm",
+      header: "Warning and alarm limits",
       render: (ch) => {
         const a = ch.point ? ch.point.alertLimit : ch.measurement?.alertThreshold ?? null;
         const d = ch.point ? ch.point.dangerLimit : ch.measurement?.dangerThreshold ?? null;
@@ -309,12 +309,12 @@ export function ChannelTable({
         );
       },
     },
-    { key: "map", header: "Mapped to", render: (ch) => (ch.point ? <MappingChip ch={ch} /> : <span className="ast-muted">Not mapped</span>) },
+    { key: "map", header: "Feeds machine", render: (ch) => (ch.point ? <MappingChip ch={ch} /> : <span className="ast-muted">Not linked</span>) },
     {
       key: "state",
-      header: "State",
+      header: "Status",
       render: (ch) =>
-        simOf(ch) ? <StatusTag tone="info" label="Simulated" /> : <StatusTag tone={READING_TONE[ch.status]} label={READING_LABEL[ch.status]} />,
+        simOf(ch) ? <StatusTag tone="info" label="Live" /> : <StatusTag tone={READING_TONE[ch.status]} label={READING_LABEL[ch.status]} />,
     },
     {
       key: "updated",
@@ -334,14 +334,14 @@ export function ChannelTable({
               e.stopPropagation();
               onMap(mapTarget(gw, ch));
             }}
-            aria-label={ch.point ? `Edit mapping of channel ${ch.id}` : `Map channel ${ch.id}`}
+            aria-label={ch.point ? `Change which machine channel ${ch.id} feeds` : `Link channel ${ch.id} to a machine`}
           >
-            {ch.point ? "Edit mapping" : "Map"}
+            {ch.point ? "Change link" : "Link to machine"}
           </PillButton>
           <span className="dv-reveal" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
             <DeleteConfirm
               label="Delete"
-              question={ch.point ? `Delete ${ch.card} and its mapping?` : `Delete ${ch.card}?`}
+              question={ch.point ? `Delete ${ch.card} and its machine link?` : `Delete ${ch.card}?`}
               onDelete={() => void doDelete(ch)}
               disabled={deleting !== null}
             />

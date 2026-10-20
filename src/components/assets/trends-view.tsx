@@ -181,7 +181,7 @@ export function TrendsView({ machine, simulation }: TrendsViewProps) {
 
   const groupName = useMemo(() => {
     const names = new Map(catalog.systems.map((sy) => [sy.systemId, sy.name || sy.shortName]));
-    return (g: string) => (g === TREND_GROUP ? "Stored trend records" : (names.get(g) ?? (g || "Unassigned")));
+    return (g: string) => (g === TREND_GROUP ? "Saved trend records" : (names.get(g) ?? (g || "Not assigned to a part")));
   }, [catalog.systems]);
 
   const series = useMemo(() => {
@@ -266,7 +266,7 @@ export function TrendsView({ machine, simulation }: TrendsViewProps) {
   const trendable = useMemo(() => channels.filter((c) => (series.get(c.id)?.length ?? 0) > 1), [channels, series]);
   const outNow = channels.filter((c) => channelZone(c) !== "normal").length;
   const alarmNow = channels.some((c) => channelZone(c) === "alarm");
-  const basis = live ? "Live engine · sim." : withHist ? "Stored history" : "No stored history";
+  const basis = live ? "Live" : withHist ? "Saved history" : "No saved history";
   const exAlarm = excursions.some((e) => e.kind === "alarm");
   const stateOff = states.some((s) => s.status !== "Normal");
 
@@ -279,12 +279,12 @@ export function TrendsView({ machine, simulation }: TrendsViewProps) {
     states: states.length > 0,
   };
   const index: SectionIndexItem[] = [
-    show.explorer && { id: SECTION.explorer, label: "Signal" },
+    show.explorer && { id: SECTION.explorer, label: "Chosen sensor" },
     show.overlay && { id: SECTION.overlay, label: "Compare" },
-    show.signals && { id: SECTION.signals, label: "Signals", tone: alarmNow ? "bad" : outNow ? "warn" : undefined },
-    show.excursions && { id: SECTION.excursions, label: "Excursions", tone: exAlarm ? "bad" : "warn" },
+    show.signals && { id: SECTION.signals, label: "All sensors", tone: alarmNow ? "bad" : outNow ? "warn" : undefined },
+    show.excursions && { id: SECTION.excursions, label: "Outside limits", tone: exAlarm ? "bad" : "warn" },
     show.events && { id: SECTION.events, label: "Events" },
-    show.states && { id: SECTION.states, label: "States", tone: stateOff ? "warn" : undefined },
+    show.states && { id: SECTION.states, label: "On and off", tone: stateOff ? "warn" : undefined },
   ].filter(Boolean) as SectionIndexItem[];
 
   const exportAll = () => {
@@ -302,16 +302,16 @@ export function TrendsView({ machine, simulation }: TrendsViewProps) {
       <div className="ast-root pg-frame pg-analysis pg-trends" aria-label="Trends">
         <PageHeader
           title="Trends"
-          status={loading ? null : { label: alarmNow ? "Alarm" : outNow ? `${outNow} outside limits` : "Normal", tone: alarmNow ? "bad" : outNow ? "warn" : undefined }}
+          status={loading ? null : { label: alarmNow ? "Critical" : outNow ? `Alert · ${outNow} outside normal limits` : "Normal", tone: alarmNow ? "bad" : outNow ? "warn" : undefined }}
           meta={[
-            { label: "Source", value: live ? "Live (simulated)" : withHist ? "Stored history" : "No stored history" },
-            { label: "Window", value: `Last ${winLabel}` },
+            { label: "Readings", value: live ? "Live" : withHist ? "Saved history" : "No saved history" },
+            { label: "Showing", value: `Last ${winLabel}` },
             { label: "Time zone", value: zoneText },
-            { label: "Signals", value: loading ? "—" : `${channels.length} analog · ${states.length} on/off` },
+            { label: "Sensors", value: loading ? "—" : `${channels.length} with numbers · ${states.length} on or off` },
           ]}
           actions={
-            <PillButton variant="secondary" onClick={exportAll} disabled={!canExport} title="Download every sample in this window as CSV">
-              Export CSV
+            <PillButton variant="secondary" onClick={exportAll} disabled={!canExport} title="Download every reading in this time range as a spreadsheet file (CSV)">
+              Download CSV
             </PillButton>
           }
         />
@@ -325,7 +325,7 @@ export function TrendsView({ machine, simulation }: TrendsViewProps) {
             <Empty title="Loading trends…" />
           </section>
         ) : channels.length === 0 && states.length === 0 && events.length === 0 ? (
-          <p className="pg-trends-muted">No trend data stored for {machine.name}.</p>
+          <p className="pg-trends-muted">No saved readings for {machine.name} yet.</p>
         ) : (
           <div className="pg-frame-body pg-analysis-body pg-trends-body">
             {show.explorer && active && <ExplorerSection ctx={ctx} active={active} onSelect={setSelectedId} onExport={exportOne} />}

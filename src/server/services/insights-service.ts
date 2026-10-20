@@ -1,76 +1,46 @@
 /**
- * ULTRON Insights Service — server-side prognosis & analysis.
+ * Prognosis and analysis, calculated from the database.
  *
- * All values are derived deterministically from the PostgreSQL catalog
- * (mapped_signals, machine_systems, machine_subassemblies, diagnosis_records,
- * trend_records) so every client page fetches from a single DB source of
- * truth and never recomputes or hardcodes anything. When a real ML service
- * lands, swap these builders for its output — the API contract stays.
+ * - Forecasts: least-squares trend of the stored usable readings with a 95 %
+ *   prediction interval; confidence is the fit's R².
+ * - Correlation / influence: Pearson r and regression slope over readings
+ *   aligned on their acquisition minute.
+ * - Time to limit (RUL): when a measurement trends toward its alarm boundary,
+ *   the projected time to reach it; nothing is projected without a trend.
+ * - Anomalies: |z| of the latest reading against the accepted reference
+ *   (expected value, noise σ), above the health model's free band.
+ * - Risks, sources, fault classes, actions: the open findings, the rule library
+ *   and the work-order priority table.
+ * - Condition projection and degradation: trend of the stored health scores.
+ *
+ * Probabilities are not estimated by this evaluation and are returned as null.
  */
+import { query } from "@/server/db";
+import { readMachineCatalog } from "./asset-read-service";
+import { setting } from "@/server/monitoring/settings";
+import type {
+  AnomalyItem,
+  ConditionPoint,
+  CorrelationPair,
+  DegradationItem,
+  FailureRisk,
+  FaultClass,
+  FeatureWeight,
+  ForecastHorizon,
+  ForecastSeries,
+  InfluenceLink,
+  InsightsResponse,
+  IssueSource,
+  MaintenanceAction,
+  ReasoningStep,
+  RulItem,
+  SensorLocation,
+  Severity,
+} from "@/types/insights";
 
-import { getDiagnosisRecords, getMachineCatalog, getTrendRecords } from "./industrial-service";
-import type { DiagnosisRecord } from "@/components/assets/assets-data";
+export type * from "@/types/insights";
 
-export type Severity = "Normal" | "Advisory" | "Critical";
-
-/* ------------------------------------------------------------------ */
-/* Deterministic helpers                                              */
-/* ------------------------------------------------------------------ */
-
-const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-
-
-/* ------------------------------------------------------------------ */
-/* Normalized input                                                   */
-/* ------------------------------------------------------------------ */
-
-export interface InsightController {
-  ruleId: string;
-  ruleName: string;
-  primaryCause: string;
-  mechanism: string;
-  symptomSignature: string;
-  consequence: string;
-  prescriptiveAction: string;
-  crossCheckSensors?: string[];
-}
-
-export interface InsightSensor {
-  tag: string;
-  name: string;
-  unit: string;
-  status: Severity;
-  numericValue: number;
-  warningVal: number;
-  alarmVal: number;
-  component: string;
-  subAssembly: string;
-  subassemblyId: string;
-  systemId: string;
-  reasons: InsightController[];
-  /** Measured history (oldest → newest). Empty when no trend points exist. */
-  history: number[];
-}
-
-export interface InsightSubsystem {
-  subassemblyId: string;
-  name: string;
-  systemId: string;
-  health: number;
-  status: Severity;
-}
-
-/* ------------------------------------------------------------------ */
-/* Output contracts                                                   */
-/* ------------------------------------------------------------------ */
-
-export interface ForecastHorizon {
-  id: string;
-  label: string;
-  hours: number;
-  steps: number;
-}
-
+/** Forecast windows offered by the Prognosis page (display choice: label, length and points drawn). */
 export const FORECAST_HORIZONS: ForecastHorizon[] = [
   { id: "1h", label: "1H", hours: 1, steps: 14 },
   { id: "6h", label: "6H", hours: 6, steps: 18 },
@@ -79,894 +49,512 @@ export const FORECAST_HORIZONS: ForecastHorizon[] = [
   { id: "30d", label: "30D", hours: 720, steps: 30 },
 ];
 
-export interface ForecastSeries {
-  tag: string;
-  name: string;
-  unit: string;
-  status: Severity;
-  history: number[];
-  forecast: number[];
-  lower: number[];
-  upper: number[];
-  current: number;
-  predicted: number;
-  deltaPct: number;
-  trend: "rising" | "falling" | "stable";
-  warning: number | null;
-  alarm: number | null;
-  horizonLabel: string;
-  confidence: number;
-}
-
-export interface InfluenceLink {
-  tag: string;
-  name: string;
-  unit: string;
-  coefficient: number;
-  delta: number;
-  direction: "up" | "down";
-}
-
-/** A system of the machine as registered in `machine_systems` (or the sim's system list). */
-export interface ConditionSystem {
-  id: string;
-  name: string;
-}
-
-/** Projected health at `day`: overall plus one value per system id in `condition.systems`. */
-export interface ConditionPoint {
-  day: number;
-  overall: number;
-  systems: Record<string, number>;
-}
-
-/** Where a sensor sits in the machine hierarchy (DB catalog or sim signal defs). */
-export interface SensorLocation {
-  systemId: string;
-  system: string;
-  subassemblyId: string;
-  subassembly: string;
-  component: string;
-}
-
-/** Pearson r between two sensors over their measured history. */
-export interface CorrelationPair {
-  a: string;
-  b: string;
-  r: number;
-  /** Number of paired samples the coefficient was computed from. */
-  n: number;
-  /** r over the earlier part of the window and over its most recent part, when there is enough history. */
-  baseline?: number;
-  recent?: number;
-}
-
-export interface FailureRisk {
-  id: string;
-  fault: string;
-  component: string;
-  probability: number;
-  severity: Severity;
-  window: string;
-  priority: "Low" | "Medium" | "High" | "Immediate";
-}
-
-export interface RulItem {
-  id: string;
-  name: string;
-  component: string;
-  health: number;
-  hours: number;
-  days: number;
-  confidence: number;
-  status: Severity;
-  dueLabel: string;
-}
-
-export interface AnomalyItem {
-  tag: string;
-  name: string;
-  component: string;
-  score: number;
-  severity: Severity;
-  deviation: string;
-  onset: string;
-}
-
-/** A sensor reading that supports an issue source, as measured. */
-export interface SourceEvidence {
-  tag: string;
-  label: string;
-  /** Measured value / deviation text, e.g. "7.4 mm/s · +12 % vs warning". */
-  detail: string;
-  severity: Severity;
-}
-
-export interface IssueSource {
-  id: string;
-  cause: string;
-  subsystem: string;
-  contribution: number;
-  confidence: number;
-  severity: Severity;
-  /** Sensors behind this source; empty when the source has no sensor link (e.g. a diagnosis finding). */
-  evidence: SourceEvidence[];
-}
-
-export interface FaultClass {
-  id: string;
-  label: string;
-  probability: number;
-  severity: Severity;
-  band: string;
-}
-
-export interface DegradationItem {
-  id: string;
-  name: string;
-  stageIndex: number;
-  stageLabel: string;
-  health: number;
-  trend: "rising" | "stable" | "falling";
-}
-
-export interface MaintenanceAction {
-  id: string;
-  title: string;
-  component: string;
-  priority: "Low" | "Medium" | "High" | "Immediate";
-  window: string;
-  eta: string;
-  confidence: number;
-  rationale: string;
-}
-
-export interface FeatureWeight {
-  id: string;
-  label: string;
-  weight: number;
-  tag: string;
-}
-
-export interface ReasoningStep {
-  id: string;
-  label: string;
-  detail: string;
-  status: Severity;
-}
-
-export const DEGRADATION_STAGES = [
-  "As-new",
-  "Healthy",
-  "Early wear",
-  "Progressive",
-  "Severe",
-  "Failure",
-] as const;
-
+/** Days ahead at which the health projection is drawn. */
 export const CONDITION_HORIZONS = [0, 7, 30, 90, 180];
 
-export interface InsightsResponse {
-  machineId: string;
-  generatedAt: string;
-  keySensors: string[];
-  prognosis: {
-    horizons: ForecastHorizon[];
-    forecasts: Record<string, Record<string, ForecastSeries>>;
-    /**
-     * `tags`/`matrix`: key sensors only, for a readable heat-map.
-     * `pairs`: every pair of forecast sensors that both carry measured
-     * history (strongest |r| first).
-     */
-    correlation: { tags: string[]; matrix: number[][]; pairs: CorrelationPair[] };
-    influences: Record<string, InfluenceLink[]>;
-    condition: { horizons: number[]; systems: ConditionSystem[]; points: ConditionPoint[] };
-    /** Hierarchy location for every sensor tag on the machine. */
-    locations: Record<string, SensorLocation>;
-    risks: FailureRisk[];
-    rul: RulItem[];
-    anomalies: AnomalyItem[];
-    anomalyTimeline: number[];
-  };
-  analysis: {
-    model: {
-      healthIndex: number;
-      confidence: number;
-      inputs: number;
-      condition: string;
-      engine: string;
-    };
-    sources: IssueSource[];
-    faults: FaultClass[];
-    degradation: { stages: string[]; items: DegradationItem[] };
-    actions: MaintenanceAction[];
-    features: FeatureWeight[];
-    reasoning: ReasoningStep[];
-  };
-}
+const HOUR = 3_600_000;
+const RANK: Record<Severity, number> = { Normal: 0, Alert: 1, Critical: 2 };
+const n = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
+const round = (v: number, d = 2) => Math.round(v * 10 ** d) / 10 ** d;
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 /* ------------------------------------------------------------------ */
-/* Builders                                                           */
+/* Statistics                                                          */
 /* ------------------------------------------------------------------ */
 
-const PREFERRED_TAGS = [
-  "VIB-KLN-01",
-  "VIB-KLN-02",
-  "TMP-KLN-21",
-  "TMP-KLN-05",
-  "PRS-KLN-07",
-  "VIB-KLN-04",
-  "TMP-KLN-22",
-  "CAL-KLN-03",
-  "GAS-KLN-01",
-];
-
-export function pickKeySensors(sensors: InsightSensor[], count = 6): InsightSensor[] {
-  const byTag = new Map(sensors.map((s) => [s.tag, s]));
-  const picked: InsightSensor[] = [];
-  for (const t of PREFERRED_TAGS) {
-    const s = byTag.get(t);
-    if (s && !picked.includes(s)) picked.push(s);
-    if (picked.length >= count) break;
-  }
-  for (const s of sensors) {
-    if (picked.length >= count) break;
-    if (!picked.includes(s) && s.unit.toLowerCase() !== "state") picked.push(s);
-  }
-  return picked;
+interface Fit {
+  n: number;
+  /** Intercept at t = 0 (hours relative to `t0`) and slope per hour. */
+  a: number;
+  b: number;
+  t0: number;
+  tMean: number;
+  sxx: number;
+  /** Residual standard error. */
+  s: number;
+  r2: number;
 }
 
-export function buildForecast(sensor: InsightSensor, horizon: ForecastHorizon): ForecastSeries {
-  const current = sensor.numericValue || 1;
-  const status = sensor.status;
-  const unit = sensor.unit || "";
-
-  // Status-driven drift toward the sensor's own limit (DB warning/alarm):
-  // falling when the alarm sits below the warning, rising otherwise.
-  const perDay = status === "Critical" ? 0.06 : status === "Advisory" ? 0.03 : 0.006;
-  const maxPct = perDay * Math.sqrt(horizon.hours / 24);
-  const bias = sensor.alarmVal > 0 && sensor.warningVal > 0 && sensor.alarmVal < sensor.warningVal ? -1 : 1;
-
-  // Measured trend points only; with none, the single current DB value.
-  const history = sensor.history.length > 0 ? sensor.history.slice(-30) : [current];
-
-  const forecast: number[] = [];
-  const lower: number[] = [];
-  const upper: number[] = [];
-  for (let j = 1; j <= horizon.steps; j++) {
-    const frac = j / horizon.steps;
-    const v = current * (1 + maxPct * bias * frac);
-    const sd = current * (0.006 + maxPct * 0.42 * frac);
-    forecast.push(v);
-    lower.push(v - sd);
-    upper.push(v + sd);
+/** Ordinary least squares of value on time (hours). */
+function fitLine(points: Array<{ t: number; v: number }>): Fit | null {
+  if (points.length < 3) return null;
+  const t0 = points[points.length - 1].t;
+  const xs = points.map((p) => (p.t - t0) / HOUR);
+  const ys = points.map((p) => p.v);
+  const N = xs.length;
+  const mx = xs.reduce((a, b) => a + b, 0) / N;
+  const my = ys.reduce((a, b) => a + b, 0) / N;
+  let sxx = 0;
+  let sxy = 0;
+  let syy = 0;
+  for (let i = 0; i < N; i++) {
+    sxx += (xs[i] - mx) ** 2;
+    sxy += (xs[i] - mx) * (ys[i] - my);
+    syy += (ys[i] - my) ** 2;
   }
-
-  const predicted = forecast[forecast.length - 1] ?? current;
-  const deltaPct = ((predicted - current) / (current || 1)) * 100;
-  const trend: ForecastSeries["trend"] =
-    deltaPct > 0.4 ? "rising" : deltaPct < -0.4 ? "falling" : "stable";
-
-  return {
-    tag: sensor.tag,
-    name: sensor.name,
-    unit,
-    status,
-    history,
-    forecast,
-    lower,
-    upper,
-    current,
-    predicted,
-    deltaPct,
-    trend,
-    warning: Number.isFinite(sensor.warningVal) && sensor.warningVal > 0 ? sensor.warningVal : null,
-    alarm: Number.isFinite(sensor.alarmVal) && sensor.alarmVal > 0 ? sensor.alarmVal : null,
-    horizonLabel: horizon.label,
-    confidence: clamp(
-      99 - (status === "Critical" ? 9 : status === "Advisory" ? 5 : 1.5) - horizon.hours / 220,
-      72,
-      99
-    ),
-  };
+  if (sxx === 0) return null;
+  const b = sxy / sxx;
+  const a = my - b * mx;
+  let sse = 0;
+  for (let i = 0; i < N; i++) sse += (ys[i] - (a + b * xs[i])) ** 2;
+  const s = N > 2 ? Math.sqrt(sse / (N - 2)) : 0;
+  return { n: N, a, b, t0, tMean: mx, sxx, s, r2: syy > 0 ? Math.max(0, 1 - sse / syy) : 0 };
 }
 
-const mean = (v: number[]) => v.reduce((s, x) => s + x, 0) / (v.length || 1);
+/** Half-width of the 95 % prediction interval at `x` hours from the last reading. */
+const band = (f: Fit, x: number) => 1.96 * f.s * Math.sqrt(1 + 1 / f.n + (x - f.tMean) ** 2 / f.sxx);
 
-/** Pearson r over the shared tail of two measured series; null below 5 pairs or with a flat series. */
-export function pearson(a: number[], b: number[]): { r: number; n: number } | null {
-  const n = Math.min(a.length, b.length);
-  if (n < 5) return null;
-  const xa = a.slice(-n);
-  const xb = b.slice(-n);
-  const ma = mean(xa);
-  const mb = mean(xb);
+/** Readings in the shortest recent window the time-to-limit trend is also tested on (twice this is the next). */
+const RECENT_TREND_SAMPLES = 30;
+
+/** True when the trend over `hours` is larger than its own uncertainty. */
+const significant = (f: Fit, hours: number) => Math.abs(f.b * hours) > band(f, hours);
+
+function pearson(a: number[], b: number[]): number | null {
+  const N = Math.min(a.length, b.length);
+  if (N < 5) return null;
+  const ma = a.reduce((x, y) => x + y, 0) / N;
+  const mb = b.reduce((x, y) => x + y, 0) / N;
   let num = 0;
   let da = 0;
   let db = 0;
-  for (let i = 0; i < n; i++) {
-    num += (xa[i] - ma) * (xb[i] - mb);
-    da += (xa[i] - ma) ** 2;
-    db += (xb[i] - mb) ** 2;
+  for (let i = 0; i < N; i++) {
+    num += (a[i] - ma) * (b[i] - mb);
+    da += (a[i] - ma) ** 2;
+    db += (b[i] - mb) ** 2;
   }
-  if (!da || !db) return null;
-  return { r: num / Math.sqrt(da * db), n };
+  return da && db ? num / Math.sqrt(da * db) : null;
 }
 
-const hasMeasured = (s: InsightSensor | undefined) => !!s && s.history.length >= 5;
-
-/** Correlation matrix from measured trend history; 0 where a pair has no shared history. */
-export function buildCorrelation(sensors: InsightSensor[], tags: string[]): number[][] {
-  const byTag = new Map(sensors.map((s) => [s.tag, s]));
-  return tags.map((a, i) =>
-    tags.map((b, j) => {
-      if (i === j) return 1;
-      const sa = byTag.get(a);
-      const sb = byTag.get(b);
-      return (sa && sb && pearson(sa.history, sb.history)?.r) || 0;
-    })
-  );
-}
-
-/** Every pair of the given sensors that both carry measured history, strongest |r| first. */
-export function buildCorrelationPairs(sensors: InsightSensor[]): CorrelationPair[] {
-  const measured = sensors.filter(hasMeasured);
-  const out: CorrelationPair[] = [];
-  for (let i = 0; i < measured.length; i++) {
-    for (let j = i + 1; j < measured.length; j++) {
-      const ha = measured[i].history;
-      const hb = measured[j].history;
-      const p = pearson(ha, hb);
-      if (!p) continue;
-      // Earlier two thirds vs the latest third, when each part has enough samples.
-      const cut = Math.floor((Math.min(ha.length, hb.length) * 2) / 3);
-      const early = cut >= 6 ? pearson(ha.slice(0, cut), hb.slice(0, cut)) : null;
-      const late = cut >= 6 ? pearson(ha.slice(cut), hb.slice(cut)) : null;
-      out.push({ a: measured[i].tag, b: measured[j].tag, r: p.r, n: p.n, baseline: early?.r, recent: late?.r });
-    }
-  }
-  return out.sort((x, y) => Math.abs(y.r) - Math.abs(x.r));
-}
-
-/** Measured co-movement of other sensors with the driver; empty when the driver has no history. */
-export function buildInfluence(sensors: InsightSensor[], driverTag: string): InfluenceLink[] {
-  const driver = sensors.find((s) => s.tag === driverTag);
-  if (!driver || !hasMeasured(driver)) return [];
-  const dh = driver.history;
-  const dm = mean(dh);
-  const dSd = Math.sqrt(mean(dh.map((v) => (v - dm) ** 2))) || 1;
-  const links: InfluenceLink[] = [];
-  for (const s of sensors) {
-    if (s.tag === driverTag || !hasMeasured(s)) continue;
-    const p = pearson(dh, s.history);
-    if (!p) continue;
-    links.push({
-      tag: s.tag,
-      name: s.name,
-      unit: s.unit,
-      coefficient: p.r,
-      delta: p.r * dSd,
-      direction: p.r >= 0 ? "up" : "down",
-    });
-  }
-  return links.sort((a, b) => Math.abs(b.coefficient) - Math.abs(a.coefficient)).slice(0, 6);
-}
-
-const SEV_WEIGHT: Record<Severity, number> = { Critical: 3, Advisory: 1.6, Normal: 0 };
-
-/** Health-loss rate (%/day) from the sensors in alarm/warning: 0.012 %/d base + 0.18 per weighted finding. */
-const lossPerDay = (hot: InsightSensor[]) => 0.012 + hot.reduce((a, s) => a + SEV_WEIGHT[s.status] * 0.18, 0);
-
-/**
- * Health projection per DB `machine_systems` row. Each system starts at its
- * catalog health and loses health at a rate set by its own sensors in
- * warning/alarm; overall starts at the machine health index and falls by the
- * mean system loss.
- */
-export function buildConditionProjection(
-  startHealth: number,
-  systems: Array<{ id: string; health: number }>,
-  sensors: InsightSensor[]
-): ConditionPoint[] {
-  const at = (start: number, rate: number, day: number) => clamp(start - rate * day * (day > 30 ? 0.8 : 1), 0, 100);
-  const rates = new Map(
-    systems.map((sys) => [sys.id, lossPerDay(sensors.filter((s) => s.systemId === sys.id && s.status !== "Normal"))])
-  );
-  const machineRate = lossPerDay(sensors.filter((s) => s.status !== "Normal"));
-  return CONDITION_HORIZONS.map((day) => {
-    const values: Record<string, number> = {};
-    let drop = 0;
-    for (const sys of systems) {
-      const v = at(sys.health, rates.get(sys.id) ?? 0.012, day);
-      values[sys.id] = v;
-      drop += sys.health - v;
-    }
-    const overall = systems.length
-      ? clamp(startHealth - drop / systems.length, 0, 100)
-      : at(startHealth, machineRate, day);
-    return { day, overall, systems: values };
-  });
-}
-
-/** 0–1: how far a sensor sits past its warning toward (and beyond) its alarm, from DB limits. */
-function exceedance(s: InsightSensor): number {
-  const w = s.warningVal;
-  const a = s.alarmVal;
-  if (!(w > 0) || !(a > 0) || w === a) return 0.5;
-  return clamp((s.numericValue - w) / (a - w), 0, 1.5) / 1.5;
-}
-
-export function buildFailureRisks(
-  sensors: InsightSensor[],
-  subsystems: InsightSubsystem[],
-  diagnosis?: DiagnosisRecord
-): FailureRisk[] {
-  const risks: FailureRisk[] = [];
-  const covered = new Set<string>();
-  for (const s of sensors) {
-    if (s.status === "Normal") continue;
-    const e = exceedance(s);
-    const rule = s.reasons[0];
-    if (s.subassemblyId) covered.add(s.subassemblyId);
-    risks.push({
-      id: s.tag,
-      fault: rule?.ruleName || `${s.name} degradation`,
-      component: s.component || s.subAssembly || s.tag,
-      probability: Math.round(s.status === "Critical" ? 70 + 25 * e : 34 + 30 * e),
-      severity: s.status,
-      window: s.status === "Critical" ? "< 72 h" : "< 30 d",
-      priority: s.status === "Critical" ? "Immediate" : "High",
-    });
-  }
-  if (diagnosis) {
-    for (const f of diagnosis.findings) {
-      if (f.severity === "Normal") continue;
-      const loc = f.location.toLowerCase();
-      for (const sa of subsystems) if (loc.includes(sa.name.toLowerCase())) covered.add(sa.subassemblyId);
-      risks.push({
-        id: f.id,
-        fault: f.fault,
-        component: f.location,
-        probability: Math.round(clamp(f.probability * 4 + 30, 20, 95)),
-        severity: f.severity === "Critical" ? "Critical" : "Advisory",
-        window: f.severity === "Critical" ? "< 7 d" : "< 45 d",
-        priority: f.severity === "Critical" ? "Immediate" : "Medium",
-      });
-    }
-  }
-  // Baseline exposure for every DB sub-assembly without a finding, from its catalog health.
-  for (const sa of subsystems) {
-    if (covered.has(sa.subassemblyId)) continue;
-    risks.push({
-      id: `base-${sa.subassemblyId}`,
-      fault: `${sa.name} functional failure`,
-      component: sa.name,
-      probability: Math.round(clamp((100 - sa.health) * 0.6, 1, 40)),
-      severity: sa.status,
-      window: "< 30 d",
-      priority: sa.status === "Critical" ? "High" : sa.status === "Advisory" ? "Medium" : "Low",
-    });
-  }
-  const seen = new Set<string>();
-  return risks
-    .filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)))
-    .sort((a, b) => b.probability - a.probability);
-}
-
-/** Health index treated as end of life. */
-const EOL_HEALTH = 25;
-const SEV_RANK: Record<Severity, number> = { Normal: 0, Advisory: 1, Critical: 2 };
-
-/**
- * RUL per DB sub-assembly: hours until catalog health reaches end of life at
- * a loss rate set by the sub-assembly status and its own sensors in
- * warning/alarm. Confidence grows with the number of mapped sensors.
- */
-export function buildRul(subsystems: InsightSubsystem[], sensors: InsightSensor[]): RulItem[] {
-  return subsystems
-    .map((s) => {
-      const mapped = sensors.filter((x) => x.subassemblyId === s.subassemblyId);
-      const hot = mapped.filter((x) => x.status !== "Normal");
-      const base = s.status === "Critical" ? 1 : s.status === "Advisory" ? 0.25 : 0.05;
-      const rate = base + hot.reduce((a, x) => a + SEV_WEIGHT[x.status] * 0.18, 0);
-      const hours = Math.max(1, Math.round((Math.max(0, s.health - EOL_HEALTH) / rate) * 24));
-      const days = Math.round(hours / 24);
-      const byHours: Severity = hours < 72 ? "Critical" : hours < 720 ? "Advisory" : "Normal";
-      const status = SEV_RANK[s.status] > SEV_RANK[byHours] ? s.status : byHours;
-      return {
-        id: s.subassemblyId,
-        name: s.name,
-        component: s.name,
-        health: s.health,
-        hours,
-        days,
-        confidence: clamp(70 + mapped.length * 5, 70, 95),
-        status,
-        dueLabel: hours < 48 ? `${hours} h` : days < 45 ? `${days} d` : `${Math.round(days / 30)} mo`,
-      };
-    })
-    .sort((a, b) => a.hours - b.hours);
-}
-
-export function buildAnomalies(sensors: InsightSensor[]): AnomalyItem[] {
-  return sensors
-    .filter((s) => s.status !== "Normal")
-    .map((s) => {
-      const e = exceedance(s);
-      const score = s.status === "Critical" ? 0.72 + 0.27 * e : 0.38 + 0.32 * e;
-      const current = s.numericValue || 0;
-      const ref = s.warningVal > 0 ? s.warningVal : current;
-      const devPct = ref ? ((current - ref) / ref) * 100 : 0;
-      return {
-        tag: s.tag,
-        name: s.name,
-        component: s.component || s.subAssembly || s.tag,
-        score: clamp(score, 0, 1),
-        severity: s.status,
-        deviation: `${devPct >= 0 ? "+" : ""}${devPct.toFixed(1)}% vs warning limit`,
-        // The catalog stores no onset timestamp.
-        onset: "—",
-      };
-    })
-    .sort((a, b) => b.score - a.score);
-}
-
-/**
- * Anomaly activity per hour needs timestamped anomaly events, which the DB
- * does not store; return no buckets rather than invent a distribution.
- */
-export function buildAnomalyTimeline(): number[] {
-  return [];
-}
-
-export function buildIssueSources(sensors: InsightSensor[], diagnosis?: DiagnosisRecord): IssueSource[] {
-  const sources: IssueSource[] = [];
-  const active = sensors.filter((s) => s.status !== "Normal");
-  const grouped = new Map<string, InsightSensor[]>();
-  for (const s of active) {
-    const key = s.subassemblyId || s.subAssembly || s.systemId || s.tag;
-    const arr = grouped.get(key) || [];
-    arr.push(s);
-    grouped.set(key, arr);
-  }
-  const total = active.length || 1;
-  for (const [key, arr] of grouped) {
-    const critical = arr.filter((s) => s.status === "Critical").length;
-    sources.push({
-      id: key,
-      cause: arr[0].reasons[0]?.ruleName || `${arr[0].name} deviation`,
-      subsystem: arr[0].subAssembly || arr[0].component || key,
-      contribution: clamp(((arr.length + critical) / total) * 100, 4, 100),
-      // More corroborating sensors on the same sub-assembly → higher confidence.
-      confidence: clamp(76 + arr.length * 4 + critical * 3, 70, 97),
-      severity: critical > 0 ? "Critical" : "Advisory",
-      evidence: arr.map((x) => {
-        const ref = x.warningVal > 0 ? x.warningVal : 0;
-        const dev = ref ? ((x.numericValue - ref) / ref) * 100 : null;
-        return {
-          tag: x.tag,
-          label: x.name,
-          detail: `${x.numericValue} ${x.unit}${dev === null ? "" : ` · ${dev >= 0 ? "+" : ""}${dev.toFixed(1)} % vs warning`}`,
-          severity: x.status,
-        };
-      }),
-    });
-  }
-  if (diagnosis) {
-    for (const f of diagnosis.findings) {
-      if (f.severity === "Normal") continue;
-      sources.push({
-        id: f.id,
-        cause: f.fault,
-        subsystem: f.location,
-        contribution: clamp(f.probability * 6 + 12, 8, 90),
-        confidence: clamp(diagnosis.confidence - 4, 70, 99),
-        severity: f.severity === "Critical" ? "Critical" : "Advisory",
-        evidence: [],
-      });
-    }
-  }
-  if (sources.length === 0) {
-    sources.push({
-      id: "src-baseline",
-      cause: "No active defect source — model residuals within control limits",
-      subsystem: "All subsystems nominal",
-      contribution: 100,
-      confidence: 97,
-      severity: "Normal",
-      evidence: [],
-    });
-  }
-  return sources.sort((a, b) => b.contribution - a.contribution);
-}
-
-export function buildFaultClasses(sensors: InsightSensor[], diagnosis?: DiagnosisRecord): FaultClass[] {
-  const classes: FaultClass[] = [];
-  if (diagnosis) {
-    for (const f of diagnosis.findings) {
-      classes.push({
-        id: f.id,
-        label: f.fault,
-        // The record's own probability, as stored.
-        probability: clamp(Number(f.probability) || 0, 0, 100),
-        severity: f.severity as Severity,
-        band: f.frequency,
-      });
-    }
-  }
-  for (const s of sensors.filter((x) => x.status !== "Normal")) {
-    const e = exceedance(s);
-    classes.push({
-      id: s.tag,
-      label: s.reasons[0]?.ruleName || `${s.name} anomaly`,
-      probability: Math.round(s.status === "Critical" ? 55 + 30 * e : 20 + 35 * e),
-      severity: s.status,
-      band: s.unit,
-    });
-  }
-  if (classes.length === 0) {
-    classes.push({
-      id: "nominal",
-      label: "Healthy signature — no fault class above threshold",
-      probability: 96,
-      severity: "Normal",
-      band: "—",
-    });
-  }
-  return classes.sort((a, b) => b.probability - a.probability);
-}
-
-export function buildDegradation(subsystems: InsightSubsystem[]): DegradationItem[] {
-  return subsystems
-    .map((s) => {
-      const health = s.health;
-      const stageIndex = clamp(Math.round((100 - health) / 14), 0, 5);
-      return {
-        id: s.subassemblyId,
-        name: s.name,
-        stageIndex,
-        stageLabel: DEGRADATION_STAGES[stageIndex],
-        health,
-        trend: (s.status === "Critical" || s.status === "Advisory" ? "falling" : "stable") as DegradationItem["trend"],
-      };
-    })
-    .sort((a, b) => b.stageIndex - a.stageIndex || a.health - b.health);
-}
-
-export function buildMaintenanceActions(sensors: InsightSensor[], diagnosis?: DiagnosisRecord): MaintenanceAction[] {
-  const actions: MaintenanceAction[] = [];
-  const active = sensors.filter((s) => s.status !== "Normal");
-  for (const s of active) {
-    const rule = s.reasons[0];
-    actions.push({
-      id: s.tag,
-      title: rule?.ruleName || `Inspect ${s.name}`,
-      component: s.component || s.subAssembly || s.tag,
-      priority: s.status === "Critical" ? "Immediate" : "High",
-      window: s.status === "Critical" ? "Next 72 h" : "Next 2 weeks",
-      // No work-order duration is stored for sensor-raised actions.
-      eta: "—",
-      confidence: Math.round(clamp(72 + 25 * exceedance(s), 72, 97)),
-      rationale: rule?.prescriptiveAction || `Restore ${s.name} to baseline envelope.`,
-    });
-  }
-  if (diagnosis) {
-    actions.push({
-      id: `${diagnosis.machineId}-presire`,
-      title: "Scheduled intervention",
-      component: diagnosis.findings[0]?.location || "Multi-subsystem",
-      priority: diagnosis.maintenancePriority,
-      window:
-        diagnosis.maintenancePriority === "Low"
-          ? "Annual turnaround"
-          : diagnosis.maintenancePriority === "Medium"
-          ? "Next planned stop"
-          : "Immediate",
-      eta: diagnosis.maintenancePriority === "Low" ? "—" : "≤ 72 h",
-      confidence: clamp(diagnosis.confidence, 80, 99),
-      rationale: diagnosis.prescriptiveAction,
-    });
-  }
-  if (actions.length === 0) {
-    actions.push({
-      id: "routine",
-      title: "Continue condition-based monitoring",
-      component: "All subsystems",
-      priority: "Low",
-      window: "Routine schedule",
-      eta: "—",
-      confidence: 97,
-      rationale: "No defect above action threshold. Maintain quarterly vibration audit.",
-    });
-  }
-  return actions;
-}
-
-export function buildFeatureWeights(sensors: InsightSensor[], diagnosis?: DiagnosisRecord): FeatureWeight[] {
-  const pool: Array<{ tag: string; label: string; boost: number }> = [];
-  for (const s of sensors.slice(0, 60)) {
-    pool.push({
-      tag: s.tag,
-      label: s.name,
-      boost: s.status === "Critical" ? 40 : s.status === "Advisory" ? 22 : 6,
-    });
-  }
-  for (const f of diagnosis?.findings || []) {
-    pool.push({ tag: f.id, label: f.fault, boost: 14 + (f.probability || 0) });
-  }
-  const weights = pool.map((p) => ({ id: p.tag, tag: p.tag, label: p.label, weight: clamp(8 + p.boost, 4, 100) }));
-  return weights.sort((a, b) => b.weight - a.weight).slice(0, 6);
-}
-
-export function buildReasoningSteps(sources: IssueSource[], diagnosis?: DiagnosisRecord, sensorCount = 0): ReasoningStep[] {
-  const top = sources[0];
-  const hot = top && top.severity !== "Normal" ? top.severity : "Normal";
-  return [
-    {
-      id: "ingest",
-      label: "Signal ingestion",
-      detail: `${sensorCount} sensors · 1 s sampling · PTP synchronized`,
-      status: "Normal",
-    },
-    {
-      id: "features",
-      label: "Feature extraction",
-      detail: "RMS, crest factor, kurtosis, envelope FFT harmonics",
-      status: "Normal",
-    },
-    {
-      id: "model",
-      label: "Reference model residual",
-      detail: diagnosis?.engineVersion || "AssetIQ ML reference model",
-      status: hot,
-    },
-    {
-      id: "isolate",
-      label: "Source isolation",
-      detail: top ? `${top.subsystem} — ${top.cause}` : "No anomaly isolated",
-      status: hot,
-    },
-    {
-      id: "action",
-      label: "Prescriptive output",
-      detail: diagnosis?.prescriptiveAction || "Continue condition-based monitoring",
-      status: "Normal",
-    },
-  ];
+function dueLabel(hours: number): string {
+  if (hours < 1) return "Less than an hour";
+  if (hours < 48) return `${Math.round(hours)} h`;
+  const d = hours / 24;
+  return d < 45 ? `${Math.round(d)} d` : `${Math.round(d / 30)} mo`;
 }
 
 /* ------------------------------------------------------------------ */
-/* Orchestration                                                      */
+/* Orchestration                                                       */
 /* ------------------------------------------------------------------ */
 
 export async function getMachineInsights(machineId: string): Promise<InsightsResponse> {
-  const [catalog, diagnosisList, trendList] = await Promise.all([
-    getMachineCatalog(machineId),
-    getDiagnosisRecords(machineId),
-    getTrendRecords(machineId),
+  const trendH = await setting("evaluation.trend_window_h");
+  const minTrend = await setting("evaluation.min_trend_samples");
+  const catalog = await readMachineCatalog(machineId);
+  const analog = catalog.sensors.filter((s) => s.unit !== "state");
+  const ids = analog.map((s) => s.id);
+
+  const [raw, hourly, refs, findings, scores, subScores, model, priorities, readingsLastHour] = await Promise.all([
+    query<{ measurement_id: string; t: Date; value: number }>(
+      `SELECT r.measurement_id, r.acquired_at AS t, r.value FROM readings r JOIN quality_codes q ON q.id = r.quality_id AND q.usable
+        WHERE r.measurement_id = ANY($1) AND r.value IS NOT NULL AND r.acquired_at > NOW() - make_interval(secs => $2)
+        ORDER BY r.measurement_id, r.acquired_at`,
+      [ids, trendH * 3600],
+    ),
+    query<{ measurement_id: string; t: Date; value: number }>(
+      `SELECT measurement_id, hour_start + interval '30 minutes' AS t, v_sum / good_count AS value FROM reading_hourly
+        WHERE measurement_id = ANY($1) AND good_count > 0 ORDER BY measurement_id, hour_start`,
+      [ids],
+    ),
+    query<{ measurement_id: string; expected: number | null; lo: number | null; hi: number | null; sigma: number | null }>(
+      `SELECT DISTINCT ON (v.measurement_id) v.measurement_id, v.expected, v.lo, v.hi, m.noise_sigma AS sigma
+         FROM reference_sets s JOIN reference_values v ON v.reference_set_id = s.id JOIN measurements m ON m.id = v.measurement_id
+         LEFT JOIN machine_state_periods p ON p.machine_id = s.machine_id AND p.ended_at IS NULL
+        WHERE s.machine_id = $1 AND s.status = 'accepted' AND (s.state_id IS NULL OR s.state_id = p.state_id)
+        ORDER BY v.measurement_id, (s.state_id IS NULL)`,
+      [machineId],
+    ),
+    query<{ id: number; type: string; type_name: string; severity_id: Severity; measurement_id: string | null; tag: string | null; m_name: string | null; sub_id: string | null; sub_name: string | null; rule_code: string | null; rule_name: string | null; category: string | null; action: string | null; summary: string; opened_at: Date; cleared_at: Date | null }>(
+      `SELECT f.id, f.finding_type_id AS type, ft.name AS type_name, f.severity_id, f.measurement_id, m.tag, m.name AS m_name,
+              c.subassembly_code AS sub_id, c.subassembly_name AS sub_name, r.code AS rule_code, r.name AS rule_name, r.category_id AS category, r.action,
+              f.summary, f.opened_at, f.cleared_at
+         FROM findings f JOIN finding_types ft ON ft.id = f.finding_type_id
+         LEFT JOIN measurements m ON m.id = f.measurement_id
+         LEFT JOIN v_measurement_context c ON c.measurement_id = f.measurement_id
+         LEFT JOIN rules r ON r.id = f.rule_id
+        WHERE f.machine_id = $1 AND (f.cleared_at IS NULL OR f.opened_at > NOW() - interval '24 hours')
+        ORDER BY f.opened_at`,
+      [machineId],
+    ),
+    query<{ t: Date; score: number }>("SELECT scored_at AS t, score FROM machine_health_scores WHERE machine_id = $1 ORDER BY scored_at", [machineId]),
+    query<{ subassembly_id: string; code: string; t: Date; score: number }>(
+      `SELECT h.subassembly_id, sa.subassembly_id AS code, h.scored_at AS t, h.score
+         FROM subassembly_health_scores h JOIN machine_subassemblies sa ON sa.id = h.subassembly_id
+         JOIN machine_systems sy ON sy.id = sa.machine_system_ref_id
+        WHERE sy.machine_id = $1 ORDER BY h.scored_at`,
+      [machineId],
+    ),
+    query<{ name: string; key: string; value: number }>(
+      `SELECT h.name, p.key, p.value FROM machines m JOIN health_models h ON h.id = m.health_model_id
+         JOIN health_model_parameters p ON p.model_id = h.id WHERE m.id = $1`,
+      [machineId],
+    ),
+    query<{ id: string; name: string; response_minutes: number | null; description: string }>("SELECT id, name, response_minutes, description FROM work_order_priorities ORDER BY sort_order"),
+    query<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM readings r JOIN v_measurement_context c ON c.measurement_id = r.measurement_id
+        WHERE c.machine_id = $1 AND r.acquired_at > NOW() - interval '1 hour'`,
+      [machineId],
+    ),
   ]);
-  const diagnosis = diagnosisList[0];
+  const severityOrder = (await query<{ id: Severity }>("SELECT id FROM severities ORDER BY rank")).rows.map((r) => r.id);
 
-  const historyByTag = new Map<string, number[]>();
-  for (const rec of trendList) {
-    for (const metric of rec.metrics) {
-      historyByTag.set(metric.key, metric.points.map((p) => p.value));
-    }
-  }
+  const param = (k: string) => {
+    const r = model.rows.find((x) => x.key === k);
+    return r ? Number(r.value) : null;
+  };
+  const modelName = model.rows[0]?.name ?? null;
+  const zFree = param("z_free");
+  const prio = (sev: Severity) => (sev === "Critical" ? priorities.rows[0] : sev === "Alert" ? priorities.rows[Math.min(2, priorities.rows.length - 1)] : priorities.rows.at(-1));
 
-  const sensors: InsightSensor[] = catalog.sensors.map((s) => ({
-    tag: s.tag,
-    name: s.name,
-    unit: s.unit,
-    status: s.status,
-    // pg returns numeric columns as strings; coerce so every derived
-    // figure (forecast current, deviation, limits) is a real number.
-    numericValue: Number(s.numericValue) || 0,
-    warningVal: Number(s.warningVal) || 0,
-    alarmVal: Number(s.alarmVal) || 0,
-    component: s.component || s.subAssembly || s.tag,
-    subAssembly: s.subAssembly || "",
-    subassemblyId: s.subassemblyId || "",
-    systemId: s.systemId || "",
-    reasons: Array.isArray(s.reasons) ? s.reasons : [],
-    history: historyByTag.get(s.tag) || [],
-  }));
+  // Series per measurement: hourly means for long horizons, raw readings for the trend window.
+  const rawBy = new Map<string, Array<{ t: number; v: number }>>();
+  for (const r of raw.rows) (rawBy.get(r.measurement_id) ?? rawBy.set(r.measurement_id, []).get(r.measurement_id)!).push({ t: r.t.getTime(), v: Number(r.value) });
+  const hourlyBy = new Map<string, Array<{ t: number; v: number }>>();
+  for (const r of hourly.rows) (hourlyBy.get(r.measurement_id) ?? hourlyBy.set(r.measurement_id, []).get(r.measurement_id)!).push({ t: r.t.getTime(), v: Number(r.value) });
+  const longSeries = (id: string) => {
+    const r = rawBy.get(id) ?? [];
+    const firstRaw = r[0]?.t ?? Infinity;
+    return [...(hourlyBy.get(id) ?? []).filter((p) => p.t < firstRaw), ...r];
+  };
+  const refBy = new Map(refs.rows.map((r) => [r.measurement_id, { expected: n(r.expected), lo: n(r.lo), hi: n(r.hi), sigma: n(r.sigma) }]));
+  const openFindings = findings.rows.filter((f) => f.cleared_at === null);
 
-  const subsystems: InsightSubsystem[] = catalog.subassemblies.map((s) => ({
-    subassemblyId: s.subassemblyId,
-    name: s.name,
-    systemId: s.systemId,
-    health: Number(s.health) || 0,
-    status: s.status,
-  }));
-
-  const systems = catalog.systems.map((s) => ({ id: s.systemId, name: s.name, health: Number(s.health) || 0 }));
-  const subName = new Map(subsystems.map((s) => [s.subassemblyId, s.name]));
-  const sysName = new Map(systems.map((s) => [s.id, s.name]));
-  const locations: Record<string, SensorLocation> = {};
-  for (const s of sensors) {
-    locations[s.tag] = {
-      systemId: s.systemId,
-      system: sysName.get(s.systemId) ?? "",
-      subassemblyId: s.subassemblyId,
-      subassembly: subName.get(s.subassemblyId) ?? s.subAssembly,
-      component: s.component,
-    };
-  }
-
-  const keySensors = pickKeySensors(sensors, 6);
-  const keyTags = keySensors.map((s) => s.tag);
-
-  // Forecast every numeric sensor mapped in the DB, key sensors first; state
-  // signals (unit "state") carry no numeric trend.
-  const forecastSensors = keySensors.concat(
-    sensors.filter((s) => !keySensors.includes(s) && s.unit.toLowerCase() !== "state")
-  );
+  /* ---------------- forecasts ---------------- */
   const forecasts: Record<string, Record<string, ForecastSeries>> = {};
-  for (const s of forecastSensors) {
+  const fitShort = new Map<string, Fit | null>();
+  for (const s of analog) {
+    const short = rawBy.get(s.id) ?? [];
+    const long = longSeries(s.id);
+    const fShort = short.length >= minTrend ? fitLine(short) : null;
+    const fLong = long.length >= minTrend ? fitLine(long) : null;
+    fitShort.set(s.id, fShort);
+    const current = short.at(-1)?.v ?? s.numericValue;
+    if (current === null || current === undefined) continue;
     forecasts[s.tag] = {};
     for (const h of FORECAST_HORIZONS) {
-      forecasts[s.tag][h.id] = buildForecast(s, h);
+      const f = h.hours <= trendH ? fShort : (fLong ?? fShort);
+      const window = h.hours <= trendH ? short : long;
+      const history = window.slice(-30).map((p) => p.v);
+      // A trend larger than its own uncertainty is projected; otherwise the level holds (window mean ± 1.96 σ).
+      const trending = f !== null && significant(f, h.hours);
+      const values = window.map((p) => p.v);
+      const mean = values.length ? values.reduce((a, b) => a + b, 0) / values.length : current;
+      const sd = values.length > 1 ? Math.sqrt(values.reduce((a, v) => a + (v - mean) ** 2, 0) / (values.length - 1)) : 0;
+      const forecast: number[] = [];
+      const lower: number[] = [];
+      const upper: number[] = [];
+      for (let j = 1; j <= h.steps; j++) {
+        const x = (h.hours * j) / h.steps;
+        const v = trending ? f!.a + f!.b * x : mean;
+        const w = trending ? band(f!, x) : 1.96 * sd;
+        forecast.push(round(v, 4));
+        lower.push(round(v - w, 4));
+        upper.push(round(v + w, 4));
+      }
+      const predicted = forecast.at(-1) ?? current;
+      const deltaPct = current ? ((predicted - current) / Math.abs(current)) * 100 : 0;
+      forecasts[s.tag][h.id] = {
+        tag: s.tag,
+        name: s.name,
+        unit: s.unit,
+        status: s.status,
+        history: history.length ? history : [current],
+        forecast,
+        lower,
+        upper,
+        current,
+        predicted,
+        deltaPct: round(deltaPct, 2),
+        trend: trending ? (f!.b > 0 ? "rising" : "falling") : "stable",
+        warning: s.warningVal,
+        alarm: s.alarmVal,
+        horizonLabel: h.label,
+        confidence: f ? Math.round(f.r2 * 100) : null,
+      };
     }
   }
 
+  /* ---------------- correlation and influence ---------------- */
+  const minuteKey = (t: number) => Math.round(t / 60_000);
+  const aligned = (a: string, b: string) => {
+    const mb = new Map((rawBy.get(b) ?? []).map((p) => [minuteKey(p.t), p.v]));
+    const xs: number[] = [];
+    const ys: number[] = [];
+    for (const p of rawBy.get(a) ?? []) {
+      const v = mb.get(minuteKey(p.t));
+      if (v !== undefined) {
+        xs.push(p.v);
+        ys.push(v);
+      }
+    }
+    return { xs, ys };
+  };
+  const measured = analog.filter((s) => (rawBy.get(s.id)?.length ?? 0) >= 5);
+  const pairs: CorrelationPair[] = [];
+  const rOf = new Map<string, number>();
+  for (let i = 0; i < measured.length; i++) {
+    for (let j = i + 1; j < measured.length; j++) {
+      const { xs, ys } = aligned(measured[i].id, measured[j].id);
+      const r = pearson(xs, ys);
+      if (r === null) continue;
+      const cut = Math.floor((xs.length * 2) / 3);
+      pairs.push({
+        a: measured[i].tag,
+        b: measured[j].tag,
+        r: round(r, 3),
+        n: xs.length,
+        baseline: cut >= 6 ? (pearson(xs.slice(0, cut), ys.slice(0, cut)) ?? undefined) : undefined,
+        recent: cut >= 6 ? (pearson(xs.slice(cut), ys.slice(cut)) ?? undefined) : undefined,
+      });
+      rOf.set(`${measured[i].tag}|${measured[j].tag}`, r);
+      rOf.set(`${measured[j].tag}|${measured[i].tag}`, r);
+    }
+  }
+  pairs.sort((x, y) => Math.abs(y.r) - Math.abs(x.r));
   const influences: Record<string, InfluenceLink[]> = {};
-  // Heat-map: every forecast sensor with measured history. Correlation needs
-  // real history; none → no matrix.
-  const measuredForecast = forecastSensors.filter((s) => s.history.length >= 5);
-  const matrixTags = measuredForecast.map((s) => s.tag);
-  for (const s of forecastSensors) {
-    influences[s.tag] = buildInfluence(sensors, s.tag);
+  for (const d of measured) {
+    const dv = (rawBy.get(d.id) ?? []).map((p) => p.v);
+    const dm = dv.reduce((a, b) => a + b, 0) / dv.length;
+    const dSd = Math.sqrt(dv.reduce((a, v) => a + (v - dm) ** 2, 0) / dv.length);
+    influences[d.tag] = measured
+      .filter((s) => s.id !== d.id && rOf.has(`${d.tag}|${s.tag}`))
+      .map((s) => {
+        const r = rOf.get(`${d.tag}|${s.tag}`)!;
+        const sv = (rawBy.get(s.id) ?? []).map((p) => p.v);
+        const sm = sv.reduce((a, b) => a + b, 0) / sv.length;
+        const sSd = Math.sqrt(sv.reduce((a, v) => a + (v - sm) ** 2, 0) / sv.length);
+        // Expected change of this measurement for one σ of the driver: r · σ_s.
+        return { tag: s.tag, name: s.name, unit: s.unit, coefficient: round(r, 3), delta: round(r * sSd, 4), direction: r >= 0 ? ("up" as const) : ("down" as const), _d: dSd };
+      })
+      .sort((a, b) => Math.abs(b.coefficient) - Math.abs(a.coefficient))
+      .slice(0, 6)
+      .map(({ _d, ...x }) => (void _d, x));
+  }
+  const keySensors = [...analog]
+    .sort((a, b) => RANK[b.status] - RANK[a.status] || Math.abs(fitShort.get(b.id)?.b ?? 0) - Math.abs(fitShort.get(a.id)?.b ?? 0))
+    .slice(0, 6)
+    .map((s) => s.tag);
+  const matrixTags = measured.map((s) => s.tag);
+  const matrix = matrixTags.map((a, i) => matrixTags.map((b, j) => (i === j ? 1 : round(rOf.get(`${a}|${b}`) ?? 0, 3))));
+
+  /* ---------------- time to limit ---------------- */
+  const subs = catalog.subassemblies;
+  const rul: RulItem[] = subs.map((sa) => {
+    let best: { hours: number; r2: number; tag: string } | null = null;
+    for (const s of analog.filter((x) => x.subassemblyId === sa.subassemblyId)) {
+      const series = rawBy.get(s.id) ?? [];
+      const current = series.at(-1)?.v;
+      if (current === undefined || s.alarmVal === null) continue;
+      const gap = s.alarmVal - current;
+      if (gap === 0) continue;
+      // The whole trend window first, then its recent part: a fault that started building a few readings ago
+      // shows as a trend there long before it moves the line through the whole window.
+      for (const k of [series.length, RECENT_TREND_SAMPLES * 2, RECENT_TREND_SAMPLES]) {
+        if (k > series.length || k < minTrend) continue;
+        const f = k === series.length ? fitShort.get(s.id) : fitLine(series.slice(-k));
+        if (!f) continue;
+        const span = (series[series.length - 1].t - series[series.length - k].t) / HOUR;
+        if (!significant(f, Math.max(span, 0.25)) || Math.sign(gap) !== Math.sign(f.b)) continue;
+        const hours = gap / f.b;
+        if (hours > 0 && (!best || hours < best.hours)) best = { hours, r2: f.r2, tag: s.tag };
+        break;
+      }
+    }
+    return {
+      id: sa.subassemblyId,
+      name: sa.name,
+      component: sa.name,
+      health: sa.health,
+      hours: best ? Math.max(1, Math.round(best.hours)) : null,
+      days: best ? Math.round(best.hours / 24) : null,
+      confidence: best ? Math.round(best.r2 * 100) : null,
+      status: sa.status ?? "Normal",
+      dueLabel: best ? dueLabel(best.hours) : "No reading is moving toward its limit",
+      driver: best?.tag,
+    };
+  });
+  rul.sort((a, b) => (a.hours ?? Infinity) - (b.hours ?? Infinity));
+
+  /* ---------------- anomalies ---------------- */
+  const anomalies: AnomalyItem[] = [];
+  for (const s of analog) {
+    const ref = refBy.get(s.id);
+    const series = rawBy.get(s.id) ?? [];
+    const latest = series.at(-1);
+    if (!ref?.expected && ref?.expected !== 0) continue;
+    if (!latest || !ref.sigma || ref.sigma <= 0 || zFree === null) continue;
+    const z = (latest.v - ref.expected) / ref.sigma;
+    if (Math.abs(z) <= zFree) continue;
+    let onset = latest.t;
+    for (let i = series.length - 1; i >= 0 && Math.abs((series[i].v - ref.expected) / ref.sigma) > zFree; i--) onset = series[i].t;
+    anomalies.push({
+      tag: s.tag,
+      name: s.name,
+      component: s.subAssembly ?? s.component ?? s.tag,
+      score: round(clamp(Math.abs(z) / (2 * zFree), 0, 1), 3),
+      severity: s.status,
+      deviation: `${z >= 0 ? "+" : ""}${round(z, 1)} σ vs reference ${round(ref.expected, 3)} ${s.unit}`.trim(),
+      onset: new Date(onset).toISOString(),
+    });
+  }
+  anomalies.sort((a, b) => b.score - a.score);
+  const timeline: number[] = Array.from({ length: 24 }, () => 0);
+  for (const f of findings.rows) {
+    const h = Math.floor((Date.now() - f.opened_at.getTime()) / HOUR);
+    if (h >= 0 && h < 24 && f.type !== "data_unavailable") timeline[23 - h] += 1;
   }
 
-  const anomalies = buildAnomalies(sensors);
-  const overallHealth =
-    Math.round(
-      (subsystems.reduce((acc, x) => acc + x.health, 0) / (subsystems.length || 1)) * 10
-    ) / 10;
+  /* ---------------- findings-based analysis ---------------- */
+  const active = openFindings.filter((f) => f.severity_id !== "Normal");
+  const risks: FailureRisk[] = active.map((f) => {
+    const r = rul.find((x) => x.driver && x.driver === f.tag);
+    return {
+      id: `F-${f.id}`,
+      fault: f.rule_name ? `${f.rule_name} (${f.rule_code})` : f.type_name,
+      component: f.sub_name ?? f.m_name ?? "",
+      probability: null,
+      severity: f.severity_id,
+      window: r?.hours ? r.dueLabel : "—",
+      priority: prio(f.severity_id)?.name ?? "",
+    };
+  });
+  const weightOf = (sev: Severity) => RANK[sev];
+  const groups = new Map<string, typeof active>();
+  for (const f of active) (groups.get(f.sub_name ?? f.rule_name ?? "Machine") ?? groups.set(f.sub_name ?? f.rule_name ?? "Machine", []).get(f.sub_name ?? f.rule_name ?? "Machine")!).push(f);
+  const totalWeight = active.reduce((a, f) => a + weightOf(f.severity_id), 0) || 1;
+  const sources: IssueSource[] = [...groups.entries()].map(([key, list]) => {
+    const worst = list.reduce<Severity>((a, f) => (RANK[f.severity_id] > RANK[a] ? f.severity_id : a), "Normal");
+    return {
+      id: key,
+      cause: list.find((f) => f.rule_name)?.rule_name ?? list[0].type_name,
+      subsystem: key,
+      contribution: round((list.reduce((a, f) => a + weightOf(f.severity_id), 0) / totalWeight) * 100, 1),
+      confidence: null,
+      severity: worst,
+      evidence: list
+        .filter((f) => f.tag)
+        .map((f) => ({ tag: f.tag!, label: f.m_name ?? f.tag!, detail: f.summary, severity: f.severity_id })),
+    };
+  });
+  sources.sort((a, b) => b.contribution - a.contribution);
+  const faults: FaultClass[] = active
+    .filter((f) => f.rule_code)
+    .map((f) => ({ id: `F-${f.id}`, label: `${f.rule_name} (${f.rule_code})`, probability: null, severity: f.severity_id, band: f.category ?? "" }));
+  const actions: MaintenanceAction[] = active
+    .filter((f) => f.action)
+    .map((f) => {
+      const p = prio(f.severity_id);
+      return {
+        id: `F-${f.id}`,
+        title: f.rule_name ?? f.type_name,
+        component: f.sub_name ?? "",
+        priority: p?.name ?? "",
+        window: p ? p.description : "—",
+        eta: "—",
+        confidence: null,
+        rationale: f.action!,
+      };
+    });
 
-  const condition = buildConditionProjection(overallHealth, systems, sensors);
+  /* ---------------- health trend ---------------- */
+  const lastScore = scores.rows.at(-1);
+  const overallFit = fitLine(scores.rows.map((r) => ({ t: r.t.getTime(), v: Number(r.score) })));
+  const sysOfSub = new Map(subs.map((s) => [s.subassemblyId, s.systemId]));
+  const subFits = new Map<string, Fit | null>();
+  for (const code of new Set(subScores.rows.map((r) => r.code))) {
+    subFits.set(code, fitLine(subScores.rows.filter((r) => r.code === code).map((r) => ({ t: r.t.getTime(), v: Number(r.score) }))));
+  }
+  const project = (start: number | null, f: Fit | null, day: number) => (start === null ? null : clamp(f && significant(f, 24) ? start + f.b * day * 24 : start, 0, 100));
+  const points: ConditionPoint[] = CONDITION_HORIZONS.map((day) => {
+    const systems: Record<string, number> = {};
+    for (const sy of catalog.systems) {
+      const vals = subs
+        .filter((s) => sysOfSub.get(s.subassemblyId) === sy.systemId && s.health !== null)
+        .map((s) => project(s.health, subFits.get(s.subassemblyId) ?? null, day))
+        .filter((v): v is number => v !== null);
+      if (vals.length) systems[sy.systemId] = round(Math.min(...vals), 1);
+    }
+    return { day, overall: round(project(lastScore ? Number(lastScore.score) : null, overallFit, day) ?? 0, 1), systems };
+  });
+  const degradation: DegradationItem[] = subs.map((s) => {
+    const f = subFits.get(s.subassemblyId) ?? null;
+    return {
+      id: s.subassemblyId,
+      name: s.name,
+      stageIndex: RANK[s.status ?? "Normal"],
+      stageLabel: s.status ?? "No data",
+      health: s.health,
+      trend: f && significant(f, 24) ? (f.b > 0 ? "rising" : "falling") : "stable",
+    };
+  });
+  degradation.sort((a, b) => b.stageIndex - a.stageIndex || (a.health ?? 101) - (b.health ?? 101));
 
-  const sources = buildIssueSources(sensors, diagnosis);
+  /* ---------------- features: what drives the health penalty ---------------- */
+  const zWeight = param("z_weight") ?? 0;
+  const contributions = analog
+    .map((s) => {
+      const ref = refBy.get(s.id);
+      const v = rawBy.get(s.id)?.at(-1)?.v;
+      if (v === undefined || !ref?.sigma || ref.expected === null || zFree === null) return null;
+      const z = Math.abs((v - ref.expected) / ref.sigma);
+      const limitPts = s.status === "Critical" ? (param("limit_critical") ?? 0) : s.status === "Alert" ? (param("limit_advisory") ?? 0) : 0;
+      const pts = Math.min(param("z_cap") ?? 0, Math.max(0, z - zFree) * zWeight) + limitPts;
+      return pts > 0 ? { s, pts } : null;
+    })
+    .filter((x): x is { s: (typeof analog)[number]; pts: number } => x !== null);
+  const totalPts = contributions.reduce((a, c) => a + c.pts, 0) || 1;
+  const features: FeatureWeight[] = contributions
+    .sort((a, b) => b.pts - a.pts)
+    .slice(0, 6)
+    .map((c) => ({ id: c.s.tag, tag: c.s.tag, label: c.s.name, weight: round((c.pts / totalPts) * 100, 1) }));
+
+  /* ---------------- summary ---------------- */
+  const coverage = catalog.sensors.length ? Math.round((catalog.sensors.filter((s) => s.quality !== "No data").length / catalog.sensors.length) * 100) : null;
+  const worst = active.reduce<Severity>((a, f) => (RANK[f.severity_id] > RANK[a] ? f.severity_id : a), "Normal");
+  const reasoning: ReasoningStep[] = [
+    { id: "ingest", label: "Readings", detail: `${readingsLastHour.rows[0]?.n ?? 0} readings in the last hour from ${catalog.sensors.length} measurements`, status: coverage !== null && coverage < 100 ? "Alert" : "Normal" },
+    { id: "validity", label: "Data validity", detail: coverage === null ? "No measurements" : `${coverage} % of measurements reporting`, status: "Normal" },
+    { id: "limits", label: "Limits and references", detail: `${active.filter((f) => f.type === "limit_exceeded").length} limit, ${active.filter((f) => f.type === "behaviour_deviation").length} reference deviation finding(s)`, status: worst },
+    { id: "rules", label: "Diagnostic rules", detail: `${active.filter((f) => f.type === "rule_pattern").length} active rule pattern(s)`, status: active.some((f) => f.type === "rule_pattern") ? worst : "Normal" },
+    { id: "health", label: "Health index", detail: modelName ? `${modelName}${lastScore ? ` · ${round(Number(lastScore.score), 1)}` : ""}` : "No health model", status: "Normal" },
+  ];
+
+  const sysName = new Map(catalog.systems.map((s) => [s.systemId, s.name]));
+  const locations: Record<string, SensorLocation> = {};
+  for (const s of catalog.sensors) {
+    locations[s.tag] = { systemId: s.systemId ?? "", system: sysName.get(s.systemId ?? "") ?? "", subassemblyId: s.subassemblyId ?? "", subassembly: s.subAssembly ?? "", component: s.component ?? "" };
+  }
 
   return {
     machineId,
     generatedAt: new Date().toISOString(),
-    keySensors: keyTags,
+    keySensors,
     prognosis: {
       horizons: FORECAST_HORIZONS,
       forecasts,
-      correlation: {
-        tags: matrixTags,
-        matrix: buildCorrelation(sensors, matrixTags),
-        pairs: buildCorrelationPairs(forecastSensors),
-      },
+      correlation: { tags: matrixTags, matrix, pairs },
       influences,
-      condition: {
-        horizons: CONDITION_HORIZONS,
-        systems: systems.map(({ id, name }) => ({ id, name })),
-        points: condition,
-      },
+      condition: { horizons: CONDITION_HORIZONS, systems: catalog.systems.map((s) => ({ id: s.systemId, name: s.name })), points },
       locations,
-      risks: buildFailureRisks(sensors, subsystems, diagnosis),
-      rul: buildRul(subsystems, sensors),
+      risks,
+      rul,
       anomalies,
-      anomalyTimeline: buildAnomalyTimeline(),
+      anomalyTimeline: timeline,
     },
     analysis: {
       model: {
-        healthIndex: overallHealth,
-        confidence: diagnosis?.confidence ?? sources[0]?.confidence ?? 96,
-        inputs: sensors.length,
-        condition: diagnosis?.overallCondition ?? "Nominal",
-        engine: diagnosis?.engineVersion ?? "AssetIQ ML reference model",
+        healthIndex: lastScore ? round(Number(lastScore.score), 1) : null,
+        confidence: coverage,
+        inputs: catalog.sensors.length,
+        condition: !lastScore ? "No data" : worst === "Critical" ? "Critical" : worst === "Alert" ? "Alert" : "Nominal",
+        engine: modelName ?? "No health model",
       },
       sources,
-      faults: buildFaultClasses(sensors, diagnosis),
-      degradation: { stages: [...DEGRADATION_STAGES], items: buildDegradation(subsystems) },
-      actions: buildMaintenanceActions(sensors, diagnosis),
-      features: buildFeatureWeights(sensors, diagnosis),
-      reasoning: buildReasoningSteps(sources, diagnosis, sensors.length),
+      faults,
+      degradation: { stages: severityOrder, items: degradation },
+      actions,
+      features,
+      reasoning,
     },
   };
 }

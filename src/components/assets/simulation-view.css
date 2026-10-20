@@ -337,7 +337,7 @@
   padding: 4px 14px;
   font-size: var(--fs-sm);
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--dur-fast) var(--ease-out);
 }
 
 .sim-register tr:hover .sim-row-action,
@@ -439,8 +439,7 @@
 .simc-group-label {
   font-size: var(--fs-xs);
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--text-muted);
   margin-right: 4px;
 }

@@ -14,7 +14,7 @@ export interface SimulationScenario {
   code: string;
   description: string;
   expectedRule: string;
-  expectedCondition: "Normal" | "Advisory" | "Critical";
+  expectedCondition: "Normal" | "Alert" | "Critical";
   feedOffset?: number;
   fuelOffset?: number;
   draftOffset?: number;
@@ -67,7 +67,7 @@ export interface KilnSealsHealthScores {
   outletSealHealth: number; // 0 - 100
   axialOverlapHealth: number; // 0 - 100
   dataQualityScore: number; // 0 - 100
-  condition: "Healthy" | "Advisory" | "Critical";
+  condition: "Healthy" | "Alert" | "Critical";
   primaryCause?: string;
   recommendedAction?: string;
 }
@@ -76,7 +76,7 @@ export interface EvaluatedRule {
   id: string; // "R-SHL-03" etc
   name: string;
   category: import("@/lib/kiln-sim/rules").RuleCategory;
-  severity: "Normal" | "Advisory" | "Critical";
+  severity: "Normal" | "Alert" | "Critical";
   status: "ACTIVE" | "PENDING" | "QUIET";
   logicDescription: string;
   triggerCondition: string;

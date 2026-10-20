@@ -4,7 +4,6 @@ import React, { useEffect, useState } from "react";
 import { Dialog, Field, FieldGrid, PillButton, Select, TextInput, type Tone } from "@/components/ui";
 import {
   PAUSED,
-  PRIORITY_LABEL,
   READINESS_KEYS,
   READINESS_LABEL,
   READINESS_STATE_LABEL,
@@ -18,10 +17,11 @@ import {
   type Transition,
 } from "@/lib/pms";
 import { formatLocalTime } from "@/lib/time";
+import { useWorkOrderPriorities } from "@/lib/reference-data";
 import type { PmsWorkOrder, ReadinessKey, ReadinessState, WoStage } from "@/types/pms";
 import { Section } from "@/components/assets/analysis/an-ui";
 import type { Outcome, PmsModel } from "./pms-model";
-import { machineCode, priorityTone, stageTone, woRef } from "./pms-model";
+import { machineName, priorityOptions, priorityTone, stageTone, woRef } from "./pms-model";
 import { DefList, NoteDialog, Notice, StateWord, Stepper } from "./pms-ui";
 
 /* One work order: lifecycle, planning details, readiness, execution record, actions and audit trail. */
@@ -44,6 +44,8 @@ export function WorkOrderDetail({
   setNotice: (o: Outcome | null) => void;
 }) {
   const { data } = pms;
+  const priorities = useWorkOrderPriorities();
+  const priorityName = priorities?.find((p) => p.id === wo.priority)?.name ?? null;
   const [busy, setBusy] = useState(false);
   const [ask, setAsk] = useState<Transition | null>(null);
   const [editing, setEditing] = useState(false);
@@ -93,27 +95,40 @@ export function WorkOrderDetail({
 
       <DefList
         rows={[
-          { label: "Priority", value: `${wo.priority} · ${PRIORITY_LABEL[wo.priority] ?? ""}`, tone: priorityTone(wo.priority) },
-          { label: "Equipment", value: `${machineCode(wo.machineId)}${wo.component ? ` · ${wo.component}` : ""}` },
+          { label: "Priority", value: priorityName ? `${wo.priority} · ${priorityName}` : wo.priority, tone: priorityTone(wo.priority) },
+          { label: "Equipment", value: `${machineName(wo.machineId)}${wo.component ? ` · ${wo.component}` : ""}` },
           {
             label: "Source",
-            value: wo.source.kind === "finding" ? `Finding ${wo.source.ref}` : wo.source.kind === "inspection" ? `Checklist defect ${wo.source.ref}` : "Manual request",
+            value:
+              wo.checkId !== null
+                ? "Problem found on a check raised by an alarm"
+                : wo.source.kind === "finding"
+                  ? "Raised from a sensor problem"
+                  : wo.source.kind === "inspection"
+                    ? `Fault found on checklist ${wo.source.ref}`
+                    : wo.maintenanceType === "proactive"
+                      ? wo.partId
+                        ? "Planned before the part's service life runs out"
+                        : "Planned before a reading reaches its limit"
+                      : wo.plannedStart && wo.maintenanceType === "predictive"
+                        ? "Planned by an engineer"
+                        : "Requested by a person",
           },
-          { label: "Work mode", value: wo.workMode === "Isolate" ? "Isolation · plant permit required" : wo.workMode === "Run" ? "Operating checks" : "Not set" },
+          { label: "How the work is done", value: wo.workMode === "Isolate" ? "Machine stopped and locked off · permit needed" : wo.workMode === "Run" ? "Checks while the machine runs" : "Not set" },
           { label: "Planned start", value: wo.plannedStart ? when(wo.plannedStart) : "Not set", tone: wo.stage === "ready" && !wo.plannedStart ? "warn" : undefined },
-          { label: "Estimate", value: wo.estimateHours ? `${wo.estimateHours} h` : "Not estimated" },
-          { label: "Owner", value: wo.assignee ?? "Unassigned" },
-          { label: "Raised", value: when(wo.createdAt) },
+          { label: "Time needed", value: wo.estimateHours ? `${wo.estimateHours} h` : "Not estimated" },
+          { label: "Who", value: wo.assignee ?? "Nobody yet" },
+          { label: "Created", value: when(wo.createdAt) },
         ]}
       />
       {wo.notes && <p className="pm-note">{wo.notes}</p>}
 
       {(stepOf(wo) <= 3 || readinessBlockers(wo.readiness).length < READINESS_KEYS.length) && (
-        <div className="pm-readiness" role="group" aria-label="Readiness">
+        <div className="pm-readiness" role="group" aria-label="Ready to start?">
           <div className="pm-block-head">
-            <h4 className="pg-analysis-block-title">Readiness</h4>
+            <h4 className="pg-analysis-block-title">Ready to start?</h4>
             <span className="ast-caption">
-              {readinessBlockers(wo.readiness).length ? `${readinessBlockers(wo.readiness).length} open · blocks Ready` : "All confirmed"}
+              {readinessBlockers(wo.readiness).length ? `${readinessBlockers(wo.readiness).length} still missing, so it cannot be marked ready` : "Everything is in place"}
             </span>
           </div>
           <ul>
@@ -141,7 +156,7 @@ export function WorkOrderDetail({
       {(wo.asFound || wo.asLeft) && (
         <DefList
           className="pm-record"
-          rows={[...(wo.asFound ? [{ label: "As found", value: wo.asFound }] : []), ...(wo.asLeft ? [{ label: "As left", value: wo.asLeft }] : [])]}
+          rows={[...(wo.asFound ? [{ label: "Found before the work", value: wo.asFound }] : []), ...(wo.asLeft ? [{ label: "Left after the work", value: wo.asLeft }] : [])]}
         />
       )}
 
@@ -154,7 +169,7 @@ export function WorkOrderDetail({
             </PillButton>
           )}
           <PillButton variant="secondary" disabled={busy} onClick={() => setEditing(true)}>
-            Edit planning
+            Edit plan details
           </PillButton>
           {others.map((t) => {
             const b = blockerOf(t);
@@ -167,12 +182,12 @@ export function WorkOrderDetail({
         </div>
       )}
       {live && primaryBlocker && <p className="ast-caption pm-foot">{primaryBlocker}</p>}
-      {!live && <p className="ast-caption pm-foot">Closed record · read only</p>}
+      {!live && <p className="ast-caption pm-foot">This work order is closed and can no longer be changed.</p>}
 
-      <div className="pm-audit" role="group" aria-label="Audit trail">
-        <h4 className="pg-analysis-block-title">Audit trail</h4>
+      <div className="pm-audit" role="group" aria-label="History of changes">
+        <h4 className="pg-analysis-block-title">History of changes</h4>
         {events.length === 0 ? (
-          <p className="ast-caption">Raised {when(wo.createdAt)} · no planned-maintenance changes yet.</p>
+          <p className="ast-caption">Created {when(wo.createdAt)} · no changes yet.</p>
         ) : (
           <ol>
             {events.map((e) => (
@@ -182,12 +197,12 @@ export function WorkOrderDetail({
                   {e.action === "transition" || e.action === "create"
                     ? `${e.from ? `${STAGE_LABEL[e.from as WoStage] ?? e.from} → ` : ""}${STAGE_LABEL[e.to as WoStage] ?? e.to}`
                     : e.action === "denied"
-                      ? `Denied: ${STAGE_LABEL[e.to as WoStage] ?? e.to}`
+                      ? `Not allowed: ${STAGE_LABEL[e.to as WoStage] ?? e.to}`
                       : e.action === "readiness"
-                        ? "Readiness"
+                        ? "Readiness updated"
                         : e.action === "finding"
-                          ? "Finding repeated"
-                          : "Planning details"}
+                          ? "Same problem seen again"
+                          : "Plan details changed"}
                   {e.reason && <span className="ast-caption"> · {e.reason}</span>}
                 </span>
                 <span className="ast-caption">{e.actor ?? "—"}</span>
@@ -202,13 +217,13 @@ export function WorkOrderDetail({
           open
           title={ask.label}
           subtitle={`${woRef(wo.id)} · ${wo.title}`}
-          label={ask.to === "awaiting_verification" ? "As found and work done" : ask.to === "completed" ? "As-left verification" : "Reason"}
+          label={ask.to === "awaiting_verification" ? "What you found and what you did" : ask.to === "completed" ? "Check after the work" : "Reason"}
           hint={
             ask.to === "awaiting_verification"
-              ? "Observed condition, measurements, parts used"
+              ? "What it looked like, measurements, parts used"
               : ask.to === "completed"
-                ? "Tests and values after the work, at comparable load"
-                : "Recorded with your name in the audit trail"
+                ? "Test results and readings after the work, at a similar load"
+                : "Saved with your name in the history of changes"
           }
           initial={ask.to === "awaiting_verification" ? (wo.asFound ?? "") : ask.to === "completed" ? (wo.asLeft ?? "") : ""}
           confirm={ask.label}
@@ -236,6 +251,7 @@ const toLocalInput = (iso: string | null) => {
 };
 
 function PlanningDialog({ open, wo, onClose, onSave }: { open: boolean; wo: PmsWorkOrder; onClose: () => void; onSave: (patch: Record<string, unknown>) => Promise<Outcome> }) {
+  const priorities = useWorkOrderPriorities();
   const [priority, setPriority] = useState(wo.priority);
   const [owner, setOwner] = useState(wo.assignee ?? "");
   const [mode, setMode] = useState<string>(wo.workMode ?? "");
@@ -270,7 +286,7 @@ function PlanningDialog({ open, wo, onClose, onSave }: { open: boolean; wo: PmsW
     <Dialog
       open={open}
       onClose={onClose}
-      title="Planning details"
+      title="Plan details"
       subtitle={`${woRef(wo.id)} · ${wo.title}`}
       busy={busy}
       onSubmit={() => void save()}
@@ -286,19 +302,19 @@ function PlanningDialog({ open, wo, onClose, onSave }: { open: boolean; wo: PmsW
       }
     >
       <FieldGrid>
-        <Field label="Priority" hint="Urgency, separate from the stage">
-          {(fid, d) => <Select id={fid} describedBy={d} value={priority} onChange={setPriority} options={["P1", "P2", "P3", "P4"].map((p) => ({ value: p, label: `${p} · ${PRIORITY_LABEL[p]}` }))} />}
+        <Field label="Priority" hint="How urgent it is (separate from the stage)">
+          {(fid, d) => <Select id={fid} describedBy={d} value={priority} onChange={setPriority} options={priorityOptions(priorities, priority)} />}
         </Field>
-        <Field label="Work mode">
-          {(fid, d) => <Select id={fid} describedBy={d} value={mode} onChange={setMode} options={[{ value: "", label: "Not set" }, { value: "Run", label: "Operating checks" }, { value: "Isolate", label: "Isolation (plant permit)" }]} />}
+        <Field label="How the work is done">
+          {(fid, d) => <Select id={fid} describedBy={d} value={mode} onChange={setMode} options={[{ value: "", label: "Not set" }, { value: "Run", label: "Checks while the machine runs" }, { value: "Isolate", label: "Machine stopped and locked off (permit needed)" }]} />}
         </Field>
-        <Field label="Planned start" hint="A date alone does not make the job ready">
+        <Field label="Planned start" hint="Setting a date does not by itself make the job ready">
           {(fid, d) => <input id={fid} aria-describedby={d} className="ui-input" type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />}
         </Field>
-        <Field label="Estimate (h)">
+        <Field label="Time needed (hours)">
           {(fid, d) => <input id={fid} aria-describedby={d} className="ui-input" type="number" min={0} step={0.5} inputMode="decimal" value={hours} onChange={(e) => setHours(e.target.value)} />}
         </Field>
-        <Field label="Owner" wide>
+        <Field label="Who does it" wide>
           {(fid, d) => <TextInput id={fid} describedBy={d} value={owner} onChange={setOwner} placeholder="Crew or person" />}
         </Field>
       </FieldGrid>

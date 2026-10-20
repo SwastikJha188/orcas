@@ -18,7 +18,7 @@ import { TwinHint, TwinNavBar, usePersistedNavMode } from "./twin-nav-ui";
 
 const PlantTwinCanvas = dynamic(() => import("./plant-twin-canvas"), {
   ssr: false,
-  loading: () => <div className="ph-twin-loading" role="status">Loading 3D twin…</div>,
+  loading: () => <div className="ph-twin-loading" role="status">Loading the 3D model…</div>,
 });
 
 /** Theme tokens resolved to concrete colours for WebGL; follows theme switches. */
@@ -82,7 +82,7 @@ export interface PlantTwinProps {
   inset?: TwinInset;
 }
 
-const toneLabel = (t: Tone) => (t === "bad" ? "Critical" : t === "warn" ? "Advisory" : t === "idle" ? "Standby" : "Normal");
+const toneLabel = (t: Tone) => (t === "bad" ? "Critical" : t === "warn" ? "Alert" : t === "idle" ? "Standby" : "Normal");
 
 export function PlantTwin({ plant, lookup, alertsByMachine, liveIds, onOpenMachine, onUnsupported, inset }: PlantTwinProps) {
   const colors = useTwinColors();
@@ -169,7 +169,7 @@ export function PlantTwin({ plant, lookup, alertsByMachine, liveIds, onOpenMachi
           persistKey={inset && (inset.right > 0 || inset.bottom > 0) ? `plant.${plant.id}` : undefined}
         />
       ) : (
-        <div className="ph-twin-loading" role="status">Loading 3D twin…</div>
+        <div className="ph-twin-loading" role="status">Loading the 3D model…</div>
       )}
 
       <TwinNavBar navMode={navMode} onNavMode={setNavMode} onReset={() => setCommand((c) => ({ kind: "fit", n: c.n + 1 }))} />
@@ -178,10 +178,10 @@ export function PlantTwin({ plant, lookup, alertsByMachine, liveIds, onOpenMachi
 
       <div className="ph-twin-legend" aria-label="Legend">
         <span><i data-tone="good" />Normal</span>
-        <span><i data-tone="warn" />Advisory</span>
+        <span><i data-tone="warn" />Alert</span>
         <span><i data-tone="bad" />Critical</span>
-        <span><b data-kind="electrical" />Power</span>
-        <span><b data-kind="network" />Network</span>
+        <span><b data-kind="electrical" />Power cable</span>
+        <span><b data-kind="network" />Data cable</span>
       </div>
 
       {selected && (
@@ -189,7 +189,7 @@ export function PlantTwin({ plant, lookup, alertsByMachine, liveIds, onOpenMachi
           <div className="ph-insp-head">
             <div>
               <span className="ph-insp-name">{selected.name}</span>
-              <span className="ph-sub">{selectedArea ? "Area" : "Site infrastructure"} · {PLANT_MODELS[selected.model].name}</span>
+              <span className="ph-sub">{selectedArea ? "Area" : "Support building"} · {PLANT_MODELS[selected.model].name}</span>
             </div>
             <button type="button" className="ast-icon-btn" onClick={() => setSelectedId(null)} aria-label="Close details">
               <IconClose />
@@ -202,8 +202,8 @@ export function PlantTwin({ plant, lookup, alertsByMachine, liveIds, onOpenMachi
                 <div><dt>Health</dt><dd className="ast-num">{callout.health ?? "—"}<span className="ast-unit">/100</span></dd></div>
                 <div><dt>Machines</dt><dd className="ast-num">{callout.machines}</dd></div>
                 <div><dt>Running</dt><dd className="ast-num">{callout.running}</dd></div>
-                <div><dt>Active alerts</dt><dd className="ast-num">{callout.alerts}</dd></div>
-                <div><dt>Telemetry</dt><dd>{callout.telemetry === "LIVE" ? "Live" : callout.telemetry === "RECORD" ? "Asset record" : "—"}</dd></div>
+                <div><dt>Open alerts</dt><dd className="ast-num">{callout.alerts}</dd></div>
+                <div><dt>Readings</dt><dd>{callout.telemetry === "LIVE" ? "Live" : callout.telemetry === "RECORD" ? "Saved record only" : "—"}</dd></div>
               </dl>
               <ul className="ph-twin-machines" aria-label="Machines in this area">
                 {subtreeMachines(selectedArea).map((m) => {
@@ -213,7 +213,7 @@ export function PlantTwin({ plant, lookup, alertsByMachine, liveIds, onOpenMachi
                       <button type="button" onClick={() => m.machineId && onOpenMachine(m.machineId)}>
                         <span className="ph-unit-dot" data-tone={machineTone(c.status)} aria-hidden="true" />
                         <span className="ph-twin-mname">{m.name}</span>
-                        <span className="ast-num ph-twin-mhealth">{c.health}</span>
+                        <span className="ast-num ph-twin-mhealth">{c.health ?? "—"}</span>
                         <IconChevron size={10} />
                       </button>
                     </li>
@@ -223,8 +223,8 @@ export function PlantTwin({ plant, lookup, alertsByMachine, liveIds, onOpenMachi
             </>
           ) : (
             <p className="ph-twin-note">
-              Shared site service. Every area draws power from the electrical house and reports through the gateway house; neither carries
-              monitored machines.
+              Serves the whole site. Every area gets its power from the electrical house and sends its readings through the gateway house.
+              Neither building has machines that are monitored.
             </p>
           )}
         </aside>

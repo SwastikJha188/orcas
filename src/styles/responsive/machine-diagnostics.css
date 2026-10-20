@@ -667,7 +667,7 @@
 
 /* Section-header controls (filter pills, toggles) never widen the page: the
    right slot shrinks and its pill rows scroll inside it. All machine pages. */
-:root .pg-frame :is(.pg-analysis-section-right, .pg-health-card-right) {
+:root .pg-frame .pg-analysis-section-right {
   min-width: 0;
   max-width: 100%;
 }

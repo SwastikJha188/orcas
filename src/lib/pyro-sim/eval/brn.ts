@@ -8,6 +8,8 @@ import { fmtSigned, fmtZ } from "../shared";
 import { bearingHit, patterned, slopePerHour, subsOf, unitRun, type EvalContext } from "./context";
 
 const M = "PYR-BRN-01";
+/** Primary-air header residual that is a real header change (mbar): ≈ 10σ of the header transmitter. */
+const HDR_DEV = 40;
 
 export function evalBrn(c: EvalContext): void {
   const { measured, states, res, sig, meanRes, ratio, good, quality, shellResMean, transient, H } = c;
@@ -36,23 +38,24 @@ export function evalBrn(c: EvalContext): void {
   if (paFanRun && good("PRS-BRN-01", "PRS-BRN-02", "PRS-BRN-03") && coalAtSp) {
     // Header supply / restriction: the header moves and the channels downstream follow it (same sign).
     const chFollow = Math.sign(swirlZ) === Math.sign(hdrR) && Math.sign(axialZ) === Math.sign(hdrR) && Math.min(Math.abs(swirlZ), Math.abs(axialZ)) > 3;
-    if (Math.abs(hdrR) > 15 && chFollow) {
+    if (Math.abs(hdrR) > HDR_DEV && chFollow) {
       const p = measured["PRS-BRN-03"];
       H(M, "SW-BRN-01", {
-        severity: p <= 215 || p >= 300 || bzR < -30 ? "Critical" : "Advisory",
+        severity: p <= 500 || p >= 850 || bzR < -30 ? "Critical" : "Alert",
         evidence: `Primary-air header ${p.toFixed(0)} mbar (${fmtSigned(hdrR, 0)} mbar, ${fmtZ(hdrZ)}) ${hdrR < 0 ? "falling — leak or supply loss" : "rising — restriction downstream"}; swirl ${fmtZ(swirlZ)} and axial ${fmtZ(axialZ)} follow it · PA fan current ${fmtSigned(paI, 0)} A vs model · ${flameCtx}`,
         tags: ["PRS-BRN-03", "PRS-BRN-01", "PRS-BRN-02", "ELE-BRN-01", "TMP-KLN-14", "FLO-BRN-01"],
         subs: ["brn-burner", "brn-pafan"],
-        lead: { tag: "PRS-BRN-03", target: hdrR < 0 ? (p > 215 ? 215 : 190) : p < 300 ? 300 : 320 },
+        lead: { tag: "PRS-BRN-03", target: hdrR < 0 ? (p > 500 ? 500 : 400) : p < 850 ? 850 : 950 },
       });
     } else if ((Math.abs(swirlZ) > 6 || Math.abs(axialZ) > 6) && Math.abs(hdrZ) < 4) {
       const swirl = Math.abs(swirlZ) >= Math.abs(axialZ);
       const tag = swirl ? "PRS-BRN-01" : "PRS-BRN-02";
       const zz = swirl ? swirlZ : axialZ;
       const v = measured[tag];
-      const [wLo, wHi, aLo, aHi] = swirl ? [135, 200, 115, 220] : [195, 280, 170, 300];
+      // OSW-PE-SNL-PYR-01 Rev. 01 L / H / LL / HH (no LL for either channel: the lead stays at L).
+      const [wLo, wHi, aLo, aHi] = swirl ? [20, 150, 20, 200] : [450, 800, 450, 900];
       H(M, "SW-BRN-01", {
-        severity: v <= wLo || v >= wHi || bzR < -30 ? "Critical" : "Advisory",
+        severity: v <= wLo || v >= wHi || bzR < -30 ? "Critical" : "Alert",
         evidence: `${swirl ? "Swirl" : "Axial"} air ${v.toFixed(0)} mbar (${fmtZ(zz)}) ${zz > 0 ? "rising — tip / channel blockage downstream of the tap" : "falling — channel leak or blockage upstream of the tap"} at a steady header ${measured["PRS-BRN-03"].toFixed(0)} mbar · ${flameCtx}`,
         tags: [tag, "PRS-BRN-03", "TMP-KLN-14", "FLO-BRN-01"],
         lead: { tag, target: zz < 0 ? (v > wLo ? wLo : aLo) : v < wHi ? wHi : aHi },
@@ -72,7 +75,7 @@ export function evalBrn(c: EvalContext): void {
     if (byLevel || byRate) {
       // HOLD (Table 8.3 / 10.1): gas species and certified monitoring architecture unconfirmed — advisory evidence only.
       H(M, "SW-BRN-02", {
-        severity: "Advisory",
+        severity: "Alert",
         evidence: `Coal bin ${measured["TMP-BRN-04"].toFixed(1)} °C (${fmtSigned(binR)} K vs model, rising ${binRate.toFixed(1)} K/h over 1 h) with gas indication ${measured["GAS-BRN-01"].toFixed(0)} (${fmtSigned(gasR, 0)} vs model; ppm if CO / vol% if CO₂: species HOLD; no analyser-status point) · bin level ${level === null ? "not valid" : `${level.toFixed(0)} %${level > 75 ? " — high level, long residence" : ""}`} — EHS / SIS governs inerting`,
         tags: ["TMP-BRN-04", "GAS-BRN-01", "LEV-BRN-01"],
         subs: ["brn-coalbin"],
@@ -93,7 +96,7 @@ export function evalBrn(c: EvalContext): void {
   }
   if (blowerRun && good("VIB-BRN-02", "ELE-BRN-02") && ratio("VIB-BRN-02") > 1.5 && res("ELE-BRN-02") > 6) {
     H(M, "R-BRN-05", {
-      severity: measured["VIB-BRN-02"] >= 6.3 || measured["ELE-BRN-02"] >= 245 ? "Critical" : "Advisory",
+      severity: measured["VIB-BRN-02"] >= 6.3 || measured["ELE-BRN-02"] >= 245 ? "Critical" : "Alert",
       evidence: `Blower vibration ×${ratio("VIB-BRN-02").toFixed(2)} model with current ${fmtSigned(res("ELE-BRN-02"), 0)} A`,
       tags: ["VIB-BRN-02", "ELE-BRN-02"],
       lead: { tag: "VIB-BRN-02", target: measured["VIB-BRN-02"] < 6.3 ? 6.3 : 9 },
@@ -111,7 +114,7 @@ export function evalBrn(c: EvalContext): void {
     const weak = lineR < -50 && blowI < -blowNeed;
     if (choke || weak) {
       H(M, "R-BRN-04", {
-        severity: choke ? (p >= 540 || lineR > 120 ? "Critical" : "Advisory") : p <= 300 || lineR < -120 ? "Critical" : "Advisory",
+        severity: choke ? (p >= 540 || lineR > 120 ? "Critical" : "Alert") : p <= 300 || lineR < -120 ? "Critical" : "Alert",
         evidence: `Line ${p.toFixed(0)} mbar, ${fmtSigned(lineR, 0)} mbar ${choke ? "above" : "below"} what ${measured["FLO-BRN-01"].toFixed(2)} t/h explains, blower current ${fmtSigned(blowI, 0)} A — ${choke ? "line choking" : "blower weakening"}`,
         tags: ["PRS-BRN-04", "FLO-BRN-01", "ELE-BRN-02"],
         lead: { tag: "PRS-BRN-04", target: choke ? (p < 540 ? 540 : 620) : p > 300 ? 300 : 250 },
@@ -125,7 +128,7 @@ export function evalBrn(c: EvalContext): void {
   const svTags: string[] = [];
   if (!transient) {
     // Header vs channels and fan current: a real header change moves the channels downstream or the fan load.
-    if (paFanRun && good("PRS-BRN-03") && !patterned(c, "PRS-BRN-03") && Math.abs(hdrR) > 15 && Math.abs(meanRes("PRS-BRN-01", 5)) < 3 * sig("PRS-BRN-01") && Math.abs(meanRes("PRS-BRN-02", 5)) < 3 * sig("PRS-BRN-02") && Math.abs(paI) < 3) {
+    if (paFanRun && good("PRS-BRN-03") && !patterned(c, "PRS-BRN-03") && Math.abs(hdrR) > HDR_DEV && Math.abs(meanRes("PRS-BRN-01", 5)) < 3 * sig("PRS-BRN-01") && Math.abs(meanRes("PRS-BRN-02", 5)) < 3 * sig("PRS-BRN-02") && Math.abs(paI) < 3) {
       sv.push(`PRS-BRN-03 ${fmtSigned(hdrR, 0)} mbar vs model while swirl, axial and the PA fan current (${fmtSigned(paI, 1)} A) are unchanged — header tap / transmitter`);
       svTags.push("PRS-BRN-03");
     }
@@ -137,5 +140,5 @@ export function evalBrn(c: EvalContext): void {
       svTags.push("PRS-BRN-04");
     }
   }
-  if (sv.length) H(M, "SV-BRN-01", { severity: "Advisory", evidence: sv.join(" · "), tags: svTags, subs: subsOf(svTags) });
+  if (sv.length) H(M, "SV-BRN-01", { severity: "Alert", evidence: sv.join(" · "), tags: svTags, subs: subsOf(svTags) });
 }

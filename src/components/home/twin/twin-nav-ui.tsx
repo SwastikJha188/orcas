@@ -105,41 +105,47 @@ export function TwinNavBar({
     <div className="twin-nav" role="group" aria-label="Camera controls">
       <div className="twin-nav-cluster" role="group" aria-label="Move camera">
         <span className="twin-nav-tag">Move</span>
-        <HoldButton holdKey="a" nudge="move-left" label="Move left" title="Move left (A / Left arrow / Right-drag)" onAction={onAction}>
+        <HoldButton holdKey="a" nudge="move-left" label="Move left" title="Move left (A key, left arrow, or right-drag)" onAction={onAction}>
           ←
         </HoldButton>
-        <HoldButton holdKey="w" nudge="move-up" label="Move forward" title="Move forward (W / Up arrow / Right-drag)" onAction={onAction}>
+        <HoldButton holdKey="w" nudge="move-up" label="Move forward" title="Move forward (W key, up arrow, or right-drag)" onAction={onAction}>
           ↑
         </HoldButton>
-        <HoldButton holdKey="s" nudge="move-down" label="Move back" title="Move back (S / Down arrow / Right-drag)" onAction={onAction}>
+        <HoldButton holdKey="s" nudge="move-down" label="Move back" title="Move back (S key, down arrow, or right-drag)" onAction={onAction}>
           ↓
         </HoldButton>
-        <HoldButton holdKey="d" nudge="move-right" label="Move right" title="Move right (D / Right arrow / Right-drag)" onAction={onAction}>
+        <HoldButton holdKey="d" nudge="move-right" label="Move right" title="Move right (D key, right arrow, or right-drag)" onAction={onAction}>
           →
         </HoldButton>
       </div>
 
       <span className="twin-nav-sep" aria-hidden="true" />
 
-      <div className="twin-nav-cluster" role="group" aria-label="Orbit and zoom camera">
-        <span className="twin-nav-tag">Orbit</span>
-        <HoldButton holdKey="q" nudge="orbit-left" label="Orbit left" title="Orbit left (Q / Left-drag)" onAction={onAction}>
-          ↺
+      <div className="twin-nav-cluster" role="group" aria-label="Turn and zoom camera">
+        <span className="twin-nav-tag">Turn</span>
+        <HoldButton holdKey="q" nudge="orbit-left" label="Turn left" title="Turn left (Q key or drag)" onAction={onAction}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+          </svg>
         </HoldButton>
-        <HoldButton holdKey="e" nudge="orbit-right" label="Orbit right" title="Orbit right (E / Left-drag)" onAction={onAction}>
-          ↻
+        <HoldButton holdKey="e" nudge="orbit-right" label="Turn right" title="Turn right (E key or drag)" onAction={onAction}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+            <path d="M21 3v5h-5" />
+          </svg>
         </HoldButton>
-        <HoldButton holdKey="" nudge="zoom-in" label="Zoom in" title="Zoom in (Scroll)" onAction={onAction}>
+        <HoldButton holdKey="" nudge="zoom-in" label="Zoom in" title="Zoom in (or scroll)" onAction={onAction}>
           +
         </HoldButton>
-        <HoldButton holdKey="" nudge="zoom-out" label="Zoom out" title="Zoom out (Scroll)" onAction={onAction}>
+        <HoldButton holdKey="" nudge="zoom-out" label="Zoom out" title="Zoom out (or scroll)" onAction={onAction}>
           −
         </HoldButton>
       </div>
 
       <span className="twin-nav-sep" aria-hidden="true" />
 
-      <button type="button" className="twin-nav-reset" onClick={onReset} aria-label="Reset view" title="Reset view to default position">
+      <button type="button" className="twin-nav-reset" onClick={onReset} aria-label="Reset view" title="Back to the starting view">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M4 9V4h5M20 15v5h-5M4 4l6 6M20 20l-6-6" />
         </svg>
@@ -190,5 +196,5 @@ export function TwinHint({ navMode, extra }: { navMode?: TwinNavMode; extra?: st
 }
 
 export function twinHint(_navMode?: TwinNavMode, extra?: string) {
-  return `Drag to orbit · Right-drag or Shift+drag to move · Two-finger pan · Scroll to zoom · WASD to walk${extra ? ` · ${extra}` : ""}`;
+  return `Drag to turn · Right-drag or Shift+drag to move · Scroll to zoom · W A S D keys to walk${extra ? ` · ${extra}` : ""}`;
 }

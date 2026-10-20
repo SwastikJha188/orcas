@@ -209,9 +209,8 @@
 .hx-card-meta {
   font-size: var(--fs-sm);
   color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .hx-facts {
@@ -326,7 +325,11 @@
   color: var(--text-muted);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s ease, background 0.15s ease;
+  transition: opacity var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+}
+
+.hx-row-link:active {
+  transform: scale(0.97);
 }
 
 .ui-table tbody tr:hover .hx-row-link,

@@ -9,7 +9,7 @@ import { toCondition } from "@/components/ui/status";
 import { buildDetailedSensors, hotspotSensors } from "./machine-sensor-mapping-view";
 import type { SchematicDot } from "./machine-schematic";
 
-type Severity = "Normal" | "Advisory" | "Critical";
+type Severity = "Normal" | "Alert" | "Critical";
 
 /**
  * The Overview's numbers for one machine: mapped sensors as schematic dots,
@@ -69,13 +69,13 @@ export function useMachineOverview(
 
   // One machine-health source everywhere: the live plant, else the stored record.
   const live = liveMachineStatus(liveStatus, machine.id, { health: machine.health, status: machine.status });
-  const overall = Math.round(live.health);
-  const worst: Severity = live.status === "Critical" ? "Critical" : live.status === "Advisory" ? "Advisory" : "Normal";
-  // Display word on the one condition scale (Normal / Advisory / Critical).
+  const overall = live.health === null ? null : Math.round(live.health);
+  const worst: Severity = live.status === "Critical" ? "Critical" : live.status === "Alert" ? "Alert" : "Normal";
+  // Display word on the one condition scale (Normal / Alert / Critical).
   const conditionLabel = toCondition(live.status);
 
   const counts = useMemo(() => {
-    const c = { Normal: 0, Advisory: 0, Critical: 0 };
+    const c = { Normal: 0, Alert: 0, Critical: 0 };
     for (const s of sensors) c[s.status] += 1;
     return c;
   }, [sensors]);

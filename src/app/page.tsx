@@ -10,28 +10,31 @@ import {
 } from "@/providers/industrial-data-context";
 import { KilnSimulationProvider } from "@/providers/kiln-simulation-context";
 import { KilnOpsProvider } from "@/providers/kiln-ops-context";
-import { AiEngineProvider } from "@/providers/ai-engine-context";
 import { EdgeProvider } from "@/providers/edge-context";
+import { CopilotProvider } from "@/components/copilot/copilot-provider";
 import { SignInScreen } from "@/components/auth/sign-in";
 import { homeActive } from "@/components/home/home-active";
 
-// Home is the landing tab; the other workspaces load on first visit.
+// Home (the operator overview) is the landing tab; the other workspaces load on first visit.
 const AssetsView = dynamic(() => import("@/components/assets/assets-view").then((m) => m.AssetsView));
 const IndustrialDevicesView = dynamic(() => import("@/components/devices/devices-view").then((m) => m.IndustrialDevicesView));
 const MaintenanceWorkspace = dynamic(() => import("@/components/maintenance/maintenance-workspace").then((m) => m.MaintenanceWorkspace));
 const AssetIqHubView = dynamic(() => import("@/components/assetiq/assetiq-hub-view").then((m) => m.AssetIqHubView));
 const ConfigureView = dynamic(() => import("@/components/configure/configure-view").then((m) => m.ConfigureView));
+const ProblemsView = dynamic(() => import("@/components/problems/problems-view").then((m) => m.ProblemsView));
+const SimulationView = dynamic(() => import("@/components/simulation/simulation-view").then((m) => m.SimulationView));
 
 function UltronWorkspaceContent() {
-  const { activeTab, setActiveTab, setSelectedMachineId, navigateToMachine } = useIndustrialData();
+  const { activeTab, setActiveTab, navigateToMachine, navigateToAssetsHome } = useIndustrialData();
+  const isHome = activeTab === "home";
 
   // Home stays mounted once opened: rebuilding its 3D scene froze the page for
   // up to a second on every return. It is hidden (and its loop idles) meanwhile.
-  const [homeVisited, setHomeVisited] = useState(activeTab === "home");
-  if (activeTab === "home" && !homeVisited) setHomeVisited(true);
-  homeActive.current = activeTab === "home";
+  const [homeVisited, setHomeVisited] = useState(isHome);
+  if (isHome && !homeVisited) setHomeVisited(true);
+  homeActive.current = isHome;
 
-  // Copilot "Open Diagnosis": go straight to the machine's Diagnosis tab, on the rule when given.
+  // AssetIQ "Open Diagnosis": go straight to the machine's Diagnosis tab, on the rule when given.
   useEffect(() => {
     const onOpen = (e: Event) => {
       const { machineId, ruleId } = (e as CustomEvent<{ machineId?: string; ruleId?: string }>).detail ?? {};
@@ -50,10 +53,9 @@ function UltronWorkspaceContent() {
   }, [navigateToMachine]);
 
   const handleSelectTab = (tab: string) => {
-    setActiveTab(tab as Parameters<typeof setActiveTab>[0]);
-    if (tab === "assets") {
-      setSelectedMachineId(null);
-    }
+    // The rail's Assets opens the asset directory.
+    if (tab === "assets") navigateToAssetsHome();
+    else setActiveTab(tab as Parameters<typeof setActiveTab>[0]);
   };
 
   return (
@@ -70,15 +72,17 @@ function UltronWorkspaceContent() {
             boundary React discarded the whole first render and rebuilt the plant. */}
         <Suspense fallback={null}>
           {homeVisited && (
-            <div className="workspace-keepalive" hidden={activeTab !== "home"}>
+            <div className="workspace-keepalive" hidden={!isHome}>
               <PlantHome />
             </div>
           )}
           {activeTab === "assets" && <AssetsView />}
+          {activeTab === "problems" && <ProblemsView />}
           {activeTab === "maintenance" && <MaintenanceWorkspace />}
           {activeTab === "devices" && <IndustrialDevicesView />}
           {activeTab === "assetiq" && <AssetIqHubView />}
           {activeTab === "configure" && <ConfigureView />}
+          {activeTab === "simulation" && <SimulationView />}
         </Suspense>
       </section>
     </main>
@@ -93,11 +97,11 @@ function AuthGate() {
   return (
     <KilnSimulationProvider>
       <KilnOpsProvider>
-        <AiEngineProvider>
-          <EdgeProvider>
+        <EdgeProvider>
+          <CopilotProvider>
             <UltronWorkspaceContent />
-          </EdgeProvider>
-        </AiEngineProvider>
+          </CopilotProvider>
+        </EdgeProvider>
       </KilnOpsProvider>
     </KilnSimulationProvider>
   );

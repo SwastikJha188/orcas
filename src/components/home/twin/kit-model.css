@@ -1,0 +1,23 @@
+/* Generated machine-kit model viewer (kit-model-canvas.tsx). */
+.kmv-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: var(--mx-canvas);
+}
+
+/* Name of the hovered / selected part, over it. */
+.kmv-label {
+  transform: translateY(-14px);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  border: 1px solid var(--separator);
+  font-size: var(--fs-xs);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.kmv-label[data-active] {
+  border-color: var(--signal-blue);
+}

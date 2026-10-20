@@ -21,11 +21,12 @@ import type { AssetsSubPage } from "../assets-view";
 import { pyroRule } from "@/lib/pyro-sim/rules";
 import { SPEC_RULES, type SpecRule } from "@/lib/pyro-sim/spec-rules";
 import { isConditionRule } from "@/lib/plant-defs";
+import { displayName, nameIds } from "@/lib/display-name";
+import { QUALITY_LABEL } from "../sensors-model";
 import { ConditionReport } from "./condition-report";
 import { LineSheet, lineSheetCaption } from "./line-sheets/line-sheet";
 import { LINE_SHEET_ART, LINE_SHEET_BY_ID, LINE_SHEET_FOCUS_KEY } from "./line-sheets";
-import { OVERVIEW_SECTION_KEY } from "../overview-page";
-import { OV_SECTIONS } from "../overview-sections";
+import { OV_SECTIONS, OVERVIEW_SECTION_KEY } from "../overview-sections";
 
 const W = 1100;
 const H = 300;
@@ -38,7 +39,7 @@ const X: Record<string, number> = Object.fromEntries(ROUTE.map((id, i) => [id, 2
 X["PYR-BRN-01"] = (X["PYR-KLN-01"] + X["PYR-CLR-01"]) / 2;
 const BRN_Y = 214;
 
-const tone = (c: SimFrame["condition"] | undefined) => (c === "Critical" ? MX.bad : c === "Advisory" ? MX.warn : MX.good);
+const tone = (c: SimFrame["condition"] | undefined) => (c === "Critical" ? MX.bad : c === "Alert" ? MX.warn : MX.good);
 
 /** Small machine-kit glyph per machine group (36 × 24 box), drawn in the node's top-right corner. */
 function MachineGlyph({ id, x, y }: { id: string; x: number; y: number }) {
@@ -144,7 +145,7 @@ function corr(a: number[], b: number[]): number | null {
 /** Drivers (rows) and the downstream signals they move (columns), D4 Table 8.1. */
 const DRIVERS = ["FLO-KFS-01", "FLO-BRN-01", "PRS-BRN-03", "SPD-PHC-01", "ELE-PHC-01", "SPD-KLN-01"];
 /** Driver rows that need their own reading note. */
-const DRIVER_NOTE: Record<string, string> = { "ELE-PHC-01": "O₂ vs ID-fan power (B.1 1.3.3) · context, not causal" };
+const DRIVER_NOTE: Record<string, string> = { "ELE-PHC-01": "Oxygen against exhaust fan power (B.1 1.3.3) · context only, not a cause" };
 const EFFECTS = ["TMP-KLN-13", "PRS-KLN-01", "GAS-KLN-01", "TMP-KLN-14", "GAS-PHC-01", "ELE-PHC-01", "ELE-KLN-01", "PRS-PHC-01", "PRS-CLR-01", "TMP-CLR-08", "ELE-HMR-01", "ELE-CSL-01"];
 
 export function PyroLineOverview({ onOpenMachine }: { onOpenMachine: (machineId: string, subPage: AssetsSubPage) => void }) {
@@ -165,14 +166,14 @@ export function PyroLineOverview({ onOpenMachine }: { onOpenMachine: (machineId:
   };
 
   const findings = useMemo(() => {
-    const out: Array<{ key: string; t: number; clock: string; machine: string; code: string; title: string; detail: string; severity: string }> = [];
+    const out: Array<{ key: string; t: number; clock: string; machine: string; code: string; machineName: string; title: string; detail: string; severity: string; defs: SimFrame["defs"] }> = [];
     for (const m of PYRO_MACHINES) {
       const f = frames[m.id];
       if (!f) continue;
       // Machine findings only: data-quality flags (R-DQ-*, R-ANM-01) are input validity, not condition.
       for (const e of f.events)
         if (e.kind === "rule" && e.severity !== "Normal" && !/^R-(DQ|ANM)-/.test(e.title))
-          out.push({ key: `${m.id}-${e.t}-${e.title}`, t: e.t, clock: e.clock, machine: m.id, code: m.code, title: e.title.replace(/ confirmed$/, ""), detail: e.detail, severity: e.severity });
+          out.push({ key: `${m.id}-${e.t}-${e.title}`, t: e.t, clock: e.clock, machine: m.id, code: m.code, machineName: m.shortName, title: e.title.replace(/ confirmed$/, ""), detail: e.detail, severity: e.severity, defs: f.defs });
     }
     return out.sort((a, b) => b.t - a.t).slice(0, 6);
   }, [frames]);
@@ -192,38 +193,44 @@ export function PyroLineOverview({ onOpenMachine }: { onOpenMachine: (machineId:
   const ruleCols: Column<SpecRule>[] = [
     {
       key: "id",
-      header: "D4 rule",
+      header: "Planned check (D4)",
       width: "260px",
       render: (r) => (
         <span className="ast-cell-stack">
-          <span className="ast-cell-title ast-num">{r.id}</span>
-          <span className="ast-cell-sub">{r.purpose}</span>
+          <span className="ast-cell-title" title={r.id}>
+            {r.purpose}
+          </span>
         </span>
       ),
     },
     {
       key: "inputs",
-      header: "Inputs / qualification",
+      header: "Uses and conditions",
       render: (r) => (
         <span className="ast-cell-stack">
           <span className="ast-cell-text">{r.inputs}</span>
           <span className="ast-cell-sub">{r.qualification}</span>
-          {r.note && <span className="ast-cell-sub">Build: {r.note}</span>}
+          {r.note && <span className="ast-cell-sub">Note: {r.note}</span>}
         </span>
       ),
     },
     {
       key: "impl",
-      header: "Engine",
+      header: "Checks running",
       width: "220px",
       render: (r) => {
         const parts = Object.entries(r.implementation);
         if (!parts.length) return <span className="ast-cell-sub">{r.state === "inherent" ? "Every finding" : "—"}</span>;
-        const machines = parts.length === PYRO_MACHINES.length ? `All ${PYRO_MACHINES.length} machines` : parts.map(([m]) => m.replace("PYR-", "")).join(", ");
-        const ids = [...new Set(parts.flatMap(([, ids]) => ids))].join(", ");
+        const machines = parts.length === PYRO_MACHINES.length ? `All ${PYRO_MACHINES.length} machines` : parts.map(([m]) => PYRO_MACHINES.find((p) => p.id === m)?.shortName ?? m).join(", ");
+        const named = [...new Map(parts.flatMap(([m, ids]) => ids.map((id) => [id, pyroRule(m, id)?.plainTitle ?? pyroRule(m, id)?.name ?? id] as const))).entries()];
+        const ids = named.map(([id]) => id).join(", ");
+        // Up to three rules by name; longer lists as a count (names and IDs in the tooltip).
+        const text = named.length <= 3 ? named.map(([, n]) => n).join(", ") : `${named.length} checks`;
         return (
           <span className="ast-cell-stack">
-            <span className="ast-cell-text ast-num">{ids}</span>
+            <span className="ast-cell-text" title={named.map(([id, n]) => `${id} ${n}`).join("\n") || ids}>
+              {text}
+            </span>
             <span className="ast-cell-sub">{machines}</span>
           </span>
         );
@@ -237,7 +244,7 @@ export function PyroLineOverview({ onOpenMachine }: { onOpenMachine: (machineId:
         if (r.state === "inherent" || r.state === "not evaluated" || !Object.keys(r.implementation).length)
           return (
             <span className="ast-badge" data-tone="idle">
-              {r.state === "inherent" ? "Inherent" : r.state === "hold" ? "Hold" : "Not evaluated"}
+              {r.state === "inherent" ? "Built in" : r.state === "hold" ? "On hold" : "Not running"}
             </span>
           );
         // Count the D4 rule itself, not the extra engine rules mapped beside it.
@@ -250,7 +257,7 @@ export function PyroLineOverview({ onOpenMachine }: { onOpenMachine: (machineId:
             if (rs.severity === "Critical") critical = true;
           }
         }
-        const hold = r.state === "hold" ? "Hold · " : "";
+        const hold = r.state === "hold" ? "On hold · " : "";
         return active ? (
           <span className="ast-badge" data-tone={critical ? "bad" : "warn"}>
             {hold}
@@ -258,7 +265,7 @@ export function PyroLineOverview({ onOpenMachine }: { onOpenMachine: (machineId:
           </span>
         ) : (
           <span className="ast-badge" data-tone={hold ? "idle" : "good"}>
-            {hold}Quiet
+            {hold}Nothing found
           </span>
         );
       },
@@ -266,13 +273,13 @@ export function PyroLineOverview({ onOpenMachine }: { onOpenMachine: (machineId:
   ];
 
   const ctx: Array<{ label: string; tag: string; extra?: string }> = [
-    { label: "Kiln feed", tag: "FLO-KFS-01", extra: frames["PYR-FED-01"] ? `SP ${frames["PYR-FED-01"]!.drivers.feedSp.toFixed(0)}` : undefined },
-    { label: "Kiln coal", tag: "FLO-BRN-01", extra: frames["PYR-BRN-01"] ? `SP ${frames["PYR-BRN-01"]!.drivers.fuelSp.toFixed(2)}` : undefined },
-    { label: "Coal / feed", tag: "CAL-BRN-01" },
+    { label: "Kiln feed", tag: "FLO-KFS-01", extra: frames["PYR-FED-01"] ? `target ${frames["PYR-FED-01"]!.drivers.feedSp.toFixed(0)}` : undefined },
+    { label: "Kiln coal", tag: "FLO-BRN-01", extra: frames["PYR-BRN-01"] ? `target ${frames["PYR-BRN-01"]!.drivers.fuelSp.toFixed(2)}` : undefined },
+    { label: "Coal to feed ratio", tag: "CAL-BRN-01" },
     { label: "Kiln speed", tag: "SPD-KLN-01" },
-    { label: "ID fan", tag: "SPD-PHC-01" },
+    { label: "Exhaust fan speed", tag: "SPD-PHC-01" },
     { label: "Burning zone", tag: "TMP-KLN-14" },
-    { label: "Exit O₂", tag: "GAS-PHC-01" },
+    { label: "Preheater exit oxygen", tag: "GAS-PHC-01" },
     { label: "Clinker discharge", tag: "TMP-CLR-08" },
   ];
 
@@ -307,21 +314,19 @@ export function PyroLineOverview({ onOpenMachine }: { onOpenMachine: (machineId:
           strokeWidth={f && f.condition !== "Healthy" ? 1.6 : 1}
         />
         <circle cx={x + 16} cy={y + 19} r={4.5} fill={tone(f?.condition)} />
-        <text x={x + 28} y={y + 23} fontFamily={MX.font} fontSize={13} fontWeight={600} fill="var(--dx-ink)" style={{ fontFeatureSettings: '"tnum","zero"' }}>
-          {m.code}
+        <title>{`${m.code} · ${m.name}`}</title>
+        <text x={x + 28} y={y + 23} fontFamily={MX.font} fontSize={13} fontWeight={600} fill="var(--dx-ink)">
+          {m.shortName}
         </text>
         <MachineGlyph id={id} x={x + NODE_W - 46} y={y + 7} />
         <text x={x + NODE_W - 12} y={y + 44} textAnchor="end" fontFamily={MX.font} fontSize={13} fontWeight={500} fill="var(--dx-ink)" style={{ fontFeatureSettings: '"tnum","zero"' }}>
           {f ? `${f.overall} %` : "—"}
         </text>
-        <text x={x + 14} y={y + 44} fontFamily={MX.font} fontSize={11} fill={MX.label}>
-          {m.shortName}
-        </text>
-        <text x={x + 14} y={y + 62} fontFamily={MX.font} fontSize={10.5} fill={top ? tone(top.severity === "Critical" ? "Critical" : "Advisory") : MX.label}>
-          {top ? (top.id.length + top.name.length > 22 ? top.id : `${top.id} ${top.name}`) : "No finding"}
+        <text x={x + 14} y={y + 62} fontFamily={MX.font} fontSize={10.5} fill={top ? tone(top.severity === "Critical" ? "Critical" : "Alert") : MX.label}>
+          {top ? ((top.plainTitle ?? top.name).length > 26 ? `${(top.plainTitle ?? top.name).slice(0, 25).trimEnd()}…` : (top.plainTitle ?? top.name)) : "No problem found"}
         </text>
         <text x={x + 14} y={y + 77} fontFamily={MX.font} fontSize={10.5} fill={flagged ? MX.warn : MX.label} style={{ fontFeatureSettings: '"tnum"' }}>
-          {flagged ? `${flagged} input${flagged === 1 ? "" : "s"} flagged` : "Inputs valid"}
+          {flagged ? `${flagged} doubtful reading${flagged === 1 ? "" : "s"}` : "Readings good"}
         </text>
       </g>
     );
@@ -330,14 +335,18 @@ export function PyroLineOverview({ onOpenMachine }: { onOpenMachine: (machineId:
   const cx = (id: string) => X[id] + NODE_W / 2;
   const findingCols: Column<(typeof findings)[number]>[] = [
     { key: "clock", header: "Time", width: "84px", render: (r) => <span className="ast-num">{r.clock}</span> },
-    { key: "code", header: "Machine", width: "88px", render: (r) => <span className="ast-num">{r.code}</span> },
+    { key: "code", header: "Machine", width: "120px", render: (r) => <span title={r.code}>{r.machineName}</span> },
     {
       key: "title",
-      header: "Finding",
+      header: "Problem",
       render: (r) => (
         <span className="ast-cell-stack">
-          <span className="ast-cell-title">{r.title}</span>
-          <span className="ast-cell-sub">{r.detail}</span>
+          <span className="ast-cell-title" title={r.title}>
+            {r.defs.ruleById[r.title.split(" ")[0]]?.plainTitle ?? nameIds(r.title, r.defs)}
+          </span>
+          <span className="ast-cell-sub" title={r.detail}>
+            {nameIds(r.detail, r.defs)}
+          </span>
         </span>
       ),
     },
@@ -347,7 +356,7 @@ export function PyroLineOverview({ onOpenMachine }: { onOpenMachine: (machineId:
       width: "96px",
       render: (r) => (
         <span className="ast-badge" data-tone={r.severity === "Critical" ? "bad" : "warn"}>
-          {r.severity === "Critical" ? "Danger" : "Alert"}
+          {r.severity === "Critical" ? "Critical" : "Alert"}
         </span>
       ),
     },
@@ -385,7 +394,7 @@ export function PyroLineOverview({ onOpenMachine }: { onOpenMachine: (machineId:
           <h2 className="ast-card-title">
             Process route
             <span className="ast-caption">
-              D4 Figure 4.1 · material path / logical equipment sequence, not a piping diagram · counter-current gas · single firing point, no burner in the preheater · no tertiary-air duct
+              D4 Figure 4.1 · the order material flows through the machines, not a pipe drawing · hot gas flows the opposite way · one flame at the kiln, no burner in the preheater · no hot-air duct to the preheater
             </span>
           </h2>
         </div>
@@ -442,7 +451,7 @@ export function PyroLineOverview({ onOpenMachine }: { onOpenMachine: (machineId:
                 </dd>
                 {v && v.quality !== "Good" && (
                   <dd className="ast-caption" style={{ margin: 0, color: "var(--status-warning)" }} title={v.qualityNote ?? undefined}>
-                    {v.quality.toLowerCase()} · {v.qualityNote ? v.qualityNote.split(":")[0] : "held out of diagnosis"}
+                    {((QUALITY_LABEL as Record<string, string>)[v.quality] ?? v.quality).toLowerCase()} · {v.qualityNote ? v.qualityNote.split(":")[0] : "not used for problem checks"}
                   </dd>
                 )}
               </div>
@@ -451,13 +460,13 @@ export function PyroLineOverview({ onOpenMachine }: { onOpenMachine: (machineId:
         </dl>
       </section>
 
-      <section className="ast-card pg-table-card" aria-label="Last confirmed findings">
+      <section className="ast-card pg-table-card" aria-label="Latest confirmed problems">
         <div className="ast-card-head">
           <h2 className="ast-card-title">
-            Last confirmed findings
+            Latest confirmed problems
             <span className="ast-caption ast-num">
-              {findings.length ? `${findings.length} most recent across the line · simulated line, not field evidence` : "none confirmed in the window · simulated line"} · Alert / Danger come from
-              demo limits; no warning or alarm set-point is plant-approved (D4 §7.2)
+              {findings.length ? `${findings.length} most recent across the line` : "none confirmed in this time"} · Alert and Critical use
+              demo limits; no limit is approved by the plant yet (D4 §7.2)
             </span>
           </h2>
         </div>
@@ -467,9 +476,9 @@ export function PyroLineOverview({ onOpenMachine }: { onOpenMachine: (machineId:
       <section className="ast-card pg-table-card" aria-label="Process influence">
         <div className="ast-card-head">
           <h2 className="ast-card-title">
-            Process influence
+            What moves together
             <span className="ast-caption">
-              Measured correlation r over the last 6 h · drivers (rows) against downstream machines (columns) · association is context, not causal proof (D4 Table B.1 1.3.3)
+              How closely each setting (rows) moves with readings further down the line (columns) over the last 6 h · +1 = together, −1 = opposite · moving together does not prove one causes the other (D4 Table B.1 1.3.3)
             </span>
           </h2>
         </div>
@@ -477,10 +486,10 @@ export function PyroLineOverview({ onOpenMachine }: { onOpenMachine: (machineId:
           <table className="ui-table" style={{ minWidth: 820 }}>
             <thead>
               <tr>
-                <th style={{ minWidth: 200 }}>Driver</th>
+                <th style={{ minWidth: 200 }}>Setting</th>
                 {EFFECTS.map((e) => (
-                  <th key={e} title={PYRO_SIGNAL_BY_TAG[e]?.name} className="ast-num">
-                    {e}
+                  <th key={e} title={`${e} · ${PYRO_SIGNAL_BY_TAG[e]?.name ?? ""}`}>
+                    {displayName(PYRO_SIGNAL_BY_TAG[e]?.name ?? e)}
                   </th>
                 ))}
               </tr>
@@ -490,8 +499,9 @@ export function PyroLineOverview({ onOpenMachine }: { onOpenMachine: (machineId:
                 <tr key={row.driver}>
                   <td style={{ minWidth: 200, whiteSpace: "nowrap" }}>
                     <span className="ast-cell-stack">
-                      <span className="ast-cell-title ast-num">{row.driver}</span>
-                      <span className="ast-cell-sub">{PYRO_SIGNAL_BY_TAG[row.driver]?.name}</span>
+                      <span className="ast-cell-title" title={row.driver}>
+                        {displayName(PYRO_SIGNAL_BY_TAG[row.driver]?.name ?? row.driver)}
+                      </span>
                       {DRIVER_NOTE[row.driver] && <span className="ast-cell-sub">{DRIVER_NOTE[row.driver]}</span>}
                     </span>
                   </td>
@@ -509,11 +519,11 @@ export function PyroLineOverview({ onOpenMachine }: { onOpenMachine: (machineId:
 
       <ConditionReport />
 
-      <section className="ast-card pg-table-card" aria-label="Rule register">
+      <section className="ast-card pg-table-card" aria-label="Planned checks">
         <div className="ast-card-head">
           <h2 className="ast-card-title">
-            Rule register
-            <span className="ast-caption ast-num">D4-OSW-PE-PYR Rev. 02 (proposed, not approved) Table 8.3 · 19 software and quality rules · advisories never replace PLC / DCS / SIS protection</span>
+            Planned checks
+            <span className="ast-caption ast-num">D4-OSW-PE-PYR Rev. 02 Table 8.3 (proposed, not approved) · 19 software and data checks · these only advise; they never replace the plant&apos;s own control and safety systems</span>
           </h2>
         </div>
         <Table columns={ruleCols} data={SPEC_RULES} keyExtractor={(r) => r.id} />

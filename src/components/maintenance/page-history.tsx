@@ -10,7 +10,7 @@ import { formatLocalTime } from "@/lib/time";
 import type { WoStage } from "@/types/pms";
 import { Empty, KpiStrip, Section } from "@/components/assets/analysis/an-ui";
 import type { PmsModel } from "./pms-model";
-import { machineCode, woRef } from "./pms-model";
+import { machineCode, machineName, useDefaultMachine, woRef } from "./pms-model";
 import { Loading } from "./page-overview";
 import { StateWord } from "./pms-ui";
 
@@ -35,12 +35,13 @@ interface Entry {
   tone?: Tone;
 }
 
-const RESULT_WORD: Record<string, string> = { Pass: "Pass", NA: "Not applicable", Hold: "Needs follow-up", Defect: "Defect" };
+const RESULT_WORD: Record<string, string> = { Pass: "Passed", NA: "Not applicable", Hold: "Needs follow-up", Defect: "Fault found" };
 
 export function PageHistory({ pms }: { pms: PmsModel }) {
   const { data: line, dues } = pms;
   const [machine, setMachine] = useState("all");
-  const machineId = machine === "all" ? (line?.machineIds.find((m) => m.endsWith("KLN-01")) ?? line?.machineIds[0] ?? "") : machine;
+  const defaultMachine = useDefaultMachine(line?.machineIds);
+  const machineId = machine === "all" ? (defaultMachine ?? "") : machine;
   const tz = useSiteTimeZone({ machineId });
   const [filter, setFilter] = useState<Filter>("all");
   // The page's machine filter narrows every figure below.
@@ -67,7 +68,7 @@ export function PageHistory({ pms }: { pms: PmsModel }) {
         at: Date.parse(r.recordedAt),
         kind: "inspection",
         title: `${r.taskId} · ${RESULT_WORD[r.result] ?? r.result}`,
-        detail: [r.note, r.workOrderId ? `opened ${woRef(r.workOrderId)}` : null].filter(Boolean).join(" · ") || null,
+        detail: [r.note, r.workOrderId ? `created ${woRef(r.workOrderId)}` : null].filter(Boolean).join(" · ") || null,
         actor: r.inspector,
         tone: r.result === "Defect" ? "bad" : r.result === "Hold" ? "warn" : undefined,
       });
@@ -77,8 +78,8 @@ export function PageHistory({ pms }: { pms: PmsModel }) {
         machineId: w.machineId,
         at: Date.parse(w.createdAt),
         kind: "wo",
-        title: `${woRef(w.id)} raised · ${w.title}`,
-        detail: w.source.kind === "finding" ? `Finding ${w.source.ref} · ${w.priority}` : w.source.kind === "inspection" ? `Checklist defect ${w.source.ref} · ${w.priority}` : w.priority,
+        title: `${woRef(w.id)} created · ${w.title}`,
+        detail: w.source.kind === "finding" ? `From a sensor problem · priority ${w.priority}` : w.source.kind === "inspection" ? `Fault found on checklist ${w.source.ref} · priority ${w.priority}` : `Priority ${w.priority}`,
         actor: null,
         tone: w.priority === "P1" ? "bad" : undefined,
       });
@@ -87,12 +88,12 @@ export function PageHistory({ pms }: { pms: PmsModel }) {
       const stage = (s: string | null) => (s ? (STAGE_LABEL[s as WoStage] ?? s) : "");
       const title =
         e.planId
-          ? `${e.planId} · ${e.from ?? ""} → ${e.to ?? ""}`
+          ? `Plan ${e.planId} · ${e.from ?? ""} → ${e.to ?? ""}`
           : e.action === "transition"
             ? `${e.workOrderId ? woRef(e.workOrderId) : ""} · ${stage(e.from)} → ${stage(e.to)}`
             : e.action === "denied"
-              ? `${e.workOrderId ? woRef(e.workOrderId) : ""} · denied ${stage(e.to)}`
-              : `${e.workOrderId ? woRef(e.workOrderId) : ""} · ${e.action === "readiness" ? "readiness" : e.action === "finding" ? "finding repeated" : "planning details"}`;
+              ? `${e.workOrderId ? woRef(e.workOrderId) : ""} · not allowed: ${stage(e.to)}`
+              : `${e.workOrderId ? woRef(e.workOrderId) : ""} · ${e.action === "readiness" ? "readiness updated" : e.action === "finding" ? "same problem seen again" : "plan details changed"}`;
       out.push({
         key: `e${e.id}`,
         machineId: e.machineId,
@@ -143,7 +144,7 @@ export function PageHistory({ pms }: { pms: PmsModel }) {
   return (
     <div className="ast-root pg-frame pm-page" style={{ "--pm-side": "360px" } as React.CSSProperties}>
       <div className="ast-toolbar pm-toolbar">
-        <PillNav ariaLabel="Machine" items={[{ id: "all", label: "All machines" }, ...(line?.machineIds ?? []).map((id) => ({ id, label: machineCode(id) }))]} activeId={machine} onChange={setMachine} />
+        <PillNav ariaLabel="Machine" items={[{ id: "all", label: "All machines" }, ...(line?.machineIds ?? []).map((id) => ({ id, label: machineName(id) }))]} activeId={machine} onChange={setMachine} />
         {entries[0] && <span className="ast-caption">{entries.length} records · latest {when(entries[0].at)}</span>}
       </div>
       {!data ? (
@@ -152,25 +153,25 @@ export function PageHistory({ pms }: { pms: PmsModel }) {
         <>
           <KpiStrip
             page
-            label="Maintenance effectiveness"
+            label="How well maintenance is going"
             items={[
               {
-                label: "PM compliance",
+                label: "Planned tasks on time",
                 value: kpis.timed ? `${Math.round((kpis.current / kpis.timed) * 100)}` : "—",
                 unit: kpis.timed ? "%" : undefined,
                 bar: kpis.timed ? (kpis.current / kpis.timed) * 100 : 0,
-                foot: `${kpis.current} of ${kpis.timed} timed tasks within interval`,
+                foot: `${kpis.current} of ${kpis.timed} scheduled tasks done on time`,
               },
-              { label: "Work completed", value: `${kpis.closed}`, foot: kpis.cycle !== null ? `median ${hours(kpis.cycle)} raise → verified` : "verified completions only" },
-              { label: "Open defects", value: `${kpis.defects}`, tone: kpis.defects ? "bad" : undefined, foot: "latest checklist result is Defect" },
-              { label: "Repeat findings", value: `${kpis.repeats}`, tone: kpis.repeats ? "warn" : undefined, foot: kpis.repeats ? kpis.repeatIds.slice(0, 3).join(", ") : "trend only · not a failure count" },
+              { label: "Work completed", value: `${kpis.closed}`, foot: kpis.cycle !== null ? `typically ${hours(kpis.cycle)} from request to checked and done` : "only work that was checked after it was done" },
+              { label: "Open faults", value: `${kpis.defects}`, tone: kpis.defects ? "bad" : undefined, foot: "latest checklist result found a fault" },
+              { label: "Repeat problems", value: `${kpis.repeats}`, tone: kpis.repeats ? "warn" : undefined, foot: kpis.repeats ? kpis.repeatIds.slice(0, 3).join(", ") : "same problem raised more than once; not a failure count" },
             ]}
           />
           <div className="pg-frame-body">
             <div className="pm-split">
               <Section
                 id="pm-history"
-                title="Asset history"
+                title="Machine history"
                 right={<PillNav ariaLabel="Show" items={[{ id: "all", label: "All" }, { id: "wo", label: "Work orders" }, { id: "inspection", label: "Inspections" }, { id: "plan", label: "Plans" }]} activeId={filter} onChange={(id) => setFilter(id as Filter)} />}
               >
                 {shown.length === 0 ? (
@@ -184,7 +185,7 @@ export function PageHistory({ pms }: { pms: PmsModel }) {
                           <span className="pm-tl-time">{when(e.at)}</span>
                           <span className="pm-tl-body">
                             <span className="pm-tl-title">
-                              {machine === "all" && <span className="pm-muted">{machineCode(e.machineId)} · </span>}
+                              {machine === "all" && <span className="pm-muted">{machineName(e.machineId)} · </span>}
                               {e.title}
                             </span>
                             {e.detail && <span className="ast-caption pm-tl-detail">{e.detail}</span>}
@@ -248,12 +249,12 @@ function ConditionTrend({ machineId, pms }: { machineId: string; pms: PmsModel }
   }, [n, times[times.length - 1], pms.data]);
 
   return (
-    <Section id="pm-condition" title={`${machineCode(machineId)} · condition around work`} right={model ? <StateWord label={`${Math.round(model.last)}% now`} /> : undefined}>
+    <Section id="pm-condition" title={`${machineName(machineId)} · health before and after work`} right={model ? <StateWord label={`Health score ${Math.round(model.last)}% now`} /> : undefined}>
       {!model ? (
-        <Empty title="No live condition history for this machine." />
+        <Empty title="No live health history for this machine." />
       ) : (
         <>
-          <svg className="pm-trend" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Machine health with work orders marked">
+          <svg className="pm-trend" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Machine health score over time, with work orders marked">
             {[0, 50, 100].map((v) => (
               <g key={v}>
                 <line x1={pad.l} x2={W - pad.r} y1={model.y(v)} y2={model.y(v)} className="pm-trend-grid" />
@@ -266,7 +267,7 @@ function ConditionTrend({ machineId, pms }: { machineId: string; pms: PmsModel }
               <g key={m.id}>
                 <line x1={m.x} x2={m.x} y1={pad.t} y2={H - pad.b} className="pm-trend-marker" />
                 <text x={m.x + 3} y={pad.t + 8} className="pm-trend-label">
-                  {woRef(m.id)}
+                  #{String(m.id).padStart(4, "0")}
                 </text>
               </g>
             ))}

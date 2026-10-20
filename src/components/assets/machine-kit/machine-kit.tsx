@@ -49,6 +49,9 @@ export const MX = {
   metal: "var(--mx-metal)",
   metalHi: "var(--mx-metal-hi)",
   padPanel: "var(--mx-pad-panel)",
+  /** Process flow lines: hot gas, air. */
+  gas: "var(--mx-flow-gas)",
+  air: "var(--mx-flow-air)",
   good: "var(--status-success)",
   warn: "var(--status-warning)",
   bad: "var(--status-danger)",
@@ -71,11 +74,11 @@ export const PAINT = {
   outline: { fill: "none", stroke: MX.edge, strokeWidth: MX.w, strokeLinejoin: "round" as const },
 } as const;
 
-export type PadStatus = "Normal" | "Advisory" | "Critical";
+export type PadStatus = "Normal" | "Alert" | "Critical";
 
 export function statusColor(status: string | undefined): string {
   if (status === "Critical" || status === "Active" || status === "Alarm" || status === "Trip") return MX.bad;
-  if (status === "Advisory" || status === "Alert" || status === "Warning") return MX.warn;
+  if (status === "Alert" || status === "Warning") return MX.warn;
   return MX.good;
 }
 
@@ -248,16 +251,16 @@ export function measureTightSvgBox(g: SVGGElement): [number, number, number, num
       }
     }
 
-    // Clamp horizontal ground-line overhang to at most 14 units past actual equipment/labels.
-    const x0 = Math.max(fullBox.x, equipBox.x - 14);
-    const x1 = Math.min(fullBox.x + fullBox.width, equipBox.x + equipBox.width + 14);
+    // Clamp horizontal ground-line overhang to at most 2 units past actual equipment/labels.
+    const x0 = Math.max(fullBox.x, equipBox.x - 2);
+    const x1 = Math.min(fullBox.x + fullBox.width, equipBox.x + equipBox.width + 2);
     const y0 = Math.min(fullBox.y, equipBox.y);
     const y1 = Math.max(fullBox.y + fullBox.height, equipBox.y + equipBox.height);
 
     const rawW = Math.max(20, x1 - x0);
     const rawH = Math.max(20, y1 - y0);
-    const padX = Math.max(18, rawW * 0.03);
-    const padY = Math.max(20, rawH * 0.045);
+    const padX = Math.max(4, rawW * 0.004);
+    const padY = Math.max(4, rawH * 0.008);
 
     return [
       +(x0 - padX).toFixed(1),
@@ -347,7 +350,7 @@ export function MachineSvg({
 
 /**
  * Blender-style 2D Orthographic Viewport wrapper:
- * Provides interactive zoom (+ / − / Fit), drag-to-pan, 2D X/Y axis gizmo,
+ * Provides interactive zoom (+ / − / Fit), drag-to-pan,
  * and orthographic projection badge on top of `.mx-canvas`.
  */
 export function BlenderViewport({
@@ -487,20 +490,6 @@ export function BlenderViewport({
         {children}
       </div>
 
-      {/* Blender-style 2D X/Y Axis Gizmo */}
-      <svg className="mx-vp-gizmo" width="38" height="38" viewBox="0 0 38 38" aria-hidden="true">
-        <line x1="10" y1="28" x2="32" y2="28" stroke="var(--status-danger)" strokeWidth="1.5" />
-        <line x1="10" y1="28" x2="10" y2="6" stroke="var(--status-success)" strokeWidth="1.5" />
-        <circle cx="10" cy="28" r="2.5" fill="var(--mx-raised)" stroke="var(--mx-edge)" strokeWidth="1" />
-        <circle cx="32" cy="28" r="4.5" fill="var(--status-danger)" />
-        <text x="32" y="30.5" fill="var(--on-status-fg)" fontSize="6.5" fontWeight="700" textAnchor="middle">
-          X
-        </text>
-        <circle cx="10" cy="6" r="4.5" fill="var(--status-success)" />
-        <text x="10" y="8.5" fill="var(--on-status-fg)" fontSize="6.5" fontWeight="700" textAnchor="middle">
-          Y
-        </text>
-      </svg>
     </div>
   );
 }

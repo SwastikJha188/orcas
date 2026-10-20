@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { PillNav, conditionTone, rowActivate, toCondition, type Tone } from "@/components/ui";
 import { isConditionRule } from "@/lib/plant-defs";
 import { STAGE_LABEL, isOpenStage, planGenerates } from "@/lib/pms";
@@ -12,7 +12,8 @@ import { formatLocalTime } from "@/lib/time";
 import type { PmsPlan, PlanTask } from "@/types/pms";
 import { Empty, KpiStrip, Section } from "@/components/assets/analysis/an-ui";
 import type { PmsModel } from "./pms-model";
-import { dueStatus, machineCode, machineName, planName, prognosisText, stageTone, woRef } from "./pms-model";
+import { dueStatus, machineName, planName, prognosisText, stageTone, useDefaultMachine, woRef } from "./pms-model";
+import { nameIds } from "@/lib/display-name";
 import { Loading } from "./page-overview";
 import { StateWord, setPmsFocus, usePmsFocus, usePmsNav } from "./pms-ui";
 
@@ -50,18 +51,35 @@ function matchSections(sheetTitle: string, tasks: PlanTask[]): Set<string> {
   return new Set(best ? [...score].filter(([, n]) => n === best).map(([s]) => s) : []);
 }
 
-const SIG_TONE = (s: string | undefined): Tone | undefined => (s === "Critical" ? "bad" : s === "Advisory" ? "warn" : undefined);
+const SIG_TONE = (s: string | undefined): Tone | undefined => (s === "Critical" ? "bad" : s === "Alert" ? "warn" : undefined);
 
-export function PageMachine({ pms }: { pms: PmsModel }) {
+/**
+ * `machineId` / `onMachineChange` let the workspace's machine tabs drive the page
+ * (its own machine picker is then hidden); uncontrolled, the page picks its own.
+ */
+export function PageMachine({ pms, machineId: picked, onMachineChange }: { pms: PmsModel; machineId?: string | null; onMachineChange?: (id: string) => void }) {
   const { data, dues, now } = pms;
   const nav = usePmsNav();
   const fleet = useKilnFleet();
   const focus = usePmsFocus(["m:"]);
-  const [machineId, setMachineId] = useState<string | null>(focus ? focus.slice(2) : null);
+  const [own, setOwn] = useState<string | null>(focus ? focus.slice(2) : null);
   const [part, setPart] = useState<string | null>(null);
   const [tag, setTag] = useState<string | null>(null);
+  const controlled = Boolean(onMachineChange);
+  const machineId = controlled ? (picked ?? own) : own;
+  const setMachineId = (m: string) => (onMachineChange ? onMachineChange(m) : setOwn(m));
+  // Opened on a machine from another page: the workspace's tabs follow it.
+  useEffect(() => {
+    if (focus && onMachineChange) onMachineChange(focus.slice(2));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const id = machineId ?? data?.machineIds.find((m) => m.endsWith("KLN-01")) ?? data?.machineIds[0] ?? null;
+  const defaultMachine = useDefaultMachine(data?.machineIds);
+  const id = (machineId && data?.machineIds.includes(machineId) ? machineId : null) ?? defaultMachine;
+  useEffect(() => {
+    setPart(null);
+    setTag(null);
+  }, [id]);
   const tz = useSiteTimeZone({ machineId: id });
   const frame = id ? (fleet[id]?.frame ?? null) : null;
   const sheets = useMemo(() => (id ? lineSheetsForMachine(id) : []), [id]);
@@ -86,7 +104,7 @@ export function PageMachine({ pms }: { pms: PmsModel }) {
       let worst = "Normal";
       for (const t of tags) {
         const s = frame?.signals[t]?.status;
-        if (s === "Critical" || (s === "Advisory" && worst === "Normal")) worst = s;
+        if (s === "Critical" || (s === "Alert" && worst === "Normal")) worst = s;
       }
       const faults = (frame?.rules ?? []).filter((r) => r.status !== "QUIET" && isConditionRule(r) && r.tags.some((x) => tags.includes(x))).length;
       out.set(p.id, { tags, worst, faults, taskIds });
@@ -115,7 +133,7 @@ export function PageMachine({ pms }: { pms: PmsModel }) {
   );
   const openWos = wos.filter((w) => isOpenStage(w.stage));
   // Whole machine: every measuring point of the drawing, the ones needing attention first.
-  const RANK: Record<string, number> = { Critical: 0, Advisory: 1 };
+  const RANK: Record<string, number> = { Critical: 0, Alert: 1 };
   const points = active
     ? (active.points ?? [])
     : (overview ? lineSheetTags(overview.id) : [])
@@ -140,30 +158,23 @@ export function PageMachine({ pms }: { pms: PmsModel }) {
 
   return (
     <div className="ast-root pg-frame pm-page" style={{ "--pm-side": "400px" } as React.CSSProperties}>
-      <div className="ast-toolbar pm-toolbar">
-        <PillNav
-          ariaLabel="Machine"
-          items={data.machineIds.map((m) => ({ id: m, label: machineCode(m) }))}
-          activeId={id}
-          onChange={(m) => {
-            setMachineId(m);
-            setPart(null);
-            setTag(null);
-          }}
-        />
-        <span className="ast-caption">{machineName(id)}</span>
-      </div>
+      {!controlled && (
+        <div className="ast-toolbar pm-toolbar">
+          <PillNav ariaLabel="Machine" items={data.machineIds.map((m) => ({ id: m, label: machineName(m) }))} activeId={id} onChange={setMachineId} />
+          <span className="ast-caption">{machineName(id)}</span>
+        </div>
+      )}
       <KpiStrip
         page
-        label={`${machineCode(id)} maintenance`}
+        label={`${machineName(id)} maintenance`}
         items={[
-          { label: active ? "Component condition" : "Machine condition", value: cond, text: true, tone: conditionTone(cond), foot: active ? `${compTags.length} measuring points` : `health ${frame ? Math.round(frame.overall) : "—"}%` },
-          { label: "Active faults", value: `${faults.length}`, tone: faults.some((f) => f.severity === "Critical") ? "bad" : faults.length ? "warn" : undefined, foot: faults[0]?.name ?? "no active finding" },
+          { label: active ? "Component condition" : "Machine condition", value: cond, text: true, tone: conditionTone(cond), foot: active ? `${compTags.length} measuring points` : `health score ${frame ? Math.round(frame.overall) : "—"}%` },
+          { label: "Active problems", value: `${faults.length}`, tone: faults.some((f) => f.severity === "Critical") ? "bad" : faults.length ? "warn" : undefined, foot: faults[0] ? faults[0].plainTitle || faults[0].name : "no active problem" },
           {
             label: "Next inspection",
             value: nextDue ? (nextDue.d!.dueAt! <= now ? "Due now" : formatLocalTime(nextDue.d!.dueAt!, { date: true, seconds: false, timeZone: tz.timeZone })) : "—",
             text: true,
-            foot: nextDue ? planName(nextDue.p) : "no timed round covers it",
+            foot: nextDue ? planName(nextDue.p) : "no scheduled round covers it",
           },
           { label: "Open work orders", value: `${openWos.length}`, foot: `${wos.length - openWos.length} closed or cancelled` },
         ]}
@@ -172,14 +183,14 @@ export function PageMachine({ pms }: { pms: PmsModel }) {
         <div className="pm-split">
           <Section
             id="pm-drawing"
-            title={active ? `${active.id} · ${active.title}` : `${machineCode(id)} · ${machineName(id)}`}
+            title={active ? active.title : machineName(id)}
             right={
               active ? (
                 <button type="button" className="pm-link" onClick={() => { setPart(null); setTag(null); }}>
                   Whole machine
                 </button>
               ) : (
-                <span className="ast-caption">Select a measuring point or a component</span>
+                <span className="ast-caption">Click a measuring point or a part of the machine</span>
               )
             }
           >
@@ -215,22 +226,21 @@ export function PageMachine({ pms }: { pms: PmsModel }) {
         </div>
 
         <div className="pm-split">
-          <Section id="pm-readings" title="Readings and faults" right={!active && pointCount > points.length ? <span className="ast-caption">{points.length} of {pointCount} points · select a component for all</span> : undefined}>
-            {faults.length === 0 && points.length > 0 && <p className="ast-caption pm-nofault">No active finding{active ? " on this component" : " on this machine"}.</p>}
+          <Section id="pm-readings" title="Readings and problems" right={!active && pointCount > points.length ? <span className="ast-caption">{points.length} of {pointCount} points · pick a part to see all</span> : undefined}>
+            {faults.length === 0 && points.length > 0 && <p className="ast-caption pm-nofault">No active problem{active ? " on this part" : " on this machine"}.</p>}
             {faults.length > 0 && (
               <ul className="pm-list pm-faults">
                 {faults.map((r) => (
                   <li key={r.id}>
-                    <StateWord label={`${r.id} · ${r.name}`} tone={r.severity === "Critical" ? "bad" : "warn"} />
-                    <span className="ast-caption">
-                      {r.evidence} · {prognosisText(r.timeToLimit)}
+                    <StateWord label={r.plainTitle || r.name} tone={r.severity === "Critical" ? "bad" : "warn"} />
+                    <span className="ast-caption" title={`${r.name} (${r.id}) · ${r.evidence}`}>
+                      {nameIds(r.evidence, frame?.defs)} · {prognosisText(r.timeToLimit)}
                     </span>
                     <button
                       type="button"
                       className="pm-link pm-small"
                       onClick={() => {
-                        setPmsFocus(`f:${id}:${r.id}`);
-                        nav("condition");
+                        nav("predictive");
                       }}
                     >
                       Plan maintenance ›
@@ -244,10 +254,9 @@ export function PageMachine({ pms }: { pms: PmsModel }) {
                 <table className="ui-table">
                   <thead>
                     <tr>
-                      <th>Tag</th>
                       <th className="pm-grow">Measurement</th>
                       <th>Value</th>
-                      <th>Data</th>
+                      <th>Data quality</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -255,9 +264,8 @@ export function PageMachine({ pms }: { pms: PmsModel }) {
                       const s = frame?.signals[pt.tag];
                       return (
                         <tr key={pt.tag} className={`is-clickable ${tag === pt.tag ? "active" : ""}`} {...rowActivate(() => setTag(tag === pt.tag ? null : pt.tag))}>
-                          <td className="ast-num">{pt.tag}</td>
                           <td className="pm-grow">
-                            <span className="ast-cell-text pm-wrap" title={pt.text}>
+                            <span className="ast-cell-text pm-wrap" title={`${pt.tag} · ${pt.text}`}>
                               {pt.text}
                             </span>
                           </td>
@@ -265,7 +273,7 @@ export function PageMachine({ pms }: { pms: PmsModel }) {
                             <span className="pm-value">{s?.display ?? "—"}</span>
                           </td>
                           <td>
-                            <StateWord label={!s ? "No data" : s.quality === "Good" ? "Valid" : s.quality} tone={s && s.quality !== "Good" ? "warn" : undefined} />
+                            <StateWord label={!s ? "No data" : s.quality === "Good" ? "Good" : s.quality} tone={s && s.quality !== "Good" ? "warn" : undefined} />
                           </td>
                         </tr>
                       );
@@ -282,7 +290,7 @@ export function PageMachine({ pms }: { pms: PmsModel }) {
             <div className="pm-block">
               <h4 className="pg-analysis-block-title">Upcoming inspections</h4>
               {relatedPlans.length === 0 ? (
-                <p className="ast-caption">No checklist round covers this component.</p>
+                <p className="ast-caption">No checklist round covers this part.</p>
               ) : (
                 <ul className="pm-rows">
                   {relatedPlans.slice(0, 6).map((p: PmsPlan) => {
@@ -310,7 +318,7 @@ export function PageMachine({ pms }: { pms: PmsModel }) {
             <div className="pm-block">
               <h4 className="pg-analysis-block-title">Work orders</h4>
               {wos.length === 0 ? (
-                <p className="ast-caption">None raised.</p>
+                <p className="ast-caption">No work orders yet.</p>
               ) : (
                 <ul className="pm-rows">
                   {wos.slice(0, 6).map((w) => (

@@ -1,19 +1,19 @@
 /**
- * Machine › Health · pure derivations (no React).
+ * Machine health · pure derivations (no React). Shown on Diagnosis (the former Health page).
  *
  * Live machines (kiln-sim / pyro-sim engines) — the health roll-up is
  * reconstructed term by term from the same frame the engine scored, so every
  * point subtracted can be named:
  *
  *   sub-assembly raw  = clamp(99 − Σ penalties, 12, 99), shown smoothed (EMA 0.35)
- *     residual        min(12, max(0, |z| − 2.5) × 1.4)   per Good-quality signal
- *     absolute limit  9 (Advisory) · 22 (Critical)       per Good-quality signal
+ *     residual        min(12, max(0, |z| − 3.0) × 1.4)   per Good-quality signal
+ *     absolute limit  9 (Alert) · 22 (Critical)       per Good-quality signal
  *     rule            4 pending · 13 active · 30 active Critical, on every
  *                     sub-assembly the rule covers (data-quality and
  *                     unclassified-anomaly rules subtract nothing)
  *   system            ½ · mean(sub-assemblies) + ½ · min(sub-assemblies)
  *   machine           ½ · mean(scored systems) + ½ · min(scored systems)
- *   bands             ≥ 85 Healthy · 60–84 Advisory · < 60 Critical
+ *   bands             from the machine's health model (DB, `useHealthBands`)
  *
  * Signals of Suspect / Invalid quality are excluded from the score (they
  * lower input coverage instead). Process-context systems (`scored: false` in
@@ -30,9 +30,7 @@ import type { DefSignal } from "@/lib/plant-defs";
 import type { Tone } from "./assets-shell-ui";
 import type { MachineCatalog } from "./use-machine-catalog";
 import { isConditionRule } from "@/lib/plant-defs";
-
-export const BAND_ADVISORY = 85;
-export const BAND_CRITICAL = 60;
+import type { HealthBands } from "@/lib/reference-data";
 
 export const HEALTH_SECTIONS = {
   summary: "hl-summary",
@@ -47,18 +45,23 @@ export const HEALTH_SECTIONS = {
 /** sessionStorage key another page can set to open Health at a section id. */
 export const HEALTH_ANCHOR_KEY = "ultron.health.anchor";
 
-export type Band = "Healthy" | "Advisory" | "Critical";
+export type Band = "Healthy" | "Alert" | "Critical";
 
-export function bandOf(score: number): Band {
-  if (score < BAND_CRITICAL) return "Critical";
-  if (score < BAND_ADVISORY) return "Advisory";
+/** Band of a score under the machine's health-model bands; null while the bands are unknown. */
+export function bandOf(score: number, bands: HealthBands | null): Band | null {
+  if (!bands) return null;
+  if (score < bands.critical) return "Critical";
+  if (score < bands.advisory) return "Alert";
   return "Healthy";
 }
 
 export const sevTone = (s: Severity | Band | string): Tone =>
-  s === "Critical" ? "bad" : s === "Advisory" || s === "Maintenance" ? "warn" : "good";
+  s === "Critical" ? "bad" : s === "Alert" || s === "Maintenance" ? "warn" : "good";
 
-export const bandTone = (score: number | null): Tone => (score === null ? "idle" : sevTone(bandOf(score)));
+export const bandTone = (score: number | null, bands: HealthBands | null): Tone => {
+  const band = score === null ? null : bandOf(score, bands);
+  return band === null ? "idle" : sevTone(band);
+};
 
 export function signed(n: number, digits = 0): string {
   const v = Number(n.toFixed(digits));
@@ -214,7 +217,7 @@ export function limitText(def: DefSignal, ref?: number | null): string {
 }
 
 const residualPoints = (z: number | null) => (z === null ? 0 : Math.min(12, Math.max(0, Math.abs(z) - 3.0) * 1.4));
-const limitPoints = (s: Severity) => (s === "Critical" ? 22 : s === "Advisory" ? 9 : 0);
+const limitPoints = (s: Severity) => (s === "Critical" ? 22 : s === "Alert" ? 9 : 0);
 const rulePoints = (r: RuleState) => (r.status === "PENDING" ? 4 : r.severity === "Critical" ? 30 : 13);
 const scoringRule = (r: RuleState) => r.status !== "QUIET" && isConditionRule(r);
 
@@ -275,7 +278,7 @@ export function kilnHealthModel(frame: SimFrame, catalog: MachineCatalog): Healt
         points: rp,
         label: row.tag,
         detail: `${row.name} ${row.z !== null ? `${signed(row.z, 1)}σ` : ""} from reference model`,
-        severity: Math.abs(row.z ?? 0) >= 6 ? "Critical" : "Advisory",
+        severity: Math.abs(row.z ?? 0) >= 6 ? "Critical" : "Alert",
         formula: `min(12, (|z| − 3.0) × 1.4) with z = ${row.z !== null ? row.z.toFixed(2) : "—"} → ${rp.toFixed(1)} pts. Measured ${row.value}${row.unit ? ` ${row.unit}` : ""}, model ${row.model ?? "—"}${row.unit ? ` ${row.unit}` : ""}, residual ${row.residual ?? "—"}.`,
         tag: row.tag,
       });
@@ -311,18 +314,18 @@ export function kilnHealthModel(frame: SimFrame, catalog: MachineCatalog): Healt
         points: pts,
         label: `${r.id} ${r.name}`,
         detail: r.evidence,
-        severity: r.status === "PENDING" ? "Advisory" : r.severity,
+        severity: r.status === "PENDING" ? "Alert" : r.severity,
         formula:
           r.status === "PENDING"
             ? `Pending confirmation (${r.persistence} / ${r.threshold} samples) → 4 pts on each covered sub-assembly.`
-            : `Confirmed ${r.severity === "Critical" ? "Critical" : "Advisory"} finding → ${pts} pts on each scored sub-assembly it covers (${covered.length}).`,
+            : `Confirmed ${r.severity === "Critical" ? "Critical" : "Alert"} finding → ${pts} pts on each scored sub-assembly it covers (${covered.length}).`,
         rule: r,
         tag: r.tags[0],
       });
     }
   }
   const kindOrder: Record<Contribution["kind"], number> = { rule: 0, limit: 1, residual: 2 };
-  const sevOrder: Record<Severity, number> = { Critical: 0, Advisory: 1, Normal: 2 };
+  const sevOrder: Record<Severity, number> = { Critical: 0, Alert: 1, Normal: 2 };
   contributions.sort((a, b) => kindOrder[a.kind] - kindOrder[b.kind] || sevOrder[a.severity] - sevOrder[b.severity]);
 
   const subs: SubNode[] = defSubs.map((sa) => {
@@ -332,7 +335,7 @@ export function kilnHealthModel(frame: SimFrame, catalog: MachineCatalog): Healt
     const scored = scoredSys.has(sa.system);
     const sigRank = (r: IndicatorRow) => {
       if (r.status === "Critical" || Math.abs(r.z ?? 0) >= 6) return 0;
-      if (r.status === "Advisory" || Math.abs(r.z ?? 0) >= 3) return 1;
+      if (r.status === "Alert" || Math.abs(r.z ?? 0) >= 3) return 1;
       return 2;
     };
     const ranked = rows
@@ -437,7 +440,7 @@ export function storedHealthModel(catalog: MachineCatalog): HealthModel {
     const rules = new Set<string>();
     for (const s of list) if (s.status !== "Normal") for (const r of s.reasons) if (r.ruleId) rules.add(r.ruleId);
     const h = toNum(sa.health);
-    const worstSensor = list.find((s) => s.status === "Critical") ?? list.find((s) => s.status === "Advisory");
+    const worstSensor = list.find((s) => s.status === "Critical") ?? list.find((s) => s.status === "Alert");
     return {
       id: sa.subassemblyId,
       name: sa.shortName || sa.name,

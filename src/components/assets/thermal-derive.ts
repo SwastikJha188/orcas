@@ -2,26 +2,26 @@
  * Thermal sub-page derivations (pure TypeScript, no React).
  *
  * Everything here reads the live shell map (`buildShellMap` over
- * `frame.shellProfile`) and the D5 limits / rule logic:
- *   - CAL-KLN-03 shell maximum: normal 250–330 °C, warning 380 °C or > 20 K/h, alarm 420 °C (D5 Table 9.2)
- *   - STS-KLN-08 coverage: normal ≥ 95 %, warning < 90 %, alarm < 80 % (D5 Table 9.3)
+ * `frame.shellProfile`) and the limits the page passes in from the DB
+ * (`thermalLimits`, GET /api/measurements):
+ *   - CAL-KLN-03 shell maximum: warning rate of rise from its DB limit (`ratePerHour`)
+ *   - STS-KLN-08 coverage: normal = the accepted reference's lower bound, warning / alarm = its DB limit
  *   - R-SHL-01 refractory loss / hot spot: shell max above the expected profile (> 12.5 K) and / or fast rise; local
- *   - R-SHL-02 ring / coating build-up: cold band 29–37 m residual < −15 K + torque residual; drive vibration normal
+ *   - R-SHL-02 ring / coating build-up: cold-band residual < −15 K + torque residual; drive vibration normal
  *
- * The pyro line follows D5-OSW-PE-PYR Tables 5.4.7a / 9.2 / 9.5 instead (`thermalLimits(true)`): hot spot at
- * model + 40 K or > 15 K/h, coverage target 95 % (alarm < 80 %), cold band 30–36 m from the engine's map processing
- * (`frame.shellThermal`). The 12.5 K residual stays a map highlight there, not a finding threshold.
+ * The cold band (kiln fleet 29–37 m, pyro line 30–36 m) is where each engine computes its cold-band residual;
+ * the DB holds no position for it, so it stays with the engines' geometry here. The pyro line takes its
+ * hot-spot residual from the engine's map processing (`frame.shellThermal`); the 12.5 K residual stays a map
+ * highlight there, not a finding threshold.
  */
 
 import type { RuleState } from "@/lib/kiln-sim/engine";
 import type { Severity } from "@/lib/kiln-sim/signals";
+import type { MeasurementDto } from "@/types/monitoring";
 import {
   SHELL_ALERT,
   SHELL_CELL_AREA,
-  SHELL_COVERAGE_ALARM,
-  SHELL_COVERAGE_TARGET,
   SHELL_HOT_DELTA,
-  SHELL_RATE_WARN,
   SHELL_DA,
   SHELL_DANGER,
   SHELL_DZ,
@@ -37,47 +37,50 @@ import type { Tone } from "./assets-shell-ui";
 export const HOT_DELTA = 12.5;
 /** R-SHL-02 cold-band threshold, used symmetrically for the zone mean estimate. */
 export const ZONE_DELTA = 15;
-/** CAL-KLN-03 warning rate of rise, K/h (D5 Table 9.2). */
-export const RATE_WARN = 20;
-/** D5 cold band where a ring / coating build-up shows (Table 5.3.4). */
+/** Kiln-fleet cold band where the engine computes the ring / coating residual (m); not held in the DB. */
 export const COLD_BAND = { from: 29, to: 37 } as const;
-/** STS-KLN-08 limits (D5 Table 9.3). */
-export const COVERAGE = { normal: 95, warn: 90, alarm: 80 } as const;
-/** CAL-KLN-03 normal band (D5 Table 9.2). */
-export const SHELL_NORMAL_BAND = { lo: 250, hi: 330 } as const;
+/** Pyro-line cold band of the engine's map processing (m); not held in the DB. */
+const PYRO_COLD_BAND = { from: 30, to: 36 } as const;
 
-/** Thresholds the Thermal page judges and draws with, per plant. */
+/** Thresholds the Thermal page judges and draws with, per plant. Null where the DB holds no value. */
 export interface ThermalLimits {
   /** Residual of the hottest section that makes a hot-spot finding (K). */
   hotDelta: number;
-  /** Rate of rise that is a warning (K/h). */
-  rateWarn: number;
-  coverage: { normal: number; warn: number; alarm: number };
+  /** Rate of rise that is a warning (K/h): CAL-KLN-03's DB limit `ratePerHour`. */
+  rateWarn: number | null;
+  /** STS-KLN-08: normal = accepted reference lower bound; warn / alarm = DB limit values. */
+  coverage: { normal: number | null; warn: number | null; alarm: number | null };
   /** Where a ring / coating build-up shows as a cold band (m). */
   coldBand: { from: number; to: number };
-  /** Source of the numbers, for the method notes. */
+  /** Source of the numbers, for the method notes: the DB limit's source and approval. */
   source: string;
 }
 
-/** Kiln fleet: the kiln-seal demo rules (R-SHL-01 / -02). Pyro line: D5 Tables 5.4.7a, 9.2 and 9.5. */
-export function thermalLimits(pyro: boolean): ThermalLimits {
-  return pyro
-    ? {
-        hotDelta: SHELL_HOT_DELTA,
-        rateWarn: SHELL_RATE_WARN,
-        coverage: { normal: SHELL_COVERAGE_TARGET, warn: SHELL_COVERAGE_TARGET, alarm: SHELL_COVERAGE_ALARM },
-        coldBand: { from: 30, to: 36 },
-        source: "D5 Tables 5.4.7a / 9.2 / 9.5 (provisional demo values)",
-      }
-    : { hotDelta: HOT_DELTA, rateWarn: RATE_WARN, coverage: COVERAGE, coldBand: COLD_BAND, source: "kiln-seal demo rules" };
+/**
+ * Limits from the machine's DB measurements: CAL-KLN-03 (shell maximum) and
+ * STS-KLN-08 (scanner coverage). Pyro line: the hot-spot residual is the shell
+ * maximum's model-deviation warning when its DB limit is one.
+ */
+export function thermalLimits(pyro: boolean, db: { shellMax?: MeasurementDto | null; coverage?: MeasurementDto | null }): ThermalLimits {
+  const shell = db.shellMax?.limit ?? null;
+  const cov = db.coverage?.limit ?? null;
+  const pyroDelta = shell?.kind === "modelDev" && shell.warnValue !== null ? shell.warnValue : SHELL_HOT_DELTA;
+  return {
+    hotDelta: pyro ? pyroDelta : HOT_DELTA,
+    rateWarn: shell?.ratePerHour ?? null,
+    coverage: { normal: db.coverage?.reference?.lo ?? null, warn: cov?.warnValue ?? null, alarm: cov?.alarmValue ?? null },
+    coldBand: pyro ? PYRO_COLD_BAND : COLD_BAND,
+    source: [shell?.source ?? cov?.source, shell || cov ? `${(shell ?? cov)!.approval} limits (DB)` : "no DB limits"].filter(Boolean).join(" · "),
+  };
 }
 
-export const SEV_TONE: Record<Severity, Tone> = { Normal: "good", Advisory: "warn", Critical: "bad" };
+export const SEV_TONE: Record<Severity, Tone> = { Normal: "good", Alert: "warn", Critical: "bad" };
 const TONE_RANK: Record<Tone, number> = { idle: 0, info: 0, good: 1, warn: 2, bad: 3 };
 
 export const worst = (...t: Tone[]): Tone => t.reduce<Tone>((a, b) => (TONE_RANK[b] > TONE_RANK[a] ? b : a), "good");
 export const tempTone = (v: number): Tone => (v >= SHELL_DANGER ? "bad" : v >= SHELL_ALERT ? "warn" : "good");
-export const coverageTone = (v: number, c: ThermalLimits["coverage"] = COVERAGE): Tone => (v < c.alarm ? "bad" : v < c.warn ? "warn" : "good");
+export const coverageTone = (v: number, c: ThermalLimits["coverage"]): Tone =>
+  c.alarm !== null && v < c.alarm ? "bad" : c.warn !== null && v < c.warn ? "warn" : "good";
 
 export const fmt0 = (v: number | null | undefined) => (v != null && Number.isFinite(v) ? v.toFixed(0) : "—");
 export const fmt1 = (v: number | null | undefined) => (v != null && Number.isFinite(v) ? v.toFixed(1) : "—");
@@ -253,27 +256,27 @@ export function zoneEstimates(map: ShellMap, spots: HotSpot[], ctx: LiningContex
     let tone: Tone;
     if (!Number.isFinite(meanDelta)) {
       kind = "no-view";
-      label = "No scanner view";
+      label = "Scanner cannot see it";
       tone = "idle";
     } else if (own.some((s) => s.delta >= HOT_DELTA)) {
       kind = "hot-spot";
-      label = ctx.deviationOnly ? "Hot spot vs profile" : "Local refractory loss / hot spot";
+      label = ctx.deviationOnly ? "Hot spot, hotter than expected" : "Hot spot; the inner brick lining may be lost here";
       tone = worst(limit, "warn");
     } else if (meanDelta > ZONE_DELTA) {
       kind = "loss";
-      label = ctx.deviationOnly ? "Zone above profile" : "Coating loss / lining thinning";
+      label = ctx.deviationOnly ? "Hotter than expected" : "Protective coating may be lost or the lining thinning";
       tone = worst(limit, "warn");
     } else if (coldBand !== null && coldBand < -ZONE_DELTA) {
       kind = "ring";
-      label = ctx.deviationOnly ? "Cold band below profile" : "Ring / coating build-up";
+      label = ctx.deviationOnly ? "Cooler band than expected" : "Material may be building up inside as a ring";
       tone = worst(limit, "warn");
     } else if (meanDelta < -ZONE_DELTA) {
       kind = "build-up";
-      label = ctx.deviationOnly ? "Zone below profile" : "Coating build-up";
+      label = ctx.deviationOnly ? "Cooler than expected" : "Coating may be building up inside";
       tone = worst(limit, "warn");
     } else {
       kind = "normal";
-      label = "On model profile";
+      label = "As expected";
       tone = limit;
     }
     return { zone: z, kind, label, tone, meanDelta, maxDelta, spots: own, coldBand };

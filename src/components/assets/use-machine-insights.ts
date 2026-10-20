@@ -1,10 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
-import { useApi } from "@/lib/api-cache";
+import { useEffect, useRef } from "react";
+import { revalidateApi, useApi } from "@/lib/api-cache";
 import { useKilnSimulationFor } from "@/providers/kiln-simulation-context";
-import { buildLiveInsights, type DbSensorMeta } from "@/lib/kiln-sim/live-insights";
-import { useStoredCatalog } from "./use-machine-catalog";
 import type { AssetMachine } from "./assets-data";
 import type { InsightsResponse } from "@/server/services/insights-service";
 
@@ -16,52 +14,31 @@ export interface MachineInsightsState {
 }
 
 /**
- * Prognosis & analysis payload for a machine.
- *
- * Live machines (kiln-seal fleet, pyro line) run on a demonstration engine,
- * so their payload is built from the running frame and its `defs` (refreshed
- * every 5 simulated minutes) over the sensors in the DB catalog. Other
- * machines use the server-computed snapshot. Same contract either way.
+ * How often the predictions are re-read: calm, about every 12 minutes, so forecasts and remaining-life
+ * figures hold still long enough to read (the user asked for changes once every 10–15 minutes). A change in
+ * the machine's active problems re-reads them at once, so a new fault and its prediction appear together.
+ */
+const REFRESH_MS = 12 * 60_000;
+
+/**
+ * Prognosis & analysis payload for a machine, calculated on the server from
+ * the stored readings, findings and health scores (/api/insights): trend
+ * forecasts with prediction intervals, correlations, time to limit, anomalies
+ * against the accepted reference, and the open findings. The same for every
+ * machine, simulated or not.
  */
 export function useMachineInsights(machine: AssetMachine): MachineInsightsState {
+  // No id yet (a placeholder machine while the plant loads): ask nothing rather than a 400.
+  const url = machine.id ? `/api/insights?machineId=${encodeURIComponent(machine.id)}` : null;
+  const { data, isLoading, error } = useApi<InsightsResponse | null>(url, { refreshMs: REFRESH_MS });
+  // The machine's active problems (from the calm display snapshot); a change re-reads the predictions now.
   const frame = useKilnSimulationFor(machine.id)?.frame ?? null;
-  // A live machine's payload comes from the frame; skip the server snapshot.
-  const stored = useStoredInsights(frame ? null : machine);
-  // The DB catalog decides which sensors exist and their names, units, limits
-  // and locations; the engine only supplies live values and history.
-  const catalog = useStoredCatalog(machine);
-  const db = useMemo<DbSensorMeta[]>(() => {
-    const systemName = new Map(catalog.systems.map((s) => [s.systemId, s.name]));
-    return catalog.sensors.map((s) => ({
-      tag: s.tag,
-      name: s.name,
-      unit: s.unit,
-      numericValue: s.numericValue,
-      status: s.status,
-      warningVal: s.warningVal,
-      alarmVal: s.alarmVal,
-      systemId: s.systemId,
-      system: systemName.get(s.systemId) ?? s.systemId,
-      subassemblyId: s.subassemblyId,
-      subAssembly: s.subAssembly,
-      component: s.component,
-    }));
-  }, [catalog.sensors, catalog.systems]);
-  // Rebuild on scenario change and every 5 simulated minutes, not every tick.
-  const bucket = frame ? `${frame.scenarioId}:${Math.floor(frame.t / 5)}` : null;
-  const live = useMemo(
-    () => (frame && catalog.isLive ? buildLiveInsights(frame, machine.id, db) : null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [bucket, machine.id, db, catalog.isLive],
-  );
-  if (live) return { data: live, isLoading: false, isError: false, error: null };
-  if (frame) return { data: null, isLoading: catalog.isLoading, isError: false, error: null };
-  return stored;
-}
-
-function useStoredInsights(machine: AssetMachine | null): MachineInsightsState {
-  const { data, isLoading, error } = useApi<InsightsResponse | null>(
-    machine ? `/api/insights?machineId=${encodeURIComponent(machine.id)}` : null,
-  );
+  const active = frame ? frame.rules.filter((r) => r.status === "ACTIVE" && r.severity !== "Normal").map((r) => r.id).sort().join(",") : null;
+  const seen = useRef<string | null>(null);
+  useEffect(() => {
+    if (active === null || !url) return;
+    if (seen.current !== null && seen.current !== active) void revalidateApi(url);
+    seen.current = active;
+  }, [active, url]);
   return { data: data ?? null, isLoading, isError: error !== null, error };
 }

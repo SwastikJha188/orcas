@@ -9,12 +9,9 @@ import { Sparkline } from "@/components/ui/sparkline";
 import { LimitBar, gaugeScale, twoSided, twoSidedLoad } from "./sensor-gauge";
 import { SensorTileChart } from "./sensor-tile-chart";
 import { isRelativeLimit, limitNum, limitSummary, resolveLimit } from "@/lib/kiln-sim/signals";
-import { PYRO_D5_LIMITS } from "@/lib/pyro-sim/limits";
 import { sensorAlarmLoad, type SensorScope } from "./sensor-mapping-diagram";
 import {
-  D4_SENSOR_SPEC,
   D4_SOURCE_LABEL,
-  PYRO_PROPOSED_RACK,
   calcDefsFor,
   fmt,
   isCalculated,
@@ -22,7 +19,11 @@ import {
   isWired,
   isHoldChannel,
   isOnOff,
-  PYRO_DEMO_LIMIT,
+  CHECK_LABEL,
+  QUALITY_LABEL,
+  limitApprovalText,
+  limitValuesText,
+  limitsApprovalText,
   pyroOwnerOf,
   scannerEntryOf,
   parseSampleRate,
@@ -36,6 +37,9 @@ import type { SensorsCtx } from "./sensors-sections";
 import { formatLocalTime } from "@/lib/time";
 import { simTimeMs } from "@/lib/kiln-sim/engine";
 import { useIndustrialData } from "@/providers/industrial-data-context";
+import { displayName, isIdOnly, nameOf } from "@/lib/display-name";
+import { PYRO_RANGES, PYRO_RANGES_DOC } from "@/lib/pyro-sim/ranges";
+import { faultsForTag, libraryText, useFaultLibrary } from "./fault-library";
 
 /* ==========================================================================
    Sensors › Sensors.
@@ -45,8 +49,8 @@ import { useIndustrialData } from "@/providers/industrial-data-context";
    sub-assembly or by process / condition role, with a detail panel.
    ========================================================================== */
 
-type StatusKey = "Normal" | "Advisory" | "Critical";
-const STATUS_KEYS: StatusKey[] = ["Normal", "Advisory", "Critical"];
+type StatusKey = "Normal" | "Alert" | "Critical";
+const STATUS_KEYS: StatusKey[] = ["Normal", "Alert", "Critical"];
 type QualityFilter = "all" | "valid" | "attention" | "nolive";
 type GroupBy = "sub" | "role" | "none";
 type ViewMode = "table" | "cards";
@@ -58,11 +62,11 @@ function groupLine(list: SensorRow[], missing: string[], withSpec: boolean): str
   const out = list.filter((r) => r.status !== "Normal").length;
   const unlinked = list.filter((r) => isWired(r) && !r.livePoint).length;
   return [
-    `${list.length}`,
-    bad ? `${bad} data issue${bad === 1 ? "" : "s"}` : "",
-    out ? `${out} outside limits` : "",
-    withSpec && missing.length ? `${missing.length} of ${list.length + missing.length} specified missing` : "",
-    unlinked && list.some((r) => r.livePoint) ? `${unlinked} not on gateway` : "",
+    `${list.length} sensor${list.length === 1 ? "" : "s"}`,
+    bad ? `${bad} with doubtful readings` : "",
+    out ? `${out} outside normal limits` : "",
+    withSpec && missing.length ? `${missing.length} of ${list.length + missing.length} planned sensors not set up yet` : "",
+    unlinked && list.some((r) => r.livePoint) ? `${unlinked} not connected to the live feed` : "",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -75,7 +79,7 @@ export function QualityMark({ row, prefix = "" }: { row: SensorRow; prefix?: str
     <span className="pg-sensors-quality" data-tone={tone} title={row.q.note}>
       <span className="ast-chip-dot" aria-hidden="true" />
       {prefix}
-      {prefix ? row.q.quality.toLowerCase() : row.q.quality}
+      {prefix ? QUALITY_LABEL[row.q.quality].toLowerCase() : QUALITY_LABEL[row.q.quality]}
     </span>
   );
 }
@@ -176,14 +180,17 @@ export function SensorsRegister({ ctx, scope, onClearScope }: { ctx: SensorsCtx;
   }, [filtered, groupBy, rows, ctx.hasSpec, ctx.defs, query, statusFilter, qualityFilter]);
 
   const qualityTabs = useMemo(() => {
-    const tabs = [{ id: "all", label: `All ${counts.total}` }, { id: "valid", label: `Valid ${counts.q.valid}` }];
-    if (counts.q.attention > 0 || qualityFilter === "attention") tabs.push({ id: "attention", label: `Data issues ${counts.q.attention}` });
-    if (counts.q.nolive > 0 || qualityFilter === "nolive") tabs.push({ id: "nolive", label: `No live feed ${counts.q.nolive}` });
+    const tabs = [{ id: "all", label: `All ${counts.total}` }, { id: "valid", label: `Good readings ${counts.q.valid}` }];
+    if (counts.q.attention > 0 || qualityFilter === "attention") tabs.push({ id: "attention", label: `Doubtful readings ${counts.q.attention}` });
+    if (counts.q.nolive > 0 || qualityFilter === "nolive") tabs.push({ id: "nolive", label: `Not live ${counts.q.nolive}` });
     return tabs;
   }, [counts, qualityFilter]);
 
   const selected = selectedTag ? rows.find((s) => tagOf(s) === selectedTag) ?? null : null;
   const COLS = 10;
+  // Limit approval from the DB limit rows; slot allocation "proposed" when the registry card says so.
+  const limitsNote = useMemo(() => limitsApprovalText(rows.map((r) => r.m?.limit)), [rows]);
+  const slotsProposed = useMemo(() => rows.some(isProposedSlot), [rows]);
 
   return (
     <div className="pg-sensors-register">
@@ -191,11 +198,11 @@ export function SensorsRegister({ ctx, scope, onClearScope }: { ctx: SensorsCtx;
         <div className="ast-toolbar-group">
           <span className="ast-section-label">
             <span className="ast-num">
-              {filtered.length} / {counts.total}
+              {filtered.length} of {counts.total} sensors
             </span>
           </span>
           {scope && (
-            <button type="button" className="ast-filter" aria-pressed="true" onClick={onClearScope} title="Show sensors from every sub-assembly">
+            <button type="button" className="ast-filter" aria-pressed="true" onClick={onClearScope} title="Show sensors from every part of the machine">
               {scope.label}
               <IconClose size={11} />
             </button>
@@ -203,7 +210,7 @@ export function SensorsRegister({ ctx, scope, onClearScope }: { ctx: SensorsCtx;
         </div>
         <div className="ast-toolbar-group">
           <PillNav items={qualityTabs} activeId={qualityFilter} onChange={(id) => setQualityFilter(id as QualityFilter)} />
-          <div className="ast-toolbar-group" role="group" aria-label="Filter by limit state">
+          <div className="ast-toolbar-group" role="group" aria-label="Filter by status">
             {STATUS_KEYS.filter((k) => k !== "Normal" && (counts.status[k] > 0 || statusFilter === k)).map((k) => (
               <button
                 key={k}
@@ -220,9 +227,9 @@ export function SensorsRegister({ ctx, scope, onClearScope }: { ctx: SensorsCtx;
           </div>
           <PillNav
             items={[
-              { id: "sub", label: "By sub-assembly" },
-              { id: "role", label: "Process / condition" },
-              { id: "none", label: "Flat" },
+              { id: "sub", label: "By part" },
+              { id: "role", label: "By purpose" },
+              { id: "none", label: "No groups" },
             ]}
             activeId={groupBy}
             onChange={(id) => setGroupBy(id as GroupBy)}
@@ -237,16 +244,16 @@ export function SensorsRegister({ ctx, scope, onClearScope }: { ctx: SensorsCtx;
             onChange={(id) => changeView(id as ViewMode)}
             ariaLabel="Sensors view"
           />
-          <SearchPill value={query} onChange={setQuery} placeholder="Search tag, instrument, slot" label="Search sensors" />
+          <SearchPill value={query} onChange={setQuery} placeholder="Search name, tag or instrument" label="Search sensors" />
         </div>
       </div>
 
       <div className={`ast-sm ${selected ? "has-panel" : ""}`}>
         <section className="ast-card ast-sm-table" aria-label="Sensors">
           {filtered.length === 0 ? (
-            <div className="ast-empty">No sensors match the current filters.</div>
+            <div className="ast-empty">No sensors match these filters. Clear a filter to see more.</div>
           ) : view === "cards" ? (
-            <div className="pg-sensors-tiles" aria-label="Transducer allocation">
+            <div className="pg-sensors-tiles" aria-label="Sensors on this machine">
               {groups.map((g) => (
                 <div key={g.key} className="pg-sensors-tile-group" role="group" aria-label={g.label || "Sensors"}>
                   {g.label && (
@@ -258,7 +265,7 @@ export function SensorsRegister({ ctx, scope, onClearScope }: { ctx: SensorsCtx;
                   {g.missing.length > 0 && (
                     <p className="pg-sensors-tile-missing">
                       <span className="ast-num">{g.missing.join(" · ")}</span>
-                      <span className="ast-muted"> · specified in D4, not in the DB catalog</span>
+                      <span className="ast-muted"> · planned in the sensor list, not set up yet</span>
                     </p>
                   )}
                   <div className="pg-sensors-tile-grid">
@@ -277,33 +284,31 @@ export function SensorsRegister({ ctx, scope, onClearScope }: { ctx: SensorsCtx;
             </div>
           ) : (
             <div className="ui-table-container ast-table pg-sensors-table">
-              <table className="ui-table" aria-label="Transducer allocation">
+              <table className="ui-table" aria-label="Sensors on this machine">
                 <thead>
                   <tr>
-                    <th scope="col">Sensor ID</th>
-                    <th scope="col">Measurement</th>
-                    <th scope="col">Location</th>
-                    <th scope="col">Range</th>
-                    <th scope="col" title={ctx.defs?.plant === "pyro" ? PYRO_PROPOSED_RACK : undefined}>
-                      {ctx.defs?.plant === "pyro" ? "Rack slot · reg. (proposed)" : "Rack slot · reg."}
+                    <th scope="col">Sensor</th>
+                    <th scope="col">Measures</th>
+                    <th scope="col">Where</th>
+                    <th scope="col">Can read</th>
+                    <th scope="col">{slotsProposed ? "Wired to (planned)" : "Wired to"}</th>
+                    <th scope="col" className="pg-sensors-r">
+                      How often
                     </th>
                     <th scope="col" className="pg-sensors-r">
-                      Sampling
+                      Reading now
                     </th>
-                    <th scope="col" className="pg-sensors-r">
-                      Live value
-                    </th>
-                    <th scope="col" title={ctx.defs?.plant === "pyro" ? PYRO_DEMO_LIMIT : undefined}>
-                      {ctx.defs?.plant === "pyro" ? (
+                    <th scope="col">
+                      {limitsNote && limitsNote !== "Approved limits" ? (
                         <span className="ast-cell-stack">
                           <span>Limits</span>
-                          <span className="ast-cell-sub">Provisional (D5) · not plant-approved</span>
+                          <span className="ast-cell-sub">{limitsNote}</span>
                         </span>
                       ) : (
                         "Limits"
                       )}
                     </th>
-                    <th scope="col">Data</th>
+                    <th scope="col">Reading quality</th>
                     <th scope="col" style={{ width: 48 }} aria-label="Actions" />
                   </tr>
                 </thead>
@@ -321,7 +326,7 @@ export function SensorsRegister({ ctx, scope, onClearScope }: { ctx: SensorsCtx;
                       <tr key={`missing-${t}`} className="pg-sensors-ghost">
                         <td colSpan={COLS}>
                           <span className="ast-num">{t}</span>
-                          <span className="ast-muted"> · {ctx.defs?.signalByTag[t]?.name ?? ""} · specified in D4, not in the DB catalog</span>
+                          <span className="ast-muted"> · {ctx.defs?.signalByTag[t]?.name ?? ""} · planned in the sensor list, not set up yet</span>
                         </td>
                       </tr>
                     ))}
@@ -367,7 +372,7 @@ function loadOf(s: SensorRow): { pct: number; title: string } | null {
     const v = parseFloat(s.value);
     const l = Number.isFinite(v) ? twoSidedLoad(v, band) : null;
     if (!l || (l.load > 100 && s.status === "Normal")) return null;
-    return { pct: l.load, title: `${l.load} % of the way from band centre to the ${l.side} ${l.kind} limit ${l.limit} ${unit}`.trim() };
+    return { pct: l.load, title: `${l.load} % of the way from the middle of the normal range to the ${l.side} ${l.kind === "alarm" ? "Critical" : "Alert"} limit of ${l.limit} ${unit}`.trim() };
   }
   if (isRelativeLimit(lim)) {
     // Relative limits (pyro D5 Table 9.2) move with the reference model: load against the alarm at the live reference.
@@ -376,10 +381,16 @@ function loadOf(s: SensorRow): { pct: number; title: string } | null {
     if (r?.kind !== "hi" || !(r.alarm > 0) || !Number.isFinite(v) || v < 0) return null;
     const pct = Math.round((v / r.alarm) * 100);
     if (pct > 100 && s.status === "Normal") return null;
-    return { pct, title: `${pct} % of alarm limit ${limitNum(r.alarm)} ${unit} · ${limitSummary(lim, s.unit, ref)}`.trim() };
+    return { pct, title: `${pct} % of the Critical limit of ${limitNum(r.alarm)} ${unit} · ${limitSummary(lim, s.unit, ref)}`.trim() };
   }
   const pct = sensorAlarmLoad(s);
-  return pct === null ? null : { pct, title: `${pct} % of alarm limit ${s.alarmVal} ${s.unit}` };
+  return pct === null ? null : { pct, title: `${pct} % of the Critical limit of ${s.alarmVal} ${s.unit}` };
+}
+
+/** Slot allocation still a proposal: the edge registry card (model / note) says "proposed" or "pending". */
+function isProposedSlot(s: SensorRow): boolean {
+  const c = s.livePoint?.cardInfo;
+  return Boolean(c && /proposed|pending/i.test(`${c.model ?? ""} ${c.note ?? ""}`));
 }
 
 /** Values shared by the table row and the sensor card. */
@@ -400,17 +411,19 @@ function rowFacts(s: SensorRow, ctx: SensorsCtx) {
     rate: parseSampleRate(s.sampleRate),
     load: loadOf(s),
     unit: unitText(s),
-    hold: ctx.defs?.plant === "pyro" && isHoldChannel(s.name, s.d4),
-    source: scanner ? `Scanner map maximum (${scanner.point})` : calc ? "Calculated on gateway" : manual ? "Manual record" : [s.role, s.accuracy].filter(Boolean).join(" · "),
-    place: [s.point, s.spec?.system ?? s.systemId, s.d4?.diagram].filter(Boolean).join(" · ") || "—",
+    hold: isHoldChannel(s.name, s.m),
+    source: scanner ? "Hottest point on the shell scan" : calc ? "Worked out from other sensors" : manual ? "Entered by hand" : [s.role === "Process" ? "Process reading" : "Machine health", s.accuracy].filter(Boolean).join(" · "),
+    // Drawing point (P4) and system name; ID-only points and system IDs stay in `placeTip`.
+    place: [s.point && !isIdOnly(s.point) ? s.point : "", nameOf(s.spec?.system ?? s.systemId ?? "", ctx.defs), s.d4?.diagram].filter(Boolean).join(" · ") || "—",
+    placeTip: [s.point, s.spec?.system ?? s.systemId, s.d4?.diagram].filter(Boolean).join(" · "),
     reg: [calc || manual ? "" : module, s.modbusAddress && s.modbusAddress !== "—" ? `reg ${s.modbusAddress}` : ""].filter(Boolean).join(" · ") || "—",
   };
 }
 
 function HoldFlag() {
   return (
-    <span className="pg-sensors-flag" data-tone="idle" title="HOLD · channel design pending (D4 Table 3.1); advisory evidence only">
-      HOLD
+    <span className="pg-sensors-flag" data-tone="idle" title="On hold: how this sensor is wired is not decided yet (D4 Table 3.1), so its reading is for information only">
+      Not final
     </span>
   );
 }
@@ -438,7 +451,7 @@ function LimitState({ s }: { s: SensorRow }) {
 
 /** Card view: one sensor per tile, same facts as a table row; click selects like a row. */
 function SensorTile({ s, ctx, selected, onSelect }: { s: SensorRow; ctx: SensorsCtx; selected: boolean; onSelect: () => void }) {
-  const { tag, calc, manual, scanner, slot, rate, load, unit, hold, place, reg } = rowFacts(s, ctx);
+  const { tag, calc, manual, scanner, slot, rate, load, unit, hold, place, placeTip, reg } = rowFacts(s, ctx);
   const tone = s.status === "Normal" ? undefined : severityTone(s.status);
   const rack = scanner ? "Scanner" : calc ? "Gateway" : manual ? "Manual" : slot;
   const history = s.live ? ctx.frame?.history[tag] : s.livePoint ? ctx.history[s.livePoint.pointId] : undefined;
@@ -451,12 +464,9 @@ function SensorTile({ s, ctx, selected, onSelect }: { s: SensorRow; ctx: Sensors
             <IconSensor size={15} />
           </span>
           <span className="ast-cell-stack">
-            <span className="ast-cell-title ast-num">
-              {tag}
+            <span className="ast-cell-title pg-sensors-tile-clip" title={`${tag} · ${s.name}`}>
+              {displayName(s.name)}
               {hold && <HoldFlag />}
-            </span>
-            <span className="ast-cell-sub pg-sensors-tile-clip" title={s.name}>
-              {s.name}
             </span>
           </span>
         </span>
@@ -472,36 +482,36 @@ function SensorTile({ s, ctx, selected, onSelect }: { s: SensorRow; ctx: Sensors
         </span>
         {load !== null && (
           <span className="ast-caption ast-num" title={load.title}>
-            {load.pct} % of limit
+            {load.pct} % of the way to its limit
           </span>
         )}
         {s.outOfRange && (
-          <span className="pg-sensors-flag" data-tone="bad" title="Reading is outside the instrument range (calc.)">
-            out of range
+          <span className="pg-sensors-flag" data-tone="bad" title="The reading is outside what this instrument can measure, so it is probably wrong">
+            beyond instrument range
           </span>
         )}
       </span>
 
       <SensorTileChart s={s} history={history} model={model} span={s.live ? "min" : "reading"} />
 
-      {s.q.quality !== "Valid" && <QualityMark row={s} prefix="Data " />}
+      {s.q.quality !== "Valid" && <QualityMark row={s} prefix="Reading " />}
 
       <span className="pg-sensors-tile-facts">
-        <span className="pg-sensors-tile-k">Measurement</span>
+        <span className="pg-sensors-tile-k">Measures</span>
         <span className="pg-sensors-tile-v" title={s.sensorType}>
-          {s.sensorType || "—"}
+          {displayName(s.sensorType) || "—"}
         </span>
-        <span className="pg-sensors-tile-k">Location</span>
-        <span className="pg-sensors-tile-v" title={`${s.subAssembly || s.component || "—"} · ${place}`}>
+        <span className="pg-sensors-tile-k">Where</span>
+        <span className="pg-sensors-tile-v" title={`${s.subAssembly || s.component || "—"} · ${placeTip}`}>
           {s.subAssembly || s.component || "—"}
-          <span className="ast-muted ast-num"> · {place}</span>
+          <span className="ast-muted"> · {place}</span>
         </span>
-        <span className="pg-sensors-tile-k">{ctx.defs?.plant === "pyro" && !calc && !manual && !scanner ? "Rack slot (prop.)" : "Rack slot"}</span>
+        <span className="pg-sensors-tile-k">{!calc && !manual && !scanner && isProposedSlot(s) ? "Wired to (planned)" : "Wired to"}</span>
         <span className="pg-sensors-tile-v ast-num" title={reg}>
           {rack}
           {reg !== "—" && <span className="ast-muted"> · {reg}</span>}
         </span>
-        <span className="pg-sensors-tile-k">Sampling</span>
+        <span className="pg-sensors-tile-k">How often</span>
         <span className={`pg-sensors-tile-v ${rate.sps === null ? "ast-muted" : "ast-num"}`} title={s.sampleRate}>
           {rate.label}
         </span>
@@ -527,7 +537,7 @@ function RegisterRow({
   onMenu: (open: boolean, pos?: { top: number; right: number }) => void;
   onSelect: () => void;
 }) {
-  const { tag, calc, manual, scanner, slot, module, rate, load, unit, hold, source, place, reg } = rowFacts(s, ctx);
+  const { tag, calc, manual, scanner, slot, module, rate, load, unit, hold, source, place, placeTip, reg } = rowFacts(s, ctx);
   return (
     <tr
       className={["is-clickable", selected ? "active" : ""].filter(Boolean).join(" ")}
@@ -539,12 +549,9 @@ function RegisterRow({
             <IconSensor size={15} />
           </span>
           <span className="ast-cell-stack">
-            <span className="ast-cell-title ast-num">
-              {tag}
+            <span className="ast-cell-title pg-sensors-clip" title={`${tag} · ${s.name}`}>
+              {displayName(s.name)}
               {hold && <HoldFlag />}
-            </span>
-            <span className="ast-cell-sub pg-sensors-clip" title={s.name}>
-              {s.name}
             </span>
           </span>
         </span>
@@ -552,7 +559,7 @@ function RegisterRow({
       <td>
         <span className="ast-cell-stack">
           <span className="ast-cell-text pg-sensors-clip" title={s.sensorType}>
-            {s.sensorType || "—"}
+            {displayName(s.sensorType) || "—"}
           </span>
           <span className="ast-cell-sub">{source}</span>
         </span>
@@ -562,16 +569,18 @@ function RegisterRow({
           <span className="ast-cell-text pg-sensors-clip" title={s.subAssembly || s.component}>
             {s.subAssembly || s.component || "—"}
           </span>
-          <span className="ast-cell-sub ast-num">{place}</span>
+          <span className="ast-cell-sub" title={placeTip}>
+            {place}
+          </span>
         </span>
       </td>
       <td>
-        <span className={`pg-sensors-clip pg-sensors-clip--sm ${s.range ? "ast-num" : "ast-muted"}`} title={s.outOfRange ? "Reading is outside the instrument range (calc.)" : s.range}>
+        <span className={`pg-sensors-clip pg-sensors-clip--sm ${s.range ? "ast-num" : "ast-muted"}`} title={s.outOfRange ? "The reading is outside what this instrument can measure, so it is probably wrong" : s.range}>
           {s.range || "—"}
         </span>
         {s.outOfRange && (
           <span className="pg-sensors-flag" data-tone="bad">
-            out of range
+            beyond instrument range
           </span>
         )}
       </td>
@@ -602,7 +611,7 @@ function RegisterRow({
           <button
             type="button"
             className="ast-icon-btn"
-            aria-label={`Actions for ${tag}`}
+            aria-label={`Actions for ${displayName(s.name)}`}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             onClick={(e) => {
@@ -636,16 +645,16 @@ function RegisterRow({
                   Show details
                 </button>
                 <button type="button" role="menuitem" onClick={() => ctx.goTrends(tag)}>
-                  Open in Trends
+                  See its history chart
                 </button>
                 {!calc && !manual && s.cardId && (
                   <button type="button" role="menuitem" onClick={ctx.goRack}>
-                    Open rack slot
+                    See where it is wired
                   </button>
                 )}
                 {s.livePoint && (
                   <button type="button" role="menuitem" onClick={() => ctx.goDevices(s.livePoint)}>
-                    Open in Devices
+                    See its network device
                   </button>
                 )}
               </span>,
@@ -671,98 +680,119 @@ function SensorPanel({ sensor, ctx, onClose }: { sensor: SensorRow; ctx: Sensors
 
   const { slot, module } = slotOf(sensor.cardId);
   const rate = parseSampleRate(sensor.sampleRate);
-  const calcDef = calcDefsFor(ctx.defs)[tag];
+  const calcDefs = calcDefsFor(ctx.defs, ctx.measurements);
+  const calcDef = calcDefs[tag];
   const calc = isCalculated(sensor);
   const manual = !calc && isManual(sensor);
   const d4 = sensor.d4;
-  const pyro = ctx.defs?.plant === "pyro";
+  const m = sensor.m;
+  const proposedSlot = !calc && !manual && isProposedSlot(sensor);
   const { setActiveSubPage } = useIndustrialData();
+  // Fault library (OSW-PE-FLT-PYR-01): the problems this reading is main evidence for, and those it helps confirm.
+  const finds = faultsForTag(useFaultLibrary(ctx.machine.id), tag);
   // D4 K-K33 "STS-KLN-08 / CAL-KLN-03": one scanner entry delivering status plus the shell temperature map.
   const scannerEntry = scannerEntryOf(ctx.defs, tag);
   const shellMap = Boolean(scannerEntry && ctx.defs?.hasShell);
-  const mapMax = d4 && scannerEntry ? Object.values(calcDefsFor(ctx.defs)).find((c) => c.inputs.includes(tag))?.tag : undefined;
+  const mapMax = d4 && scannerEntry ? Object.values(calcDefs).find((c) => c.inputs.includes(tag))?.tag : undefined;
+  // Install status and priority are the DB measurement's; D4 source codes (R? / N? / R/N?) read as words.
+  const installCode = m?.installStatus?.split(/\s/)[0] as keyof typeof D4_SOURCE_LABEL | undefined;
+  const installText = m?.installStatus ? (installCode && D4_SOURCE_LABEL[installCode]) || m.installStatus : sensor.source;
   const rows: Array<[string, string]> = [
-    ["Location", [sensor.subAssembly || sensor.component, sensor.point].filter(Boolean).join(" · ") || "—"],
-    ["Role", sensor.role === "Process" ? "Process context" : "Condition monitoring"],
-    ["Instrument", sensor.sensorType || "—"],
-    // Kiln fleet: D4 Table 7.1 by instrument family. Pyro line: the D4-OSW-PE-PYR schedule entry.
-    ...(!d4 && ctx.defs?.plant === "kiln" && sensor.spec && D4_SENSOR_SPEC[sensor.spec.instrument]
-      ? ([["Mounting · output (D4)", `${D4_SENSOR_SPEC[sensor.spec.instrument].mounting} · ${D4_SENSOR_SPEC[sensor.spec.instrument].output}`]] as Array<[string, string]>)
-      : []),
+    ["Where", [sensor.subAssembly || sensor.component, sensor.point && !isIdOnly(sensor.point) ? sensor.point : ""].filter(Boolean).join(" · ") || "—"],
+    ["Purpose", sensor.role === "Process" ? "Shows how the process is running" : "Watches the health of the machine"],
+    ["Instrument", displayName(sensor.sensorType) || "—"],
+    ...(m?.standard ? ([["Standard", m.standard]] as Array<[string, string]>) : []),
+    // Pyro line: the D4-OSW-PE-PYR schedule entry (drawing sheet, purpose).
     ...(d4
       ? ([
-          ["D4 point · sheet", `${d4.point} · ${d4.diagram}`],
-          ["Sensor type · unit (D4)", `${d4.sensorType} · ${d4.specUnit}`],
-          ["Location (D4)", d4.location],
-          ["Purpose (D4)", d4.purpose],
+          ["Drawing point and sheet (D4)", `${d4.point} · ${d4.diagram}`],
+          ["Sensor type and unit (D4)", `${d4.sensorType} · ${d4.specUnit}`],
+          ["Place on the machine (D4)", d4.location],
+          ["Why it is fitted (D4)", d4.purpose],
         ] as Array<[string, string]>)
       : []),
     ...(scannerEntry
       ? ([
           [
-            `Delivers (D4 ${scannerEntry.point})`,
+            `Gives (D4 ${scannerEntry.point})`,
             d4
-              ? `Scanner status + shell temperature map${mapMax ? ` · map maximum is ${mapMax}` : ""}`
-              : `Map maximum of ${scannerEntry.point} (scanner status + map)`,
+              ? `Scanner status and a temperature map of the kiln shell${mapMax ? ` · hottest point is shown as ${displayName(ctx.rows.find((r) => tagOf(r) === mapMax)?.name ?? ctx.defs?.signalByTag[mapMax]?.name ?? mapMax)}` : ""}`
+              : `Hottest point on the shell map from ${scannerEntry.point} (scanner status and map)`,
           ],
         ] as Array<[string, string]>)
       : []),
     ["Accuracy", sensor.accuracy || "—"],
-    ["Range", sensor.range || "—"],
-    d4
-      ? ["Source / priority (D4)", `${D4_SOURCE_LABEL[d4.source]} · ${d4.priority}`]
-      : ["Source / priority", [sensor.source, sensor.priority].filter(Boolean).join(" · ") || "—"],
-    [pyro && !calc && !manual ? "Rack (proposed)" : "Rack", calc ? (scannerEntry ? `Scanner data (${scannerEntry.point})` : "Gateway (calculated)") : manual ? "Manual entry" : sensor.rackId ? sensor.rackId.split(" (")[0] : "—"],
-    // Pyro line: the slot is a proposed allocation pending the walkdown (D4 Table 6.4a).
-    [pyro && !calc && !manual ? "Slot (proposed)" : "Slot", calc || manual ? "—" : module ? `${slot} · ${module}` : slot],
-    ["Modbus register", sensor.modbusAddress || "—"],
-    ["Sampling", rate.label === "—" && manual && sensor.sampleRate ? sensor.sampleRate : rate.label],
+    ["Can read", sensor.range || "—"],
+    ["Fitted and priority", [installText, m?.priority ?? sensor.priority].filter(Boolean).join(" · ") || "—"],
+    [proposedSlot ? "Cabinet (planned)" : "Cabinet", calc ? (scannerEntry ? "Shell scanner" : "Worked out from other sensors") : manual ? "Entered by hand" : sensor.rackId ? sensor.rackId.split(" (")[0] : "—"],
+    // The slot is a proposed allocation when the edge registry card says so (pending walkdown).
+    [proposedSlot ? "Slot (planned)" : "Slot", calc || manual ? "—" : module ? `${slot} · ${module}` : slot],
+    ["Data address (Modbus)", sensor.modbusAddress || "—"],
+    ["How often", rate.label === "—" && manual && sensor.sampleRate ? sensor.sampleRate : rate.label],
   ];
   // SW-DATA-01: the engine stamps source and receipt time per value (simulated minutes).
-  const simStamp = (t: number) => `${formatLocalTime(simTimeMs(t), { date: true, seconds: true, zone: true, timeZone: ctx.timeZone })} · sim.`;
+  const simStamp = (t: number) => `${formatLocalTime(simTimeMs(t), { date: true, seconds: true, zone: true, timeZone: ctx.timeZone })}`;
   if (point) {
-    rows.push(["Gateway", `${point.gateway.code}`]);
-    rows.push(["Source point", `${point.source.code} · card ${point.card} · ch ${point.channel}${point.address ? ` · ${point.address}` : ""}`]);
-    rows.push(["Original tag", point.sourceTag || "Not recorded"]);
+    rows.push(["Network gateway", `${point.gateway.code}`]);
+    rows.push(["Comes from", `${point.source.code} · card ${point.card} · channel ${point.channel}${point.address ? ` · ${point.address}` : ""}`]);
+    rows.push(["Name in the plant system", point.sourceTag || "Not recorded"]);
     rows.push(["Security zone", point.source.securityZone || point.gateway.securityZone || "Not recorded"]);
   }
   if (live?.sourceTs !== undefined) {
-    rows.push(["Source time", `${simStamp(live.sourceTs)}${live.receivedTs !== undefined && live.receivedTs - live.sourceTs >= 1 ? " · stale" : ""}`]);
-    if (live.receivedTs !== undefined) rows.push(["Received", simStamp(live.receivedTs)]);
+    rows.push(["Measured at", `${simStamp(live.sourceTs)}${live.receivedTs !== undefined && live.receivedTs - live.sourceTs >= 1 ? " · arrived late" : ""}`]);
+    if (live.receivedTs !== undefined) rows.push(["Received at", simStamp(live.receivedTs)]);
   } else if (point) {
-    rows.push(["Source time", "Not recorded (receipt time only)"]);
-    rows.push(["Received", point.live.updatedAt ? formatLocalTime(point.live.updatedAt, { date: true, zone: true, timeZone: ctx.timeZone }) : "No gateway reading"]);
+    rows.push(["Measured at", "Not recorded (only the time it arrived)"]);
+    rows.push(["Received at", point.live.updatedAt ? formatLocalTime(point.live.updatedAt, { date: true, zone: true, timeZone: ctx.timeZone }) : "No reading received yet"]);
   }
   if (live && live.model !== null) {
-    rows.push(["Reference model (calc.)", `${fmt(live.model)} ${unit}`.trim()]);
+    rows.push(["Expected now", `${fmt(live.model)} ${unit}`.trim()]);
     if (live.residual !== null) {
-      rows.push(["Residual (calc.)", `${live.residual > 0 ? "+" : ""}${fmt(live.residual)} ${unit}${live.z !== null ? ` · ${fmt(live.z)} σ` : ""}`]);
+      rows.push(["Difference from expected", `${live.residual > 0 ? "+" : ""}${fmt(live.residual)} ${unit}${live.z !== null ? ` · ${fmt(Math.abs(live.z))} × its usual spread` : ""}`]);
     }
   }
-  // Pyro line: the D5 Table 9.2 row (provisional logic) and the branch that fired.
-  const d5 = pyro ? PYRO_D5_LIMITS[tag] : undefined;
-  if (d5) {
+  // The DB engineering limit: basis texts, values, the branch that fired, final source and approval.
+  const dbLimit = m?.limit ?? null;
+  if (dbLimit) {
     const lim = sensor.spec?.limit;
-    rows.push(["Normal behaviour (D5)", d5.normal]);
-    rows.push(["Limit (D5 Table 9.2)", lim ? limitSummary(lim, sensor.unit, live?.model) : `warn ${d5.warning} · alarm ${d5.alarm}`]);
-    if (live?.limitNote) rows.push(["Limit now", live.limitNote]);
-    rows.push(["Final limit source (D5)", d5.source]);
-    if (d5.note) rows.push(["D5 reading", d5.note]);
+    const normal = dbLimit.basisNormal ?? m?.normalText ?? null;
+    if (normal) rows.push(["Normally", normal]);
+    const values = lim ? limitSummary(lim, sensor.unit, live?.model) : limitValuesText(dbLimit, sensor.unit);
+    if (values) rows.push(["Limits", values]);
+    if (dbLimit.basisWarning) rows.push(["Why the Alert limit", dbLimit.basisWarning]);
+    if (dbLimit.basisAlarm) rows.push(["Why the Critical limit", dbLimit.basisAlarm]);
+    if (live?.limitNote) rows.push(["Limit right now", live.limitNote]);
+    if (dbLimit.source) rows.push(["Final limit will come from", dbLimit.source]);
+    if (dbLimit.note) rows.push(["Limit note", dbLimit.note]);
   }
+  // The plant sensor list's own ranges (OSW-PE-SNL-PYR-01 Rev. 01), as printed in its unit.
+  const sheet = PYRO_RANGES[tag];
+  if (sheet) {
+    const u = sheet.docUnit === "digital" ? "" : ` ${sheet.docUnit}`;
+    const pair = (lo: string, hi: string) => (lo === "–" && hi === "–" ? null : `${lo === "–" ? "not set" : lo} below · ${hi === "–" ? "not set" : hi} above`);
+    if (sheet.design !== "–") rows.push(["Instrument range (plant list)", `${sheet.design}${u}`]);
+    if (sheet.nominal !== "–") rows.push(["Normal (plant list)", `${sheet.nominal}${u}`]);
+    const alert = pair(sheet.L, sheet.H);
+    const critical = pair(sheet.LL, sheet.HH);
+    if (alert) rows.push(["Alert set-points (plant list)", `${alert}${u}`]);
+    if (critical) rows.push(["Critical set-points (plant list)", `${critical}${u}`]);
+    if (sheet.remarks) rows.push(["Plant list note", sheet.remarks]);
+    rows.push(["Ranges from", `Plant sensor list ${PYRO_RANGES_DOC} (proposals for site checking)`]);
+  }
+  const approval = limitApprovalText(dbLimit);
 
   return (
-    <aside className="ast-card ast-panel" aria-label={`${tag} details`}>
+    <aside className="ast-card ast-panel" aria-label={`${displayName(sensor.name)} details`}>
       <div className="ast-panel-head">
         <div>
-          <h3 className="ast-panel-tag ast-num">
-            {tag}
-            {pyro && isHoldChannel(sensor.name, d4) && (
-              <span className="pg-sensors-flag" data-tone="idle" title="Channel design pending (D4 Table 3.1); advisory evidence only">
-                HOLD · channel design pending
+          <h3 className="ast-panel-tag" title={`${tag} · ${sensor.name}`}>
+            {displayName(sensor.name)}
+            {isHoldChannel(sensor.name, m) && (
+              <span className="pg-sensors-flag" data-tone="idle" title="On hold in D4 Table 3.1; its reading is for information only">
+                Not final · wiring not decided yet
               </span>
             )}
           </h3>
-          <div className="ast-panel-name">{sensor.name}</div>
         </div>
         <button type="button" className="ast-icon-btn" aria-label="Close sensor details" onClick={onClose}>
           <IconClose />
@@ -778,10 +808,10 @@ function SensorPanel({ sensor, ctx, onClose }: { sensor: SensorRow; ctx: Sensors
       </div>
 
       <div className="pg-sensors-validity" data-tone={sensor.q.tone}>
-        <QualityMark row={sensor} prefix="Data " />
+        <QualityMark row={sensor} prefix="Reading " />
         <span className="ast-caption">
           {sensor.q.basis}
-          {sensor.q.method ? ` · ${sensor.q.method}` : ""}
+          {sensor.q.check ? ` · ${CHECK_LABEL[sensor.q.check].toLowerCase()}` : ""}
         </span>
         <p className="pg-sensors-validity-note">{sensor.q.note}</p>
       </div>
@@ -789,36 +819,57 @@ function SensorPanel({ sensor, ctx, onClose }: { sensor: SensorRow; ctx: Sensors
       {series && (
         <div className="pg-sensors-spark">
           <span className="ast-caption">
-            Last {series.length} {live ? "simulated minutes" : "readings"}
+            Last {series.length} {live ? "minutes" : "readings"}
           </span>
-          <Sparkline values={series} unit={unit} digits={2} tone={sensor.status === "Normal" ? "info" : tone} height={56} ariaLabel={`${tag} recent readings`} />
+          <Sparkline values={series} unit={unit} digits={2} tone={sensor.status === "Normal" ? "info" : tone} height={56} ariaLabel={`${displayName(sensor.name)}, recent readings`} />
         </div>
       )}
 
       {scale && <LimitBar sensor={sensor} scale={scale} />}
-      {pyro && (scale || sensor.status !== "Normal") && <span className="ast-caption">{PYRO_DEMO_LIMIT}</span>}
+      {approval && dbLimit?.approval === "provisional" && (scale || sensor.status !== "Normal") && <span className="ast-caption">{approval}</span>}
 
       {calcDef && (
         <div className="pg-sensors-calc">
-          <span className="pg-sensors-sub">Calculation</span>
+          <span className="pg-sensors-sub">How it is worked out</span>
           <span className="pg-sensors-formula ast-num">{calcDef.formula}</span>
           <ul className="pg-sensors-inputs">
             {calcDef.inputs.map((t) => {
               const inp = ctx.rows.find((r) => tagOf(r) === t);
               return (
                 <li key={t}>
-                  <button type="button" className="pg-sensors-input" onClick={() => ctx.select(t)}>
-                    <span className="ast-num">{t}</span>
+                  <button type="button" className="pg-sensors-input" onClick={() => ctx.select(t)} title={t}>
+                    {displayName(inp?.name ?? ctx.defs?.signalByTag[t]?.name ?? t)}
                   </button>
                   {inp ? (
                     <QualityMark row={inp} />
                   ) : (
-                    <span className="ast-muted">{(ctx.defs?.plant === "pyro" && !ctx.defs.signalByTag[t] && pyroOwnerOf(t)) || "not in catalog"}</span>
+                    <span className="ast-muted">{(ctx.defs?.plant === "pyro" && !ctx.defs.signalByTag[t] && pyroOwnerOf(t)) || "not set up yet"}</span>
                   )}
                 </li>
               );
             })}
           </ul>
+        </div>
+      )}
+
+      {finds.primary.length + finds.support.length > 0 && (
+        <div className="pg-sensors-calc">
+          <span className="pg-sensors-sub">Problems it helps find</span>
+          {finds.primary.length > 0 && (
+            <ul className="pg-sensors-inputs">
+              {finds.primary.map((f) => (
+                <li key={f.id} title={`${f.id} · ${f.component}`}>
+                  <span>{libraryText(f.title)}</span>
+                  <span className="ast-muted">{libraryText(f.component)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {finds.support.length > 0 && (
+            <span className="ast-caption" title={finds.support.map((f) => f.id).join(", ")}>
+              Also helps confirm: {finds.support.map((f) => libraryText(f.title)).join(" · ")}
+            </span>
+          )}
         </div>
       )}
 
@@ -835,21 +886,21 @@ function SensorPanel({ sensor, ctx, onClose }: { sensor: SensorRow; ctx: Sensors
 
       <div className="ast-panel-actions">
         <PillButton variant="primary" onClick={() => ctx.goTrends(tag)}>
-          Open in Trends
+          See history chart
         </PillButton>
         {!calc && !manual && sensor.cardId && (
           <PillButton variant="secondary" onClick={ctx.goRack}>
-            Rack slot
+            Where it is wired
           </PillButton>
         )}
         {shellMap && (
           <PillButton variant="secondary" onClick={() => setActiveSubPage("thermal")}>
-            Shell map
+            Shell heat map
           </PillButton>
         )}
         {point && (
           <PillButton variant="secondary" onClick={() => ctx.goDevices(point)}>
-            Open in Devices
+            Network device
           </PillButton>
         )}
       </div>

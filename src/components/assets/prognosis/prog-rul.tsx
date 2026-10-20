@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Table, type Column } from "@/components/ui";
-import { toCondition } from "@/components/ui/status";
-import { StatusTag } from "../assets-shell-ui";
-import { formatRulHours, logPos, rangeText, roundHours, SEVERITY_RANK, type RulRow } from "./prognosis-derive";
+import { defsFor } from "@/lib/live-defs";
+import { logPos, rangeText, roundHours, type RulRow } from "./prognosis-derive";
 import { buildRecs, type Rec } from "./prog-maintenance";
+import { useWorkOrderPriorities } from "@/lib/reference-data";
+import { FAILURE_CHANCE_HEADER, FailureChance } from "./prog-chance";
 import { TimeTicks, toneFor, type ProgSectionProps } from "./prog-ui";
 
 const MAX_H = 8760 * 1.1;
@@ -18,80 +19,159 @@ const LABELS = [
 
 const quiet = (t: ReturnType<typeof toneFor>) => (t === "warn" || t === "bad" ? t : undefined);
 
-/** Remaining life table with inline 1h–1y horizon graph per sub-assembly. */
-export function ProgRul({ data, analysis, rows }: ProgSectionProps) {
-  const sorted = useMemo(() => [...rows].sort((a, b) => SEVERITY_RANK[b.status] - SEVERITY_RANK[a.status] || a.band.lo - b.band.lo), [rows]);
-  const recs = useMemo(() => buildRecs(data, analysis, rows), [data, analysis, rows]);
+/** Remaining life per sub-assembly (fixed order): estimate and interval, 1 h–1 y graph, failure chance, recommended action, links. */
+export function ProgRul({ machine, focusedComponent, data, analysis, rows, mode, setMode, onSeeReason, onSeeDiagnosis }: ProgSectionProps) {
+  // Fixed order (the machine's sub-assembly definitions), never re-sorted by live values.
+  const sorted = useMemo(() => {
+    const at = new Map((defsFor(machine.id)?.subassemblies ?? []).map((sa, i) => [sa.id, i]));
+    const pos = (r: RulRow) => at.get(r.id) ?? Number.MAX_SAFE_INTEGER;
+    return [...rows].sort((a, b) => pos(a) - pos(b) || a.name.localeCompare(b.name));
+  }, [rows, machine.id]);
+  const focused = focusedComponent
+    ? sorted.find((r) => r.name.toLowerCase() === focusedComponent.toLowerCase() || focusedComponent.toLowerCase().includes(r.name.toLowerCase()))
+    : undefined;
+  const priorities = useWorkOrderPriorities();
+  const recs = useMemo(() => buildRecs(data, analysis, rows, priorities), [data, analysis, rows, priorities]);
   const recFor = (r: RulRow): Rec | undefined => recs.find((x) => x.component.toLowerCase().includes(r.name.toLowerCase()));
+  // Parts with nothing ahead (no limit, nothing to do) fold into one line; the picked part always shows.
+  const [showAll, setShowAll] = useState(false);
+  const needs = (r: RulRow) => r.hours !== null || r.status !== "Normal" || Boolean(recFor(r)) || r.id === focused?.id;
+  const shown = showAll ? sorted : sorted.filter(needs);
+  const rest = sorted.length - sorted.filter(needs).length;
+  const riskFor = (r: RulRow) =>
+    data.risks.find((k) => !k.id.startsWith("base-") && k.component.toLowerCase().includes(r.name.toLowerCase())) ??
+    data.risks.find((k) => k.id === `base-${r.id}` || k.component.toLowerCase().includes(r.name.toLowerCase())) ??
+    null;
 
   const cols: Column<RulRow>[] = [
     {
       key: "name",
-      header: "Sub-assembly",
-      width: "220px",
-      render: (r) => <strong>{r.name}</strong>,
-    },
-    {
-      key: "status",
-      header: "Condition",
-      width: "120px",
+      header: "Part",
+      width: "210px",
       render: (r) => {
-        const tone = toneFor(r.status);
-        return <StatusTag tone={tone} label={toCondition(r.status)} />;
+        const k = riskFor(r);
+        const isFocused = Boolean(mode && k && mode.id === k.id);
+        return (
+          <span className="ast-cell-stack">
+            <strong style={{ textDecoration: isFocused ? "underline" : undefined }}>{r.name}</strong>
+            {k && !k.id.startsWith("base-") && (
+              <span className="ast-cell-sub" title={k.id}>
+                {k.fault}
+              </span>
+            )}
+          </span>
+        );
       },
     },
     {
-      key: "health",
-      header: "Health",
-      width: "100px",
-      render: (r) => <span className="ast-num">{r.health.toFixed(0)} %</span>,
-    },
-    {
       key: "estimate",
-      header: "Estimated life",
-      width: "120px",
-      render: (r) => <strong className="ast-num">{roundHours(r.hours)}</strong>,
+      header: "Time left",
+      width: "130px",
+      render: (r) =>
+        r.hours === null ? (
+          // No reading is heading toward a limit: nothing to count down (the reason stays in the tooltip).
+          <span className="ast-muted" title={r.dueLabel}>
+            No limit ahead
+          </span>
+        ) : (
+          <span className="ast-cell-stack ast-num">
+            <strong>{roundHours(r.hours)}</strong>
+            <span className="ast-cell-sub">{r.band ? `likely ${rangeText(r.band.lo, r.band.hi)}` : r.dueLabel}</span>
+          </span>
+        ),
     },
     {
-      key: "range",
-      header: "Interval",
-      width: "130px",
-      render: (r) => <span className="ast-num ast-muted">{rangeText(r.band.lo, r.band.hi)}</span>,
+      key: "chance",
+      header: FAILURE_CHANCE_HEADER,
+      width: "190px",
+      render: (r) => <FailureChance band={r.band} name={r.name} />,
     },
     {
       key: "horizon",
-      header: "Horizon graph (1 h – 1 y)",
-      width: "240px",
+      header: "Time left, 1 hour to 1 year",
+      width: "220px",
       render: (r) => <HorizonBar row={r} tone={quiet(toneFor(r.status))} />,
     },
     {
       key: "action",
-      header: "Recommended action",
+      header: "What to do",
       render: (r) => {
         const rec = recFor(r);
         return rec ? (
           <span>
-            {rec.title} <span className="ast-muted ast-num">({rec.window})</span>
+            {rec.title}
+            {rec.window && <span className="ast-muted ast-num"> ({rec.window})</span>}
           </span>
         ) : (
-          <span className="ast-muted">Routine monitoring</span>
+          <span className="ast-muted">Nothing needed, keep watching</span>
+        );
+      },
+    },
+    {
+      key: "layers",
+      header: "",
+      width: "195px",
+      render: (r) => {
+        const k = riskFor(r);
+        const ruleId = k && !k.id.startsWith("base-") ? k.id : null;
+        return (
+          <span style={{ display: "inline-flex", gap: 8, flexWrap: "wrap" }} onClick={(e) => e.stopPropagation()}>
+            {onSeeReason && (
+              <button type="button" className="pg-diag-inline-link" onClick={() => onSeeReason(ruleId, r.name, null)}>
+                See why →
+              </button>
+            )}
+            {onSeeDiagnosis && (
+              <button type="button" className="pg-diag-inline-link" onClick={() => onSeeDiagnosis(ruleId, r.name, null)}>
+                See sensors →
+              </button>
+            )}
+          </span>
         );
       },
     },
   ];
 
   return (
-    <section className="ast-card pg-table-card" aria-label="Remaining useful life per sub-assembly">
-      <Table columns={cols} data={sorted} keyExtractor={(r) => r.id} />
+    <section className="ast-card pg-table-card" aria-label="Time left before each part needs repair">
+      {shown.length > 0 && (
+        <Table
+          columns={cols}
+          data={shown}
+          keyExtractor={(r) => r.id}
+          selectedKey={focused?.id}
+          onRowClick={(r) => {
+            const k = riskFor(r);
+            if (k) setMode(k.id);
+          }}
+        />
+      )}
+      {rest > 0 && (
+        <p className="pg-table-rest">
+          {showAll
+            ? `${rest} of these parts have no limit ahead and need nothing.`
+            : `${shown.length ? `${rest} other part${rest === 1 ? "" : "s"}` : `All ${rest} parts`}: no limit ahead, nothing needed.`}{" "}
+          <button type="button" className="pg-diag-inline-link" onClick={() => setShowAll((v) => !v)} aria-expanded={showAll}>
+            {showAll ? "Hide them" : "Show them"}
+          </button>
+        </p>
+      )}
     </section>
   );
 }
 
 function HorizonBar({ row, tone }: { row: RulRow; tone?: "warn" | "bad" }) {
+  // No estimate: nothing to place on the time axis.
+  if (!row.band || row.hours === null) return <span className="ast-muted">—</span>;
   const lo = logPos(row.band.lo, MAX_H);
   const hi = logPos(row.band.hi, MAX_H);
   return (
-    <div className="pg-prog-hbar" style={{ minWidth: 190 }} role="img" aria-label={`Remaining life ${rangeText(row.band.lo, row.band.hi)} on a 1 hour to 1 year scale`}>
+    <div
+      className="pg-prog-hbar"
+      style={{ minWidth: 190 }}
+      role="img"
+      aria-label={`Likely ${rangeText(row.band.lo, row.band.hi)} left before repair, on a 1 hour to 1 year scale`}
+    >
       <span className="pg-prog-cell-track pg-prog-hbar-track" data-tone={tone}>
         <TimeTicks maxH={MAX_H} />
         <span className="pg-prog-rul-band" style={{ left: `${lo}%`, width: `${Math.max(0.8, hi - lo)}%` }} />

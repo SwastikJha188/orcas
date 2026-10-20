@@ -18,7 +18,7 @@ export function zText(z: number | null): string | undefined {
 export function sensorTone(s: DxSensor | undefined): Tone | undefined {
   if (!s) return undefined;
   if (s.validity === "invalid" || s.validity === "stale" || s.severity === "Critical") return "bad";
-  if (s.severity === "Advisory" || s.validity === "suspect") return "warn";
+  if (s.severity === "Alert" || s.validity === "suspect") return "warn";
   return undefined;
 }
 

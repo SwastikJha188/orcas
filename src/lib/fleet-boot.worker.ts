@@ -6,7 +6,7 @@
 import { loadFleet, type FleetSnapshot } from "./fleet-boot";
 
 export type FleetBootRequest = { nowMs: number; msPerMin: number };
-export type FleetBootResult = { snap: FleetSnapshot; resumed: boolean };
+export type FleetBootResult = { snap: FleetSnapshot; resumed: boolean; savedAt: number | null };
 
 self.onmessage = (e: MessageEvent<FleetBootRequest>) => {
   void loadFleet(e.data.nowMs, e.data.msPerMin, self.location.origin).then((result: FleetBootResult) => self.postMessage(result));

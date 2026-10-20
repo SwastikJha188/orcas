@@ -23,6 +23,7 @@
 import type { LimitBand, LimitContext, LimitRule, Severity } from "../kiln-sim/signals";
 import type { PyroSignalDef } from "./signals";
 import { slope } from "./shared";
+import { PYRO_RANGE_BY_SIGNAL, PYRO_RANGES_DOC, rangeInUnit } from "./ranges";
 
 /** Shown wherever a pyro limit is listed. */
 export const PYRO_LIMIT_DISCLAIMER =
@@ -131,7 +132,7 @@ const row = (tags: string[], r: Row) => {
 const seq = (prefix: string, from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => `${prefix}${String(from + i).padStart(2, "0")}`);
 
 // ---------------------------------------------------------------- ELE (16)
-row(["ELE-FSL-01", "ELE-KFS-01", "ELE-PHC-01", "ELE-BRN-01", "ELE-BRN-02", ...seq("ELE-CLR-", 1, 7), "ELE-HMR-01", "ELE-CSL-01"], { text: T.load, limit: load() });
+row(["ELE-FSL-01", "ELE-FSL-02", "ELE-KFS-01", "ELE-KFS-02", "ELE-KFS-03", "ELE-PHC-01", "ELE-BGH-01", "ELE-BGH-02", "ELE-BRN-01", "ELE-BRN-02", ...seq("ELE-CLR-", 1, 7), "ELE-HMR-01", "ELE-CSL-01"], { text: T.load, limit: load() });
 row(["ELE-KLN-01"], {
   text: T.load,
   limit: load(),
@@ -144,29 +145,23 @@ row(["ELE-CSL-02"], {
 });
 
 // ---------------------------------------------------------------- LEV (13)
-row(["LEV-FSL-01", "LEV-KFS-01", "LEV-BRN-01", "LEV-KFS-03", ...seq("LEV-KLN-", 1, 7)], { text: T.band, limit: keep });
+row(["LEV-FSL-01", "LEV-BRN-01", ...seq("LEV-KLN-", 1, 7)], { text: T.band, limit: keep });
 row(["LEV-CSL-01"], { text: T.band, limit: fixed({ kind: "band", warnLo: 12, warnHi: 88, alarmLo: 5, alarmHi: 94 }), note: "Low-low added (5 %); the catalogue had no low-side alarm." });
-row(["LEV-KFS-02"], {
+row(["LEV-KFS-04", "LEV-BGH-01"], {
   text: T.band,
-  states: { normal: "CLEAR", alarm: ["HIGH"] },
-  note: "D5 puts the level switch in the alarm column: HIGH is an alarm (it was a warning).",
+  note: "Level switch: HIGH (material build-up in the elevator boot / full dust hopper) is the switch alarm.",
 });
 
 // ---------------------------------------------------------------- PRS (process model, 23)
-row(["PRS-FSL-01", "PRS-KFS-01", "PRS-KFS-02", "PRS-KLN-01", ...seq("PRS-BRN-", 1, 4), ...seq("PRS-CLR-", 1, 6)], { text: T.prs, limit: prsModel });
-row(seq("PRS-PHC-", 1, 9), {
+row(["PRS-FSL-01", "PRS-KFS-01", "PRS-KFS-02", "PRS-KFS-04", "PRS-KFS-06", "PRS-BGH-02", "PRS-KLN-01", ...seq("PRS-BRN-", 1, 5), ...seq("PRS-CLR-", 1, 6)], { text: T.prs, limit: prsModel });
+row(seq("PRS-PHC-", 1, 10), {
   text: T.draft,
   limit: prsModel,
   note: "Judged on |model| (drafts are negative). The staircase C1 → C6 is a plausibility check of the taps (sensor validation), not a limit.",
 });
 
 // ---------------------------------------------------------------- STS (5)
-row(["STS-FSL-01"], {
-  text: T.state,
-  states: { normal: "OPEN", warn: ["TRAVELLING", "CLOSED"], alarm: ["FAULT"] },
-  note: "A closed gate is an abnormal state (warning), not a fault (it was an alarm).",
-});
-row(["STS-FSL-02"], { text: T.state });
+row(["STS-FSL-02", "STS-FSL-03", "STS-KFS-01", "STS-BGH-01", "STS-KLN-12", "STS-KLN-13", "STS-CLR-01"], { text: T.state });
 row(["STS-KLN-06"], {
   text: T.state,
   states: { normal: "OK", alarm: ["FAULT"] },
@@ -184,19 +179,30 @@ row(["STS-KLN-11"], {
 });
 
 // ---------------------------------------------------------------- set-point (3)
-row(["FLO-KFS-01", "FLO-BRN-01"], { text: T.setpoint, limit: keep });
-row(["WGT-KFS-01"], {
+row(["FLO-KFS-01", "FLO-KFS-02"], {
+  text: T.setpoint,
+  limit: keep,
+  note: "Each solid-flow meter is judged against its share of the kiln-feed set-point (half each, slides A and B).",
+});
+row(["FLO-BRN-01"], { text: T.setpoint, limit: keep });
+row(["FLO-BRN-02"], { text: T.band, limit: keep, note: "The calciner coal set-point is not in the signal list: the flow is judged against its operating band." });
+row(seq("WGT-KFS-", 1, 3), {
   text: T.setpoint,
   limit: (d) => ({ kind: "modelPct", dir: "both", warnPct: 5, alarmPct: 10, ref: d.base }),
-  note: "The plant sends no bin-weight set-point: the weight is judged ± 5 / ± 10 % against the bin-inventory model (weight expected from the level) until it does.",
+  note: "The plant sends no bin-weight set-point and the bin has no level sensor: each load cell is judged ± 5 / ± 10 % against the bin-inventory model (a third of the bin weight); a cell far from the other two is a load-cell fault.",
 });
 
 // ---------------------------------------------------------------- position / limit / flow switches (6)
-row(["POS-KFS-01"], {
+row([...seq("POS-FSL-", 1, 6), "POS-KFS-01", "POS-KFS-02"], {
   text: T.command,
-  limit: (d) => ({ kind: "command", warnDev: 5, ref: d.base, abs: { alarmLo: 0.5, alarmHi: 99.5 } }),
-  note: "% gate: deviation ≥ 5 %-pt from the dosing command, limit reached at an end stop. The LVDT ± 30 / ± 40 mm values of the row apply to the kiln thrust LVDT only.",
+  note: "Open / closed limit switches: CLOSED or TRAVELLING while the line feeds is abnormal (warning); FAULT (both or neither switch made) is the fault. LVDT values do not apply to a switch.",
 });
+row(["POS-PHC-02", "POS-BRN-01"], {
+  text: T.command,
+  limit: keep,
+  note: "The DCS command is not in the signal list: the measured position is judged against its operating band and the end stops.",
+});
+row(["LIM-KFS-01"], { text: T.command, note: "Belt-sway switch made = alarm (misaligned belt)." });
 row(["POS-PHC-01"], {
   text: T.command,
   limit: (d) => ({ kind: "command", warnDev: 5, ref: d.base, abs: { warnHi: 96, alarmHi: 99.5 } }),
@@ -218,6 +224,7 @@ row(["SPD-KLN-01"], { text: T.speed, limit: speed("ELE-KLN-01", 64), normalBand:
 row(["SPD-CLR-01"], { text: T.speed, limit: speed("PRS-CLR-07", 118), note: "The grate has no drive current in the list: hydraulic working pressure ≥ ⅓ of design is 'drive on'." });
 row(["SPD-HMR-01"], { text: T.speed, limit: speed("ELE-HMR-01", 96) });
 row(["SPD-CSL-01"], { text: T.speed, limit: speed("ELE-CSL-01", 74) });
+row(["SPD-BGH-01"], { text: T.speed, limit: speed("ELE-BGH-01", 310) });
 
 // ---------------------------------------------------------------- bearing RTDs (31)
 const PAIRS: Array<[string, string]> = [
@@ -237,7 +244,7 @@ for (const [a, b] of PAIRS) {
   row([a], { text: T.bearing, limit: bearing(b) });
   row([b], { text: T.bearing, limit: bearing(a) });
 }
-row(["TMP-KFS-01", "TMP-BRN-01", ...seq("TMP-CLR-", 1, 6), "TMP-CLR-10"], { text: T.bearing, limit: bearing(), note: "Single bearing: no pair, so the split test does not apply." });
+row(["TMP-KFS-01", "TMP-BGH-01", "TMP-BRN-01", ...seq("TMP-CLR-", 1, 6), "TMP-CLR-10"], { text: T.bearing, limit: bearing(), note: "Single bearing: no pair, so the split test does not apply." });
 row(["TMP-KLN-25"], {
   text: T.bearing,
   limit: bearing(undefined, 80),
@@ -250,12 +257,13 @@ row(["TMP-CLR-07"], {
 });
 
 // ---------------------------------------------------------------- VIB (16)
-row(["VIB-KFS-01", "VIB-PHC-01", "VIB-PHC-02", ...seq("VIB-KLN-", 1, 3), "VIB-BRN-01", ...seq("VIB-CLR-", 1, 3), "VIB-CLR-07", "VIB-HMR-02", "VIB-CSL-01"], { text: T.vib, limit: vib });
+row(["VIB-KFS-01", "VIB-PHC-01", "VIB-PHC-02", "VIB-BGH-01", ...seq("VIB-KLN-", 1, 3), "VIB-BRN-01", ...seq("VIB-CLR-", 1, 3), "VIB-CLR-07", "VIB-HMR-02", "VIB-CSL-01"], { text: T.vib, limit: vib });
 row(["VIB-KLN-04", "VIB-BRN-02"], { text: T.vib, limit: vib, note: "D5 values (4.5 / 7.1 mm/s) replace the former 5.6–6.3 / 9.0 demo limits; a flexible-support class needs an OEM deviation." });
 row(["VIB-HMR-01"], { text: T.vib, limit: vib, normalBand: "2.0–4.0", note: "D5 values (4.5 / 7.1 mm/s) replace the former 7.1 / 11 demo limits; the normal band now ends below the warning." });
 
 // ---------------------------------------------------------------- GAS (6)
-row(["GAS-PHC-01", "GAS-PHC-02", "GAS-KLN-01", "GAS-KLN-02", "GAS-BRN-01"], { text: T.gas, limit: keep });
+row(["GAS-PHC-01", "GAS-PHC-02", "GAS-PHC-03", "GAS-PHC-04", "GAS-KLN-01", "GAS-KLN-02", "GAS-BRN-01"], { text: T.gas, limit: keep });
+row(["GAS-BGH-01"], { text: T.gas, limit: keep, note: "Read-only link to the existing CEMS: plant emission limits apply (demo 25 / 30 mg/Nm³)." });
 row(["GAS-KLN-03"], {
   text: T.gas,
   limit: fixed({ kind: "band", warnLo: 400, warnHi: 1700, alarmHi: 1900 }),
@@ -263,7 +271,12 @@ row(["GAS-KLN-03"], {
 });
 
 // ---------------------------------------------------------------- process temperatures (15)
-row([...seq("TMP-PHC-", 1, 8), "TMP-KLN-13", "TMP-KLN-14", "TMP-KLN-26", "TMP-KLN-27", "TMP-CLR-08", "TMP-CLR-09"], { text: T.tmp, limit: tmpModel });
+row([...seq("TMP-PHC-", 1, 8), "TMP-BGH-02", "TMP-BRN-03", "TMP-KLN-13", "TMP-KLN-14", "TMP-KLN-26", "TMP-KLN-27", "TMP-CLR-08", "TMP-CLR-09"], { text: T.tmp, limit: tmpModel });
+row([...seq("TMP-KLN-", 28, 30), ...seq("TMP-CLR-", 11, 16)], {
+  text: T.tmp,
+  limit: tmpModel,
+  note: "DCS read-only temperature: judged against the model; the alarm side is the plant DCS limit (demo).",
+});
 row(["TMP-BRN-02"], {
   text: T.tmp,
   limit: () => undefined,
@@ -282,6 +295,11 @@ row(["PRS-KLN-05"], {
   text: T.dp,
   limit: (d) => ({ ...(d.limit as LimitRule), rate: { perH: 0.1, of: "residual", window: 60 } }),
   note: "Rate of rise judged on the oil-temperature-corrected residual over 60 min (> 0.1 bar/h); change point 1.4 bar, maximum ΔP 2.0 bar.",
+});
+row(["PRS-FSL-02", "PRS-KFS-05", "PRS-BGH-01"], {
+  text: T.dp,
+  limit: (d) => ({ ...(d.limit as LimitRule), rate: { perH: 0.5, of: "residual", window: 120 } }),
+  note: "Filter ΔP: rate of rise on the residual to the cleaning-cycle model over 2 h (> 0.5 mbar/h); change point and maximum ΔP are demo values.",
 });
 row(["PRS-CSL-01"], {
   text: T.dp,
@@ -318,7 +336,7 @@ row(["TMP-KLN-15"], {
   limit: (d) => ({ kind: "modelDev", dir: "hi", warn: 10, ref: d.base, abs: { alarmHi: 85 } }),
   note: "OEM maximum oil temperature 85 °C (demo).",
 });
-row(["TMP-KLN-21", "TMP-HMR-03"], {
+row(["TMP-KLN-21", "TMP-HMR-03", "TMP-FSL-01", "TMP-KFS-02", "TMP-PHC-11", "TMP-BGH-03", "TMP-BRN-05", "TMP-BRN-06", ...seq("TMP-CLR-", 17, 23), "TMP-CSL-02"], {
   text: T.winding,
   limit: fixed({ kind: "hi", warn: 135, alarm: 155 }),
   note: "Insulation class F (155 °C) assumed until the motor nameplate is confirmed: warning 135 °C, alarm 155 °C. The former 140 °C matched no insulation class.",
@@ -358,6 +376,72 @@ export function applyD5Limits(signals: PyroSignalDef[]): void {
     if (s.type !== "analog") continue;
     const l = r.limit ? r.limit(s) : s.limit;
     s.limit = l ? { ...l, d5: { ...r.text, ...(r.note ? { note: r.note } : {}) } } : undefined;
+  }
+  applyRangeLimits(signals);
+}
+
+/** "−11.8 … −5.9" / "870–900": a range in our unit, at a sensible precision. */
+function rangeText(lo: number | null, hi: number | null): string | null {
+  if (lo === null && hi === null) return null;
+  const f = (v: number) => {
+    const a = Math.abs(v);
+    const d = a >= 100 ? 0 : a >= 10 ? 1 : a >= 1 ? 2 : 3;
+    return (+v.toFixed(d)).toLocaleString("en-US", { maximumFractionDigits: d }).replace(/-/g, "−");
+  };
+  if (lo === null) return `< ${f(hi!)}`;
+  if (hi === null || lo === hi) return f(lo);
+  return lo < 0 || hi < 0 ? `${f(lo)} … ${f(hi)}` : `${f(lo)}–${f(hi)}`;
+}
+
+/**
+ * OSW-PE-SNL-PYR-01 Rev. 01 set-points (./ranges) on top of the D5 matrix: L / H are the Alert band,
+ * LL / HH the Critical band, in our signal's unit. Absolute limit kinds take them as their band; relative
+ * kinds (model, command) keep their D5 test and judge the set-points alongside it (`abs`); bearings and
+ * vibration take H / HH as their warning / alarm; speed and set-point kinds keep their relative test.
+ * The nominal band becomes the signal's normal band.
+ */
+export function applyRangeLimits(signals: PyroSignalDef[]): void {
+  for (const s of signals) {
+    const row = PYRO_RANGE_BY_SIGNAL[s.tag];
+    if (!row || s.type !== "analog") continue;
+    const u = rangeInUnit(row, s.base);
+    if (!u) continue;
+    const normal = rangeText(u.nominalLo, u.nominalHi);
+    if (normal) s.normalBand = normal;
+    const band: LimitBand = {};
+    if (u.l !== null) band.warnLo = u.l;
+    if (u.h !== null) band.warnHi = u.h;
+    if (u.ll !== null) band.alarmLo = u.ll;
+    if (u.hh !== null) band.alarmHi = u.hh;
+    if (!Object.keys(band).length || !s.limit) continue;
+    const note = `${PYRO_RANGES_DOC}: L ${row.L} · H ${row.H} · LL ${row.LL} · HH ${row.HH} ${row.docUnit}${u.basis ? ` (${u.basis})` : ""}`;
+    const d5 = s.limit.d5 ? { ...s.limit.d5, note: [s.limit.d5.note, note].filter(Boolean).join(" · ") } : undefined;
+    const l = s.limit;
+    switch (l.kind) {
+      case "hi":
+      case "lo":
+      case "abs":
+      case "band":
+        s.limit = { kind: "band", ...band, ...(l.rate ? { rate: l.rate } : {}), ...(d5 ? { d5 } : {}) };
+        break;
+      case "modelPct":
+        // A model near zero (a meter pressure at about atmospheric) makes "± % of model" meaningless: the set-points alone judge it.
+        if (Math.abs(l.ref) < 1) s.limit = { kind: "band", ...band, ...(l.rate ? { rate: l.rate } : {}), ...(d5 ? { d5 } : {}) };
+        else s.limit = { ...l, abs: band, ...(d5 ? { d5 } : {}) };
+        break;
+      case "modelDev":
+      case "command":
+        s.limit = { ...l, abs: band, ...(d5 ? { d5 } : {}) };
+        break;
+      case "bearing":
+        s.limit = { ...l, alarm: u.hh ?? l.alarm, ...(d5 ? { d5 } : {}) };
+        break;
+      case "vib":
+        s.limit = { ...l, warn: u.h ?? l.warn, alarm: u.hh ?? l.alarm, ...(d5 ? { d5 } : {}) };
+        break;
+      default:
+        if (d5) s.limit = { ...l, d5 };
+    }
   }
 }
 

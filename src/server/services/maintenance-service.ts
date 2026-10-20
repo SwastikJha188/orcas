@@ -1,8 +1,6 @@
 import { query } from "@/server/db";
-import { EQUIPMENT_UNITS, SENSOR_UNITS } from "@/server/maintenance/checklists.generated";
-import { VPC_DOCUMENTS, VPC_EQUIPMENT_UNITS, VPC_SENSOR_UNITS } from "@/server/maintenance/vpc-checklists";
-import { createWorkOrder } from "@/server/services/ops-service";
-import { ADDABLE_ROUTES, freqOf, type RouteId } from "@/lib/maintenance";
+import { ensureMigrations } from "@/server/db/migrate";
+import { createWorkOrder, resolvePriority } from "@/server/services/ops-service";
 import {
   INSPECTION_RESULTS,
   type ChecklistDocument,
@@ -12,68 +10,150 @@ import {
   type InspectionResult,
   type MaintenanceChecklist,
   type MaintenanceRecord,
+  type MaintenanceVocabulary,
   type RemovedChecklistItem,
 } from "@/types/maintenance";
 
 /*
- * Machine maintenance checklists for the pyro line and VPC 066 casting line.
- * Each machine gets the general hardware checks (GEN, instantiated per
- * machine, §1.2) plus the sections of the units it is built from. The main
- * exhaust gas treatment (EXH-IF) follows the preheater ID fan it serves.
+ * Machine maintenance checklists, read from the database (migration 014):
+ * documents → units → sections → tasks → steps, the vocabulary of rounds,
+ * intervals, owners, modes and scopes, and which units each machine is built
+ * from. Site-added items and removals are per machine.
  */
 
 export class MaintenanceInputError extends Error {}
 
-export const DOCUMENTS: Record<ChecklistKind, ChecklistDocument> = {
-  equipment: {
-    kind: "equipment",
-    number: "OSW-PE-MNT-PYR-01",
-    revision: "Rev. 05",
-    title: "Pyro-Line Machine & Equipment Maintenance Checklist",
-    issued: "15 Oct 2026",
-    status: "Design review – not issued for maintenance",
-  },
-  sensor: {
-    kind: "sensor",
-    number: "OSW-PE-SMT-PYR-01",
-    revision: "Rev. 04",
-    title: "Pyro-Line Sensor & Instrument Maintenance Checklist",
-    issued: "15 Oct 2026",
-    status: "Design review – not issued for maintenance",
-  },
-};
-
-export function documentsFor(machineId: string): Record<ChecklistKind, ChecklistDocument> {
-  return machineId.startsWith("VPC-") ? VPC_DOCUMENTS : DOCUMENTS;
-}
-
-const MACHINE_UNITS: Record<string, { equipment: string[]; sensor: string[] }> = {
-  "PYR-FED-01": { equipment: ["GEN", "FSL-01", "KFS-01"], sensor: ["FSL-01", "KFS-01"] },
-  "PYR-PHC-01": { equipment: ["GEN", "PHC-01", "EXH-IF"], sensor: ["PHC-01", "EXH-IF"] },
-  "PYR-KLN-01": { equipment: ["GEN", "KLN-01"], sensor: ["KLN-01"] },
-  "PYR-BRN-01": { equipment: ["GEN", "BRN-01"], sensor: ["BRN-01"] },
-  "PYR-CLR-01": { equipment: ["GEN", "CLR-01"], sensor: ["CLR-01"] },
-  "PYR-CCT-01": { equipment: ["GEN", "HMR-01", "CSL-01"], sensor: ["HMR-01", "CSL-01"] },
-  "VPC-066": { equipment: ["GEN", "VPC-066"], sensor: ["VPC-066"] },
-  "VPC-067": { equipment: ["GEN", "VPC-066"], sensor: ["VPC-066"] },
-  "VPC-068": { equipment: ["GEN", "VPC-066"], sensor: ["VPC-066"] },
-};
-
-export const hasMaintenanceChecklist = (machineId: string) => machineId in MACHINE_UNITS;
-
-/** Machines with maintenance checklists, in process order. */
-export const MAINTENANCE_MACHINE_IDS = Object.keys(MACHINE_UNITS);
-
 const isKind = (v: unknown): v is ChecklistKind => v === "equipment" || v === "sensor";
 
-const ALL_EQUIPMENT_UNITS: ChecklistUnit[] = [...EQUIPMENT_UNITS, ...VPC_EQUIPMENT_UNITS];
-const ALL_SENSOR_UNITS: ChecklistUnit[] = [...SENSOR_UNITS, ...VPC_SENSOR_UNITS];
+/** Rounds, intervals and codes (maintenance_routes, _frequencies, _owners, _modes, _scopes). */
+export async function getVocabulary(): Promise<MaintenanceVocabulary> {
+  const [routes, kindRoutes, freqs, owners, modes, scopes, groups] = await Promise.all([
+    query<{ id: string; label: string; interval_hours: number | null; plan_code: string; trigger_label: string; preventive_group_id: string | null }>(
+      "SELECT id, label, interval_hours, plan_code, trigger_label, preventive_group_id FROM maintenance_routes ORDER BY sort_order",
+    ),
+    query<{ kind: ChecklistKind; route_id: string; addable: boolean }>("SELECT kind, route_id, addable FROM maintenance_kind_routes ORDER BY kind, sort_order"),
+    query<{ code: string; route_id: string; label: string; canonical: boolean }>("SELECT code, route_id, label, canonical FROM maintenance_frequencies ORDER BY code"),
+    query<{ code: string; label: string }>("SELECT code, label FROM maintenance_owners ORDER BY code"),
+    query<{ code: string; label: string }>("SELECT code, label FROM maintenance_modes ORDER BY code"),
+    query<{ code: string; label: string }>("SELECT code, label FROM maintenance_scopes ORDER BY code"),
+    query<{ id: string; label: string }>("SELECT id, label FROM maintenance_preventive_groups ORDER BY sort_order"),
+  ]);
+  const byKind: MaintenanceVocabulary["kindRoutes"] = { equipment: [], sensor: [] };
+  for (const r of kindRoutes.rows) byKind[r.kind].push({ routeId: r.route_id, addable: r.addable });
+  return {
+    routes: routes.rows.map((r) => ({ id: r.id, label: r.label, intervalHours: r.interval_hours === null ? null : Number(r.interval_hours), planCode: r.plan_code, trigger: r.trigger_label })),
+    kindRoutes: byKind,
+    frequencies: freqs.rows.map((f) => ({ code: f.code, routeId: f.route_id, label: f.label, canonical: f.canonical })),
+    owners: Object.fromEntries(owners.rows.map((o) => [o.code, o.label])),
+    modes: Object.fromEntries(modes.rows.map((o) => [o.code, o.label])),
+    scopes: Object.fromEntries(scopes.rows.map((o) => [o.code, o.label])),
+    preventiveGroups: groups.rows.map((g) => ({ id: g.id, label: g.label, routes: routes.rows.filter((r) => r.preventive_group_id === g.id).map((r) => r.id) })),
+  };
+}
 
-function documentUnits(machineId: string, kind: ChecklistKind): ChecklistUnit[] {
-  const codes = MACHINE_UNITS[machineId]?.[kind];
-  if (!codes) throw new MaintenanceInputError(`No maintenance checklist for ${machineId}`);
-  const all = kind === "equipment" ? ALL_EQUIPMENT_UNITS : ALL_SENSOR_UNITS;
-  return codes.map((c) => all.find((u) => u.code === c)).filter((u): u is ChecklistUnit => Boolean(u));
+/** The document each checklist kind of a machine follows. */
+export async function documentsFor(machineId: string): Promise<Record<ChecklistKind, ChecklistDocument>> {
+  const res = await query<{ kind: ChecklistKind; number: string; revision: string; title: string; issued: string; status: string }>(
+    `SELECT md.kind, d.number, d.revision, d.title, d.issued, d.status
+       FROM machine_maintenance_documents md JOIN maintenance_documents d ON d.id = md.document_id
+      WHERE md.machine_id = $1`,
+    [machineId],
+  );
+  const out = {} as Record<ChecklistKind, ChecklistDocument>;
+  for (const r of res.rows) out[r.kind] = { kind: r.kind, number: r.number, revision: r.revision, title: r.title, issued: r.issued, status: r.status };
+  if (!out.equipment || !out.sensor) throw new MaintenanceInputError(`No maintenance checklist for ${machineId}`);
+  return out;
+}
+
+/** Machines that have maintenance checklists, in their unit order. */
+export async function maintenanceMachineIds(): Promise<string[]> {
+  const res = await query<{ machine_id: string }>("SELECT DISTINCT machine_id FROM machine_maintenance_documents ORDER BY machine_id");
+  return res.rows.map((r) => r.machine_id);
+}
+
+export async function hasMaintenanceChecklist(machineId: string): Promise<boolean> {
+  const res = await query("SELECT 1 FROM machine_maintenance_documents WHERE machine_id = $1 LIMIT 1", [machineId]);
+  return Boolean(res.rowCount);
+}
+
+interface UnitRow {
+  id: number;
+  code: string;
+  title: string;
+  conditional: boolean;
+}
+
+/** The document sections of a machine's checklist of one kind, assembled from the database. */
+async function documentUnits(machineId: string, kind: ChecklistKind): Promise<Array<ChecklistUnit & { groupIds: Map<string, number> }>> {
+  const units = await query<UnitRow>(
+    `SELECT u.id, u.code, u.title, u.conditional
+       FROM machine_maintenance_units mu
+       JOIN maintenance_units u ON u.id = mu.unit_id
+       JOIN maintenance_documents d ON d.id = u.document_id
+      WHERE mu.machine_id = $1 AND d.kind = $2
+      ORDER BY mu.sort_order`,
+    [machineId, kind],
+  );
+  if (!units.rowCount) throw new MaintenanceInputError(`No maintenance checklist for ${machineId}`);
+  const unitIds = units.rows.map((u) => u.id);
+  const [groups, tasks, steps] = await Promise.all([
+    query<{ id: number; unit_id: number; num: string; title: string }>("SELECT id, unit_id, num, title FROM maintenance_groups WHERE unit_id = ANY($1) ORDER BY sort_order", [unitIds]),
+    query<Record<string, unknown>>(
+      `SELECT t.id, t.group_id, t.code, t.tag, t.component, t.priority, t.pass_text, t.frequency, t.owner, t.mode, t.scope,
+              f.route_id, f.label AS interval_label, r.interval_hours, o.label AS owner_label, mo.label AS mode_label, sc.label AS scope_label
+         FROM maintenance_tasks t
+         JOIN maintenance_groups g ON g.id = t.group_id
+         JOIN maintenance_frequencies f ON f.code = t.frequency
+         JOIN maintenance_routes r ON r.id = f.route_id
+         JOIN maintenance_owners o ON o.code = t.owner
+         JOIN maintenance_modes mo ON mo.code = t.mode
+         JOIN maintenance_scopes sc ON sc.code = t.scope
+        WHERE g.unit_id = ANY($1)
+        ORDER BY t.sort_order`,
+      [unitIds],
+    ),
+    query<{ task_id: number; label: string | null; text: string }>(
+      `SELECT s.task_id, s.label, s.text FROM maintenance_task_steps s
+         JOIN maintenance_tasks t ON t.id = s.task_id JOIN maintenance_groups g ON g.id = t.group_id
+        WHERE g.unit_id = ANY($1) ORDER BY s.task_id, s.step_no`,
+      [unitIds],
+    ),
+  ]);
+  const stepsBy = new Map<number, ChecklistTask["check"]>();
+  for (const st of steps.rows) (stepsBy.get(st.task_id) ?? stepsBy.set(st.task_id, []).get(st.task_id)!).push({ label: st.label, text: st.text });
+  return units.rows.map((u) => {
+    const gs = groups.rows.filter((g) => g.unit_id === u.id);
+    return {
+      code: u.code,
+      title: u.title,
+      ...(u.conditional ? { conditional: true } : {}),
+      groupIds: new Map(gs.map((g) => [g.num, g.id])),
+      groups: gs.map((g) => ({
+        num: g.num,
+        title: g.title,
+        tasks: tasks.rows
+          .filter((t) => Number(t.group_id) === g.id)
+          .map((t) => ({
+            id: String(t.code),
+            ...(t.tag ? { tag: String(t.tag) } : {}),
+            component: String(t.component),
+            ...(t.priority ? { priority: String(t.priority) } : {}),
+            check: stepsBy.get(Number(t.id)) ?? [],
+            pass: String(t.pass_text),
+            freq: String(t.frequency),
+            route: String(t.route_id),
+            intervalHours: t.interval_hours === null ? null : Number(t.interval_hours),
+            interval: String(t.interval_label),
+            owner: String(t.owner),
+            ownerLabel: String(t.owner_label),
+            mode: String(t.mode),
+            modeLabel: String(t.mode_label),
+            scope: String(t.scope),
+            scopeLabel: String(t.scope_label),
+          })),
+      })),
+    };
+  });
 }
 
 function findTask(units: ChecklistUnit[], taskId: string): ChecklistTask | null {
@@ -81,70 +161,9 @@ function findTask(units: ChecklistUnit[], taskId: string): ChecklistTask | null 
   return null;
 }
 
-/* ------------------------------------------------------------ storage */
-
-const g = globalThis as typeof globalThis & { __ultronMaintenanceReady?: Promise<void> };
-
-const TABLES: Record<string, string[]> = {
-  maintenance_records: [
-    `CREATE TABLE IF NOT EXISTS maintenance_records (
-      id SERIAL PRIMARY KEY,
-      machine_id VARCHAR(64) NOT NULL REFERENCES machines(id) ON DELETE CASCADE,
-      kind VARCHAR(16) NOT NULL CHECK (kind IN ('equipment', 'sensor')),
-      task_id VARCHAR(32) NOT NULL,
-      result VARCHAR(8) NOT NULL CHECK (result IN ('Pass', 'Defect', 'NA', 'Hold')),
-      note TEXT,
-      inspector_user_id VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
-      work_order_id INTEGER REFERENCES work_orders(id) ON DELETE SET NULL,
-      recorded_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-    )`,
-    "CREATE INDEX IF NOT EXISTS idx_maintenance_records_machine ON maintenance_records(machine_id, kind, recorded_at DESC)",
-  ],
-  maintenance_custom_tasks: [
-    `CREATE TABLE IF NOT EXISTS maintenance_custom_tasks (
-      id SERIAL PRIMARY KEY,
-      machine_id VARCHAR(64) NOT NULL REFERENCES machines(id) ON DELETE CASCADE,
-      kind VARCHAR(16) NOT NULL CHECK (kind IN ('equipment', 'sensor')),
-      unit_code VARCHAR(16) NOT NULL,
-      group_num VARCHAR(16) NOT NULL,
-      route VARCHAR(16) NOT NULL,
-      component VARCHAR(200) NOT NULL,
-      check_text TEXT NOT NULL,
-      pass_text TEXT,
-      created_by_user_id VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
-      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-    )`,
-    "CREATE INDEX IF NOT EXISTS idx_maintenance_custom_tasks_machine ON maintenance_custom_tasks(machine_id, kind)",
-  ],
-  maintenance_removed_tasks: [
-    `CREATE TABLE IF NOT EXISTS maintenance_removed_tasks (
-      machine_id VARCHAR(64) NOT NULL REFERENCES machines(id) ON DELETE CASCADE,
-      kind VARCHAR(16) NOT NULL CHECK (kind IN ('equipment', 'sensor')),
-      task_id VARCHAR(32) NOT NULL,
-      removed_by_user_id VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
-      removed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-      PRIMARY KEY (machine_id, kind, task_id)
-    )`,
-  ],
-};
-
+/** Kept for callers that awaited table creation; the tables come from the migrations now. */
 export function ensureTables(): Promise<void> {
-  if (!g.__ultronMaintenanceReady) {
-    g.__ultronMaintenanceReady = (async () => {
-      // DDL retires the whole read cache, so only run it for tables that are missing.
-      const names = Object.keys(TABLES);
-      const res = await query<{ n: string; t: string | null }>("SELECT n, to_regclass('public.' || n)::text AS t FROM unnest($1::text[]) AS n", [names]);
-      const present = new Set(res.rows.filter((r) => r.t).map((r) => r.n));
-      for (const name of names) {
-        if (present.has(name)) continue;
-        for (const ddl of TABLES[name]) await query(ddl);
-      }
-    })().catch((err) => {
-      g.__ultronMaintenanceReady = undefined;
-      throw err;
-    });
-  }
-  return g.__ultronMaintenanceReady;
+  return ensureMigrations().then(() => undefined);
 }
 
 type Row = Record<string, unknown>;
@@ -174,11 +193,16 @@ const customId = (id: unknown) => `U-${Number(id)}`;
  * items added on site for this machine, minus the items taken off it.
  */
 export async function machineChecklist(machineId: string, kind: ChecklistKind): Promise<{ units: ChecklistUnit[]; removed: RemovedChecklistItem[] }> {
-  const base = documentUnits(machineId, kind);
-  await ensureTables();
+  const base = await documentUnits(machineId, kind);
   const [custom, removedRows] = await Promise.all([
     query(
-      `SELECT ct.*, u.full_name AS created_by_name FROM maintenance_custom_tasks ct
+      `SELECT ct.*, u.full_name AS created_by_name, g.num AS group_num, mu.code AS unit_code,
+              f.code AS freq, f.label AS interval_label, r.interval_hours
+         FROM maintenance_custom_tasks ct
+         JOIN maintenance_groups g ON g.id = ct.group_id
+         JOIN maintenance_units mu ON mu.id = g.unit_id
+         JOIN maintenance_routes r ON r.id = ct.route_id
+         LEFT JOIN maintenance_frequencies f ON f.route_id = ct.route_id AND f.canonical
          LEFT JOIN users u ON u.id = ct.created_by_user_id
         WHERE ct.machine_id = $1 AND ct.kind = $2 ORDER BY ct.id`,
       [machineId, kind],
@@ -193,7 +217,7 @@ export async function machineChecklist(machineId: string, kind: ChecklistKind): 
   const removedAt = new Map(removedRows.rows.map((r) => [String(r.task_id), r]));
 
   // Copy the shared document sections so this machine's additions never leak into them.
-  const units: ChecklistUnit[] = base.map((u) => ({ ...u, groups: u.groups.map((gr) => ({ ...gr, tasks: [...gr.tasks] })) }));
+  const units: ChecklistUnit[] = base.map(({ groupIds: _ids, ...u }) => (void _ids, { ...u, groups: u.groups.map((gr) => ({ ...gr, tasks: [...gr.tasks] })) }));
   for (const r of custom.rows) {
     const unit = units.find((u) => u.code === r.unit_code);
     const group = unit?.groups.find((gr) => gr.num === r.group_num);
@@ -203,10 +227,16 @@ export async function machineChecklist(machineId: string, kind: ChecklistKind): 
       component: String(r.component),
       check: [{ label: null, text: String(r.check_text) }],
       pass: (r.pass_text as string) || "",
-      freq: freqOf(r.route as RouteId),
+      freq: (r.freq as string) ?? "",
+      route: String(r.route_id),
+      intervalHours: r.interval_hours === null ? null : Number(r.interval_hours),
+      interval: (r.interval_label as string) ?? "",
       owner: "",
+      ownerLabel: "",
       mode: "",
+      modeLabel: "",
       scope: "",
+      scopeLabel: "",
       added: { by: (r.created_by_name as string) ?? null, at: new Date(r.created_at as string).toISOString() },
     });
   }
@@ -238,7 +268,7 @@ export async function getChecklist(machineId: string, kind: unknown): Promise<Ma
   const k: ChecklistKind = isKind(kind) ? kind : "equipment";
   const { units, removed } = await machineChecklist(machineId, k);
   const res = await query(`${RECORD_SELECT} WHERE mr.machine_id = $1 AND mr.kind = $2 ORDER BY mr.recorded_at DESC, mr.id DESC`, [machineId, k]);
-  return { machineId, document: documentsFor(machineId)[k], units, records: res.rows.map(mapRecord), removed };
+  return { machineId, document: (await documentsFor(machineId))[k], units, records: res.rows.map(mapRecord), removed };
 }
 
 /**
@@ -263,7 +293,7 @@ export async function recordInspection(input: Record<string, unknown>, userId: s
       machineId,
       title: `${task.id} defect · ${task.tag ? `${task.tag} ` : ""}${task.component}`,
       component: task.component,
-      priority: "P2",
+      priority: await resolvePriority(undefined, "defect"),
       actionKind: "repair",
       createdByUserId: userId,
       notes: `As found: ${note}${task.pass ? `\nPass condition: ${task.pass}` : ""}`,
@@ -286,7 +316,6 @@ export async function recordInspection(input: Record<string, unknown>, userId: s
  */
 export async function undoInspection(recordId: number): Promise<void> {
   if (!Number.isInteger(recordId) || recordId <= 0) throw new MaintenanceInputError("recordId is required");
-  await ensureTables();
   const res = await query<{ result: string }>("SELECT result FROM maintenance_records WHERE id = $1", [recordId]);
   const row = res.rows[0];
   if (!row) throw new MaintenanceInputError("That result no longer exists");
@@ -301,8 +330,9 @@ export async function addChecklistItem(input: Record<string, unknown>, userId: s
   const machineId = text(input.machineId, 64);
   const kind = input.kind;
   if (!isKind(kind)) throw new MaintenanceInputError("kind must be equipment or sensor");
-  const route = text(input.route, 16) as RouteId;
-  if (!ADDABLE_ROUTES[kind].includes(route)) throw new MaintenanceInputError("Pick a round for the item");
+  const route = text(input.route, 16);
+  const addable = await query("SELECT 1 FROM maintenance_kind_routes WHERE kind = $1 AND route_id = $2 AND addable", [kind, route]);
+  if (!addable.rowCount) throw new MaintenanceInputError("Pick a round for the item");
   const component = text(input.component, 200);
   const check = text(input.check, 2000);
   const pass = text(input.pass, 2000) || null;
@@ -310,14 +340,14 @@ export async function addChecklistItem(input: Record<string, unknown>, userId: s
   if (!component) throw new MaintenanceInputError("Name the equipment or component");
   const unitCode = text(input.unitCode, 16);
   const groupNum = text(input.groupNum, 16);
-  const unit = documentUnits(machineId, kind).find((u) => u.code === unitCode);
-  if (!unit?.groups.some((gr) => gr.num === groupNum)) throw new MaintenanceInputError("Pick the section the item belongs to");
+  const unit = (await documentUnits(machineId, kind)).find((u) => u.code === unitCode);
+  const groupId = unit?.groupIds.get(groupNum);
+  if (!groupId) throw new MaintenanceInputError("Pick the section the item belongs to");
 
-  await ensureTables();
   const ins = await query<{ id: number }>(
-    `INSERT INTO maintenance_custom_tasks (machine_id, kind, unit_code, group_num, route, component, check_text, pass_text, created_by_user_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-    [machineId, kind, unitCode, groupNum, route, component, check, pass, userId],
+    `INSERT INTO maintenance_custom_tasks (machine_id, kind, group_id, route_id, component, check_text, pass_text, created_by_user_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+    [machineId, kind, groupId, route, component, check, pass, userId],
   );
   const id = customId(ins.rows[0].id);
   const task = findTask((await machineChecklist(machineId, kind)).units, id);
@@ -348,7 +378,6 @@ export async function restoreChecklistItem(input: Record<string, unknown>): Prom
   const kind = input.kind;
   const taskId = text(input.taskId, 32);
   if (!isKind(kind)) throw new MaintenanceInputError("kind must be equipment or sensor");
-  documentUnits(machineId, kind);
-  await ensureTables();
+  await documentUnits(machineId, kind);
   await query("DELETE FROM maintenance_removed_tasks WHERE machine_id = $1 AND kind = $2 AND task_id = $3", [machineId, kind, taskId]);
 }

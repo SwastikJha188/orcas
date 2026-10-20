@@ -1,48 +1,34 @@
-import { NextResponse } from "next/server";
-import { seedDatabase } from "@/server/db/seed";
+import type { NextRequest } from "next/server";
+import { canAdminister, failFrom, forbidden, ok } from "@/app/api/_lib/respond";
 import { isDatabaseHealthy } from "@/server/db";
-import { rebuildPyroLine, resetSeedCheckCache } from "@/server/services/industrial-service";
-import { ensureEdgeRegistry, seedEdgeRegistry } from "@/server/services/edge-service";
+import { seedDatabase } from "@/server/db/fixture-seed";
+import { resetSeedCheckCache } from "@/server/services/industrial-service";
 import { getMqttRuntime } from "@/server/mqtt/runtime";
 
 export const runtime = "nodejs";
 
-export async function POST() {
+/**
+ * POST /api/db/init → resets the database to the reference fixture
+ * (src/server/db/fixtures): configuration and master data are reloaded and the
+ * runtime history (readings, findings, events, work orders) is cleared.
+ */
+export async function POST(request: NextRequest) {
+  if (!(await canAdminister(request))) return forbidden();
   try {
     const result = await seedDatabase();
     resetSeedCheckCache();
-    // The edge registry is derived from the plant data, so a reset rebuilds it too.
-    await ensureEdgeRegistry();
-    const edge = await seedEdgeRegistry();
-    // The registry reset clears every gateway; put the pyro line's back.
-    await rebuildPyroLine();
     await getMqttRuntime().reload();
-    const health = await isDatabaseHealthy();
-    return NextResponse.json({
-      data: {
-        ...result,
-        edge,
-        databaseStatus: health,
-      },
-    });
+    return ok({ ...result, databaseStatus: await isDatabaseHealthy() });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Database initialization failed";
-    return NextResponse.json(
-      { error: { code: "DB_INIT_FAILED", message } },
-      { status: 500 }
-    );
+    return failFrom(error, "DB_INIT_FAILED");
   }
 }
 
+/** GET /api/db/init → connection and row counts. */
 export async function GET() {
   try {
-    const health = await isDatabaseHealthy();
-    return NextResponse.json({ data: health });
+    return ok(await isDatabaseHealthy());
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Health check failed";
-    return NextResponse.json(
-      { error: { code: "DB_HEALTH_ERROR", message } },
-      { status: 500 }
-    );
+    return failFrom(error, "DB_HEALTH_ERROR");
   }
 }

@@ -249,7 +249,7 @@ export function BrokerDialog({ broker, gatewayCount, onClose }: BrokerDialogProp
         Cancel
       </PillButton>
       <PillButton variant="primary" type="submit" disabled={busy !== null}>
-        {busy === "save" ? "Saving…" : broker ? "Save" : "Add broker"}
+        {busy === "save" ? "Saving…" : broker ? "Save" : "Add data connection"}
       </PillButton>
     </>
   );
@@ -258,8 +258,8 @@ export function BrokerDialog({ broker, gatewayCount, onClose }: BrokerDialogProp
     <Dialog
       open
       onClose={onClose}
-      title={broker ? "Edit broker" : "Add broker"}
-      subtitle={broker ? `${broker.name} · ${broker.id}` : "Gateways publish to it; the app subscribes with these settings."}
+      title={broker ? "Edit data connection" : "Add data connection"}
+      subtitle={broker ? `${broker.name} · ${broker.id}` : "The message server (MQTT broker) that data collectors send readings to. ULTRON listens with these settings."}
       width={640}
       onSubmit={() => void save()}
       busy={busy !== null}
@@ -269,15 +269,15 @@ export function BrokerDialog({ broker, gatewayCount, onClose }: BrokerDialogProp
       <FieldSection title="Connection">
         <FieldGrid>
           <Field label="Name" required error={errors.name} wide>
-            {(id, d) => <TextInput id={id} describedBy={d} value={form.name} onChange={(v) => set("name", v)} placeholder="Plant broker" autoFocus />}
+            {(id, d) => <TextInput id={id} describedBy={d} value={form.name} onChange={(v) => set("name", v)} placeholder="Plant message server" autoFocus />}
           </Field>
-          <Field label="Host" required error={errors.host} hint="Host name or IP address">
+          <Field label="Server address (host)" required error={errors.host} hint="Host name or IP address">
             {(id, d) => <TextInput id={id} describedBy={d} value={form.host} onChange={(v) => set("host", v)} placeholder="mqtt.plant.local" mono />}
           </Field>
           <Field label="Port" required error={errors.port}>
             {(id, d) => <NumberInput id={id} describedBy={d} value={form.port} onChange={(v) => set("port", v)} min={1} max={65535} step={1} />}
           </Field>
-          <Field label="Protocol">
+          <Field label="MQTT version">
             {(id, d) => (
               <Select
                 id={id}
@@ -285,7 +285,7 @@ export function BrokerDialog({ broker, gatewayCount, onClose }: BrokerDialogProp
                 value={form.protocol}
                 onChange={(v) => set("protocol", v as FormState["protocol"])}
                 options={[
-                  { value: "auto", label: "Auto (5.0 → 3.1.1)" },
+                  { value: "auto", label: "Automatic (try 5.0, then 3.1.1)" },
                   { value: "5", label: "MQTT 5.0" },
                   { value: "4", label: "MQTT 3.1.1" },
                 ]}
@@ -293,11 +293,11 @@ export function BrokerDialog({ broker, gatewayCount, onClose }: BrokerDialogProp
             )}
           </Field>
         </FieldGrid>
-        <Toggle checked={form.tls} onChange={setTls} label="TLS" description="Encrypt the connection (mqtts)" />
-        <Toggle checked={form.enabled} onChange={(v) => set("enabled", v)} label="Enabled" description="The app keeps a connection open and subscribes" />
+        <Toggle checked={form.tls} onChange={setTls} label="Encrypt (TLS)" description="Encrypt the connection (mqtts)" />
+        <Toggle checked={form.enabled} onChange={(v) => set("enabled", v)} label="Switched on" description="ULTRON stays connected and listens for readings" />
       </FieldSection>
 
-      <FieldSection title="Authentication">
+      <FieldSection title="Sign-in to the server">
         <FieldGrid>
           <Field label="Username">
             {(id, d) => <TextInput id={id} describedBy={d} value={form.username} onChange={(v) => set("username", v)} autoComplete="off" />}
@@ -328,14 +328,14 @@ export function BrokerDialog({ broker, gatewayCount, onClose }: BrokerDialogProp
       </FieldSection>
 
       {form.tls && (
-        <FieldSection title="TLS">
+        <FieldSection title="Encryption (TLS)">
           <Toggle
             checked={form.rejectUnauthorized}
             onChange={(v) => set("rejectUnauthorized", v)}
             label="Verify server certificate"
             description="Refuse a certificate the CA does not sign or whose name does not match the host"
           />
-          <Field label="CA certificate" hint="PEM. Only for a private CA; public CAs are trusted already." wide>
+          <Field label="Certificate authority (CA)" hint="PEM text. Only needed for a private certificate authority; public ones are trusted already." wide>
             {(id, d) => (
               <TextArea id={id} describedBy={d} value={form.caCert} onChange={(v) => set("caCert", v)} rows={3} mono placeholder="-----BEGIN CERTIFICATE-----" />
             )}
@@ -350,7 +350,7 @@ export function BrokerDialog({ broker, gatewayCount, onClose }: BrokerDialogProp
           )}
           {!form.clearClientCert && (
             <FieldGrid>
-              <Field label="Client certificate" hint="PEM, for mutual TLS" error={errors.clientCert}>
+              <Field label="Client certificate" hint="PEM text, for two-way encryption (mutual TLS)" error={errors.clientCert}>
                 {(id, d) => (
                   <TextArea
                     id={id}
@@ -363,7 +363,7 @@ export function BrokerDialog({ broker, gatewayCount, onClose }: BrokerDialogProp
                   />
                 )}
               </Field>
-              <Field label="Client key" hint="PEM, unencrypted" error={errors.clientKey}>
+              <Field label="Client key" hint="PEM text, not password-protected" error={errors.clientKey}>
                 {(id, d) => (
                   <TextArea
                     id={id}
@@ -381,17 +381,17 @@ export function BrokerDialog({ broker, gatewayCount, onClose }: BrokerDialogProp
         </FieldSection>
       )}
 
-      <FieldSection title="Topics and commands">
+      <FieldSection title="Message channels (topics) and commands">
         <FieldGrid>
-          <Field label="Topic prefix" error={errors.topicPrefix} hint="Root of the gateway tree">
+          <Field label="Channel prefix (topic prefix)" error={errors.topicPrefix} hint="Start of every data collector's message channel">
             {(id, d) => <TextInput id={id} describedBy={d} value={form.topicPrefix} onChange={(v) => set("topicPrefix", v)} placeholder={DEFAULT_TOPIC_PREFIX} mono />}
           </Field>
-          <Field label="Client ID prefix" error={errors.clientIdPrefix} hint="A random suffix is appended per connection">
+          <Field label="Client ID prefix" error={errors.clientIdPrefix} hint="Name ULTRON uses on the server; a random ending is added each time">
             {(id, d) => (
               <TextInput id={id} describedBy={d} value={form.clientIdPrefix} onChange={(v) => set("clientIdPrefix", v)} placeholder={DEFAULT_CLIENT_ID_PREFIX} mono />
             )}
           </Field>
-          <Field label="Subscribe QoS">
+          <Field label="Delivery guarantee (QoS)">
             {(id, d) => (
               <Select
                 id={id}
@@ -399,13 +399,13 @@ export function BrokerDialog({ broker, gatewayCount, onClose }: BrokerDialogProp
                 value={form.qos}
                 onChange={(v) => set("qos", v as FormState["qos"])}
                 options={[
-                  { value: "1", label: "1 · at least once" },
-                  { value: "0", label: "0 · at most once" },
+                  { value: "1", label: "1 · every message arrives, maybe twice" },
+                  { value: "0", label: "0 · fastest, a message may be lost" },
                 ]}
               />
             )}
           </Field>
-          <Field label="Allowed commands" hint="Comma-separated, e.g. PING">
+          <Field label="Allowed commands" hint="Commands ULTRON may send, separated by commas, e.g. PING">
             {(id, d) => <TextInput id={id} describedBy={d} value={form.allowedCommands} onChange={(v) => set("allowedCommands", v)} mono />}
           </Field>
         </FieldGrid>

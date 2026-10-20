@@ -32,7 +32,7 @@ export interface GatewaySetupProps {
 /** Connection state of ULTRON's own side, as a note; null when all is well. */
 export function brokerNote(broker: EdgeBroker | null, status: BrokerStatus | null): { tone: "warn" | "bad" | "info"; text: string } | null {
   if (!broker) return { tone: "warn", text: "No broker selected: ULTRON will not receive anything from this gateway." };
-  if (!broker.enabled) return { tone: "warn", text: `ULTRON is not listening on ${broker.name}: the broker is disabled. Enable it on the MQTT page.` };
+  if (!broker.enabled) return { tone: "warn", text: `ULTRON is not listening on ${broker.name} because it is switched off. Switch it on under Data connections.` };
   if (status && status.state !== "connected") {
     return { tone: "bad", text: `ULTRON cannot reach ${broker.name} (${status.state})${status.lastError ? `: ${status.lastError}` : ""}.` };
   }
@@ -44,7 +44,7 @@ export function GatewaySetup({ code, ipAddress, broker, brokerStatus, format, ra
   const id = code.trim() || "<gateway id>";
 
   if (!broker) {
-    return <p className="dv-setup-lead">Choose a broker to see the settings the gateway needs.</p>;
+    return <p className="dv-setup-lead">Choose a data connection (MQTT broker) to see the settings the data collector needs.</p>;
   }
 
   const prefix = broker.topicPrefix.replace(/\/+$/, "");
@@ -85,12 +85,12 @@ export function GatewaySetup({ code, ipAddress, broker, brokerStatus, format, ra
     <div className="dv-setup">
       <ol className="dv-setup-flow" aria-label="Connection path">
         <li>
-          <span className="dv-setup-k">Gateway</span>
+          <span className="dv-setup-k">Data collector</span>
           <span className="dv-setup-v ast-num">{id}</span>
-          <span className="dv-setup-s">publishes</span>
+          <span className="dv-setup-s">sends readings</span>
         </li>
         <li>
-          <span className="dv-setup-k">Broker</span>
+          <span className="dv-setup-k">Message server</span>
           <span className="dv-setup-v ast-num">
             {broker.tls ? "mqtts" : "mqtt"}://{broker.host}:{broker.port}
           </span>
@@ -98,8 +98,8 @@ export function GatewaySetup({ code, ipAddress, broker, brokerStatus, format, ra
         </li>
         <li>
           <span className="dv-setup-k">ULTRON</span>
-          <span className="dv-setup-v">{brokerStatus?.state === "connected" ? "Subscribed" : broker.enabled ? "Not connected" : "Broker disabled"}</span>
-          <span className="dv-setup-s">subscribes</span>
+          <span className="dv-setup-v">{brokerStatus?.state === "connected" ? "Listening" : broker.enabled ? "Not connected" : "Switched off"}</span>
+          <span className="dv-setup-s">receives them</span>
         </li>
       </ol>
 
@@ -109,20 +109,20 @@ export function GatewaySetup({ code, ipAddress, broker, brokerStatus, format, ra
         <>
           <div className="dv-setup-block">
             <div className="dv-setup-head">
-              <span>On the gateway · /etc/ultron-gateway/gateway.env</span>
+              <span>Put this on the data collector · /etc/ultron-gateway/gateway.env</span>
               <PillButton variant="secondary" className="dv-setup-copy" onClick={() => void copy("env", env)}>
                 {copied === "env" ? "Copied" : "Copy"}
               </PillButton>
             </div>
             <pre className="dv-setup-code">{env}</pre>
             <span className="dv-setup-foot">
-              Then <code>sudo systemctl restart ultron-gateway</code>. Racks, cards and channels appear here from its data.
-              {loopback && " The broker address is local to this server; the gateway must use an address it can reach."}
+              Then <code>sudo systemctl restart ultron-gateway</code>. Its devices, cards and channels then appear here from its data.
+              {loopback && " This message server address only works on this computer; the data collector needs an address it can reach over the network."}
             </span>
           </div>
           <div className="dv-setup-block">
             <div className="dv-setup-head">
-              <span>On the broker · user “{id}” with this ACL</span>
+              <span>On the message server · user “{id}” with these access rules (ACL)</span>
               <PillButton variant="secondary" className="dv-setup-copy" onClick={() => void copy("acl", acl)}>
                 {copied === "acl" ? "Copied" : "Copy"}
               </PillButton>
@@ -133,7 +133,7 @@ export function GatewaySetup({ code, ipAddress, broker, brokerStatus, format, ra
       ) : (
         <div className="dv-setup-block">
           <div className="dv-setup-head">
-            <span>Point the gateway at the broker and publish to</span>
+            <span>Point the data collector at the message server and send to</span>
             <PillButton variant="secondary" className="dv-setup-copy" onClick={() => void copy("acl", acl)}>
               {copied === "acl" ? "Copied" : "Copy"}
             </PillButton>

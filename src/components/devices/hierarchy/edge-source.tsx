@@ -33,12 +33,12 @@ import { type Selection, fmt, limitText, machineName, plural, sortPoints } from 
    Source (DAQ rack · PLC · SCADA · DCS · analyser): protocol · machine ·
    link · points strip, the point table, and channels it publishes that no
    point maps. KLN-01 points with no MQTT reading show the running simulation,
-   labelled "Simulated" — never as an MQTT value.
+   labelled "Live" — never as an MQTT value.
    ========================================================================== */
 
 const SIM_TONE: Record<LiveSignal["status"], Tone> = {
   Normal: "good",
-  Advisory: "warn",
+  Alert: "warn",
   Critical: "bad",
 };
 
@@ -111,7 +111,6 @@ export function EdgeSourceView({ ix, src, now, history, sectionNav, onSelect, on
     alert: points.filter((p) => pointReading(ix, p).status === "alert").length,
     danger: points.filter((p) => pointReading(ix, p).status === "danger").length,
   };
-  const simulated = rows.filter((r) => r.sim).length;
 
   // Ping goes to the broker the rack is heard on; only when it is connected and allows PING.
   const brokerId = rack?.brokerId ?? gw?.brokerId ?? null;
@@ -120,7 +119,7 @@ export function EdgeSourceView({ ix, src, now, history, sectionNav, onSelect, on
 
   const doPing = async () => {
     if (!gw) return;
-    setPing({ busy: true, tone: "good", text: `Pinging ${src.code}…` });
+    setPing({ busy: true, tone: "good", text: `Checking that ${src.code} replies…` });
     try {
       const res = await sendMqttCommand(gw.code, src.code, "PING", brokerId ?? undefined);
       const ok = /^(accepted|completed)$/i.test(res.response.status);
@@ -143,7 +142,7 @@ export function EdgeSourceView({ ix, src, now, history, sectionNav, onSelect, on
           { id: ALL_CARDS, label: `All cards ${cards.length}` },
           ...cards.map((c) => ({
             id: c.id,
-            label: `Card ${c.id} · ${c.channels.length} ch${c.isNew ? " · new" : ""}`,
+            label: `Card ${c.id} · ${c.channels.length} channels${c.isNew ? " · new" : ""}`,
           })),
         ]}
         activeId={activeCard}
@@ -154,7 +153,7 @@ export function EdgeSourceView({ ix, src, now, history, sectionNav, onSelect, on
   const columns: Column<PointRow>[] = [
     {
       key: "point",
-      header: "Point",
+      header: "Reading point",
       render: ({ point, reading, sim: s }) => {
         const tone = s ? SIM_TONE[s.status] : READING_TONE[reading.status];
         return (
@@ -172,7 +171,7 @@ export function EdgeSourceView({ ix, src, now, history, sectionNav, onSelect, on
     },
     {
       key: "pos",
-      header: "Card · Ch",
+      header: "Card · channel",
       render: ({ point }) => (
         <span className="ast-cell-stack">
           <span className="ast-num">
@@ -225,7 +224,7 @@ export function EdgeSourceView({ ix, src, now, history, sectionNav, onSelect, on
     },
     {
       key: "limits",
-      header: "Warning / alarm",
+      header: "Warning and alarm limits",
       render: ({ point }) => {
         const t = limitText(point);
         return t ? (
@@ -240,7 +239,7 @@ export function EdgeSourceView({ ix, src, now, history, sectionNav, onSelect, on
     },
     {
       key: "mapped",
-      header: "Mapped to",
+      header: "Feeds machine",
       render: ({ point }) =>
         point.machineId ? (
           <span className="dv-chip ast-num">
@@ -252,9 +251,9 @@ export function EdgeSourceView({ ix, src, now, history, sectionNav, onSelect, on
     },
     {
       key: "state",
-      header: "State",
+      header: "Status",
       render: ({ reading, sim: s }) =>
-        s ? <StatusTag tone="info" label="Simulated" /> : <StatusTag tone={READING_TONE[reading.status]} label={READING_LABEL[reading.status]} />,
+        s ? <StatusTag tone="info" label="Live" /> : <StatusTag tone={READING_TONE[reading.status]} label={READING_LABEL[reading.status]} />,
     },
     {
       key: "updated",
@@ -270,8 +269,8 @@ export function EdgeSourceView({ ix, src, now, history, sectionNav, onSelect, on
           <button
             type="button"
             className="ast-icon-btn dv-reveal"
-            aria-label={`Edit point ${point.tag}`}
-            title="Edit point"
+            aria-label={`Edit reading point ${point.tag}`}
+            title="Edit reading point"
             onClick={(e) => {
               e.stopPropagation();
               onEditPoint(point);
@@ -290,7 +289,7 @@ export function EdgeSourceView({ ix, src, now, history, sectionNav, onSelect, on
         crumbs={[
           { label: "Devices" },
           {
-            label: "Edge network",
+            label: "Data collectors",
             onClick: () => onSelect({ type: "network" }),
           },
           ...(gw
@@ -314,18 +313,18 @@ export function EdgeSourceView({ ix, src, now, history, sectionNav, onSelect, on
         actions={
           <>
             {canPing && (
-              <PillButton variant="secondary" onClick={doPing} disabled={ping?.busy} aria-label={`Ping ${src.code} through ${gw?.code}`}>
-                {ping?.busy ? "Pinging…" : "Ping"}
+              <PillButton variant="secondary" onClick={doPing} disabled={ping?.busy} aria-label={`Check that ${src.code} replies through ${gw?.code}`}>
+                {ping?.busy ? "Checking…" : "Test reply"}
               </PillButton>
             )}
             <PillButton variant="secondary" icon={<IconEdit size={13} />} onClick={onEdit}>
-              Edit source
+              Edit device
             </PillButton>
             <PillButton variant="secondary" icon={<IconPlus size={13} />} onClick={onAddCard}>
-              Add card
+              Add sensor card
             </PillButton>
             <PillButton variant="primary" icon={<IconPlus size={13} />} onClick={() => onAddPoint()}>
-              Add point
+              Add reading point
             </PillButton>
           </>
         }
@@ -334,11 +333,11 @@ export function EdgeSourceView({ ix, src, now, history, sectionNav, onSelect, on
 
       {ping && !ping.busy && <FormNote tone={ping.tone}>{ping.text}</FormNote>}
 
-      <section className="ast-kpis" aria-label="Source status">
-        <Kpi label="Protocol" value={src.protocol}>
-          <span className="ast-caption dv-wrap">{src.endpoint ?? "No endpoint"}</span>
+      <section className="ast-kpis" aria-label="Device status">
+        <Kpi label="How it talks (protocol)" value={src.protocol}>
+          <span className="ast-caption dv-wrap">{src.endpoint ?? "No network address"}</span>
           <span className="ast-caption ast-num">
-            {src.pollIntervalMs !== null ? `Poll every ${fmt(src.pollIntervalMs)} ms` : "Poll interval not set"}
+            {src.pollIntervalMs !== null ? `Read every ${fmt(src.pollIntervalMs)} ms` : "Read interval not set"}
             {src.model ? ` · ${src.model}` : ""}
           </span>
         </Kpi>
@@ -353,31 +352,31 @@ export function EdgeSourceView({ ix, src, now, history, sectionNav, onSelect, on
             )
           }
         >
-          <span className="ast-caption ast-num">{src.machineId ?? "Points can still map to machines one by one"}</span>
+          <span className="ast-caption ast-num">{src.machineId ?? "Each reading point can still be linked to a machine"}</span>
           {src.location && <span className="ast-caption">{src.location}</span>}
         </Kpi>
-        <Kpi label="Link" value={LINK_LABEL[link.status]} tone={link.status === "waiting" || link.status === "disabled" ? undefined : LINK_TONE[link.status]}>
+        <Kpi label="Connection" value={LINK_LABEL[link.status]} tone={link.status === "waiting" || link.status === "disabled" ? undefined : LINK_TONE[link.status]}>
           {rack ? (
             <>
               <span className="ast-caption ast-num">
                 Last seen {ago(rack.lastSeenAt, now)} · {plural(cards.length, "card")}
               </span>
               <span className="ast-caption pg-note" data-tone={rack.dataCurrent ? undefined : "warn"}>
-                {rack.dataCurrent ? `Data current · ${rack.status}` : (rack.reason ?? "Data not current")}
+                {rack.dataCurrent ? `Data up to date · ${rack.status}` : (rack.reason ?? "Data is out of date")}
               </span>
             </>
           ) : (
-            <span className="ast-caption">{link.reason ?? "Nothing published yet"}</span>
+            <span className="ast-caption">{link.reason ?? "Nothing sent yet"}</span>
           )}
         </Kpi>
       </section>
 
       {/* No points yet: the channels below are the content; Add point stays in the header. */}
       {points.length > 0 && (
-        <section className="ast-card pg-table-card" aria-label="Points">
+        <section className="ast-card pg-table-card" aria-label="Reading points">
           <div className="ast-card-head dv-table-head">
             <h2 className="ast-card-title">
-              Points <span className="ast-caption ast-num">{rows.length === points.length ? points.length : `${rows.length} of ${points.length}`}</span>
+              Reading points <span className="ast-caption ast-num">{rows.length === points.length ? points.length : `${rows.length} of ${points.length}`}</span>
               {(flagged.alert > 0 || flagged.danger > 0) && (
                 <span className="ast-caption ast-num">
                   {" · "}
@@ -390,7 +389,6 @@ export function EdgeSourceView({ ix, src, now, history, sectionNav, onSelect, on
                   </span>
                 </span>
               )}
-              {simulated > 0 && <span className="ast-caption ast-num">{` · ${simulated} simulated`}</span>}
             </h2>
             {cardNav}
           </div>
@@ -399,12 +397,12 @@ export function EdgeSourceView({ ix, src, now, history, sectionNav, onSelect, on
       )}
 
       {unmapped.length > 0 && (
-        <section className="ast-card pg-table-card" aria-label="Unmapped channels">
+        <section className="ast-card pg-table-card" aria-label="Channels not linked to a machine">
           <div className="ast-card-head dv-table-head">
             <h2 className="ast-card-title">
-              Unmapped channels
+              Channels not linked to a machine
               <span className="ast-caption ast-num">
-                {plural(unmapped.length, "channel")} published with no point
+                {plural(unmapped.length, "channel")} sending data with no reading point
                 {activeCard === ALL_CARDS ? "" : ` on card ${activeCard}`}
               </span>
             </h2>

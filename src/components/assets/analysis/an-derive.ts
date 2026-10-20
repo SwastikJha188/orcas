@@ -13,6 +13,7 @@ import type { PlantDefs } from "@/lib/plant-defs";
 import type { AssetMachine } from "../assets-data";
 import type { AssetsSubPage } from "../assets-view";
 import type { Tone } from "../assets-shell-ui";
+import type { HealthBands } from "@/lib/reference-data";
 import { realFaults, realSources } from "./an-ui";
 
 export type Insights = InsightsResponse;
@@ -24,6 +25,10 @@ export interface SectionProps {
   /** Live frame for machines on a demonstration engine (kiln fleet, pyro line); null for stored snapshots. */
   frame: SimFrame | null;
   go: (sub: AssetsSubPage) => void;
+  focusedRuleId?: string | null;
+  onSelectRuleId?: (ruleId: string | null) => void;
+  onSeePrognosis?: (ruleId?: string | null, component?: string | null, tag?: string | null) => void;
+  onSeeDiagnosis?: (ruleId?: string | null, component?: string | null, tag?: string | null) => void;
 }
 
 export const SECTION_IDS = {
@@ -36,14 +41,15 @@ export const SECTION_IDS = {
   quality: "an-quality",
 } as const;
 
-/** Three-class health (engine bands 85 / 60): healthy / attention required / poor condition. */
-export function healthClass(h: number): { label: string; tone: Tone } {
-  if (h >= 85) return { label: "Healthy", tone: "good" };
-  if (h >= 60) return { label: "Attention required", tone: "warn" };
-  return { label: "Poor condition", tone: "bad" };
+/** Three-class health on the machine's health-model bands (DB): healthy / attention required / poor condition; null while the bands load. */
+export function healthClass(h: number, bands: HealthBands | null): { label: string; tone: Tone } | null {
+  if (!bands) return null;
+  if (h >= bands.advisory) return { label: "Normal", tone: "good" };
+  if (h >= bands.critical) return { label: "Alert", tone: "warn" };
+  return { label: "Critical", tone: "bad" };
 }
 
-export const sevToTone = (s: Severity): Tone => (s === "Critical" ? "bad" : s === "Advisory" ? "warn" : "good");
+export const sevToTone = (s: Severity): Tone => (s === "Critical" ? "bad" : s === "Alert" ? "warn" : "good");
 
 /** Number with engineering precision. */
 export function fmt(v: number | null | undefined, decimals?: number): string {
@@ -58,6 +64,9 @@ export function fmt(v: number | null | undefined, decimals?: number): string {
 
 export const sigma = (z: number) => `${z >= 0 ? "+" : "−"}${Math.abs(z).toFixed(1)}σ`;
 
+/** Plain reading of a z-score: "3.2× usual, high" (how many times its usual swing it is off expected). The σ form stays in tooltips. */
+export const offText = (z: number) => `${Math.abs(z).toFixed(1)}× usual, ${z >= 0 ? "high" : "low"}`;
+
 /** Hours as h below 72 h, d below a year, else y. */
 export function durationText(hours: number): string {
   if (!Number.isFinite(hours)) return "—";
@@ -66,8 +75,9 @@ export function durationText(hours: number): string {
   return `${(hours / 8760).toFixed(1)} y`;
 }
 
+/** The component that reaches a limit first; null when none is trending toward one. */
 export const firstIntervention = (rul: RulItem[]): RulItem | null =>
-  rul.reduce<RulItem | null>((m, r) => (m === null || r.hours < m.hours ? r : m), null);
+  rul.reduce<RulItem | null>((m, r) => (r.hours === null ? m : m === null || m.hours === null || r.hours < m.hours ? r : m), null);
 
 /* ------------------------------------------------------------------ */
 /* Detection (live kiln): expected vs actual per signal               */
@@ -158,7 +168,7 @@ export const liveRules = (f: SimFrame | null): RuleState[] =>
   f ? f.rules.filter((r) => r.status !== "QUIET").sort((a, b) => rank(b) - rank(a)) : [];
 
 function rank(r: RuleState): number {
-  return (r.status === "ACTIVE" ? 100 : 0) + (r.severity === "Critical" ? 20 : r.severity === "Advisory" ? 10 : 0) + r.confidence / 10;
+  return (r.status === "ACTIVE" ? 100 : 0) + (r.severity === "Critical" ? 20 : r.severity === "Alert" ? 10 : 0) + r.confidence / 10;
 }
 
 export const ruleById = (f: SimFrame | null, id: string): RuleState | undefined => f?.rules.find((r) => r.id === id);
@@ -205,7 +215,7 @@ export function machineSources(a: Insights["analysis"]) {
 /** Evidence detail from the live frame when there is one (same instant as Detection), else the payload's text. */
 export function liveDetail(f: SimFrame | null, tag: string, fallback: string): string {
   const z = f?.signals[tag]?.z;
-  return z === null || z === undefined ? fallback : `${sigma(z)} vs model`;
+  return z === null || z === undefined ? fallback : `${offText(z)} vs expected`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -327,6 +337,14 @@ export interface Episode {
   actions: string[];
 }
 
+/** Operator action kinds in everyday words (shown in Past episodes). */
+const ACTION_WORDS: Record<string, string> = {
+  acknowledge: "Seen by operator",
+  mitigate: "Temporary fix applied",
+  repair: "Repaired",
+  complete: "Fixed",
+};
+
 /** Rule episodes from the engine's event log (confirmed → cleared), newest first. */
 export function episodes(f: SimFrame): Episode[] {
   const evs = [...f.events].sort((a, b) => a.t - b.t);
@@ -351,7 +369,7 @@ export function episodes(f: SimFrame): Episode[] {
       }
     } else if (e.kind === "action" && e.action) {
       const ep = open.get(e.action.ruleId);
-      if (ep) ep.actions.push(`${e.action.kind}${e.action.auto ? " (auto)" : ""}`);
+      if (ep) ep.actions.push(`${ACTION_WORDS[e.action.kind] ?? e.action.kind}${e.action.auto ? " (automatic)" : ""}`);
     }
   }
   return out.reverse();

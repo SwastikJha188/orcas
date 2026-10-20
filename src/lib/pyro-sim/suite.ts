@@ -10,7 +10,7 @@
  */
 import { createLine, setScenario, stepLine } from "./engine";
 import { createVpcSim, setVpcAutopilot, setVpcScenario, stepVpcSim } from "../vpc-sim/engine";
-import { PYRO_LINE_SEED } from "./fleet";
+import { pyroLineSeed } from "./fleet";
 import { PYRO_SCENARIOS, type PyroScenario } from "./scenarios";
 import { VPC_SCENARIOS } from "../vpc-sim/scenarios";
 import { VPC_MACHINE_IDS } from "../vpc-sim/signals";
@@ -32,7 +32,7 @@ export interface PyroScenarioRun {
 }
 
 /** Start one pyro or VPC scenario on a fresh line. */
-export function startPyroScenarioTest(sc: PyroScenario, seed = PYRO_LINE_SEED): PyroScenarioRun {
+export function startPyroScenarioTest(sc: PyroScenario, seed = pyroLineSeed()): PyroScenarioRun {
   const isVpc = VPC_MACHINE_IDS.has(sc.machine);
   const vpcState = isVpc ? createVpcSim(seed) : null;
   const line = isVpc ? null : createLine(seed);
@@ -114,7 +114,7 @@ export function startPyroScenarioTest(sc: PyroScenario, seed = PYRO_LINE_SEED): 
 }
 
 /** Run one pyro scenario headless to the end and score it. */
-export function runPyroScenarioTest(sc: PyroScenario, seed = PYRO_LINE_SEED): TestResult {
+export function runPyroScenarioTest(sc: PyroScenario, seed = pyroLineSeed()): TestResult {
   const run = startPyroScenarioTest(sc, seed);
   run.step(RUN_MIN);
   return run.result();

@@ -1,178 +1,152 @@
 /**
- * Sheet C-4 — CLR-01 · Clinker cooler — Grate drive hydraulic unit.
- * The moving grate frame (on its carriage rollers) is pushed by a tie-rod
- * hydraulic cylinder hung from the cooler structure on a trunnion bracket;
- * a proximity switch counts the strokes off a target plate on the frame.
- * The hydraulic power unit below: oil tank with cut-away and thermowell,
- * electric motor, bell housing and gear pump, pressure block with
- * directional valves and gauge, accumulator, all on one skid.
+ * Sheet C-4 — CLR-01 · Clinker cooler — Grate drive hydraulic unit
+ * (group-images PDF page 12 "5A", panel GRATE DRIVE HYDRAULIC UNIT).
+ *
+ * The moving grate frame with its clinker bed, driven through a link by the
+ * hydraulic cylinder (stroke sensor on the barrel). Oil lines run down to the
+ * grate drive hydraulic power unit: oil tank, motor-pump and pressure block.
+ * Beside it the cooler grease lubrication pumps.
  */
-import React from "react";
-import { Bolt, GroundLine, Motor, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
+import { Bolt, GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
 import type { LineSheetArt } from "../types";
-import { CoolerCasing, Fitting, HydCylinder, OilHose } from "./parts-c";
 
-const W = 824;
-const H = 704;
+/** Panel box on the page (page units): x 574…1080, y 91…540. */
+const W = 506;
+const H = 449;
+const GROUND = 414;
 
-const CYL = { x1: 225.5, x2: 450.5, y: 248, h: 35 };
-const CY = CYL.y + CYL.h / 2;
-const CAP_PORT = 232.5;
-const HEAD_PORT = 443.5;
-const SKID = { x: 120.5, y: 420.5, w: 465, h: 195 };
-const TANK = { x: 143.5, y: 451, w: 165, h: 127.5 };
-const MOT = { x: 356, y: 480.5, w: 125, h: 68 };
-const PB = { x: 495.5, y: 465.5, w: 75.5, h: 42.5 };
-const GROUND = 660;
+type Pt = [number, number];
 
-function Art() {
-  const mcy = MOT.y + MOT.h / 2;
+/** Hydraulic oil line along a polyline (oil = process material). */
+function OilLine({ pts }: { pts: Pt[] }) {
+  const d = pts.map(([x, y], i) => `${i ? "L" : "M"} ${x} ${y}`).join(" ");
+  return <path d={d} fill="none" stroke={MX.material} strokeWidth={2.2} strokeLinejoin="round" strokeLinecap="round" />;
+}
+
+function GrateFrame() {
+  const ix = 31;
+  const ir = 475;
+  const surf = (x: number) => {
+    const t = (x - ix) / (ir - ix);
+    return 127.5 - 7.5 * Math.sin(Math.min(1, t * 1.7) * Math.PI * 0.5) + 9 * Math.max(0, t - 0.4) / 0.6;
+  };
+  const top = Array.from({ length: 41 }, (_, i) => {
+    const x = ix + ((ir - ix) * i) / 40;
+    return `${i ? "L" : "M"} ${x.toFixed(1)} ${surf(x).toFixed(1)}`;
+  }).join(" ");
   return (
     <g>
-      <GroundLine x1={22} x2={802} y={GROUND} />
-
-      {/* ---------------- moving grate frame ---------------- */}
-      <CoolerCasing x={30.5} y={45.5} w={765.5} h={177} grate={190} bedL={160} bedR={174} doors={[150, 690]} carriage />
-      <MachineLabel x={412.4} y={80} size={9}>MOVING GRATE FRAME</MachineLabel>
-      {/* stroke-counter target plate on the frame */}
-      <rect x={256} y={221} width={30} height={5} rx={1.2} {...PAINT.shaft} />
-
-      {/* ---------------- drive linkage ---------------- */}
-      <rect x={636} y={214} width={20} height={24} rx={3} {...PAINT.raised} />
-      <Bolt x={641} y={218} r={1.4} />
-      <Bolt x={651} y={218} r={1.4} />
-      <line x1={646} y1={229} x2={590} y2={CY} stroke={MX.edge} strokeWidth={9} strokeLinecap="round" />
-      <line x1={646} y1={229} x2={590} y2={CY} stroke={MX.metal} strokeWidth={6.5} strokeLinecap="round" />
-      <circle cx={646} cy={229} r={4.5} {...PAINT.shaft} />
-      <circle cx={646} cy={229} r={1.6} fill={MX.deep} />
-
-      {/* ---------------- trunnion bracket and cylinder ---------------- */}
-      <path d={`M 196 222.5 H 230 V 238 L 222 ${CY + 10} H 204 L 196 238 Z`} {...PAINT.body} />
-      <Bolt x={202} y={228} r={1.5} />
-      <Bolt x={224} y={228} r={1.5} />
-      <HydCylinder x1={CYL.x1} x2={CYL.x2} y={CYL.y} h={CYL.h} rodX={574} rodH={15} />
-      <circle cx={213} cy={CY} r={6.5} {...PAINT.raised} />
-      <circle cx={213} cy={CY} r={2.6} {...PAINT.shaft} />
-      {/* rod-end clevis */}
-      <rect x={570.5} y={247} width={30.5} height={37} rx={5} {...PAINT.raised} />
-      <line x1={575} x2={597} y1={CY} y2={CY} {...PAINT.hair} />
-      <circle cx={590} cy={CY} r={5} {...PAINT.shaft} />
-      <circle cx={590} cy={CY} r={1.8} fill={MX.deep} />
-      {/* proximity stroke sensor on its arm */}
-      <rect x={230} y={236.5} width={36} height={4} {...PAINT.shaft} />
-      <rect x={265.5} y={227} width={10} height={20} rx={2} {...PAINT.shaft} />
-      <rect x={263.5} y={233} width={14} height={3} rx={1} {...PAINT.raised} />
-      <rect x={263.5} y={240} width={14} height={3} rx={1} {...PAINT.raised} />
-      <path d="M 270.5 247 Q 270.5 255 262 255" fill="none" stroke={MX.fine} strokeWidth={1.4} />
-      <MachineLabel x={302} y={239} anchor="start" size={8.2}>HYDRAULIC CYLINDER</MachineLabel>
-
-      {/* ---------------- hoses: cylinder ports to the pressure block ---------------- */}
-      <OilHose pts={[[CAP_PORT, CYL.y + CYL.h + 7], [CAP_PORT, 360], [515, 360], [515, PB.y]]} />
-      <OilHose pts={[[HEAD_PORT, CYL.y + CYL.h + 7], [HEAD_PORT, 338], [551, 338], [551, PB.y]]} />
-      <Fitting x={CAP_PORT} y={CYL.y + CYL.h + 6} />
-      <Fitting x={HEAD_PORT} y={CYL.y + CYL.h + 6} />
-      <Fitting x={515} y={PB.y - 3} />
-      <Fitting x={551} y={PB.y - 3} />
-
-      {/* ---------------- power-unit skid ---------------- */}
-      <rect x={SKID.x} y={SKID.y} width={SKID.w} height={SKID.h} rx={12} {...PAINT.body} />
-      <rect x={SKID.x + 6} y={SKID.y + 6} width={SKID.w - 12} height={SKID.h - 12} rx={8} fill="none" stroke={MX.fine} strokeWidth={1} />
-      {[172, 566].map((x) => (
-        <g key={x}>
-          <rect x={x - 10} y={SKID.y + SKID.h - 2} width={20} height={GROUND - SKID.y - SKID.h - 2} rx={1.5} {...PAINT.body} />
-          <rect x={x - 15} y={GROUND - 6} width={30} height={6} rx={1.5} {...PAINT.raised} />
-          <Bolt x={x - 11} y={GROUND - 3} r={1.2} />
-          <Bolt x={x + 11} y={GROUND - 3} r={1.2} />
-        </g>
+      <rect x={26.5} y={49.5} width={453} height={104.5} rx={5} {...PAINT.body} />
+      <path d={`${top} L ${ir} 147 L ${ix} 147 Z`} fill={MX.material} opacity={0.3} />
+      <path d={top} fill="none" stroke={MX.material} strokeWidth={0.8} opacity={0.5} />
+      <rect x={29.5} y={147} width={447} height={4} rx={1} {...PAINT.raised} />
+      {Array.from({ length: 71 }).map((_, i) => (
+        <line key={i} x1={33 + i * 6.25} x2={33 + i * 6.25} y1={147.6} y2={150.4} {...PAINT.hair} />
       ))}
-      <rect x={SKID.x + 8} y={598} width={SKID.w - 16} height={10} rx={2} {...PAINT.raised} />
-      {Array.from({ length: 9 }).map((_, i) => (
-        <Bolt key={i} x={SKID.x + 22 + i * 52.5} y={603} r={1.4} />
-      ))}
-
-      {/* suction line tank → pump (behind the motor feet) */}
-      <OilHose pts={[[TANK.x + TANK.w, 566], [330, 566], [330, 590], [520, 590], [520, 530]]} w={6} />
-
-      {/* oil tank */}
-      <rect x={TANK.x} y={TANK.y} width={TANK.w} height={TANK.h} rx={7} {...PAINT.body} />
-      <rect x={TANK.x - 2} y={TANK.y - 3} width={TANK.w + 4} height={6} rx={2} {...PAINT.raised} />
-      {Array.from({ length: 7 }).map((_, i) => (
-        <Bolt key={i} x={TANK.x + 8 + i * 24.8} y={TANK.y} r={1.2} />
-      ))}
-      <rect x={152} y={468} width={148} height={102} rx={4} {...PAINT.recess} />
-      <rect x={154} y={490} width={144} height={78} rx={2.5} fill={MX.material} opacity={0.9} />
-      <line x1={154} x2={298} y1={490} y2={490} stroke={MX.material} strokeWidth={1.4} />
-      {[0, 1, 2].map((k) => (
-        <path key={k} d={`M ${170 + k * 44} ${506 + k * 14} q 10 -4 20 0 t 20 0`} {...PAINT.hair} opacity={0.6} />
-      ))}
-      {/* thermowell with RTD head */}
-      <rect x={TANK.x - 10} y={518} width={11} height={15} rx={3} {...PAINT.raised} />
-      <rect x={TANK.x} y={523.5} width={30} height={4} rx={1.5} {...PAINT.shaft} />
-      {/* filler-breather, return filter, drain valve, feet */}
-      <rect x={230} y={441} width={16} height={10} rx={2} {...PAINT.raised} />
-      <path d="M 232 441 Q 238 433 244 441 Z" {...PAINT.shaft} />
-      <rect x={268} y={433} width={24} height={18} rx={4} {...PAINT.cylinderV} />
-      <rect x={265} y={431} width={30} height={5} rx={1.5} {...PAINT.raised} />
-      <rect x={292} y={TANK.y + TANK.h - 10} width={14} height={6} rx={1.5} {...PAINT.shaft} />
-      <circle cx={306} cy={TANK.y + TANK.h - 7} r={3.4} {...PAINT.raised} />
-      {[TANK.x + 20, TANK.x + TANK.w - 34].map((x) => (
-        <rect key={x} x={x} y={TANK.y + TANK.h} width={14} height={598 - TANK.y - TANK.h} rx={1.5} {...PAINT.body} />
-      ))}
-      <MachineLabel x={152} y={441.6} anchor="start" size={8.2}>OIL TANK</MachineLabel>
-
-      {/* motor on its feet, bell housing and gear pump */}
-      {[372, 448].map((x) => (
-        <g key={x}>
-          <rect x={x} y={MOT.y + MOT.h - 2} width={16} height={598 - MOT.y - MOT.h + 2} rx={1.5} {...PAINT.body} />
-          <Bolt x={x + 8} y={MOT.y + MOT.h + 4} r={1.3} />
-        </g>
-      ))}
-      <Motor x={MOT.x} y={MOT.y} w={MOT.w} h={MOT.h} />
-      <rect x={366} y={MOT.y - 4} width={6} height={4} rx={1} {...PAINT.shaft} />
-      <path d={`M 481 ${mcy - 20} L 499 ${mcy - 14} V ${mcy + 14} L 481 ${mcy + 20} Z`} {...PAINT.body} />
-      <rect x={499} y={500} width={34} height={30} rx={4} {...PAINT.raised} />
-      <rect x={504} y={506} width={24} height={18} rx={2} {...PAINT.recess} />
-      <circle cx={512} cy={515} r={5} fill="none" stroke={MX.metal} strokeWidth={1.4} />
-      <circle cx={521} cy={515} r={5} fill="none" stroke={MX.metal} strokeWidth={1.4} />
-
-      {/* accumulator */}
-      <rect x={553} y={PB.y + PB.h} width={6} height={8} {...PAINT.shaft} />
-      <rect x={545} y={515} width={22} height={74} rx={11} {...PAINT.cylinderV} />
-      <rect x={548} y={584} width={16} height={8} rx={2} {...PAINT.raised} />
-
-      {/* pressure block: two directional valves, transmitter, gauge */}
-      <rect x={PB.x} y={PB.y} width={PB.w} height={PB.h} rx={5} {...PAINT.raised} />
-      {[PB.x + 5, PB.x + PB.w - 23].map((x) => (
-        <g key={x}>
-          <rect x={x} y={PB.y + 6} width={18} height={30} rx={2.5} {...PAINT.body} />
-          <rect x={x + 3} y={PB.y + 9} width={12} height={10} rx={1.5} {...PAINT.recess} />
-          <line x1={x + 3} x2={x + 15} y1={PB.y + 28} y2={PB.y + 28} {...PAINT.hair} />
-        </g>
-      ))}
-      <rect x={PB.x + 30} y={PB.y + 13} width={16} height={16} rx={4} {...PAINT.body} />
-      <rect x={PB.x + PB.w} y={483} width={6} height={6} {...PAINT.shaft} />
-      <circle cx={PB.x + PB.w + 13} cy={486} r={8} {...PAINT.raised} />
-      <circle cx={PB.x + PB.w + 13} cy={486} r={5.5} {...PAINT.recess} />
-      <line x1={PB.x + PB.w + 13} y1={486} x2={PB.x + PB.w + 16} y2={482} stroke={MX.metal} strokeWidth={1.2} strokeLinecap="round" />
-      <MachineLabel x={508} y={458} anchor="end" size={8.2}>PRESSURE BLOCK</MachineLabel>
-
-      <MachineLabel x={351.9} y={636.4} size={9}>GRATE DRIVE HYDRAULIC POWER UNIT</MachineLabel>
+      <MachineLabel x={253} y={63.5} size={5}>
+        MOVING GRATE FRAME
+      </MachineLabel>
     </g>
   );
 }
 
-/** Pad centre per point (sheet units), as on PDF page 32. */
+function Cylinder() {
+  return (
+    <g>
+      {/* link from the rod end up to the moving frame */}
+      <line x1={364} y1={180} x2={391.5} y2={151} stroke={MX.edge} strokeWidth={3.4} strokeLinecap="round" />
+      <line x1={364} y1={180} x2={391.5} y2={151} stroke={MX.metal} strokeWidth={1.8} strokeLinecap="round" />
+      {/* rod, barrel, rod-end clevis */}
+      <rect x={275} y={174.5} width={72} height={10} rx={2} {...PAINT.shaft} />
+      <rect x={142} y={169.5} width={133.5} height={20.5} rx={4} {...PAINT.cylinder} />
+      <line x1={147} x2={270} y1={171.5} y2={171.5} stroke={MX.fine} strokeWidth={0.8} />
+      <rect x={346} y={165} width={18} height={29} rx={3} {...PAINT.raised} />
+      <Bolt x={355} y={179.5} r={2} />
+      {/* stroke position sensor on the barrel */}
+      <rect x={155.5} y={155.5} width={26.5} height={8} rx={2} {...PAINT.raised} />
+      <rect x={167} y={163.5} width={3} height={6} {...PAINT.shaft} />
+      <MachineLabel x={209} y={165} size={5}>
+        HYDRAULIC CYLINDER
+      </MachineLabel>
+    </g>
+  );
+}
+
+function PowerUnit() {
+  return (
+    <g>
+      {/* pressure line to the pressure block, return line to the tank */}
+      <OilLine pts={[[208.5, 190], [208.5, 223], [324.5, 223], [324.5, 298]]} />
+      <OilLine pts={[[257.5, 190], [257.5, 236.5], [143, 236.5], [143, 289]]} />
+      <rect x={80} y={271.5} width={275} height={115} rx={6} {...PAINT.body} />
+      <MachineLabel x={142} y={285} size={5}>
+        OIL TANK
+      </MachineLabel>
+      {/* oil tank */}
+      <rect x={93} y={289} width={98} height={76} rx={3} {...PAINT.raised} />
+      <rect x={95.5} y={291.5} width={93} height={71} rx={2} fill={MX.material} opacity={0.85} />
+      {/* electric motor driving the pump (fan cowl left) */}
+      <rect x={209} y={311} width={16} height={32} rx={7} {...PAINT.body} />
+      <rect x={223} y={306} width={74.5} height={39} rx={7} {...PAINT.body} />
+      {[313, 320, 327, 334, 341].map((y) => (
+        <line key={y} x1={228} x2={292} y1={y} y2={y} {...PAINT.hair} />
+      ))}
+      <rect x={245} y={298.5} width={30} height={8} rx={2} {...PAINT.raised} />
+      <rect x={246} y={321} width={15} height={7} rx={1.5} {...PAINT.recess} />
+      <rect x={297.5} y={322} width={6} height={6} rx={1} {...PAINT.shaft} />
+      <rect x={230.5} y={345} width={60} height={4.5} rx={1.2} {...PAINT.body} />
+      {/* pressure block */}
+      <rect x={302} y={298} width={44} height={25} rx={2.5} {...PAINT.raised} />
+      <MachineLabel x={324} y={295} size={5}>
+        PRESSURE BLOCK
+      </MachineLabel>
+      <MachineLabel x={217} y={400.5} size={5}>
+        GRATE DRIVE HYDRAULIC POWER UNIT
+      </MachineLabel>
+    </g>
+  );
+}
+
+function GreaseLube() {
+  return (
+    <g>
+      <rect x={381.5} y={316} width={89} height={62} rx={5} {...PAINT.body} />
+      <rect x={390} y={325} width={31.5} height={42.5} rx={3} {...PAINT.raised} />
+      <rect x={392} y={327} width={27.5} height={38.5} rx={2} fill={MX.material} opacity={0.85} />
+      <circle cx={439} cy={333.5} r={7} {...PAINT.raised} />
+      <circle cx={439} cy={356} r={7} {...PAINT.raised} />
+      <circle cx={454.2} cy={344.2} r={5} {...PAINT.raised} />
+      <MachineLabel x={426} y={307} size={4.6}>
+        COOLER GREASE LUBRICATION PUMPS
+      </MachineLabel>
+    </g>
+  );
+}
+
+function Art() {
+  return (
+    <g>
+      <GroundLine x1={22.5} x2={484} y={GROUND} />
+      <GrateFrame />
+      <Cylinder />
+      <PowerUnit />
+      <GreaseLube />
+    </g>
+  );
+}
+
+/** Pads as on the panel; plates run along the equipment they sit on. */
 const pads: LineSheetArt["pads"] = {
-  "SPD-CLR-01": [270.5, 230.5],
-  "PRS-CLR-07": [533, 486.5],
-  "TMP-CLR-07": [173, 525.5],
+  "SPD-CLR-01": [168.5, 159.2],
+  "PRS-CLR-07": [323.8, 310.8],
+  "TMP-CLR-07": [111, 333.8],
+  "STS-CLR-01": [454.2, 344.2],
+};
+const callouts: NonNullable<LineSheetArt["callouts"]> = {
+  "SPD-CLR-01": [176, 159.2, "end"],
+  "PRS-CLR-07": [316, 310.8, "end"],
+  "TMP-CLR-07": [118, 333.8, "start"],
+  "STS-CLR-01": [446, 344.2, "end"],
 };
 
-/** Tag chip centre per point, as on PDF page 32 (stroke chip lifted 31 off the clinker bed). */
-const chips: NonNullable<LineSheetArt["chips"]> = {
-  "SPD-CLR-01": [207, 140],
-  "PRS-CLR-07": [626, 441.5],
-  "TMP-CLR-07": [109.5, 638],
-};
-
-export const sheet: LineSheetArt = { id: "C-4", ready: true, width: W, height: H, Art, pads, chips };
+export const sheet: LineSheetArt = { id: "C-4", ready: true, width: W, height: H, Art, pads, callouts };

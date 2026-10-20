@@ -19,7 +19,7 @@ import { ANALYSIS_ANCHOR_KEY } from "../analysis/analysis-page";
 import { SECTION_IDS as ANALYSIS_SECTIONS } from "../analysis/an-derive";
 import { logPos, tagsForRisk, TIME_TICKS, type AnalysisPayload, type PrognosisData, type RulRow } from "./prognosis-derive";
 
-export { Empty, EvidenceChip, KpiStrip, PageHeader, Section, SectionIndex, WhyDisclosure, PRIORITY_TONE, type KpiItem } from "../analysis/an-ui";
+export { Empty, EvidenceChip, KpiStrip, PageHeader, Section, SectionIndex, WhyDisclosure, priorityTone, type KpiItem } from "../analysis/an-ui";
 
 /** Open Analysis scrolled to one of its sections (Analysis reads the anchor once on mount). */
 export function openAnalysisAt(section: keyof typeof ANALYSIS_SECTIONS, go: (sub: AssetsSubPage) => void): void {
@@ -49,6 +49,9 @@ export interface ProgSectionProps {
   /** Failure mode selected in the risk table; drives forecasts and degradation. */
   mode: FailureRisk | null;
   setMode: (id: string) => void;
+  focusedComponent?: string | null;
+  onSeeReason?: (ruleId?: string | null, component?: string | null, tag?: string | null) => void;
+  onSeeDiagnosis?: (ruleId?: string | null, component?: string | null, tag?: string | null) => void;
 }
 
 /** Sensor tags behind a failure mode (rule evidence, or the tag itself). */

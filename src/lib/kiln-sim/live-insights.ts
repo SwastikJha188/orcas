@@ -38,7 +38,7 @@ import type {
   Severity,
 } from "@/server/services/insights-service";
 import { limitPair, resolveLimit, type SignalDef } from "./signals";
-import type { PlantDefs } from "../plant-defs";
+import { isConditionRule, type PlantDefs } from "../plant-defs";
 import { formatDuration, type RuleState, type SimFrame } from "./engine";
 
 const HORIZONS: ForecastHorizon[] = [
@@ -126,11 +126,11 @@ function downsample(values: number[], points: number): number[] {
   return Array.from({ length: points }, (_, i) => values[Math.min(values.length - 1, Math.round((i + 1) * step) - 1)]);
 }
 
-const activeRules = (f: SimFrame) => f.rules.filter((r) => r.status === "ACTIVE");
-const machineRules = (rs: RuleState[]) => rs.filter((r) => r.category !== "Data quality" && r.category !== "Anomaly");
+const activeRules = (f: SimFrame) => f.rules.filter((r) => r.status === "ACTIVE" && isConditionRule(r));
+const machineRules = (rs: RuleState[]) => rs.filter((r) => isConditionRule(r));
 
 function sevWeight(r: RuleState): number {
-  return (r.severity === "Critical" ? 3 : r.severity === "Advisory" ? 1.6 : 0.4) * (r.status === "ACTIVE" ? 1 : 0.4);
+  return (r.severity === "Critical" ? 3 : r.severity === "Alert" ? 1.6 : 0.4) * (r.status === "ACTIVE" ? 1 : 0.4);
 }
 
 /** Minutes to the rule's limit, parsed back from the engine label (first figure). */
@@ -144,7 +144,7 @@ function ttlMinutes(label: string): number | null {
 
 /* ------------------------------------------------------------------ */
 
-const SEV_ORDER: Record<Severity, number> = { Critical: 0, Advisory: 1, Normal: 2 };
+const SEV_ORDER: Record<Severity, number> = { Critical: 0, Alert: 1, Normal: 2 };
 const PRIO_ORDER: Record<FailureRisk["priority"], number> = { Immediate: 0, High: 1, Medium: 2, Low: 3 };
 
 function keySensors(f: SimFrame): string[] {
@@ -329,7 +329,7 @@ export function rul(f: SimFrame): RulItem[] {
       if (ttls.length) hours = Math.max(1, Math.min(...ttls) / 60 + (rs.some((r) => r.severity === "Critical") ? 2 : 24));
       else if (rs.length) hours = rs.some((r) => r.severity === "Critical") ? 24 : 240;
       else hours = Math.round(6000 * (cell.health / 100) ** 2);
-      const status: Severity = hours < 72 ? "Critical" : hours < 720 ? "Advisory" : "Normal";
+      const status: Severity = hours < 72 ? "Critical" : hours < 720 ? "Alert" : "Normal";
       const days = Math.round(hours / 24);
       return {
         id: sa.id,
@@ -353,7 +353,7 @@ function anomalies(f: SimFrame): { items: AnomalyItem[]; timeline: number[] } {
     const def = f.defs.signalByTag[s.tag];
     if (!def) continue;
     if (s.quality !== "Good") {
-      items.push({ tag: s.tag, name: def.name, component: subName(f.defs, def.sub), score: 0.5, severity: "Advisory", deviation: s.qualityNote ?? `Data ${s.quality.toLowerCase()}`, onset: "sensor validation" });
+      items.push({ tag: s.tag, name: def.name, component: subName(f.defs, def.sub), score: 0.5, severity: "Alert", deviation: s.qualityNote ?? `Data ${s.quality.toLowerCase()}`, onset: "sensor validation" });
       continue;
     }
     if (s.z === null || Math.abs(s.z) < 3) continue;
@@ -367,7 +367,7 @@ function anomalies(f: SimFrame): { items: AnomalyItem[]; timeline: number[] } {
       name: def.name,
       component: subName(f.defs, def.sub),
       score: clamp(Math.abs(s.z) / 12, 0.25, 1),
-      severity: Math.abs(s.z) > 8 || s.limitSeverity === "Critical" ? "Critical" : "Advisory",
+      severity: Math.abs(s.z) > 8 || s.limitSeverity === "Critical" ? "Critical" : "Alert",
       deviation: `${s.z >= 0 ? "+" : "−"}${Math.abs(s.z).toFixed(1)}σ vs model${covered ? "" : " · no known pattern"}`,
       onset: `${formatDuration(k)} ago`,
     });
@@ -407,7 +407,7 @@ function evidenceFor(f: SimFrame, tags: string[]): SourceEvidence[] {
 }
 
 function sources(f: SimFrame): IssueSource[] {
-  const rs = f.rules.filter((r) => r.status !== "QUIET" && r.category !== "Data quality").sort((a, b) => sevWeight(b) - sevWeight(a));
+  const rs = f.rules.filter((r) => r.status !== "QUIET" && isConditionRule(r)).sort((a, b) => sevWeight(b) - sevWeight(a));
   const total = rs.reduce((a, r) => a + sevWeight(r), 0) || 1;
   const out: IssueSource[] = rs.map((r) => ({
     id: r.id,
@@ -420,7 +420,7 @@ function sources(f: SimFrame): IssueSource[] {
   }));
   const dq = f.rules.filter((r) => r.status !== "QUIET" && r.category === "Data quality");
   for (const r of dq) {
-    out.push({ id: r.id, cause: `${r.name} — instrument, not machine`, subsystem: r.tags.join(", "), contribution: 6, confidence: r.confidence || 60, severity: "Advisory", evidence: evidenceFor(f, r.tags) });
+    out.push({ id: r.id, cause: `${r.name} — instrument, not machine`, subsystem: r.tags.join(", "), contribution: 6, confidence: r.confidence || 60, severity: "Alert", evidence: evidenceFor(f, r.tags) });
   }
   if (!out.length) {
     out.push({ id: "src-baseline", cause: "No active issue source — every signal within ±3σ of the reference model", subsystem: "All sub-assemblies", contribution: 100, confidence: 97, severity: "Normal", evidence: [] });
@@ -430,7 +430,7 @@ function sources(f: SimFrame): IssueSource[] {
 
 function faults(f: SimFrame): FaultClass[] {
   const out: FaultClass[] = f.rules
-    .filter((r) => r.status !== "QUIET")
+    .filter((r) => r.status !== "QUIET" && r.category !== "Service life")
     .sort((a, b) => sevWeight(b) - sevWeight(a))
     .map((r) => ({ id: r.id, label: `${r.id} ${r.name}`, probability: r.status === "ACTIVE" ? r.confidence : Math.round(r.confidence * 0.6), severity: r.severity, band: r.category }));
   if (!out.length) out.push({ id: "nominal", label: "Healthy signature — no fault pattern above threshold", probability: 97, severity: "Normal", band: `${f.defs.rules.length} rules quiet` });
@@ -443,7 +443,7 @@ function degradation(f: SimFrame): DegradationItem[] {
     .map((sa) => {
       const cell = f.subs[sa.id];
       const stageIndex = clamp(Math.round((100 - cell.health) / 14), 0, 5);
-      const firing = f.rules.some((r) => r.status !== "QUIET" && r.subs.includes(sa.id) && r.category !== "Data quality" && r.category !== "Anomaly");
+      const firing = f.rules.some((r) => r.status !== "QUIET" && r.subs.includes(sa.id) && isConditionRule(r));
       return { id: sa.id, name: sa.name, stageIndex, stageLabel: DEGRADATION_STAGES[stageIndex], health: cell.health, trend: (firing ? "falling" : "stable") as DegradationItem["trend"] };
     })
     .sort((a, b) => b.stageIndex - a.stageIndex);
@@ -498,11 +498,11 @@ function reasoning(f: SimFrame, src: IssueSource[]): ReasoningStep[] {
     ? `${p.beyond3s} signals beyond 3σ · melt T1 ${(f.signals["T1"]?.value ?? 1020).toFixed(0)} °C · flask vac P2 ${(f.signals["P2"]?.value ?? 300).toFixed(0)} mbar`
     : `${p.beyond3s} signals beyond 3σ · ambient est. ${f.drivers.ambientEst.toFixed(1)} °C · feed ${f.drivers.feed.toFixed(0)} t/h`;
   return [
-    { id: "quality", label: "1 · Data quality", detail: `${p.valid} valid · ${p.held} held · ${p.invalid} invalid · ${p.suspect} suspect`, status: p.invalid + p.suspect > 0 ? "Advisory" : "Normal" },
-    { id: "model", label: "2 · Reference model", detail: modelDetail, status: p.beyond3s > 0 ? "Advisory" : "Normal" },
+    { id: "quality", label: "1 · Data quality", detail: `${p.valid} valid · ${p.held} held · ${p.invalid} invalid · ${p.suspect} suspect`, status: p.invalid + p.suspect > 0 ? "Alert" : "Normal" },
+    { id: "model", label: "2 · Reference model", detail: modelDetail, status: p.beyond3s > 0 ? "Alert" : "Normal" },
     { id: "rules", label: "3 · Rules", detail: `${p.evaluated} evaluated · ${p.matching} matching`, status: hot },
     { id: "confirm", label: "4 · Confirmation", detail: `${p.confirmed} confirmed · ${p.pending} pending (persistence 2–4 samples, hysteresis 4)`, status: p.confirmed > 0 ? hot : "Normal" },
-    { id: "action", label: "5 · Action", detail: `P1 ${p.p1} · P2 ${p.p2} · P3 ${p.p3}${top && top.severity !== "Normal" ? ` — ${top.cause}` : ""}`, status: p.p1 > 0 ? "Critical" : p.p2 > 0 ? "Advisory" : "Normal" },
+    { id: "action", label: "5 · Action", detail: `P1 ${p.p1} · P2 ${p.p2} · P3 ${p.p3}${top && top.severity !== "Normal" ? ` — ${top.cause}` : ""}`, status: p.p1 > 0 ? "Critical" : p.p2 > 0 ? "Alert" : "Normal" },
   ];
 }
 
@@ -514,7 +514,7 @@ function reasoning(f: SimFrame, src: IssueSource[]): ReasoningStep[] {
 function forecastTags(f: SimFrame, keys: string[]): string[] {
   const rank = (tg: string) => {
     const s = f.signals[tg];
-    return s.status === "Critical" ? 200 : s.status === "Advisory" ? 100 : 0;
+    return s.status === "Critical" ? 200 : s.status === "Alert" ? 100 : 0;
   };
   const rest = Object.keys(f.signals)
     .filter((tg) => isAnalog(f, tg) && !keys.includes(tg))
@@ -671,7 +671,7 @@ export function buildLiveInsights(f: SimFrame, machineId: string, db: DbSensorMe
   const top = activeRules(f)[0];
   const result: InsightsResponse = {
     machineId,
-    generatedAt: `${f.day > 0 ? `D+${f.day} ` : ""}${f.clock} (simulated)`,
+    generatedAt: `${f.day > 0 ? `D+${f.day} ` : ""}${f.clock}`,
     keySensors: keys,
     prognosis: {
       horizons: HORIZONS,

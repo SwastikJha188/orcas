@@ -31,12 +31,21 @@ export interface ChecklistTask {
   pass: string;
   /** Equipment: Each shift … Planned stop · Event-based. Sensor: AUTO / SHIFT, AUTO / W, O / OEM, SITE / OEM. */
   freq: string;
+  /** Round the frequency belongs to (maintenance_routes id: shift, weekly, stop, live, oem …). */
+  route: string;
+  /** The round's calendar interval in hours; null when not calendar-driven (stop, event, live, OEM, site). */
+  intervalHours: number | null;
+  /** The interval in plain words ("Weekly", "Live · shift review"). */
+  interval: string;
   /** ME · EL · IN · REL · OP · EH */
   owner: string;
+  ownerLabel: string;
   /** RUN · RUN + STOP · OFF (· OFF / RUN on conditional sensor tasks) */
   mode: string;
+  modeLabel: string;
   /** BASE · VERIFY (equipment) · DCS DATA · FIELD · VERIFY (sensor) */
   scope: string;
+  scopeLabel: string;
   /** Added on site for this machine (not in the document); id is `U-<n>`. */
   added?: { by: string | null; at: string };
 }
@@ -118,4 +127,17 @@ export interface RecordInspectionInput {
   taskId: string;
   result: InspectionResult;
   note?: string;
+}
+
+/** GET /api/maintenance/vocabulary: rounds, intervals and the codes the checklists use. */
+export interface MaintenanceVocabulary {
+  routes: Array<{ id: string; label: string; intervalHours: number | null; planCode: string; trigger: string }>;
+  /** Rounds per checklist kind in display order; `addable` rounds take site-added items. */
+  kindRoutes: Record<ChecklistKind, Array<{ routeId: string; addable: boolean }>>;
+  frequencies: Array<{ code: string; routeId: string; label: string; canonical: boolean }>;
+  owners: Record<string, string>;
+  modes: Record<string, string>;
+  scopes: Record<string, string>;
+  /** Preventive groups (Daily, Weekly, 15 days, Monthly, …) and the rounds in each, in display order. */
+  preventiveGroups: Array<{ id: string; label: string; routes: string[] }>;
 }

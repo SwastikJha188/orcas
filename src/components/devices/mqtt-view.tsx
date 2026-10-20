@@ -56,22 +56,22 @@ export function MqttView({ sectionNav }: { sectionNav?: React.ReactNode }) {
   const editingCount = editing?.broker ? (rows.find((r) => r.broker.id === editing.broker!.id)?.registered ?? 0) : 0;
 
   return (
-    <div className="pg-root ast-root mq-root" aria-label="MQTT brokers">
+    <div className="pg-root ast-root mq-root" aria-label="Data connections (MQTT brokers)">
       <header className="ast-head pg-head">
         <div className="ast-head-main">
           <ol className="ast-crumbs" aria-label="Location">
             <li>Devices</li>
-            <li>MQTT</li>
+            <li>Data connections</li>
           </ol>
           <div className="ast-title-row">
-            <h1 className="ast-title">MQTT brokers</h1>
+            <h1 className="ast-title">Data connections (MQTT brokers)</h1>
             <StatusTag tone={tone} label={label} />
-            {stream !== "open" && <StatusTag tone="warn" label={stream === "connecting" ? "Live feed connecting" : "Live feed retrying"} />}
+            {stream !== "open" && <StatusTag tone="warn" label={stream === "connecting" ? "Live updates connecting" : "Live updates reconnecting"} />}
           </div>
         </div>
         <div className="pg-actions">
           <PillButton variant="primary" icon={<IconPlus />} onClick={() => setEditing({ broker: null })} disabled={!registry}>
-            Add broker
+            Add data connection
           </PillButton>
         </div>
       </header>
@@ -80,21 +80,21 @@ export function MqttView({ sectionNav }: { sectionNav?: React.ReactNode }) {
 
       {!registry ? (
         edge.error ? (
-          <EmptyCard title="Broker registry unavailable. Retry." action={<PillButton variant="secondary" onClick={() => void edge.refresh()}>Retry</PillButton>} />
+          <EmptyCard title="The list of data connections could not be loaded. Try again." action={<PillButton variant="secondary" onClick={() => void edge.refresh()}>Retry</PillButton>} />
         ) : (
-          <div className="ast-card ast-empty">Loading brokers…</div>
+          <div className="ast-card ast-empty">Loading data connections…</div>
         )
       ) : rows.length === 0 ? (
         <EmptyCard
-          title="No brokers"
+          title="No data connections"
           action={
             <PillButton variant="primary" icon={<IconPlus />} onClick={() => setEditing({ broker: null })}>
-              Add broker
+              Add data connection
             </PillButton>
           }
         >
-          Gateways publish to an MQTT broker; the app subscribes to it. Brokers are stored in the database and edited here, one per network
-          the gateways reach.
+          Data collectors (gateways) send their readings to a message server (MQTT broker), and ULTRON listens to it. Add one for each
+          network the data collectors can reach.
         </EmptyCard>
       ) : (
         <>
@@ -122,7 +122,7 @@ export function MqttView({ sectionNav }: { sectionNav?: React.ReactNode }) {
               />
             </>
           ) : (
-            <div className="ast-card ast-empty">Connecting to the ingest runtime…</div>
+            <div className="ast-card ast-empty">Connecting to the data receiver…</div>
           )}
         </>
       )}
@@ -140,8 +140,8 @@ function clockTime(iso: string): string {
 }
 
 function securityLabel(b: EdgeBroker): string {
-  if (!b.tls) return "Plain";
-  return `TLS · ${b.rejectUnauthorized ? "verify" : "no verify"}${b.hasClientCert ? " · mTLS" : ""}`;
+  if (!b.tls) return "Not encrypted";
+  return `Encrypted (TLS) · ${b.rejectUnauthorized ? "server checked" : "server not checked"}${b.hasClientCert ? " · two-way (mTLS)" : ""}`;
 }
 
 function BrokersTable({
@@ -180,7 +180,7 @@ function BrokersTable({
   const columns: Column<BrokerRow>[] = [
     {
       key: "broker",
-      header: "Broker",
+      header: "Data connection",
       render: (r) => {
         const [tone] = BROKER_STATE[r.state];
         return (
@@ -198,7 +198,7 @@ function BrokersTable({
     },
     {
       key: "state",
-      header: "State",
+      header: "Status",
       render: (r) => {
         const [tone, label] = BROKER_STATE[r.state];
         const error = failed[r.broker.id] ?? (r.broker.enabled ? r.status?.lastError : null);
@@ -207,7 +207,7 @@ function BrokersTable({
             <span className="mq-tags">
               <StatusTag tone={tone} label={label} />
               {r.status?.listening && Date.parse(r.status.listening.until) > now && (
-                <span title={`Capturing ${r.status.listening.filter} for Data formats`}>
+                <span title={`Recording messages on ${r.status.listening.filter} for Message formats`}>
                   <StatusTag tone="info" label={`Listening until ${clockTime(r.status.listening.until)}`} />
                 </span>
               )}
@@ -239,22 +239,22 @@ function BrokersTable({
     },
     {
       key: "gateways",
-      header: "Gateways",
+      header: "Data collectors",
       render: (r) => (
         <span className="ast-cell-stack">
-          <span className="ast-cell-text ast-num">{r.known === 0 ? "None assigned" : `${nf.format(r.online)} of ${nf.format(r.known)} online`}</span>
+          <span className="ast-cell-text ast-num">{r.known === 0 ? "None linked" : `${nf.format(r.online)} of ${nf.format(r.known)} online`}</span>
           {r.unregistered > 0 && <span className="ast-cell-sub pg-tone-value" data-tone="warn">{nf.format(r.unregistered)} not registered</span>}
         </span>
       ),
     },
     {
       key: "rate",
-      header: "Throughput",
+      header: "Messages",
       render: (r) =>
         r.status && r.broker.enabled ? (
           <span className="ast-num">
             {rate(r.status.metrics.messagesPerSecond)}
-            <span className="ast-unit">msg/s</span>
+            <span className="ast-unit">per s</span>
           </span>
         ) : (
           <span className="ast-muted">—</span>
@@ -262,7 +262,7 @@ function BrokersTable({
     },
     {
       key: "latency",
-      header: "Latency p50",
+      header: "Typical delay",
       render: (r) =>
         r.status?.metrics.latencyP50Ms != null ? (
           <span className="ast-num">
@@ -292,7 +292,7 @@ function BrokersTable({
               type="button"
               role="switch"
               aria-checked={on}
-              aria-label={`${on ? "Disable" : "Enable"} ${r.broker.name}`}
+              aria-label={`${on ? "Switch off" : "Switch on"} ${r.broker.name}`}
               className="mq-switch mq-reveal"
               data-on={on || undefined}
               disabled={busy}
@@ -301,7 +301,7 @@ function BrokersTable({
               <span className="mq-switch-track" aria-hidden="true">
                 <span className="mq-switch-thumb" />
               </span>
-              <span className="mq-switch-label">{busy ? "Saving…" : on ? "Enabled" : "Disabled"}</span>
+              <span className="mq-switch-label">{busy ? "Saving…" : on ? "On" : "Off"}</span>
             </button>
             <PillButton variant="secondary" className="mq-reveal" onClick={() => onEdit(r.broker)} aria-label={`Edit ${r.broker.name}`}>
               Edit
@@ -313,7 +313,7 @@ function BrokersTable({
   ];
 
   return (
-    <section className="ast-card pg-table-card mq-brokers" aria-label="Brokers">
+    <section className="ast-card pg-table-card mq-brokers" aria-label="Data connections">
       <Table
         className="ast-table"
         columns={columns}
@@ -335,11 +335,11 @@ function Kpis({ metrics, gateways, racks, known, now }: { metrics: MqttMetrics; 
   const refused = metrics.schemaFailures + metrics.identityMismatches + metrics.parseFailures + metrics.payloadTooLarge;
 
   return (
-    <KpiCards label="Broker metrics">
+    <KpiCards label="Data connection figures">
       <KpiCard
-        label="Throughput"
+        label="Messages received"
         value={rate(metrics.messagesPerSecond)}
-        unit="msg/s"
+        unit="per second"
         footClassName="ast-kpi-foot ast-caption ast-num"
         foot={`${nf.format(metrics.messagesTotal)} messages · ${bytes(metrics.bytesTotal)} · last ${ago(metrics.lastMessageAt, now)}`}
       />
@@ -349,26 +349,26 @@ function Kpis({ metrics, gateways, racks, known, now }: { metrics: MqttMetrics; 
         unit={`of ${nf.format(known)}`}
         tone={gatewayTone}
         footClassName="ast-kpi-foot ast-caption ast-num"
-        foot={`${nf.format(streaming)} of ${nf.format(racks.length)} sources streaming current data`}
+        foot={`${nf.format(streaming)} of ${nf.format(racks.length)} devices sending current data`}
       />
       <KpiCard
-        label="Gateway → app latency"
+        label="Delay to ULTRON"
         value={metrics.latencyP50Ms !== null ? nf.format(Math.round(metrics.latencyP50Ms)) : "—"}
-        unit={metrics.latencyP50Ms !== null ? "ms p50" : undefined}
+        unit={metrics.latencyP50Ms !== null ? "ms typical" : undefined}
         footClassName="ast-kpi-foot ast-caption ast-num"
-        foot={`p95 ${metrics.latencyP95Ms !== null ? `${nf.format(Math.round(metrics.latencyP95Ms))} ms` : "—"} · ${nf.format(metrics.sequenceGaps)} lost · ${nf.format(metrics.duplicates)} duplicate`}
+        foot={`slowest 5%: ${metrics.latencyP95Ms !== null ? `${nf.format(Math.round(metrics.latencyP95Ms))} ms` : "—"} · ${nf.format(metrics.sequenceGaps)} lost · ${nf.format(metrics.duplicates)} duplicate`}
       />
       <KpiCard
-        label="Quarantine"
+        label="Set aside"
         value={nf.format(metrics.quarantined)}
         unit="messages"
         tone={metrics.quarantined > 0 ? "warn" : undefined}
         footClassName="ast-kpi-foot ast-caption ast-num"
         foot={
           refused === 0
-            ? "No schema, identity or parse failures"
-            : `${nf.format(metrics.schemaFailures)} schema · ${nf.format(metrics.identityMismatches)} identity · ${nf.format(metrics.parseFailures)} parse${
-                metrics.payloadTooLarge ? ` · ${nf.format(metrics.payloadTooLarge)} oversize` : ""
+            ? "No message was rejected"
+            : `${nf.format(metrics.schemaFailures)} wrong format · ${nf.format(metrics.identityMismatches)} wrong sender · ${nf.format(metrics.parseFailures)} unreadable${
+                metrics.payloadTooLarge ? ` · ${nf.format(metrics.payloadTooLarge)} too large` : ""
               }`
         }
       />

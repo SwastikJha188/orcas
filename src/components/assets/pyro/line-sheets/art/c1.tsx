@@ -1,147 +1,163 @@
 /**
- * Sheet C-1 — CLR-01 · Clinker cooler — Grate and compartments.
- * Hot clinker leaves the kiln nose inside the hood, lands on the inclined
- * static inlet grate and travels right on the reciprocating grate. Under the
- * grate six air compartments (static-pressure tap, inspection door,
- * riddlings hopper) are each fed by their own cooling fan through a round
- * duct with louvre damper and bellows.
+ * Sheet C-1 — CLR-01 · Clinker cooler — Grate and compartments (group-images
+ * PDF page 12 "5A", panel GRATE AND COMPARTMENTS).
+ *
+ * The kiln hood over the cooler inlet with the tertiary-air off-take, the
+ * cooler casing with its clinker bed travelling toward the discharge over the
+ * reciprocating grate, cooling air rising through the grate, six under-grate
+ * compartments (pressure tap top right, hopper thermocouple low left) and the
+ * cooling-fan risers down to the ground.
  */
 import React from "react";
-import { Bolt, GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
-import { FlowArrow } from "../../drawings/clk-parts";
+import { GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
 import type { LineSheetArt } from "../types";
-import { Bellows, CentrifugalFan, CoolerCasing, LouvreDamper, Lumps, VDuct } from "./parts-c";
 
-const W = 824;
-const H = 704;
+/** Panel box on the page (page units): x 41.5…547.5, y 91…540. */
+const W = 506;
+const H = 449;
+const GROUND = 414;
 
-const CASE = { x: 53, y: 150.5, w: 743, h: 199.5 };
-const GRATE = 338;
-const COMP = { x: 59, y: 360.5, w: 119, h: 127.5, pitch: 123 };
-const DUCT_W = 25;
-const FAN = { r: 25, top: 595, cy: 625, base: 650 };
-const GROUND = 660;
+const CASE = { x: 40, y: 112, w: 440, h: 118 };
+const GRATE = 222.5;
+/** Compartment 1; 2 … 6 repeat at the pitch. */
+const COMP = { x: 44, y: 236, w: 70, h: 75.5, pitch: 72.7 };
+/** Pressure tap (top right) and hopper thermocouple (low left) in compartment 1. */
+const TAP = { x: 101.5, y: 271.5 };
+const HOP = { x: 57.7, y: 291 };
+/** Pressure taps alternate a few units about the panel's tap row, so each pressure plate has its own lane. */
+const tapY = (i: number) => TAP.y + (i % 2 ? 4.5 : -5);
+
 
 const cx0 = (i: number) => COMP.x + i * COMP.pitch;
 
-function Art() {
+/** Filled flow arrowhead with its tip at (x, y), pointing along `deg` (0 = right, -90 = up). */
+function Head({ x, y, deg, c, s = 5 }: { x: number; y: number; deg: number; c: string; s?: number }) {
+  return <path d={`M ${x} ${y} l ${-s * 1.5} ${-s * 0.62} v ${s * 1.24} Z`} fill={c} transform={`rotate(${deg} ${x} ${y})`} />;
+}
+
+/** Small instrument body behind a pad. */
+function Instrument({ x, y, r = 5 }: { x: number; y: number; r?: number }) {
   return (
     <g>
-      <GroundLine x1={22} x2={802} y={GROUND} />
-
-      {/* ---------------- cooler casing, bed and grate ---------------- */}
-      <CoolerCasing x={CASE.x} y={CASE.y} w={CASE.w} h={CASE.h} grate={GRATE} bedL={284} bedR={312} hot={300} doors={[214, 640, 742]} />
-      {/* static inclined inlet grate under the kiln outlet */}
-      <path d={`M 63 312 L 63 ${GRATE + 7} L 142 ${GRATE + 7} Z`} {...PAINT.recess} />
-      {Array.from({ length: 8 }).map((_, i) => {
-        const x = 64 + i * 10;
-        const y = 312 + (i * 10 * 26) / 79;
-        return <rect key={i} x={x} y={y} width={9} height={5} rx={1} transform={`rotate(18 ${x} ${y})`} {...PAINT.raised} />;
-      })}
-      {/* hot recuperated air back to the kiln */}
-      <FlowArrow x1={330} y1={252} x2={240} y2={230} />
-      <FlowArrow x1={250} y1={266} x2={160} y2={240} />
-      <FlowArrow x1={168} y1={226} x2={118} y2={180} />
-      <MachineLabel x={264} y={184} anchor="start" size={9}>CLINKER BED — TRAVELS TOWARD THE DISCHARGE →</MachineLabel>
-
-      {/* ---------------- kiln hood with the kiln nose and burner lance ---------------- */}
-      <rect x={30.5} y={45.5} width={120.5} height={113} rx={10} {...PAINT.body} />
-      <rect x={36.5} y={51.5} width={108.5} height={101} rx={6} fill="none" stroke={MX.fine} strokeWidth={1} />
-      <rect x={48} y={56} width={88} height={112} rx={4} {...PAINT.recess} />
-      <rect x={62} y={148} width={74} height={22} {...PAINT.recess} stroke="none" />
-      {/* refractory lining on the hood roof */}
-      <rect x={49} y={57} width={86} height={7} fill={MX.flatRaised} opacity={0.55} />
-      {Array.from({ length: 6 }).map((_, i) => (
-        <line key={i} x1={56 + i * 14} x2={56 + i * 14} y1={57} y2={64} {...PAINT.hair} />
-      ))}
-      {/* kiln shell nose through the hood wall, outlet seal */}
-      <rect x={2} y={64} width={44} height={76} rx={2} {...PAINT.cylinder} />
-      <rect x={26} y={57} width={10} height={90} rx={2} {...PAINT.raised} />
-      {[64, 78, 92, 106, 120, 134].map((y) => (
-        <line key={y} x1={27.5} x2={34.5} y1={y} y2={y} {...PAINT.hair} />
-      ))}
-      <ellipse cx={66} cy={108} rx={20} ry={30} fill={MX.heat} />
-      <rect x={44} y={70} width={5} height={64} rx={1.5} fill={MX.material} opacity={0.75} />
-      <Lumps pts={[[56, 128], [64, 140], [58, 152], [70, 160], [62, 168], [76, 150], [82, 166]]} r={2.4} />
-      {/* main burner lance through the hood front wall */}
-      <rect x={52} y={89} width={146} height={7} rx={2} {...PAINT.shaft} />
-      <rect x={145} y={84} width={9} height={17} rx={1.5} {...PAINT.raised} />
-      <rect x={186} y={80} width={20} height={25} rx={4} {...PAINT.raised} />
-      <Bolt x={196} y={86} r={1.5} />
-      <Bolt x={196} y={99} r={1.5} />
-      <rect x={192} y={105} width={8} height={45.5} rx={1.5} {...PAINT.body} />
-      <MachineLabel x={60.5} y={38.1} anchor="start" size={8.2}>KILN HOOD</MachineLabel>
-
-      {/* ---------------- under-grate compartments, ducts, fans ---------------- */}
-      {Array.from({ length: 6 }).map((_, i) => {
-        const x = cx0(i);
-        const mid = x + COMP.w / 2;
-        const dX = x + 22;
-        const pad: [number, number] = [x + 97.5, 420.5];
-        const fcx = dX + DUCT_W;
-        return (
-          <g key={i}>
-            {/* compartment */}
-            <rect x={x} y={COMP.y} width={COMP.w} height={COMP.h} rx={7} {...PAINT.body} />
-            <rect x={x + 5} y={COMP.y + 5} width={COMP.w - 10} height={COMP.h - 10} rx={4} fill="none" stroke={MX.fine} strokeWidth={1} />
-            <rect x={x - 1} y={COMP.y - 3} width={COMP.w + 2} height={5} rx={1.5} {...PAINT.raised} />
-            {[x + 10, x + COMP.w - 10].map((bx) => (
-              <Bolt key={bx} x={bx} y={COMP.y + 11} r={1.7} />
-            ))}
-            {/* air up through the grate */}
-            {[0, 1, 2].map((k) => (
-              <FlowArrow key={k} x1={x + 22 + k * 22} y1={410} x2={x + 22 + k * 22} y2={376} />
-            ))}
-            {/* inspection door */}
-            <rect x={x + 9} y={424} width={30} height={26} rx={3} {...PAINT.raised} />
-            <rect x={x + 13} y={428} width={22} height={18} rx={2} {...PAINT.recess} />
-            <rect x={x + 39} y={433} width={4} height={8} rx={1} {...PAINT.shaft} />
-            {/* static-pressure tap: nozzle through the wall and transmitter */}
-            <rect x={pad[0]} y={pad[1] - 2} width={x + COMP.w - pad[0]} height={4} {...PAINT.shaft} />
-            <rect x={pad[0] - 8} y={pad[1] - 7} width={16} height={14} rx={3.5} {...PAINT.raised} />
-            <MachineLabel x={mid} y={471.5} size={7.5}>{`COMPARTMENT ${i + 1}`}</MachineLabel>
-
-            {/* riddlings hopper with flap valve */}
-            <path d={`M ${x + 82} ${COMP.y + COMP.h} H ${x + 112} L ${x + 102} 503 H ${x + 92} Z`} {...PAINT.body} />
-            <rect x={x + 88} y={503} width={18} height={14} rx={3} {...PAINT.raised} />
-            <line x1={x + 88} x2={x + 106} y1={510} y2={510} {...PAINT.hair} />
-            <circle cx={x + 109} cy={507} r={2.4} {...PAINT.shaft} />
-
-            {/* supply duct and cooling fan */}
-            <VDuct x={dX} w={DUCT_W} y1={COMP.y + COMP.h} y2={FAN.top} />
-            <LouvreDamper x={dX} w={DUCT_W} y={548} h={30} side={-1} />
-            <Bellows x={dX} w={DUCT_W} y={506} h={14} />
-            <CentrifugalFan cx={fcx} cy={FAN.cy} r={FAN.r} top={FAN.top} outlet="left" base={FAN.base} bx={fcx + 29} bw={7} bh={22} mx={fcx + 36} mw={30} mh={22} />
-            <rect x={fcx - FAN.r - 8} y={FAN.base + 5} width={FAN.r + 36 + 30 * 1.14 + 16} height={GROUND - FAN.base - 5} rx={1} {...PAINT.body} />
-            <MachineLabel x={mid - 1} y={678} size={7.5}>{`FAN ${i + 1}`}</MachineLabel>
-          </g>
-        );
-      })}
-      <MachineLabel x={155.5} y={539} size={8.2}>HOT ZONE</MachineLabel>
-      <MachineLabel x={155.5} y={551} size={8.2}>FANS 1–3 (C-2)</MachineLabel>
-      <MachineLabel x={524.5} y={545} size={8.2}>FANS 4–6 (C-3)</MachineLabel>
+      <circle cx={x} cy={y} r={r} {...PAINT.raised} />
+      <circle cx={x} cy={y} r={r * 0.45} {...PAINT.shaft} />
     </g>
   );
 }
 
-/** Pad centre per point (sheet units), as on PDF page 29. */
-const pads: LineSheetArt["pads"] = {
-  "PRS-CLR-01": [156.5, 420.5],
-  "PRS-CLR-02": [279.5, 420.5],
-  "PRS-CLR-03": [402.5, 420.5],
-  "PRS-CLR-04": [525.5, 420.5],
-  "PRS-CLR-05": [648.5, 420.5],
-  "PRS-CLR-06": [771.5, 420.5],
-};
+function KilnHood() {
+  return (
+    <g>
+      <rect x={26.5} y={49.5} width={72} height={66.5} rx={5} {...PAINT.body} />
+      {/* kiln nose glowing through the hood wall */}
+      <rect x={27.5} y={56} width={9.5} height={54} rx={3} fill={MX.heat} fillOpacity={0.55} stroke={MX.edge} strokeWidth={0.8} />
+      <MachineLabel x={62.5} y={46.5} size={5}>
+        KILN HOOD
+      </MachineLabel>
+      {/* tertiary air off-take to the calciner */}
+      <rect x={141.6} y={82} width={1.8} height={30} fill={MX.air} />
+      <Head x={142.5} y={77.5} deg={-90} c={MX.air} s={4} />
+      <text x={147} y={82} fill={MX.air} fontSize={5} fontWeight={600} letterSpacing="0.1em">
+        TERTIARY AIR → CALCINER
+      </text>
+    </g>
+  );
+}
 
-/** Tag chip centre per point, as on PDF page 29, lifted 40 / 44.5 into the gas space so the clinker bed stays visible. */
-const chips: NonNullable<LineSheetArt["chips"]> = {
-  "PRS-CLR-01": [100.5, 268],
-  "PRS-CLR-02": [223.5, 286],
-  "PRS-CLR-03": [346.5, 268],
-  "PRS-CLR-04": [469.5, 286],
-  "PRS-CLR-05": [592.5, 268],
-  "PRS-CLR-06": [715.5, 286],
-};
+function Cooler() {
+  const ix = CASE.x + 5;
+  const ir = CASE.x + CASE.w - 5;
+  // bed surface: thin at the inlet, deepest a third along, thinning to the discharge
+  const surf = (x: number) => {
+    const t = (x - ix) / (ir - ix);
+    return 201.5 - 6.5 * Math.sin(Math.min(1, t * 1.6) * Math.PI * 0.5) + 8 * Math.max(0, t - 0.35) / 0.65;
+  };
+  const top = Array.from({ length: 41 }, (_, i) => {
+    const x = ix + ((ir - ix) * i) / 40;
+    return `${i ? "L" : "M"} ${x.toFixed(1)} ${surf(x).toFixed(1)}`;
+  }).join(" ");
+  const plates = Math.floor((ir - ix - 2) / 6.25);
+  return (
+    <g>
+      <rect x={CASE.x} y={CASE.y} width={CASE.w} height={CASE.h} rx={5} {...PAINT.body} />
+      {/* clinker bed on the grate */}
+      <path d={`${top} L ${ir} ${GRATE} L ${ix} ${GRATE} Z`} fill={MX.material} opacity={0.3} />
+      <path d={top} fill="none" stroke={MX.material} strokeWidth={0.8} opacity={0.5} />
+      <MachineLabel x={257.5} y={125.5} size={5}>
+        CLINKER BED — TRAVELS TOWARD THE DISCHARGE →
+      </MachineLabel>
+      {/* reciprocating grate plates */}
+      <rect x={43} y={GRATE} width={434.5} height={4} rx={1} {...PAINT.raised} />
+      {Array.from({ length: plates }).map((_, i) => (
+        <line key={i} x1={ix + 3 + i * 6.25} x2={ix + 3 + i * 6.25} y1={GRATE + 0.6} y2={GRATE + 3.4} {...PAINT.hair} />
+      ))}
+      {/* cooling air up through the grate */}
+      {Array.from({ length: 16 }).map((_, i) => (
+        <Head key={i} x={62.5 + i * 26.6} y={231} deg={-90} c={MX.air} s={3.3} />
+      ))}
+      <rect x={115.4} y={233} width={1.2} height={22} fill={MX.air} />
+    </g>
+  );
+}
 
-export const sheet: LineSheetArt = { id: "C-1", ready: true, width: W, height: H, Art, pads, chips };
+function Compartment({ i }: { i: number }) {
+  const x = cx0(i);
+  const o = i * COMP.pitch;
+  const dx = x + COMP.w / 2;
+  const ty = tapY(i);
+  const hx = HOP.x + o;
+  return (
+    <g>
+      {/* fan riser duct from the ground up to the compartment */}
+      <rect x={dx - 7.5} y={COMP.y + COMP.h} width={15} height={GROUND - COMP.y - COMP.h} {...PAINT.body} />
+      <rect x={dx - 2.6} y={COMP.y + COMP.h} width={5.2} height={GROUND - COMP.y - COMP.h} {...PAINT.recess} />
+      <rect x={x} y={COMP.y} width={COMP.w} height={COMP.h} rx={4} {...PAINT.body} />
+      {/* pressure tap with its impulse line to the wall; hopper thermocouple */}
+      <line x1={TAP.x + o} x2={x + COMP.w} y1={ty} y2={ty} stroke={MX.fine} strokeWidth={1} />
+      <Instrument x={TAP.x + o} y={ty} />
+      <line x1={x} x2={hx} y1={HOP.y} y2={HOP.y} stroke={MX.fine} strokeWidth={1} />
+      <Instrument x={hx} y={HOP.y} />
+      <MachineLabel x={dx} y={304} size={4.4}>{`COMPARTMENT ${i + 1}`}</MachineLabel>
+      <MachineLabel x={dx} y={425} size={4.4}>{`FAN ${i + 1}`}</MachineLabel>
+    </g>
+  );
+}
+
+function Art() {
+  return (
+    <g>
+      <GroundLine x1={22.5} x2={484} y={GROUND} />
+      <KilnHood />
+      <Cooler />
+      {Array.from({ length: 6 }).map((_, i) => (
+        <Compartment key={i} i={i} />
+      ))}
+      <text x={142} y={380} fill={MX.material} fontSize={5} fontWeight={600} letterSpacing="0.1em" textAnchor="middle">
+        HOT ZONE: FANS 1–3
+      </text>
+      <MachineLabel x={363.5} y={380} size={5}>
+        FANS 4–6
+      </MachineLabel>
+    </g>
+  );
+}
+
+/**
+ * Pads as on the panel. Each compartment repeats one pattern: the pressure
+ * plate runs left along the top of the compartment (taps alternate a few
+ * units up and down so neighbouring plates do not touch), the hopper plate
+ * right along its bottom. Stand-off slots (used only if a reading is too wide for
+ * the pitch) sit in two aligned rows under the compartments.
+ */
+const pads: LineSheetArt["pads"] = {};
+const callouts: NonNullable<LineSheetArt["callouts"]> = {};
+for (let i = 0; i < 6; i++) {
+  const o = i * COMP.pitch;
+  const n = `0${i + 1}`;
+  pads[`PRS-CLR-${n}`] = [TAP.x + o, tapY(i)];
+  pads[`TMP-CLR-${11 + i}`] = [HOP.x + o, HOP.y];
+  callouts[`PRS-CLR-${n}`] = [TAP.x + o + 4, 336, "end"];
+  callouts[`TMP-CLR-${11 + i}`] = [HOP.x + o - 4, 323, "start"];
+}
+
+export const sheet: LineSheetArt = { id: "C-1", ready: true, width: W, height: H, Art, pads, callouts };

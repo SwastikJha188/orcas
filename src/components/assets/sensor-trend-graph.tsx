@@ -319,7 +319,7 @@ export function TrendChart({
       tabIndex={focus ? 0 : undefined}
       onKeyDown={focus ? onKey : undefined}
       onBlur={focus ? () => setHover(null) : undefined}
-      aria-label={focus ? `${ariaLabel}. Arrow keys step through samples.` : undefined}
+      aria-label={focus ? `${ariaLabel}. Use the arrow keys to step through the readings.` : undefined}
     >
       {geo && (
         <svg width={width} height={height} role="img" aria-label={ariaLabel} className="dxt-svg">

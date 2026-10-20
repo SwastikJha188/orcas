@@ -115,8 +115,8 @@ const ANCHOR_W = 150;
 const BOX_PAD = 28;
 /** Canvas margin around the art and boxes of a sheet with placed callouts. */
 const MARGIN = 10;
-/** Pad radius on the sheet (MachinePad r 5 + ring at scale 1.25), where a leader starts. */
-const PAD_R = 7.5;
+/** Pad radius on the sheet (MachinePad r 5 + ring at scale 0.9), where a leader starts. */
+const PAD_R = 5.5;
 
 /** Word-wrap a description (11.5-unit Inter) onto lines no wider than `width`. */
 function wrap(text: string, width: number): string[] {
@@ -213,7 +213,7 @@ function leaderPoints(c: Callout): string {
 
 /** Pad colouring: live status (limits and rules) or data validity (Good → normal, Suspect → advisory, Invalid → critical). */
 export type SheetColorBy = "limits" | "validity";
-const VALIDITY_STATUS: Record<string, string> = { Good: "Normal", Suspect: "Advisory", Invalid: "Critical" };
+const VALIDITY_STATUS: Record<string, string> = { Good: "Normal", Suspect: "Alert", Invalid: "Critical" };
 
 export function PyroSheet({
   machineId,
@@ -402,8 +402,8 @@ export function PyroSheet({
 
   const pad = (c: Callout, i: ReturnType<typeof info>) => (
     <g transform={`translate(${+c.px.toFixed(1)} ${+c.py.toFixed(1)})`}>
-      {i.manual && <circle r={11.5 * 1.25} fill="none" stroke={MX.label} strokeWidth={1.1} strokeDasharray="3 2.5" />}
-      <MachinePad x={0} y={0} status={i.status} selected={i.sel} scale={1.25} priority={i.optional ? "optional" : "required"} />
+      {i.manual && <circle r={11.5 * 0.9} fill="none" stroke={MX.label} strokeWidth={1.1} strokeDasharray="3 2.5" />}
+      <MachinePad x={0} y={0} status={i.status} selected={i.sel} scale={0.9} priority={i.optional ? "optional" : "required"} />
     </g>
   );
 
@@ -438,7 +438,7 @@ export function PyroSheet({
             .sort((a, b) => a.tag.localeCompare(b.tag))
             .map((c) => {
               const i = info(c);
-              const line = { display: "flex", alignItems: "baseline", gap: 10, padding: "8px 10px", borderBottom: "1px solid var(--separator)", borderRadius: "var(--corner-row, 10px)" } as const;
+              const line = { display: "flex", alignItems: "baseline", gap: 10, padding: "8px 10px", borderBottom: "1px solid var(--separator)", borderRadius: "var(--corner-row)" } as const;
               return (
                 <div key={c.tag} {...i.interaction} style={{ ...line, opacity: i.own ? 1 : 0.5, cursor: i.own ? "pointer" : undefined, background: i.sel ? "var(--row-hover-bg)" : undefined }}>
                   <span aria-hidden="true" style={{ alignSelf: "stretch", width: 3, borderRadius: 2, flex: "none", background: i.manual ? "none" : i.optional ? MX.fine : MX.label, border: i.manual ? `1px dashed ${MX.label}` : undefined }} />

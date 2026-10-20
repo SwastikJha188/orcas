@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useIndustrialData,
   type PlantRecord,
@@ -9,6 +9,8 @@ import {
   type CreatePlantInput,
   type CreateUserInput,
   type CreateMachineInput,
+  type UpdatePlantInput,
+  type UpdateUserInput,
 } from "@/providers/industrial-data-context";
 import {
   Dialog,
@@ -16,95 +18,90 @@ import {
   FieldGrid,
   FieldSection,
   FormNote,
-  KpiCard,
-  KpiCards,
   NumberInput,
   PillButton,
-  PillNav,
   Select,
   Table,
   TextArea,
   TextInput,
   type Column,
-  type PillNavItem,
 } from "@/components/ui";
-import { WhyDisclosure } from "@/components/assets/analysis/an-ui";
-import { conditionTone, worstCondition, type Condition } from "@/components/ui/status";
 import { IconChevron, StatusTag, type Tone } from "@/components/assets/assets-shell-ui";
-import type { HierarchyNode, RackChassisRecord } from "@/components/assets/assets-data";
-import type { EdgeBroker, EdgeGateway, EdgeRegistry } from "@/types/edge";
-import type { LinkState, MqttSnapshot } from "@/types/mqtt";
-import { formatLocalTime, zoneLabel } from "@/lib/time";
+import type { HierarchyNode } from "@/components/assets/assets-data";
+import { DIAGRAM_SHEETS } from "@/components/assets/diagrams";
+import type { AssetMachine } from "@/types/assets";
+import type { OnboardingStatus } from "@/types/onboarding";
+import { invalidateApi, useApi } from "@/lib/api-cache";
+import { formatLocalTime } from "@/lib/time";
+import { OnboardingPanel } from "./onboarding/onboarding-panel";
+import { PhotoPicker, attachDraftPhotos, discardDraftPhotos, type DrawingState } from "./photo-picker";
 import "@/components/assets/assets-shell.css";
 import "@/components/ui/page.css";
+import "@/components/home/plant-home.css";
+import "@/components/home/operator/operator-console.css";
 import "./configure.css";
 
 /* ==========================================================================
-   Configure — Enterprise 3NF Data Foundation, Multi-Plant Registry, and
-   Multi-User Role-Based Access Control (RBAC).
+   Configure — the one place things are set up (modelled on the ULTRON
+   console's Configure studio): a step list on the left, the chosen section on
+   the right. Monitoring stays on the monitoring pages; data collectors and
+   racks stay on Devices; simulation stays on Simulation. Only what builds or
+   sets up the plant lives here:
+
+     Plants & machines    what each plant contains, its local time
+     Add from documents   onboarding: read a plant's PDFs and photos
+     Users & access       who signs in, which plants they open
+     Monitoring settings  how readings are saved and checked (system_settings)
    ========================================================================== */
 
-type ConfigureSectionTab = "foundation" | "plants" | "users";
+const CONFIGURE_SECTIONS = ["plants", "onboarding", "users", "monitoring"] as const;
+type ConfigureSection = (typeof CONFIGURE_SECTIONS)[number];
 
-/* ---------------------------------------------------------------- data */
+const SECTION_META: Record<ConfigureSection, { label: string; blurb: string; Icon: () => React.JSX.Element }> = {
+  plants: {
+    label: "Plants & machines",
+    blurb: "Add plants and the machines in them, and set each plant's local time.",
+    Icon: () => <IconPlant />,
+  },
+  onboarding: {
+    label: "Add from documents",
+    blurb: "Read a new plant's documents and machine photos, check what was read, then create the plant.",
+    Icon: () => <IconDoc />,
+  },
+  users: {
+    label: "Users & access",
+    blurb: "Who can sign in, which plants they can open and what they may change.",
+    Icon: () => <IconUsers />,
+  },
+  monitoring: {
+    label: "Monitoring settings",
+    blurb: "How often readings are saved and checked, and how long they are kept. A change applies within a minute.",
+    Icon: () => <IconSliders />,
+  },
 
-async function getData<T>(url: string): Promise<T | null> {
-  try {
-    const r = await fetch(url, { cache: "no-store" });
-    const j = await r.json().catch(() => null);
-    return r.ok && j && "data" in j ? (j.data as T) : null;
-  } catch {
-    return null;
-  }
+};
+
+const SECTION_KEY = "ultron.configure.section";
+
+interface SettingRow {
+  key: string;
+  value: number;
+  unit: string | null;
+  description: string;
+  updatedAt: string;
 }
 
-interface Probe {
-  ms: number | null;
-  at: number;
-}
+/** Settings are grouped by the first part of their key; groups not listed here show after these. */
+const SETTING_GROUPS: Array<{ prefix: string; label: string }> = [
+  { prefix: "readings", label: "Readings" },
+  { prefix: "evaluation", label: "Checking readings" },
+  { prefix: "reference", label: "Normal ranges learned from readings" },
+  { prefix: "health", label: "Machine health history" },
+  { prefix: "auth", label: "Sign-in" },
+];
 
-function useConfigureProbe() {
-  const [probe, setProbe] = useState<Probe | null>(null);
-  const [registry, setRegistry] = useState<EdgeRegistry | null>(null);
-  const [registryFailed, setRegistryFailed] = useState(false);
-  const [mqtt, setMqtt] = useState<MqttSnapshot | null>(null);
-
-  const run = useCallback(async () => {
-    const t0 = performance.now();
-    const health = await getData<unknown>("/api/health");
-    const ms = health ? performance.now() - t0 : null;
-    setProbe({ ms, at: Date.now() });
-    const [reg, snap] = await Promise.all([getData<EdgeRegistry>("/api/edge"), getData<MqttSnapshot>("/api/mqtt/status")]);
-    setRegistry(reg);
-    setRegistryFailed(reg === null);
-    setMqtt(snap);
-  }, []);
-
-  useEffect(() => {
-    const id = setTimeout(run, 0);
-    return () => clearTimeout(id);
-  }, [run]);
-
-  return { probe, registry, registryFailed, mqtt, run };
-}
-
-function latencyTone(ms: number | null | undefined): Tone {
-  if (ms === null || ms === undefined) return "bad";
-  if (ms < 400) return "good";
-  if (ms < 1500) return "warn";
-  return "bad";
-}
-
-function linkTone(state: LinkState | undefined): Tone {
-  if (state === "ONLINE") return "good";
-  if (state === "STALE") return "warn";
-  if (state === "OFFLINE") return "bad";
-  return "idle";
-}
-
-function countMachines(node: HierarchyNode): number {
-  return (node.type === "machine" ? 1 : 0) + (node.children ?? []).reduce((n, c) => n + countMachines(c), 0);
-}
+/** Unit shown after a setting's value ("count" is a plain number, so nothing). */
+const settingUnit = (u: string | null) => (u && u !== "count" ? u : "");
 
 /* ---------------------------------------------------------------- icons */
 
@@ -120,83 +117,57 @@ const svgProps = {
   "aria-hidden": true,
 };
 
-const IconDb = () => (
-  <svg {...svgProps}>
-    <ellipse cx="12" cy="5.5" rx="7" ry="2.5" />
-    <path d="M5 5.5v13c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-13M5 12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5" />
-  </svg>
-);
-const IconGateway = () => (
-  <svg {...svgProps}>
-    <rect x="3" y="13" width="18" height="7" rx="2" />
-    <path d="M7 16.5h.01M11 16.5h.01M12 13V8M8.5 6.5a5 5 0 0 1 7 0M6 4a8.5 8.5 0 0 1 12 0" />
-  </svg>
-);
-const IconRack = () => (
-  <svg {...svgProps}>
-    <rect x="4" y="3" width="16" height="18" rx="2" />
-    <path d="M4 9h16M4 15h16M8 6h.01M8 12h.01M8 18h.01" />
-  </svg>
-);
 const IconPlant = () => (
   <svg {...svgProps}>
-    <path d="M3 21V10l6 4V10l6 4V5h4v16zM3 21h18" />
+    <path d="M3 21V10l5 3V10l5 3V6l8 4v11H3zM7 17h2M12 17h2M17 17h1" />
+  </svg>
+);
+const IconMachine = () => (
+  <svg {...svgProps}>
+    <rect x="3" y="7" width="13" height="10" rx="2" />
+    <path d="M16 10h3l2 2v3h-5M6 20h7M8 17v3M11 17v3" />
   </svg>
 );
 const IconUsers = () => (
   <svg {...svgProps}>
-    <circle cx="9" cy="8" r="3.5" />
-    <path d="M3 19c0-3 2.7-5 6-5s6 2 6 5" />
+    <circle cx="9" cy="8" r="3.2" />
+    <path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" />
     <circle cx="17" cy="9" r="2.5" />
-    <path d="M15.5 14.5c2.5.4 4.5 2 4.5 4.5" />
+    <path d="M17 14c2.4 0 4 1.8 4 4.5" />
   </svg>
 );
 const IconShield = () => (
   <svg {...svgProps}>
-    <path d="M12 3l7 3v5c0 5-3.2 8.4-7 10-3.8-1.6-7-5-7-10V6l7-3z" />
-    <path d="M9.5 12l2 2 3.5-3.5" />
+    <path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z" />
   </svg>
 );
-const IconCheck = () => (
+const IconDoc = () => (
   <svg {...svgProps}>
-    <path d="M5 12.5l4.5 4.5L19 7.5" />
+    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+    <path d="M14 3v5h5M9 13h6M9 17h4" />
   </svg>
 );
-const IconWarn = () => (
+const IconSliders = () => (
   <svg {...svgProps}>
-    <path d="M12 4l9 16H3zM12 10v4M12 17h.01" />
+    <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />
+    <circle cx="16" cy="7" r="2" />
+    <circle cx="10" cy="17" r="2" />
   </svg>
 );
 
-/* ---------------------------------------------------------------- checks */
 
-interface Check {
-  id: string;
-  title: string;
-  detail: string;
-  tone: Tone;
-  result: string;
-  action?: { label: string; run: () => void };
+/** The viewer's own IANA time zone (the form's starting value for a new plant). */
+function browserTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
-
-const toneCondition = (t: Tone): Condition =>
-  t === "bad" ? "Critical" : t === "warn" ? "Advisory" : t === "idle" ? "No data" : "Normal";
-
-const RESET_TABLES =
-  "roles, users, user_plant_access, plants, hierarchy_nodes, equipment_models, machines, sensor_definitions, mapped_signals, diagnosis & trend records, rack chassis, and edge gateways";
 
 /* ---------------------------------------------------------------- view */
 
 export function ConfigureView() {
   const {
-    databaseStatus,
-    isDbLive,
-    reseedDatabase,
     refreshData,
-    isLoading,
     hasLoaded,
     loadError,
-    racks,
     // Each plant is a separate workspace: the registry shows the active account's plants only.
     machines,
     hierarchy,
@@ -204,9 +175,7 @@ export function ConfigureView() {
     users,
     roles,
     currentUser,
-    setActiveTab,
     navigateToMachine,
-    setSelectedPlantId,
     createPlant,
     updatePlant,
     deletePlant,
@@ -220,81 +189,131 @@ export function ConfigureView() {
     return allPlantRecords.filter((p) => visible.has(p.id));
   }, [allPlantRecords, hierarchy]);
 
-  const { probe, registry, registryFailed, mqtt, run: runProbe } = useConfigureProbe();
-  const [sectionTab, setSectionTab] = useState<ConfigureSectionTab>("foundation");
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [resetting, setResetting] = useState(false);
+  // What the signed-in account may change (the server checks the same rules).
+  const superAdmin = Boolean(currentUser?.role.allPlants);
+  const myPlantLevel = useMemo(
+    () => new Map((currentUser?.plantAccess ?? []).map((a) => [a.plantId, a.accessLevel])),
+    [currentUser],
+  );
+  const canAddUsers = Boolean(currentUser?.role.canManageUsers);
+  const canAddPlants = Boolean(currentUser?.role.canManagePlants);
+  // Monitoring settings and onboarding follow the server's administer rule (plant managers).
+  const canAdminister = superAdmin || canAddPlants;
+  const canEditPlant = (plantId: string) =>
+    superAdmin || myPlantLevel.get(plantId) === "admin" || (canAddPlants && myPlantLevel.has(plantId));
+  const canDeletePlant = (plantId: string) => superAdmin || (canAddPlants && myPlantLevel.get(plantId) === "admin");
+  const canEditUser = (u: UserRecord) =>
+    superAdmin ||
+    u.id === currentUser?.id ||
+    (canAddUsers && !u.role.allPlants && u.plantAccess.length > 0 && u.plantAccess.every((a) => myPlantLevel.has(a.plantId)));
+  // People of this account's plants; the super administrator sees everyone.
+  const scopedUsers = useMemo(() => {
+    if (superAdmin) return users;
+    const visible = new Set(plantRecords.map((p) => p.id));
+    return users.filter((u) => u.id === currentUser?.id || (!u.role.allPlants && u.plantAccess.some((a) => visible.has(a.plantId))));
+  }, [superAdmin, users, plantRecords, currentUser]);
+  const assignableRoles = useMemo(() => (superAdmin ? roles : roles.filter((r) => !r.allPlants)), [superAdmin, roles]);
+  const assignablePlants = useMemo(
+    () => (superAdmin ? plantRecords : plantRecords.filter((p) => myPlantLevel.has(p.id))),
+    [superAdmin, plantRecords, myPlantLevel],
+  );
+
+  /* ---------- section (remembered per viewer) */
+  const [section, setSectionState] = useState<ConfigureSection>("plants");
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SECTION_KEY);
+      if (saved && (CONFIGURE_SECTIONS as readonly string[]).includes(saved)) setSectionState(saved as ConfigureSection);
+    } catch {
+      /* storage unavailable */
+    }
+  }, []);
   const [result, setResult] = useState<{ tone: Tone; text: string } | null>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  // On a narrow screen the section pills scroll sideways: keep the chosen one in view.
+  useEffect(() => {
+    document.querySelector<HTMLElement>(".cfg-topbar .opc-pill-btn[data-active]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [section]);
+  const setSection = useCallback((s: ConfigureSection) => {
+    setSectionState(s);
+    setResult(null);
+    // A new section starts at its top (the bars above never scroll).
+    bodyRef.current?.scrollTo({ top: 0 });
+    try {
+      localStorage.setItem(SECTION_KEY, s);
+    } catch {
+      /* storage unavailable */
+    }
+  }, []);
+
+  const settings = useApi<SettingRow[]>("/api/settings");
+  const onboardings = useApi<Array<{ id: string; status: OnboardingStatus }>>(canAdminister ? "/api/onboarding" : null, {
+    // Reads finish in the background: the step list catches up on the 30 s display beat.
+    refreshMs: 30_000,
+  });
+
 
   // Dialog states for Plant, Machine, and User CRUD
   const [plantDialogOpen, setPlantDialogOpen] = useState(false);
   const [editingPlant, setEditingPlant] = useState<PlantRecord | null>(null);
   const [machineDialogOpen, setMachineDialogOpen] = useState(false);
+  // A machine is added inside its plant: the plant the machine dialog is for.
+  const [machinePlant, setMachinePlant] = useState<PlantRecord | null>(null);
+  const machinePlantAreas = useMemo(() => {
+    const out: Array<{ id: string; name: string }> = [];
+    const walk = (n: HierarchyNode, path: string) => {
+      for (const c of n.children ?? [])
+        if (c.type === "area") {
+          const name = path ? `${path} › ${c.name}` : c.name;
+          out.push({ id: c.id, name });
+          walk(c, name);
+        }
+    };
+    const root = hierarchy.find((h) => h.id === machinePlant?.id);
+    if (root) walk(root, "");
+    return out;
+  }, [hierarchy, machinePlant]);
+  const openAddMachine = useCallback((p: PlantRecord) => {
+    setMachinePlant(p);
+    setMachineDialogOpen(true);
+  }, []);
   const [userDialogOpen, setUserDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserRecord | null>(null);
 
-  const refreshAll = useCallback(async () => {
-    setResult(null);
-    await Promise.all([refreshData(), runProbe()]);
-  }, [refreshData, runProbe]);
 
-  const handleReset = async () => {
-    setResetting(true);
-    setResult({ tone: "info", text: "Resetting 3NF schema & seed data…" });
-    const ok = await reseedDatabase();
-    await runProbe();
-    setResetting(false);
-    setConfirmOpen(false);
-    setResult(
-      ok
-        ? { tone: "good", text: `3NF Data reset · ${formatLocalTime(Date.now())}` }
-        : { tone: "bad", text: "Reset unavailable. Retry." },
-    );
-  };
-
-  /* ---------- derived */
-  const tables = useMemo(
+  /* ---------- plants & machines */
+  const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
+  const plantId = selectedPlantId && plantRecords.some((p) => p.id === selectedPlantId) ? selectedPlantId : (plantRecords[0]?.id ?? null);
+  const selectedPlant = plantRecords.find((p) => p.id === plantId) ?? null;
+  const zoneById = useMemo(() => new Map(hierarchy.map((h) => [h.id, h.timeZone ?? null])), [hierarchy]);
+  const plantMachines = useMemo(
     () =>
-      Object.entries(databaseStatus?.counts ?? {})
-        .map(([name, rows]) => ({ name, rows: Number(rows) }))
-        .sort((a, b) => b.rows - a.rows || a.name.localeCompare(b.name)),
-    [databaseStatus],
+      machines
+        .filter((m) => m.plantId === plantId)
+        .sort((a, b) => a.id.localeCompare(b.id)),
+    [machines, plantId],
   );
-  const records = tables.reduce((n, t) => n + t.rows, 0);
-  const emptyTables = tables.filter((t) => t.rows === 0);
-  const maxRows = Math.max(1, ...tables.map((t) => t.rows));
-  const engine = databaseStatus?.version?.split(" ").slice(0, 2).join(" ");
+  // The selected plant's areas ("Line › Section" for nested ones) and each machine's nearest area, from the hierarchy.
+  const { plantAreas, areaOfMachine } = useMemo(() => {
+    const areas: Array<{ id: string; name: string }> = [];
+    const byMachine = new Map<string, string>();
+    const walk = (n: HierarchyNode, path: string, area: string | null) => {
+      for (const c of n.children ?? []) {
+        if (c.type === "area") {
+          const name = path ? `${path} › ${c.name}` : c.name;
+          areas.push({ id: c.id, name });
+          walk(c, name, c.id);
+        } else if (c.type === "machine" && c.machineId) {
+          if (area) byMachine.set(c.machineId, area);
+        } else walk(c, path, area);
+      }
+    };
+    const root = hierarchy.find((h) => h.id === plantId);
+    if (root) walk(root, "", null);
+    return { plantAreas: areas, areaOfMachine: byMachine };
+  }, [hierarchy, plantId]);
+  const plantsWithoutZone = plantRecords.filter((p) => !zoneById.get(p.id)).length;
 
-  const gateways = registry?.gateways ?? [];
-  const brokers = useMemo<EdgeBroker[]>(() => registry?.brokers ?? [], [registry]);
-  const brokerById = useMemo(() => new Map<string, EdgeBroker>(brokers.map((b) => [b.id, b])), [brokers]);
-  const siteName = useMemo(() => new Map((registry?.sites ?? []).map((s) => [s.id, s.name])), [registry]);
-  const gwLink = useMemo(() => {
-    const m = new Map<string, LinkState>();
-    for (const g of mqtt?.gateways ?? []) m.set(`${g.brokerId}|${g.gatewayId}`, g.state);
-    return m;
-  }, [mqtt]);
-  const rackLink = useMemo(() => {
-    const m = new Map<string, LinkState>();
-    for (const r of mqtt?.racks ?? []) m.set(r.rackId, r.state);
-    return m;
-  }, [mqtt]);
-  const enabledGateways = gateways.filter((g) => g.enabled);
-  const onlineGateways = gateways.filter((g) => g.brokerId && gwLink.get(`${g.brokerId}|${g.code}`) === "ONLINE");
-
-  const hierarchyPlants = useMemo(() => hierarchy.filter((n) => n.type === "plant"), [hierarchy]);
-  const machineIdsWithRack = new Set(racks.map((r) => r.machineId));
-  const machinesWithoutRack = machines.filter((m) => !machineIdsWithRack.has(m.id));
-
-  const openPlant = useCallback(
-    (id: string) => {
-      setSelectedPlantId(id);
-      setActiveTab("home");
-    },
-    [setSelectedPlantId, setActiveTab],
-  );
-
-  const [savingZone, setSavingZone] = useState<string | null>(null);
   const zoneOptions = useMemo(() => {
     let zones: string[] = [];
     try {
@@ -302,166 +321,170 @@ export function ConfigureView() {
     } catch {
       zones = [];
     }
-    if (zones.length === 0) {
-      zones = ["Africa/Lusaka", "Africa/Johannesburg", "UTC", "Europe/London", "Asia/Kolkata", "America/New_York"];
-    }
+    // Runtimes without the zone list still offer the viewer's own zone and UTC.
+    if (zones.length === 0) zones = [...new Set([browserTimeZone(), "UTC"])];
     return zones.map((z) => ({ value: z, label: z.replace(/_/g, " ") }));
   }, []);
 
-  const saveZone = useCallback(
-    async (id: string, timeZone: string) => {
-      setSavingZone(id);
+  /** One plant field saved from its cell; the error (if any) is shown on the cell and in the header. */
+  const savePlant = useCallback(
+    async (p: PlantRecord, patch: UpdatePlantInput, what: string) => {
       try {
-        await updatePlant(id, { timeZone });
-        setResult({ tone: "good", text: `Time zone saved · ${timeZone}` });
-      } catch {
-        setResult({ tone: "bad", text: "Time zone unavailable. Retry." });
-      } finally {
-        setSavingZone(null);
+        await updatePlant(p.id, patch);
+        setResult({ tone: "good", text: `${p.name}: ${what} saved` });
+      } catch (e) {
+        setResult({ tone: "bad", text: `${p.name}: ${what} not saved. ${(e as Error).message}` });
+        throw e;
       }
     },
     [updatePlant],
   );
+  /** One machine field saved from its cell (PATCH /api/machines/:id), then the plant data reloads. */
+  const saveMachine = useCallback(
+    async (m: AssetMachine, patch: { name?: string; areaId?: string; criticality?: AssetMachine["criticality"] }, what: string) => {
+      try {
+        const r = await fetch(`/api/machines/${encodeURIComponent(m.id)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        });
+        const j = (await r.json().catch(() => null)) as { error?: { message?: string } } | null;
+        if (!r.ok) throw new Error(j?.error?.message ?? `HTTP ${r.status}`);
+        await refreshData();
+        setResult({ tone: "good", text: `${m.name}: ${what} saved` });
+      } catch (e) {
+        setResult({ tone: "bad", text: `${m.name}: ${what} not saved. ${(e as Error).message}` });
+        throw e;
+      }
+    },
+    [refreshData],
+  );
+  /** One user field saved from its cell (PATCH /api/users/:id; the server re-checks who may change it). */
+  const saveUser = useCallback(
+    async (u: UserRecord, patch: UpdateUserInput, what: string) => {
+      try {
+        await updateUser(u.id, patch);
+        setResult({ tone: "good", text: `${u.fullName}: ${what} saved` });
+      } catch (e) {
+        setResult({ tone: "bad", text: `${u.fullName}: ${what} not saved. ${(e as Error).message}` });
+        throw e;
+      }
+    },
+    [updateUser],
+  );
+  const managerOptions = useMemo(
+    () => [{ value: "", label: "Nobody yet" }, ...users.map((u) => ({ value: u.id, label: u.fullName }))],
+    [users],
+  );
 
-  const checks: Check[] = [
-    {
-      id: "db",
-      title: "3NF PostgreSQL database connection",
-      detail: isDbLive
-        ? `${databaseStatus?.database ?? "database"} · ${engine ?? "PostgreSQL"} · Foreign keys & B-Tree indexes active`
-        : "Database unavailable. Retry.",
-      tone: isDbLive ? "good" : "bad",
-      result: isDbLive ? "Connected" : "Offline",
-    },
-    {
-      id: "tables",
-      title: "3NF normalized tables populated",
-      detail: !tables.length
-        ? "No table counts reported."
-        : emptyTables.length
-          ? `${emptyTables.length} of ${tables.length} tables hold no records`
-          : `${tables.length} of ${tables.length} tables populated (${records.toLocaleString()} rows)`,
-      tone: !tables.length ? "bad" : emptyTables.length ? "warn" : "good",
-      result: !tables.length ? "No counts" : emptyTables.length ? `${emptyTables.length} empty` : `${tables.length} of ${tables.length}`,
-    },
-    {
-      id: "plants",
-      title: "Multi-plant enterprise registry",
-      detail:
-        plantRecords.length === 0
-          ? "No plants registered"
-          : `${plantRecords.length} industrial plants · ${machines.length} machines across sites`,
-      tone: plantRecords.length === 0 ? "idle" : "good",
-      result: `${plantRecords.length} plants`,
-      action: { label: "Manage Plants", run: () => setSectionTab("plants") },
-    },
-    {
-      id: "users",
-      title: "Multi-user RBAC & site access control",
-      detail:
-        users.length === 0
-          ? "No users loaded"
-          : `${users.length} active operators across ${roles.length} RBAC roles · Active: ${currentUser?.fullName ?? "None"}`,
-      tone: users.length === 0 ? "idle" : "good",
-      result: `${users.length} users`,
-      action: { label: "Manage Users", run: () => setSectionTab("users") },
-    },
-    {
-      id: "racks",
-      title: "Every machine has an acquisition rack",
-      detail:
-        machines.length === 0
-          ? "No machines loaded"
-          : machinesWithoutRack.length
-            ? `No rack: ${machinesWithoutRack.map((m) => m.id).join(", ")}`
-            : `${machines.length} of ${machines.length} machines wired to 19" Eurocard DAQ chassis`,
-      tone: machines.length === 0 ? "idle" : machinesWithoutRack.length ? "warn" : "good",
-      result: machines.length === 0 ? "No data" : `${machines.length - machinesWithoutRack.length} of ${machines.length}`,
-    },
-    {
-      id: "gateways",
-      title: "Edge gateways configured",
-      detail: registryFailed
-        ? "Edge registry unavailable"
-        : `${enabledGateways.length} enabled of ${gateways.length} · ${mqtt ? `${onlineGateways.length} online` : "MQTT status unavailable"}`,
-      tone: registryFailed || enabledGateways.length === 0 ? "bad" : mqtt && onlineGateways.length < enabledGateways.length ? "warn" : "good",
-      result: registryFailed ? "Unavailable" : `${onlineGateways.length} of ${enabledGateways.length} online`,
-      action: { label: "Open in Devices", run: () => setActiveTab("devices") },
-    },
-  ];
-  const scored = checks.filter((c) => c.tone !== "idle");
-  const passed = scored.filter((c) => c.tone === "good").length;
-  const overallCondition: Condition = !hasLoaded ? "No data" : worstCondition(scored.map((c) => toneCondition(c.tone)));
-  const overallTone: Tone = conditionTone(overallCondition);
-  const overallLabel = !hasLoaded
-    ? "Checking…"
-    : overallCondition === "Normal"
-      ? "Normal"
-      : `${scored.length - passed} of ${scored.length} checks ${overallCondition.toLowerCase()}`;
+  /* ---------- users */
+  const usersWithoutPassword = scopedUsers.filter((u) => !u.hasPassword).length;
 
-  const sectionTabs: PillNavItem<ConfigureSectionTab>[] = [
-    { id: "foundation", label: "Data Foundation & 3NF Schema" },
-    { id: "plants", label: `Plants & Sites (${plantRecords.length})` },
-    { id: "users", label: `Users & RBAC (${users.length})` },
-  ];
+  /* ---------- monitoring settings */
+  const settingGroups = useMemo(() => {
+    const rows = settings.data ?? [];
+    const known = SETTING_GROUPS.map((g) => ({ ...g, rows: rows.filter((r) => r.key.split(".")[0] === g.prefix) }));
+    const prefixes = new Set(SETTING_GROUPS.map((g) => g.prefix));
+    const other = rows.filter((r) => !prefixes.has(r.key.split(".")[0]));
+    return [...known, ...(other.length ? [{ prefix: "other", label: "Other", rows: other }] : [])].filter((g) => g.rows.length > 0);
+  }, [settings.data]);
+  const [settingDraft, setSettingDraft] = useState<Record<string, string>>({});
+  const [savingSetting, setSavingSetting] = useState<string | null>(null);
+  // The outcome of the last save, shown on its own row (the page header may be scrolled away).
+  const [settingNote, setSettingNote] = useState<{ key: string; tone: Tone; text: string } | null>(null);
+  // A saved value stays in the field until the refreshed list carries it (no flash of the old value).
+  useEffect(() => {
+    const rows = settings.data;
+    if (!rows) return;
+    setSettingDraft((d) => {
+      const next = { ...d };
+      for (const r of rows) if (next[r.key] !== undefined && Number(next[r.key]) === r.value) delete next[r.key];
+      return next;
+    });
+  }, [settings.data]);
+  const saveSetting = useCallback(
+    async (row: SettingRow) => {
+      const raw = settingDraft[row.key];
+      if (raw === undefined) return;
+      const value = Number(raw);
+      const clear = () =>
+        setSettingDraft((d) => {
+          const next = { ...d };
+          delete next[row.key];
+          return next;
+        });
+      if (raw.trim() === "" || !Number.isFinite(value) || value < 0) {
+        setSettingNote({ key: row.key, tone: "bad", text: "Not saved: use 0 or more" });
+        clear();
+        return;
+      }
+      if (value === row.value) {
+        clear();
+        return;
+      }
+      setSavingSetting(row.key);
+      try {
+        const r = await fetch("/api/settings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: row.key, value }),
+        });
+        if (!r.ok) throw new Error(String(r.status));
+        invalidateApi("/api/settings");
+        setSettingNote({ key: row.key, tone: "good", text: `Saved · was ${row.value}${settingUnit(row.unit) ? ` ${settingUnit(row.unit)}` : ""}` });
+      } catch {
+        setSettingNote({ key: row.key, tone: "bad", text: "Not saved. Retry." });
+        clear();
+      } finally {
+        setSavingSetting(null);
+      }
+    },
+    [settingDraft],
+  );
+
+
+  /* ---------- step list: what each section holds, and what is not finished */
+  const openOnboardings = (onboardings.data ?? []).filter((o) => o.status !== "committed").length;
+  const doneOnboardings = (onboardings.data ?? []).length - openOnboardings;
+  const waitingOnboardings = (onboardings.data ?? []).filter((o) => o.status === "waiting").length;
+  const steps: Record<ConfigureSection, { detail: string; count?: string; badge?: { tone: Tone; text: string } }> = {
+    plants: {
+      count: hasLoaded ? String(plantRecords.length) : undefined,
+      detail: !hasLoaded
+        ? "Loading…"
+        : `${plantRecords.length} plant${plantRecords.length === 1 ? "" : "s"} · ${machines.length} machine${machines.length === 1 ? "" : "s"}`,
+      badge: plantsWithoutZone ? { tone: "warn", text: `${plantsWithoutZone} without time zone` } : undefined,
+    },
+    onboarding: {
+      count: openOnboardings ? String(openOnboardings) : undefined,
+      detail: !canAdminister
+        ? "Plant managers only"
+        : !onboardings.data
+          ? "Loading…"
+          : onboardings.data.length === 0
+            ? "None started"
+            : `${openOnboardings} in progress · ${doneOnboardings} done`,
+      badge: waitingOnboardings ? { tone: "idle", text: `${waitingOnboardings} waiting to be read` } : undefined,
+    },
+    users: {
+      count: hasLoaded ? String(scopedUsers.length) : undefined,
+      detail: !hasLoaded ? "Loading…" : `${scopedUsers.length} user${scopedUsers.length === 1 ? "" : "s"} · ${assignableRoles.length} roles`,
+      badge: usersWithoutPassword ? { tone: "warn", text: `${usersWithoutPassword} cannot sign in` } : undefined,
+    },
+    monitoring: {
+      count: settings.data ? String(settings.data.length) : undefined,
+      detail: !settings.data
+        ? settings.error
+          ? "Not available"
+          : "Loading…"
+        : `${settings.data.length} settings`,
+    },
+  };
 
   /* ---------- columns */
-  const gatewayColumns: Column<EdgeGateway>[] = [
-    {
-      key: "gw",
-      header: "Gateway",
-      render: (g) => (
-        <span className="pg-cfg-lead">
-          <span className="ast-badge" data-tone={linkTone(g.brokerId ? gwLink.get(`${g.brokerId}|${g.code}`) : undefined)}>
-            <IconGateway />
-          </span>
-          <span className="ast-cell-stack">
-            <span className="ast-cell-title">{g.code}</span>
-            <span className="ast-cell-sub">{g.siteNodeId ? siteName.get(g.siteNodeId) ?? g.siteNodeId : "No site assigned"}</span>
-          </span>
-        </span>
-      ),
-    },
-    {
-      key: "broker",
-      header: "Broker",
-      render: (g) => <span className="ast-cell-text">{g.brokerId ? brokerById.get(g.brokerId)?.name ?? "Unknown" : "None"}</span>,
-    },
-    {
-      key: "link",
-      header: "Link",
-      width: "130px",
-      render: (g) => {
-        if (!g.enabled) return <StatusTag tone="idle" label="Disabled" />;
-        const s = g.brokerId ? gwLink.get(`${g.brokerId}|${g.code}`) : undefined;
-        return <StatusTag tone={linkTone(s)} label={s ? s.charAt(0) + s.slice(1).toLowerCase() : mqtt ? "Not seen" : "Unknown"} />;
-      },
-    },
-    { key: "go", header: "", width: "28px", render: () => <span className="pg-chev"><IconChevron /></span> },
-  ];
-
-  const rackColumns: Column<RackChassisRecord>[] = [
-    {
-      key: "rack",
-      header: "Rack",
-      render: (r) => (
-        <span className="pg-cfg-lead">
-          <span className="ast-badge" data-tone={linkTone(rackLink.get(r.primaryRack.rackId))}>
-            <IconRack />
-          </span>
-          <span className="ast-cell-stack">
-            <span className="ast-cell-title">{r.primaryRack.rackId}</span>
-            <span className="ast-cell-sub">{r.machineId}</span>
-          </span>
-        </span>
-      ),
-    },
-    { key: "ip", header: "Address", render: (r) => <span className="ast-num">{r.primaryRack.ipAddress || "—"}</span> },
-    { key: "slots", header: "Slots", width: "70px", render: (r) => <span className="ast-num">{r.slots.length}</span> },
-    { key: "go", header: "", width: "28px", render: () => <span className="pg-chev"><IconChevron /></span> },
-  ];
-
-  const plantHierarchyColumns: Column<HierarchyNode>[] = [
+  // Plants and machines are edited in their cells: a change saves when the field is left (Enter) or picked;
+  // Escape puts the saved value back. "Details" opens the full form (description, capacity, photos, delete).
+  const plantColumns: Column<PlantRecord>[] = [
     {
       key: "plant",
       header: "Plant",
@@ -470,216 +493,271 @@ export function ConfigureView() {
           <span className="ast-badge">
             <IconPlant />
           </span>
-          <span className="ast-cell-stack">
-            <span className="ast-cell-title">{p.name}</span>
-            <span className="ast-cell-sub ast-num">
-              {countMachines(p)} machine{countMachines(p) === 1 ? "" : "s"}
-            </span>
-          </span>
+          <InlineText label={`Name of ${p.code}`} value={p.name} required disabled={!canEditPlant(p.id)} onSave={(v) => savePlant(p, { name: v }, "name")} strong />
         </span>
       ),
     },
     {
-      key: "tz",
-      header: "Time zone",
-      render: (p) =>
-        p.timeZone ? (
-          <span className="ast-cell-text ast-num">{zoneLabel(p.timeZone)}</span>
-        ) : (
-          <span className="pg-cfg-tz" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-            <Select
-              id={`tz-${p.id}`}
-              value=""
-              disabled={savingZone === p.id}
-              onChange={(v) => v && void saveZone(p.id, v)}
-              options={[{ value: "", label: savingZone === p.id ? "Saving…" : "Not set · choose zone" }, ...zoneOptions]}
-            />
-          </span>
-        ),
-    },
-    { key: "go", header: "", width: "28px", render: () => <span className="pg-chev"><IconChevron /></span> },
-  ];
-
-  const plantRecordColumns: Column<PlantRecord>[] = [
-    {
-      key: "plant",
-      header: "Plant / Site",
+      key: "code",
+      header: "Code",
+      width: "150px",
       render: (p) => (
-        <span className="pg-cfg-lead">
-          <span className="ast-badge" data-tone={p.status === "Operational" ? "good" : "warn"}>
-            <IconPlant />
-          </span>
-          <span className="ast-cell-stack">
-            <span className="ast-cell-title">{p.name}</span>
-            <span className="ast-cell-sub ast-num">
-              {p.code} · {p.region} · {p.location}
-            </span>
-          </span>
-        </span>
+        <InlineText label={`${p.name} code`} value={p.code} required upper disabled={!canEditPlant(p.id)} onSave={(v) => savePlant(p, { code: v }, "code")} />
+      ),
+    },
+    {
+      key: "location",
+      header: "Location",
+      width: "230px",
+      render: (p) => (
+        <InlineText
+          label={`${p.name} location`}
+          value={p.location ?? ""}
+          placeholder="Town, site"
+          disabled={!canEditPlant(p.id)}
+          onSave={(v) => savePlant(p, { location: v }, "location")}
+        />
       ),
     },
     {
       key: "manager",
-      header: "Plant Director",
+      header: "Plant manager",
+      width: "170px",
       render: (p) => (
-        <span className="ast-cell-stack">
-          <span className="ast-cell-title">{p.managerName || "Unassigned"}</span>
-          <span className="ast-cell-sub">{p.designCapacity || p.timeZone}</span>
-        </span>
-      ),
-    },
-    {
-      key: "machines",
-      header: "Assets",
-      width: "120px",
-      render: (p) => (
-        <span className="ast-cell-stack">
-          <span className="ast-cell-title ast-num">{p.machineCount} machines</span>
-          <span className="ast-cell-sub ast-num">{p.areaCount} areas · {p.userCount} users</span>
-        </span>
-      ),
-    },
-    {
-      key: "health",
-      header: "Health",
-      width: "100px",
-      render: (p) => (
-        <span className="ast-num" style={{ fontWeight: 500 }}>
-          {p.averageHealth}%
-        </span>
-      ),
-    },
-    {
-      key: "status",
-      header: "Status",
-      width: "120px",
-      render: (p) => (
-        <StatusTag
-          tone={p.status === "Operational" ? "good" : p.status === "Advisory" ? "warn" : "idle"}
-          label={p.status}
+        <InlineSelect
+          label={`${p.name} manager`}
+          value={p.managerUserId ?? ""}
+          options={managerOptions}
+          disabled={!canEditPlant(p.id)}
+          onSave={(v) => savePlant(p, { managerUserId: v || null }, "manager")}
         />
       ),
     },
     {
-      key: "actions",
-      header: "",
-      width: "160px",
-      render: (p) => (
-        <span
-          style={{ display: "inline-flex", gap: 8, justifyContent: "flex-end", width: "100%" }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <PillButton
-            variant="secondary"
-            onClick={() => {
-              setEditingPlant(p);
-              setPlantDialogOpen(true);
-            }}
-          >
-            Edit
-          </PillButton>
-          <PillButton variant="secondary" onClick={() => openPlant(p.id)}>
-            Open
-          </PillButton>
-        </span>
-      ),
-    },
-  ];
-
-  const userColumns: Column<UserRecord>[] = [
-    {
-      key: "user",
-      header: "Operator / Engineer",
-      render: (u) => {
+      key: "tz",
+      header: "Local time",
+      width: "170px",
+      render: (p) => {
+        const zone = zoneById.get(p.id) ?? "";
         return (
-          <span className="pg-cfg-lead">
-            <span
-              className="ast-badge"
-              data-tone={u.status === "Active" ? "good" : u.status === "On Call" ? "warn" : "idle"}
-              style={{ fontSize: 11, fontWeight: 600 }}
-            >
-              {u.avatarInitials}
-            </span>
-            <span className="ast-cell-stack">
-              <span className="ast-cell-title">
-                {u.fullName} {u.id === currentUser?.id && <span className="ast-caption">(Active Session)</span>}
-              </span>
-              <span className="ast-cell-sub">
-                {u.title} · {u.email}
-              </span>
-            </span>
-          </span>
+          <InlineSelect
+            label={`${p.name} time zone`}
+            value={zone}
+            options={[...(zone ? [] : [{ value: "", label: "Not set · choose" }]), ...zoneOptions]}
+            disabled={!canEditPlant(p.id)}
+            warn={!zone}
+            onSave={(v) => (v ? savePlant(p, { timeZone: v }, "time zone") : Promise.resolve())}
+          />
         );
       },
     },
     {
-      key: "role",
-      header: "RBAC Role",
-      render: (u) => (
-        <span className="ast-cell-stack">
-          <span className="ast-cell-title">{u.role.name}</span>
-          <span className="ast-cell-sub">{u.department} · {u.shift}</span>
+      key: "count",
+      header: "Areas · machines · users",
+      width: "150px",
+      render: (p) => (
+        <span className="ast-num">
+          {p.areaCount} · {p.machineCount} · {p.userCount}
         </span>
       ),
     },
     {
-      key: "plants",
-      header: "Plant Access (M:N)",
+      key: "actions",
+      header: "",
+      width: "96px",
+      render: (p) =>
+        canEditPlant(p.id) ? (
+          <span className="cfg-row-actions" onClick={(e) => e.stopPropagation()}>
+            <PillButton
+              variant="secondary"
+              onClick={() => {
+                setEditingPlant(p);
+                setPlantDialogOpen(true);
+              }}
+            >
+              Details
+            </PillButton>
+          </span>
+        ) : null,
+    },
+  ];
+
+  const machineColumns: Column<AssetMachine>[] = [
+    {
+      key: "machine",
+      header: "Machine",
+      render: (m) => (
+        <span className="pg-cfg-lead">
+          <span className="ast-badge">
+            <IconMachine />
+          </span>
+          <span className="ast-cell-stack cfg-cell-grow">
+            <InlineText
+              label={`${m.id} name`}
+              value={m.name}
+              required
+              strong
+              disabled={!plantId || !canEditPlant(plantId)}
+              onSave={(v) => saveMachine(m, { name: v }, "name")}
+            />
+            <span className="ast-cell-sub cfg-inline-sub">{m.id}</span>
+          </span>
+        </span>
+      ),
+    },
+    {
+      key: "area",
+      header: "Area",
+      width: "260px",
+      render: (m) => {
+        const area = areaOfMachine.get(m.id) ?? "";
+        return (
+          <InlineSelect
+            label={`${m.name} area`}
+            value={area}
+            options={[...(area ? [] : [{ value: "", label: "No area · choose" }]), ...plantAreas.map((a) => ({ value: a.id, label: a.name }))]}
+            disabled={!plantId || !canEditPlant(plantId) || plantAreas.length === 0}
+            onSave={(v) => (v ? saveMachine(m, { areaId: v }, "area") : Promise.resolve())}
+          />
+        );
+      },
+    },
+    {
+      key: "criticality",
+      header: "How critical",
+      width: "170px",
+      render: (m) => (
+        <InlineSelect
+          label={`${m.name} criticality`}
+          value={m.criticality}
+          options={CRITICALITY_OPTIONS}
+          disabled={!plantId || !canEditPlant(plantId)}
+          onSave={(v) => saveMachine(m, { criticality: v as AssetMachine["criticality"] }, "criticality")}
+        />
+      ),
+    },
+    { key: "sensors", header: "Sensors", width: "80px", render: (m) => <span className="ast-num">{m.signalsCount}</span> },
+    {
+      key: "go",
+      header: "",
+      width: "44px",
+      render: (m) => (
+        <button type="button" className="ast-icon-btn cfg-open" onClick={() => navigateToMachine(m.id)} title={`Open ${m.name}`} aria-label={`Open ${m.name}`}>
+          <IconChevron />
+        </button>
+      ),
+    },
+  ];
+
+  // Who may change what follows the server (assertCanChangeUser): anyone their own name, email and title;
+  // user managers also role and status, never above their own reach. Plant access and passwords stay in Details.
+  const canChangeAccessOf = (u: UserRecord) => canAddUsers && canEditUser(u);
+  const roleOptionsFor = (u: UserRecord) =>
+    assignableRoles.some((r) => r.id === u.roleId)
+      ? assignableRoles.map((r) => ({ value: r.id, label: r.name }))
+      : [{ value: u.roleId, label: u.role.name }, ...assignableRoles.map((r) => ({ value: r.id, label: r.name }))];
+  const userColumns: Column<UserRecord>[] = [
+    {
+      key: "user",
+      header: "Person",
       render: (u) => (
-        <span className="ast-cell-stack">
-          <span className="ast-cell-title">
-            {u.plantAccess.length > 0
+        <span className="pg-cfg-lead">
+          <span
+            className="ast-badge"
+            data-tone={u.status === "Active" ? "good" : u.status === "On Call" ? "warn" : undefined}
+            style={{ fontSize: 11, fontWeight: 600 }}
+            title={u.id === currentUser?.id ? "You" : undefined}
+          >
+            {u.avatarInitials}
+          </span>
+          <span className="ast-cell-stack cfg-cell-grow">
+            <InlineText label={`Name of ${u.email}`} value={u.fullName} required strong disabled={!canEditUser(u)} onSave={(v) => saveUser(u, { fullName: v }, "name")} />
+            <InlineText label={`Email of ${u.fullName}`} value={u.email} required sub disabled={!canEditUser(u)} onSave={(v) => saveUser(u, { email: v.toLowerCase() }, "email")} />
+          </span>
+        </span>
+      ),
+    },
+    {
+      key: "title",
+      header: "Job title",
+      width: "220px",
+      render: (u) => (
+        <InlineText
+          label={`Job title of ${u.fullName}`}
+          value={u.title ?? ""}
+          placeholder="Job title"
+          disabled={!canEditUser(u)}
+          onSave={(v) => saveUser(u, { title: v || null }, "job title")}
+        />
+      ),
+    },
+    {
+      key: "role",
+      header: "Role",
+      width: "230px",
+      render: (u) => (
+        <InlineSelect
+          label={`Role of ${u.fullName}`}
+          value={u.roleId}
+          options={roleOptionsFor(u)}
+          disabled={!canChangeAccessOf(u)}
+          onSave={(v) => saveUser(u, { roleId: v }, "role")}
+        />
+      ),
+    },
+    {
+      key: "plants",
+      header: "Plants they can open",
+      render: (u) => (
+        <span className="ast-cell-text cfg-cell-clip" title={u.plantAccess.map((a) => `${a.plantCode} (${a.accessLevel})`).join(" · ")}>
+          {u.role.allPlants
+            ? "Every plant"
+            : u.plantAccess.length > 0
               ? u.plantAccess.map((a) => `${a.plantCode} (${a.accessLevel})`).join(" · ")
-              : "All plants (no access rows)"}
-          </span>
-          <span className="ast-cell-sub">
-            {[
-              u.role.canManageUsers && "Users",
-              u.role.canManagePlants && "Plants",
-              u.role.canManageMachines && "Machines",
-              u.role.canManageEdge && "Edge",
-              u.role.canManageWorkOrders && "Work Orders",
-              u.role.canAckAlerts && "Ack Alerts",
-            ]
-              .filter(Boolean)
-              .join(" · ") || "Read-only observer"}
-          </span>
+              : "None yet"}
         </span>
       ),
     },
     {
       key: "status",
       header: "Status",
-      width: "110px",
+      width: "120px",
       render: (u) => (
-        <StatusTag
-          tone={u.status === "Active" ? "good" : u.status === "On Call" ? "warn" : "idle"}
-          label={u.status}
+        <InlineSelect
+          label={`Status of ${u.fullName}`}
+          value={u.status}
+          options={USER_STATUS_OPTIONS}
+          disabled={!canChangeAccessOf(u) || u.id === currentUser?.id}
+          onSave={(v) => saveUser(u, { status: v as UserRecord["status"] }, "status")}
         />
       ),
     },
     {
+      key: "signin",
+      header: "Sign-in",
+      width: "140px",
+      render: (u) =>
+        u.hasPassword ? <span className="ast-cell-text">Can sign in</span> : <StatusTag tone="warn" label="No password yet" />,
+    },
+    {
       key: "actions",
       header: "",
-      width: "190px",
-      render: (u) => {
-        return (
-          <span
-            style={{ display: "inline-flex", gap: 8, justifyContent: "flex-end", width: "100%" }}
-            onClick={(e) => e.stopPropagation()}
-          >
+      width: "96px",
+      render: (u) =>
+        canEditUser(u) ? (
+          <span className="cfg-row-actions">
             <PillButton
               variant="secondary"
+              title="Plants they can open, password, department, shift, phone"
               onClick={() => {
                 setEditingUser(u);
                 setUserDialogOpen(true);
               }}
             >
-              Edit
+              Details
             </PillButton>
           </span>
-        );
-      },
+        ) : null,
     },
   ];
 
@@ -689,7 +767,7 @@ export function ConfigureView() {
       header: "Role",
       render: (r) => (
         <span className="pg-cfg-lead">
-          <span className="ast-badge" data-tone={r.canManageUsers || r.canManagePlants ? "good" : "info"}>
+          <span className="ast-badge">
             <IconShield />
           </span>
           <span className="ast-cell-stack">
@@ -701,439 +779,312 @@ export function ConfigureView() {
     },
     {
       key: "perms",
-      header: "Permissions Matrix",
-      width: "320px",
-      render: (r) => (
-        <span className="ast-cell-text ast-num">
-          {[
-            r.canManageUsers ? "Users ✓" : null,
-            r.canManagePlants ? "Plants ✓" : null,
-            r.canManageMachines ? "Machines ✓" : null,
-            r.canManageEdge ? "Edge ✓" : null,
-            r.canManageWorkOrders ? "Work Orders ✓" : null,
-            r.canAckAlerts ? "Alerts ✓" : null,
-          ]
-            .filter(Boolean)
-            .join(" · ") || "Read-Only Observer"}
-        </span>
-      ),
+      header: "Can change",
+      render: (r) => {
+        const perms = [
+          r.allPlants ? "Every plant" : null,
+          r.canManageUsers ? "Users" : null,
+          r.canManagePlants ? "Plants" : null,
+          r.canManageMachines ? "Machines" : null,
+          r.canManageEdge ? "Data collectors" : null,
+          r.canManageWorkOrders ? "Work orders" : null,
+          r.canAckAlerts ? "Mark alerts seen" : null,
+        ].filter((p): p is string => Boolean(p));
+        return <span className="ast-cell-text">{perms.length ? perms.join(" · ") : "Can only view"}</span>;
+      },
     },
   ];
 
-  /* ---------- render */
-  const latencyMs = probe?.ms ?? null;
+  /* ---------- header actions per section */
+  const headerActions: React.ReactNode =
+    section === "plants" ? (
+      <>
+        {selectedPlant && canEditPlant(selectedPlant.id) && (
+          <PillButton variant="secondary" onClick={() => openAddMachine(selectedPlant)}>
+            + Add machine
+          </PillButton>
+        )}
+        {canAddPlants && (
+          <PillButton
+            variant="primary"
+            onClick={() => {
+              setEditingPlant(null);
+              setPlantDialogOpen(true);
+            }}
+          >
+            + Add plant
+          </PillButton>
+        )}
+      </>
+    ) : section === "users" ? (
+      canAddUsers && (
+        <PillButton
+          variant="primary"
+          onClick={() => {
+            setEditingUser(null);
+            setUserDialogOpen(true);
+          }}
+        >
+          + Add user
+        </PillButton>
+      )
+    ) : null;
+
+  /* ---------- second bar: what is inside the chosen section */
+  const jumpTo = (elementId: string) => document.getElementById(elementId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const subItems: Array<{ id: string; label: string; title?: string; count?: string; tone?: Tone; active?: boolean; run: () => void }> =
+    section === "plants"
+      ? plantRecords.map((p) => ({
+          id: p.id,
+          label: p.shortName || p.name,
+          title: p.name,
+          count: String(p.machineCount),
+          tone: zoneById.get(p.id) ? undefined : "warn",
+          active: p.id === plantId,
+          run: () => setSelectedPlantId(p.id),
+        }))
+      : section === "users"
+        ? [
+            { id: "users", label: "Users", count: String(scopedUsers.length), tone: usersWithoutPassword ? "warn" : undefined, run: () => jumpTo("cfg-users") },
+            { id: "roles", label: "Roles", count: String(assignableRoles.length), run: () => jumpTo("cfg-roles") },
+          ]
+        : section === "monitoring"
+          ? settingGroups.map((g) => ({ id: g.prefix, label: g.label, count: String(g.rows.length), run: () => jumpTo(`cfg-set-${g.prefix}`) }))
+          : [];
+
+  const meta = SECTION_META[section];
 
   return (
-    <div className="pg-root ast-root pg-cfg-root" aria-label="Configure">
-      <header className="ast-head pg-head">
-        <div className="ast-head-main">
-          <ol className="ast-crumbs" aria-label="Location">
-            <li>Configure</li>
-            <li>Enterprise 3NF & Access Control</li>
-          </ol>
-          <div className="ast-title-row">
-            <h1 className="ast-title">Enterprise Configuration</h1>
-            <StatusTag tone={overallTone} label={overallLabel} />
+    <div className="cfg-shell" aria-label="Configure">
+      {/* Section bar (same bar as the Operator view): stays put on every section while the
+          section below scrolls. A dot marks a section that needs attention; the count is
+          what it holds. The chosen section's actions sit on the right. */}
+      <header className="opc-topbar cfg-topbar" aria-label="Configure sections">
+        <div className="opc-stage-tabs">
+          <div className="opc-pill-group" role="tablist" aria-label="Configure sections">
+            {CONFIGURE_SECTIONS.map((id) => {
+              const m = SECTION_META[id];
+              const st = steps[id];
+              const active = section === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  className="opc-pill-btn"
+                  data-active={active || undefined}
+                  title={[m.label, st.detail, st.badge?.text].filter(Boolean).join(" · ")}
+                  onClick={() => setSection(id)}
+                >
+                  {st.badge && st.badge.tone !== "idle" && <span className="ph-unit-dot" data-tone={st.badge.tone} aria-hidden="true" />}
+                  <span>{m.label}</span>
+                  {st.count && <span className="opc-app-count">{st.count}</span>}
+                </button>
+              );
+            })}
           </div>
-          <p className="pg-cfg-context ast-num">
-            {probe ? `Checked ${formatLocalTime(probe.at)}` : "Checking…"}
-            {currentUser ? ` · Active operator: ${currentUser.fullName} (${currentUser.role.name})` : ""}
-          </p>
         </div>
-        <div className="pg-actions">
+      </header>
+      <div className="opc-subbar cfg-subbar" role="region" aria-label={`${meta.label}: contents and actions`}>
+        <div className="opc-stage-tabs">
+          {subItems.length > 0 && (
+            <div className="opc-pill-group opc-subassembly-pills" role={section === "plants" ? "tablist" : "group"} aria-label={`${meta.label} contents`}>
+              {subItems.map((it) => (
+                <button
+                  key={it.id}
+                  type="button"
+                  className="opc-pill-btn"
+                  {...(section === "plants" ? { role: "tab", "aria-selected": Boolean(it.active) } : {})}
+                  data-active={it.active || undefined}
+                  title={it.title ?? it.label}
+                  onClick={it.run}
+                >
+                  {it.tone && <span className="ph-unit-dot" data-tone={it.tone} aria-hidden="true" />}
+                  <span>{it.label}</span>
+                  {it.count && <span className="opc-app-count">{it.count}</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="opc-stage-toggles">
           {result && (
-            <span className="pg-note" data-tone={result.tone} role="status">
+            <span className="pg-note cfg-bar-note" data-tone={result.tone} role="status" title={result.text}>
               {result.text}
             </span>
           )}
-          <PillButton variant="secondary" onClick={refreshAll} disabled={isLoading || resetting}>
-            {isLoading ? "Checking…" : "Refresh"}
-          </PillButton>
+          {headerActions}
         </div>
-      </header>
+      </div>
 
-      {/* Horizontal Pill Navigation for Configure Sections */}
-      <PillNav
-        items={sectionTabs}
-        activeId={sectionTab}
-        onChange={setSectionTab}
-        ariaLabel="Configuration sections"
-      />
-
-      {loadError && (
-        <div className="ast-card pg-note" data-tone="bad" role="alert">
-          Configuration data unavailable. Retry.
-        </div>
-      )}
-
-      {/* ---------- KPI strip */}
-      <KpiCards label="Key figures">
-        <KpiCard
-          top
-          label="3NF Database"
-          aside={
-            <span className="ast-icon-tile" data-tone={isDbLive ? "good" : "bad"}>
-              <IconDb />
-            </span>
-          }
-          value={!hasLoaded ? "Checking…" : isDbLive ? "Connected" : "Offline"}
-          tone={isDbLive ? "good" : "bad"}
-          footClassName="ast-kpi-foot pg-cfg-kpi-sub ast-num"
-          foot={tables.length ? `${records.toLocaleString()} rows · ${tables.length} normalized tables` : "No counts"}
-        />
-        <KpiCard
-          label="Industrial Plants"
-          aside={
-            <span className="ast-icon-tile" data-tone="good">
-              <IconPlant />
-            </span>
-          }
-          value={plantRecords.length}
-          unit={`sites · ${machines.length} machines`}
-          tone="good"
-          footClassName="ast-kpi-foot pg-cfg-kpi-sub ast-num"
-          foot={plantRecords.map((p) => p.code).join(" · ") || "Multi-plant hierarchy"}
-        />
-        <KpiCard
-          label="Operators & RBAC"
-          aside={
-            <span className="ast-icon-tile" data-tone="good">
-              <IconUsers />
-            </span>
-          }
-          value={users.length}
-          unit={`users · ${roles.length} roles`}
-          tone="good"
-          footClassName="ast-kpi-foot pg-cfg-kpi-sub ast-num"
-          foot={currentUser ? `Session: ${currentUser.fullName}` : "Role-based plant scoping"}
-        />
-        <KpiCard
-          label="Acquisition Racks & Edge"
-          aside={
-            <span className="ast-icon-tile">
-              <IconRack />
-            </span>
-          }
-          value={racks.length}
-          unit={`/ ${machines.length} machines`}
-          tone={machines.length && machinesWithoutRack.length ? "warn" : undefined}
-          footClassName="ast-kpi-foot pg-cfg-kpi-sub ast-num"
-          foot={`${enabledGateways.length} edge gateways · ${brokers.length} brokers`}
-        />
-      </KpiCards>
-
-      {/* ====================================================================
-          TAB 1: DATA FOUNDATION & 3NF SCHEMA
-         ==================================================================== */}
-      {sectionTab === "foundation" && (
-        <>
-          <section className="ast-card pg-table-card" aria-label="Configuration checks">
-            <div className="ast-card-head">
-              <h2 className="ast-card-title">
-                Configuration checks
-                <span className="ast-caption ast-num">
-                  {passed} / {scored.length} normal
-                </span>
-              </h2>
-            </div>
-            <ul className="pg-cfg-checks">
-              {checks.map((c) => (
-                <li key={c.id} className="pg-cfg-check">
-                  <span className="ast-badge" data-tone={c.tone}>
-                    {c.tone === "good" ? <IconCheck /> : <IconWarn />}
-                  </span>
-                  <span className="pg-cfg-check-text">
-                    <span className="pg-cfg-check-title">{c.title}</span>
-                    <span className="pg-cfg-check-detail">{c.detail}</span>
-                  </span>
-                  <StatusTag tone={conditionTone(toneCondition(c.tone))} label={c.result} />
-                  {c.action && (
-                    <PillButton variant="secondary" onClick={c.action.run}>
-                      {c.action.label}
-                    </PillButton>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <section id="cfg-plant-settings" className="ast-card pg-table-card" aria-label="Plant settings">
-            <div className="ast-card-head">
-              <h2 className="ast-card-title">
-                Plant time zones
-                <span className="ast-caption">Timestamps for a plant&apos;s equipment use its local time zone</span>
-              </h2>
-              <PillButton variant="secondary" onClick={() => setSectionTab("plants")}>
-                Manage Plants & Assets
-              </PillButton>
-            </div>
-            {hierarchyPlants.length ? (
-              <Table
-                className="ast-table"
-                columns={plantHierarchyColumns}
-                data={hierarchyPlants}
-                keyExtractor={(p) => p.id}
-                onRowClick={(p) => openPlant(p.id)}
-              />
-            ) : (
-              <div className="ast-empty">{hasLoaded ? "No plants in the hierarchy." : "Loading plants…"}</div>
-            )}
-          </section>
-
-          <div className="pg-cfg-grid">
-            <section className="ast-card pg-table-card" aria-label="Edge gateways">
-              <div className="ast-card-head">
-                <h2 className="ast-card-title">
-                  Edge gateways
-                  <span className="ast-caption ast-num">
-                    {enabledGateways.length} enabled · {brokers.length} broker{brokers.length === 1 ? "" : "s"}
-                  </span>
-                </h2>
-                <PillButton variant="secondary" onClick={() => setActiveTab("devices")}>
-                  Open in Devices
-                </PillButton>
+      <div ref={bodyRef} className="pg-root ast-root cfg-root">
+        <div className="cfg-main">
+          <header className="ast-head pg-head">
+            <div className="ast-head-main">
+              <div className="ast-title-row">
+                <h1 className="ast-title">{meta.label}</h1>
               </div>
-              {gateways.length ? (
-                <Table
-                  className="ast-table"
-                  columns={gatewayColumns}
-                  data={gateways}
-                  keyExtractor={(g) => g.id}
-                  onRowClick={() => setActiveTab("devices")}
-                />
-              ) : (
-                <div className="ast-empty">
-                  {registryFailed ? "Edge registry unavailable. Retry." : registry ? "No gateways configured." : "Loading gateways…"}
+              <p className="pg-cfg-context">
+                {meta.blurb}
+                {section === "monitoring" && !canAdminister ? " Only plant managers can change them." : ""}
+                {steps[section].badge ? ` ${steps[section].badge!.text.replace(/^./, (c) => c.toUpperCase())}.` : ""}
+              </p>
+            </div>
+          </header>
+
+          {loadError && (
+            <div className="ast-card pg-note" data-tone="bad" role="alert">
+              The plant data could not be loaded. Try again.
+            </div>
+          )}
+
+          {section === "plants" && (
+            <>
+              <section className="ast-card pg-table-card" aria-label="Plants">
+                <div className="ast-card-head">
+                  <h2 className="ast-card-title">
+                    Plants
+                    <span className="ast-caption ast-num">{plantRecords.length}</span>
+                  </h2>
                 </div>
-              )}
-            </section>
-
-            <section className="ast-card pg-table-card" aria-label="Acquisition racks">
-              <div className="ast-card-head">
-                <h2 className="ast-card-title">
-                  Acquisition racks
-                  <span className="ast-caption ast-num">
-                    {racks.length} of {machines.length} machines
-                  </span>
-                </h2>
-              </div>
-              {racks.length ? (
-                <Table
-                  className="ast-table"
-                  columns={rackColumns}
-                  data={racks}
-                  keyExtractor={(r) => r.primaryRack.rackId}
-                  onRowClick={(r) => navigateToMachine(r.machineId, "rack")}
-                />
-              ) : (
-                <div className="ast-empty">{hasLoaded ? "No acquisition racks configured." : "Loading racks…"}</div>
-              )}
-            </section>
-          </div>
-
-          <section className="ast-card" aria-label="Database">
-            <div className="ast-card-head">
-              <h2 className="ast-card-title">
-                3NF PostgreSQL Schema & Table Telemetry
-                {tables.length > 0 && (
-                  <span className="ast-caption ast-num">
-                    {records.toLocaleString()} records · {tables.length} normalized tables
-                  </span>
+                {plantRecords.length ? (
+                  <Table
+                    className="ast-table cfg-edit-table cfg-plants-table"
+                    columns={plantColumns}
+                    data={plantRecords}
+                    keyExtractor={(p) => p.id}
+                    selectedId={plantId ?? undefined}
+                    onRowClick={(p) => setSelectedPlantId(p.id)}
+                  />
+                ) : (
+                  <div className="ast-empty">{hasLoaded ? "No plants yet. Add one, or bring one in from its documents." : "Loading plants…"}</div>
                 )}
-              </h2>
-            </div>
-            <WhyDisclosure summary="Records per 3NF table and health check">
-              <dl className="pg-cfg-db-facts ast-num">
-                <div>
-                  <dt>Database</dt>
-                  <dd>{[databaseStatus?.database, engine].filter(Boolean).join(" · ") || "Not reported"}</dd>
-                </div>
-                <div>
-                  <dt>Normalization</dt>
-                  <dd>Strict 3NF · Foreign Keys (CASCADE / SET NULL) · B-Tree Composite Indexes</dd>
-                </div>
-                <div>
-                  <dt>Health-check round-trip</dt>
-                  <dd data-tone={probe ? latencyTone(latencyMs) : undefined}>
-                    {probe ? (latencyMs === null ? "No reply" : `${Math.round(latencyMs).toLocaleString()} ms`) : "—"}
-                  </dd>
-                </div>
-              </dl>
-              {tables.length ? (
-                <>
-                  <ul className="pg-cfg-bars">
-                    {tables.map((t) => (
-                      <li key={t.name} className="pg-cfg-bar" data-tone={t.rows === 0 ? "warn" : undefined}>
-                        <span className="pg-cfg-bar-name ast-num" title={t.name}>
-                          {t.name}
-                        </span>
-                        <span className="pg-cfg-bar-track" aria-hidden="true">
-                          <span
-                            className="pg-cfg-bar-fill"
-                            style={{ width: `${t.rows === 0 ? 0 : Math.max(1, (t.rows / maxRows) * 100)}%` }}
-                          />
-                        </span>
-                        <span className="pg-cfg-bar-value ast-num">
-                          {t.rows === 0 ? "empty" : t.rows.toLocaleString()}
-                          {t.rows > 0 && <span className="ast-unit">rows</span>}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="pg-cfg-scale">
-                    Linear scale, longest bar = {maxRows.toLocaleString()} rows. `sensor_definitions` stores canonical engineering sensor specs once per tag while `mapped_signals` links each machine channel by foreign key.
-                  </p>
-                </>
-              ) : (
-                <div className="ast-empty">{isDbLive ? "No table counts reported." : "Database offline."}</div>
+              </section>
+
+              {selectedPlant && (
+                <section className="ast-card pg-table-card" aria-label={`Machines in ${selectedPlant.name}`}>
+                  <div className="ast-card-head">
+                    <h2 className="ast-card-title">
+                      Machines in {selectedPlant.name}
+                      <span className="ast-caption ast-num">{plantMachines.length}</span>
+                    </h2>
+                  </div>
+                  {plantMachines.length ? (
+                    <Table className="ast-table cfg-edit-table cfg-machines-table" columns={machineColumns} data={plantMachines} keyExtractor={(m) => m.id} />
+                  ) : (
+                    <div className="ast-empty">No machines in this plant yet.</div>
+                  )}
+                </section>
               )}
-            </WhyDisclosure>
-          </section>
+            </>
+          )}
 
-          <section className="ast-card pg-cfg-reset" aria-label="Reset demo data">
-            <div className="pg-cfg-check-text">
-              <span className="pg-cfg-check-title">Reset 3NF demo data</span>
-              <span className="pg-cfg-check-detail">
-                Clears every table and rebuilds the 3 plants, 6 users, 5 roles, 13 machines, and edge registry from the canonical seed set.
-              </span>
-            </div>
-            <PillButton variant="danger" onClick={() => setConfirmOpen(true)} disabled={isLoading || resetting || !isDbLive}>
-              Reset demo data…
-            </PillButton>
-          </section>
-        </>
-      )}
-
-      {/* ====================================================================
-          TAB 2: PLANTS & SITES MANAGEMENT
-         ==================================================================== */}
-      {sectionTab === "plants" && (
-        <>
-          <section className="ast-card pg-table-card" aria-label="Registered Industrial Plants">
-            <div className="ast-card-head">
-              <h2 className="ast-card-title">
-                Industrial Plants & Sites
-                <span className="ast-caption ast-num">
-                  {plantRecords.length} plants · {machines.length} total machines
-                </span>
-              </h2>
-              <div style={{ display: "flex", gap: 8 }}>
-                <PillButton
-                  variant="secondary"
-                  onClick={() => setMachineDialogOpen(true)}
-                >
-                  + Commission Machine
-                </PillButton>
-                <PillButton
-                  variant="primary"
-                  onClick={() => {
-                    setEditingPlant(null);
-                    setPlantDialogOpen(true);
-                  }}
-                >
-                  + Add Plant
-                </PillButton>
-              </div>
-            </div>
-            {plantRecords.length ? (
-              <Table
-                className="ast-table"
-                columns={plantRecordColumns}
-                data={plantRecords}
-                keyExtractor={(p) => p.id}
-                onRowClick={(p) => openPlant(p.id)}
-              />
-            ) : (
-              <div className="ast-empty">No plants registered.</div>
-            )}
-          </section>
-        </>
-      )}
-
-      {/* ====================================================================
-          TAB 3: USERS & RBAC ACCESS CONTROL
-         ==================================================================== */}
-      {sectionTab === "users" && (
-        <>
-          <section className="ast-card pg-table-card" aria-label="Users and Operators">
-            <div className="ast-card-head">
-              <h2 className="ast-card-title">
-                Users & Multi-Plant Access Control
-                <span className="ast-caption ast-num">
-                  {users.length} users · Click &ldquo;Switch to&rdquo; to preview plant scoping in the top bar
-                </span>
-              </h2>
-              <PillButton
-                variant="primary"
-                onClick={() => {
-                  setEditingUser(null);
-                  setUserDialogOpen(true);
-                }}
-              >
-                + Add User
-              </PillButton>
-            </div>
-            {users.length ? (
-              <Table
-                className="ast-table"
-                columns={userColumns}
-                data={users}
-                keyExtractor={(u) => u.id}
-                onRowClick={(u) => {
-                  setEditingUser(u);
-                  setUserDialogOpen(true);
+          {section === "onboarding" &&
+            (canAdminister ? (
+              <OnboardingPanel
+                onCommitted={() => {
+                  void refreshData();
+                  invalidateApi("/api/onboarding");
                 }}
               />
             ) : (
-              <div className="ast-empty">No users registered.</div>
-            )}
-          </section>
+              <div className="ast-card ast-empty">Only plant managers can bring in a new plant.</div>
+            ))}
 
-          <section className="ast-card pg-table-card" aria-label="RBAC Roles">
-            <div className="ast-card-head">
-              <h2 className="ast-card-title">
-                Normalized RBAC Roles (`roles` table)
-                <span className="ast-caption ast-num">{roles.length} roles</span>
-              </h2>
-            </div>
-            <Table className="ast-table" columns={roleColumns} data={roles} keyExtractor={(r) => r.id} />
-          </section>
-        </>
-      )}
+          {section === "users" && (
+            <>
+              <section id="cfg-users" className="ast-card pg-table-card" aria-label="Users">
+                <div className="ast-card-head">
+                  <h2 className="ast-card-title">
+                    Users
+                    <span className="ast-caption ast-num">{scopedUsers.length}</span>
+                  </h2>
+                </div>
+                {scopedUsers.length ? (
+                  <Table className="ast-table cfg-edit-table cfg-users-table" columns={userColumns} data={scopedUsers} keyExtractor={(u) => u.id} />
+                ) : (
+                  <div className="ast-empty">{hasLoaded ? "No users yet." : "Loading users…"}</div>
+                )}
+              </section>
 
-      {/* ---------- Dialog: Reset Demo Data */}
-      <Dialog
-        open={confirmOpen}
-        onClose={() => setConfirmOpen(false)}
-        title="Reset 3NF demo data"
-        subtitle={databaseStatus?.database ? `Database ${databaseStatus.database}` : undefined}
-        busy={resetting}
-        width={500}
-        footer={
-          <>
-            <PillButton variant="secondary" onClick={() => setConfirmOpen(false)} disabled={resetting}>
-              Cancel
-            </PillButton>
-            <PillButton variant="danger" onClick={handleReset} disabled={resetting}>
-              {resetting ? "Resetting…" : "Reset demo data"}
-            </PillButton>
-          </>
-        }
-      >
-        <p className="pg-cfg-dialog-text">
-          Every table is cleared and rebuilt from the 3NF seed set. Custom changes made in the console are replaced, including:
-        </p>
-        <p className="pg-cfg-dialog-text pg-cfg-check-detail">{RESET_TABLES}.</p>
-        <ul className="pg-cfg-dialog-list ast-num">
-          <li>
-            {records.toLocaleString()} rows across {tables.length} core 3NF tables now
-          </li>
-          <li>
-            {gateways.length} gateway{gateways.length === 1 ? "" : "s"}, {brokers.length} broker{brokers.length === 1 ? "" : "s"}
-          </li>
-          <li>The MQTT runtime reloads; live links drop briefly.</li>
-        </ul>
-      </Dialog>
+              <section id="cfg-roles" className="ast-card pg-table-card" aria-label="Roles">
+                <div className="ast-card-head">
+                  <h2 className="ast-card-title">
+                    Roles
+                    <span className="ast-caption">what each kind of user may change</span>
+                  </h2>
+                </div>
+                <Table className="ast-table" columns={roleColumns} data={assignableRoles} keyExtractor={(r) => r.id} />
+              </section>
+            </>
+          )}
+
+          {section === "monitoring" && (
+            <section className="ast-card pg-table-card" aria-label="Monitoring settings">
+              {!settings.data ? (
+                <div className="ast-empty">{settings.error ? "The settings could not be loaded. Try again." : "Loading settings…"}</div>
+              ) : (
+                <div className="cfg-settings">
+                  {settingGroups.map((g) => (
+                    <div key={g.prefix} id={`cfg-set-${g.prefix}`} className="cfg-set-group" role="group" aria-label={g.label}>
+                      <h2 className="cfg-set-group-title">{g.label}</h2>
+                      <ul className="cfg-set-list">
+                        {g.rows.map((r) => {
+                          const unit = settingUnit(r.unit);
+                          const inputId = `set-${r.key}`;
+                          return (
+                            <li key={r.key} className="cfg-set-row">
+                              <label className="cfg-set-label" htmlFor={inputId} title={r.key}>
+                                {r.description}
+                              </label>
+                              <span className="cfg-set-value">
+                                <input
+                                  id={inputId}
+                                  className="ui-input"
+                                  type="number"
+                                  inputMode="decimal"
+                                  min={0}
+                                  step="any"
+                                  value={settingDraft[r.key] ?? String(r.value)}
+                                  disabled={!canAdminister || savingSetting === r.key}
+                                  onChange={(e) => {
+                                    setSettingNote((n) => (n?.key === r.key ? null : n));
+                                    setSettingDraft((d) => ({ ...d, [r.key]: e.target.value }));
+                                  }}
+                                  onBlur={() => void saveSetting(r)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") e.currentTarget.blur();
+                                    if (e.key === "Escape")
+                                      setSettingDraft((d) => {
+                                        const next = { ...d };
+                                        delete next[r.key];
+                                        return next;
+                                      });
+                                  }}
+                                />
+                                <span className="cfg-set-unit">{unit}</span>
+                              </span>
+                              <span className="cfg-set-when ast-caption" data-tone={settingNote?.key === r.key ? settingNote.tone : undefined} role="status">
+                                {savingSetting === r.key
+                                  ? "Saving…"
+                                  : settingNote?.key === r.key
+                                    ? settingNote.text
+                                    : `Changed ${formatLocalTime(r.updatedAt, { date: true, seconds: false })}`}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+        </div>
+      </div>
 
       {/* ---------- Dialog: Add / Edit Plant */}
       <PlantDialog
@@ -1142,18 +1093,25 @@ export function ConfigureView() {
         users={users}
         zoneOptions={zoneOptions}
         onClose={() => setPlantDialogOpen(false)}
-        onSave={async (input, existingId) => {
+        onSave={async (input, existingId, draftKey) => {
           if (existingId) {
             await updatePlant(existingId, input);
             setResult({ tone: "good", text: `Updated plant ${input.name}` });
           } else {
             const created = await createPlant(input);
-            setResult({ tone: "good", text: `Created plant ${created.code} · ${created.name}` });
+            // Photos drawn in the form (previewed there) now belong to the new plant.
+            const attached = draftKey ? await attachDraftPhotos(draftKey, created.id, null).then((r) => (r as unknown[]).length, () => 0) : 0;
+            setSelectedPlantId(created.id);
+            setResult({ tone: "good", text: `Created plant ${created.code} · ${created.name}${attached ? ` with its drawing from ${attached} photo${attached === 1 ? "" : "s"}` : ""}` });
           }
           setPlantDialogOpen(false);
         }}
+        onAddMachine={(p) => {
+          setPlantDialogOpen(false);
+          openAddMachine(p);
+        }}
         onDelete={
-          editingPlant && editingPlant.id !== "plant-kln"
+          editingPlant && canDeletePlant(editingPlant.id)
             ? async (id) => {
                 await deletePlant(id);
                 setResult({ tone: "good", text: `Deleted plant ${id}` });
@@ -1166,11 +1124,13 @@ export function ConfigureView() {
       {/* ---------- Dialog: Commission New Machine */}
       <MachineDialog
         open={machineDialogOpen}
-        plants={plantRecords}
+        plant={machinePlant}
+        areas={machinePlantAreas}
         onClose={() => setMachineDialogOpen(false)}
-        onSave={async (input) => {
+        onSave={async (input, draftKey) => {
           const created = await createMachine(input);
-          setResult({ tone: "good", text: `Commissioned machine ${created.id} (${created.name})` });
+          const attached = draftKey ? await attachDraftPhotos(draftKey, input.plantId, created.id).then((r) => (r as unknown[]).length, () => 0) : 0;
+          setResult({ tone: "good", text: `Added machine ${created.name} (${created.id})${attached ? ` with its drawing from ${attached} photo${attached === 1 ? "" : "s"}` : ""}` });
           setMachineDialogOpen(false);
         }}
       />
@@ -1179,8 +1139,9 @@ export function ConfigureView() {
       <UserDialog
         open={userDialogOpen}
         user={editingUser}
-        roles={roles}
-        plants={plantRecords}
+        roles={assignableRoles}
+        plants={assignablePlants}
+        canChangeAccess={canAddUsers}
         onClose={() => setUserDialogOpen(false)}
         onSave={async (input, existingId) => {
           if (existingId) {
@@ -1193,7 +1154,7 @@ export function ConfigureView() {
           setUserDialogOpen(false);
         }}
         onDelete={
-          editingUser && editingUser.id !== "usr-swastik"
+          editingUser && canAddUsers && editingUser.id !== currentUser?.id && editingUser.id !== "usr-swastik"
             ? async (id) => {
                 await deleteUser(id);
                 setResult({ tone: "good", text: `Removed user ${id}` });
@@ -1203,6 +1164,156 @@ export function ConfigureView() {
         }
       />
     </div>
+  );
+}
+
+/* ==========================================================================
+   Inline cell editors (Plants & machines)
+   ========================================================================== */
+
+const USER_STATUS_OPTIONS: Array<{ value: UserRecord["status"]; label: string }> = [
+  { value: "Active", label: "Active" },
+  { value: "On Call", label: "On call" },
+  { value: "Away", label: "Away" },
+  { value: "Inactive", label: "Inactive" },
+];
+
+const CRITICALITY_OPTIONS: Array<{ value: AssetMachine["criticality"]; label: string }> = [
+  { value: "A (Critical)", label: "A · Critical" },
+  { value: "B (Essential)", label: "B · Essential" },
+  { value: "C (General)", label: "C · General" },
+];
+
+/**
+ * A text cell that reads as plain text until hovered or focused. Saves on blur
+ * or Enter when changed; Escape restores the saved value. A failed save keeps
+ * the typed text and marks the cell.
+ */
+function InlineText({
+  label,
+  value,
+  onSave,
+  disabled,
+  required,
+  upper,
+  strong,
+  sub,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onSave: (v: string) => Promise<void>;
+  disabled?: boolean;
+  required?: boolean;
+  upper?: boolean;
+  strong?: boolean;
+  /** The quieter second line of a cell (an email under a name). */
+  sub?: boolean;
+  placeholder?: string;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const [state, setState] = useState<"idle" | "saving" | "error">("idle");
+  const commit = async () => {
+    if (draft === null) return;
+    const v = upper ? draft.trim().toUpperCase() : draft.trim();
+    if (v === value.trim()) {
+      setDraft(null);
+      setState("idle");
+      return;
+    }
+    if (required && !v) {
+      setState("error");
+      return;
+    }
+    setState("saving");
+    try {
+      await onSave(v);
+      setDraft(null);
+      setState("idle");
+    } catch {
+      setState("error");
+    }
+  };
+  return (
+    <input
+      className="cfg-inline"
+      data-strong={strong || undefined}
+      data-sub={sub || undefined}
+      data-state={state === "idle" ? undefined : state}
+      aria-label={label}
+      aria-invalid={state === "error" || undefined}
+      title={draft ?? value}
+      size={1}
+      value={draft ?? value}
+      placeholder={state === "error" && required && !(draft ?? "").trim() ? "Required" : disabled ? undefined : placeholder}
+      disabled={disabled || state === "saving"}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        if (state === "error") setState("idle");
+      }}
+      onBlur={() => void commit()}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") {
+          setDraft(null);
+          setState("idle");
+          e.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
+/** A choice cell: plain text with a chevron on hover; saves as soon as a different option is picked. */
+function InlineSelect({
+  label,
+  value,
+  options,
+  onSave,
+  disabled,
+  warn,
+}: {
+  label: string;
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onSave: (v: string) => Promise<void>;
+  disabled?: boolean;
+  warn?: boolean;
+}) {
+  const [pending, setPending] = useState<string | null>(null);
+  const [state, setState] = useState<"idle" | "saving" | "error">("idle");
+  return (
+    <span className="cfg-inline-select" data-state={state === "idle" ? undefined : state} data-warn={warn || undefined}>
+      <select
+        className="cfg-inline"
+        aria-label={label}
+        value={pending ?? value}
+        disabled={disabled || state === "saving"}
+        onChange={async (e) => {
+          const v = e.target.value;
+          if (v === value) return;
+          setPending(v);
+          setState("saving");
+          try {
+            await onSave(v);
+            setState("idle");
+          } catch {
+            setState("error");
+          } finally {
+            setPending(null);
+          }
+        }}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <polyline points="6 9 12 15 18 9" />
+      </svg>
+    </span>
   );
 }
 
@@ -1218,28 +1329,35 @@ function PlantDialog({
   onClose,
   onSave,
   onDelete,
+  onAddMachine,
 }: {
   open: boolean;
   plant: PlantRecord | null;
   users: UserRecord[];
   zoneOptions: { value: string; label: string }[];
   onClose: () => void;
-  onSave: (input: CreatePlantInput, existingId?: string) => Promise<void>;
+  /** `draftKey`: a new plant's form, whose photos (drawn and previewed in it) are attached once the plant exists. */
+  onSave: (input: CreatePlantInput, existingId: string | undefined, draftKey: string | null) => Promise<void>;
   onDelete?: (id: string) => Promise<void>;
+  /** Editing a plant: add a machine to it. */
+  onAddMachine?: (plant: PlantRecord) => void;
 }) {
+  // A new plant's photos belong to this form until it is saved (or cancelled).
+  const [draftKey, setDraftKey] = useState<string | null>(null);
+  const [drawing, setDrawing] = useState<DrawingState>({ photos: 0, kind: null, drawing: false, ready: false });
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [shortName, setShortName] = useState("");
   const [region, setRegion] = useState("");
   const [location, setLocation] = useState("");
   const [coordinates, setCoordinates] = useState("");
-  const [timeZone, setTimeZone] = useState("Africa/Lusaka");
-  const [status, setStatus] = useState<"Operational" | "Advisory" | "Standby" | "Maintenance">("Operational");
+  const [timeZone, setTimeZone] = useState(browserTimeZone);
+  const [status, setStatus] = useState<"Operational" | "Alert" | "Standby" | "Maintenance">("Operational");
   const [managerUserId, setManagerUserId] = useState("");
   const [designCapacity, setDesignCapacity] = useState("");
-  const [commissionedYear, setCommissionedYear] = useState("2024");
+  const [commissionedYear, setCommissionedYear] = useState("");
   const [description, setDescription] = useState("");
-  const [initialAreas, setInitialAreas] = useState("Primary Grinding & Classification, Leaching & Utilities");
+  const [initialAreas, setInitialAreas] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -1250,31 +1368,44 @@ function PlantDialog({
       setCode(plant.code);
       setName(plant.name);
       setShortName(plant.shortName);
-      setRegion(plant.region);
-      setLocation(plant.location);
-      setCoordinates(plant.coordinates);
+      setRegion(plant.region ?? "");
+      setLocation(plant.location ?? "");
+      setCoordinates(plant.coordinates ?? "");
       setTimeZone(plant.timeZone);
       setStatus(plant.status);
       setManagerUserId(plant.managerUserId ?? "");
       setDesignCapacity(plant.designCapacity ?? "");
-      setCommissionedYear(plant.commissionedYear ? String(plant.commissionedYear) : "2022");
+      setCommissionedYear(plant.commissionedYear ? String(plant.commissionedYear) : "");
       setDescription(plant.description ?? "");
     } else {
-      setCode("MIN-LUM-04");
-      setName("Lumwana Super-Pit Comminution Plant");
-      setShortName("Lumwana Concentrator");
-      setRegion("North-Western Copperbelt");
-      setLocation("Solwezi West Mining District, Zambia");
-      setCoordinates("12°14'18\"S 25°51'42\"E");
-      setTimeZone("Africa/Lusaka");
+      setCode("");
+      setName("");
+      setShortName("");
+      setRegion("");
+      setLocation("");
+      setCoordinates("");
+      setTimeZone(browserTimeZone());
       setStatus("Operational");
-      setManagerUserId(users[0]?.id ?? "");
-      setDesignCapacity("60,000 t/d Copper Ore");
-      setCommissionedYear("2024");
-      setDescription("Primary gyratory crushing, twin overland conveyors, and dual ball mill grinding circuit.");
-      setInitialAreas("Primary Crushing Area, Milling & Classification Area");
+      setManagerUserId("");
+      setDesignCapacity("");
+      setCommissionedYear("");
+      setDescription("");
+      setInitialAreas("");
     }
   }, [open, plant, users]);
+
+  // A new form per opening (not when the user list refreshes): its own photos.
+  useEffect(() => {
+    if (!open) return;
+    setDraftKey(plant ? null : crypto.randomUUID());
+    setDrawing({ photos: 0, kind: null, drawing: false, ready: false });
+  }, [open, plant]);
+
+  /** Closing without saving: the new plant's photos go. */
+  const close = () => {
+    if (draftKey && drawing.photos) void discardDraftPhotos(draftKey);
+    onClose();
+  };
 
   const submit = async () => {
     setBusy(true);
@@ -1300,6 +1431,7 @@ function PlantDialog({
             .filter(Boolean),
         },
         plant?.id,
+        draftKey,
       );
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to save plant");
@@ -1311,11 +1443,12 @@ function PlantDialog({
   return (
     <Dialog
       open={open}
-      onClose={onClose}
-      title={plant ? `Edit Plant · ${plant.code}` : "Register New Industrial Plant"}
-      subtitle="Normalized 3NF plant record with automatic hierarchy tree & RBAC provisioning"
+      onClose={close}
+      title={plant ? `Edit plant · ${plant.name}` : "Add a plant"}
+      subtitle="The plant's place in the plant list and its user access are set up for you"
       busy={busy}
-      width={620}
+      width={drawing.photos ? 880 : 620}
+      footerStart={err ? <span className="cfg-foot-err" role="alert">{err}</span> : undefined}
       footer={
         <>
           {onDelete && plant && (
@@ -1336,7 +1469,12 @@ function PlantDialog({
               Delete Plant
             </PillButton>
           )}
-          <PillButton variant="secondary" onClick={onClose} disabled={busy}>
+          {plant && onAddMachine && (
+            <PillButton variant="secondary" onClick={() => onAddMachine(plant)} disabled={busy}>
+              + Add machine
+            </PillButton>
+          )}
+          <PillButton variant="secondary" onClick={close} disabled={busy}>
             Cancel
           </PillButton>
           <PillButton variant="primary" onClick={submit} disabled={busy}>
@@ -1347,28 +1485,28 @@ function PlantDialog({
     >
       {err && <FormNote tone="bad">{err}</FormNote>}
       <FieldGrid>
-        <Field label="Plant Code" required>
+        <Field label="Plant code" hint="Short unique code, for example MIN-LUM-04" required>
           {(id) => <TextInput id={id} value={code} onChange={setCode} mono placeholder="MIN-LUM-04" />}
         </Field>
-        <Field label="Short Name" required>
+        <Field label="Short name" required>
           {(id) => <TextInput id={id} value={shortName} onChange={setShortName} placeholder="Lumwana Concentrator" />}
         </Field>
-        <Field label="Full Plant Name" wide required>
+        <Field label="Full plant name" wide required>
           {(id) => <TextInput id={id} value={name} onChange={setName} placeholder="Lumwana Super-Pit Comminution Plant" />}
         </Field>
         <Field label="Region">
           {(id) => <TextInput id={id} value={region} onChange={setRegion} />}
         </Field>
-        <Field label="Location / Complex">
+        <Field label="Location">
           {(id) => <TextInput id={id} value={location} onChange={setLocation} />}
         </Field>
         <Field label="Coordinates">
           {(id) => <TextInput id={id} value={coordinates} onChange={setCoordinates} mono />}
         </Field>
-        <Field label="Time Zone">
+        <Field label="Time zone">
           {(id) => <Select id={id} value={timeZone} onChange={setTimeZone} options={zoneOptions} />}
         </Field>
-        <Field label="Plant Director">
+        <Field label="Plant manager">
           {(id) => (
             <Select
               id={id}
@@ -1381,7 +1519,7 @@ function PlantDialog({
             />
           )}
         </Field>
-        <Field label="Operational Status">
+        <Field label="Plant status">
           {(id) => (
             <Select
               id={id}
@@ -1389,26 +1527,38 @@ function PlantDialog({
               onChange={(v) => setStatus(v as typeof status)}
               options={[
                 { value: "Operational", label: "Operational" },
-                { value: "Advisory", label: "Advisory" },
+                { value: "Alert", label: "Alert" },
                 { value: "Standby", label: "Standby" },
                 { value: "Maintenance", label: "Maintenance" },
               ]}
             />
           )}
         </Field>
-        <Field label="Design Capacity">
+        <Field label="Design capacity">
           {(id) => <TextInput id={id} value={designCapacity} onChange={setDesignCapacity} />}
         </Field>
-        <Field label="Commissioned Year">
+        <Field label="Year it started running">
           {(id) => <NumberInput id={id} value={commissionedYear} onChange={setCommissionedYear} min={1950} max={2050} />}
         </Field>
         {!plant && (
-          <Field label="Initial Process Areas (comma-separated)" wide>
+          <Field label="Plant areas (separate with commas)" wide>
             {(id) => <TextInput id={id} value={initialAreas} onChange={setInitialAreas} />}
           </Field>
         )}
-        <Field label="Plant Description" wide>
+        <Field label="Description" wide>
           {(id) => <TextArea id={id} value={description} onChange={setDescription} rows={2} />}
+        </Field>
+        <Field label="Photos or site layout" wide>
+          {() => (
+            <PhotoPicker
+              label="Photos or drawings"
+              hint="A photo, aerial view or layout of the plant or a line is drawn as its line drawing and shown here before you add the plant."
+              draft={draftKey ? { draftKey, subject: "plant", name, code } : null}
+              plantId={plant?.id ?? null}
+              previewLabel={name || "Plant"}
+              onState={setDrawing}
+            />
+          )}
         </Field>
       </FieldGrid>
     </Dialog>
@@ -1417,46 +1567,73 @@ function PlantDialog({
 
 function MachineDialog({
   open,
-  plants,
+  plant,
+  areas,
   onClose,
   onSave,
 }: {
   open: boolean;
-  plants: PlantRecord[];
+  /** The plant the machine is added to (machines are added inside their plant). */
+  plant: PlantRecord | null;
+  /** The plant's areas (factories, sections, lines). */
+  areas: Array<{ id: string; name: string }>;
   onClose: () => void;
-  onSave: (input: CreateMachineInput) => Promise<void>;
+  /** `draftKey`: the form whose photos (drawn and previewed in it) are attached once the machine exists. */
+  onSave: (input: CreateMachineInput, draftKey: string | null) => Promise<void>;
 }) {
-  const [id, setId] = useState("PUMP-205");
-  const [name, setName] = useState("Thickener Underflow Slurry Pump #5");
-  const [plantId, setPlantId] = useState(plants[0]?.id ?? "plant-conc");
-  const [areaName, setAreaName] = useState("Concentrate Dewatering & Thickening");
-  const [type, setType] = useState("Centrifugal Slurry Pump");
-  const [manufacturer, setManufacturer] = useState("Weir Minerals");
-  const [model, setModel] = useState("Warman MCR 250");
-  const [serialNumber, setSerialNumber] = useState("WM-MCR250-2024-88");
-  const [powerRating, setPowerRating] = useState("630 kW");
-  const [operatingSpeed, setOperatingSpeed] = useState("590 RPM");
-  const [diagramType, setDiagramType] = useState<"pump" | "mill" | "crusher" | "blower" | "kiln">("pump");
+  const [id, setId] = useState("");
+  const [name, setName] = useState("");
+  const plantId = plant?.id ?? "";
+  const [areaId, setAreaId] = useState("");
+  const [areaName, setAreaName] = useState("");
+  // The machine's photos belong to this form until it is saved (or cancelled).
+  const [draftKey, setDraftKey] = useState<string | null>(null);
+  const [drawing, setDrawing] = useState<DrawingState>({ photos: 0, kind: null, drawing: false, ready: false });
+  const [type, setType] = useState("");
+  const [manufacturer, setManufacturer] = useState("");
+  const [model, setModel] = useState("");
+  const [serialNumber, setSerialNumber] = useState("");
+  const [powerRating, setPowerRating] = useState("");
+  const [operatingSpeed, setOperatingSpeed] = useState("");
+  const [diagramType, setDiagramType] = useState<string>("pump");
   const [criticality, setCriticality] = useState<"A (Critical)" | "B (Essential)" | "C (General)">("A (Critical)");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open && plants.length > 0 && !plantId) {
-      setPlantId(plants[0].id);
-    }
+    if (!open) return;
     setErr(null);
-  }, [open, plants, plantId]);
+    setDraftKey(crypto.randomUUID());
+    setDrawing({ photos: 0, kind: null, drawing: false, ready: false });
+    setDiagramType("pump");
+    setAreaId(areas[0]?.id ?? "");
+    setAreaName("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset per opening, not when the area list refreshes
+  }, [open, plant?.id]);
+  // The photo's drawing becomes the machine's drawing unless another style was chosen on purpose.
+  const lastKind = React.useRef<string | null>(null);
+  useEffect(() => {
+    if (drawing.kind && (diagramType === "pump" || diagramType === lastKind.current)) setDiagramType(drawing.kind);
+    lastKind.current = drawing.kind;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the photo's drawing kind changes
+  }, [drawing.kind]);
+  /** Closing without saving: the photos go. */
+  const close = () => {
+    if (draftKey && drawing.photos) void discardDraftPhotos(draftKey);
+    onClose();
+  };
 
   const submit = async () => {
     setBusy(true);
     setErr(null);
     try {
-      await onSave({
+      await onSave(
+        {
         id,
         name,
         plantId,
-        areaName,
+        areaId: areaId || undefined,
+        areaName: areaId ? undefined : areaName,
         type,
         manufacturer,
         model,
@@ -1465,7 +1642,9 @@ function MachineDialog({
         operatingSpeed,
         diagramType,
         criticality,
-      });
+        },
+        draftKey,
+      );
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to commission machine");
     } finally {
@@ -1476,78 +1655,98 @@ function MachineDialog({
   return (
     <Dialog
       open={open}
-      onClose={onClose}
-      title="Commission New Machine Asset"
-      subtitle="Creates normalized equipment_models, machines, sap_equipment_records, machine_systems, and initial sensors"
+      onClose={close}
+      title={plant ? `Add a machine to ${plant.shortName || plant.name}` : "Add a machine"}
+      subtitle="Creates the machine and its model record in this plant; a photo of it becomes its 2D drawing and 3D model"
       busy={busy}
-      width={620}
+      width={drawing.photos ? 880 : 620}
+      footerStart={err ? <span className="cfg-foot-err" role="alert">{err}</span> : undefined}
       footer={
         <>
-          <PillButton variant="secondary" onClick={onClose} disabled={busy}>
+          <PillButton variant="secondary" onClick={close} disabled={busy}>
             Cancel
           </PillButton>
           <PillButton variant="primary" onClick={submit} disabled={busy}>
-            {busy ? "Commissioning…" : "Commission Machine"}
+            {busy ? "Commissioning…" : drawing.drawing ? "Add without waiting for the drawing" : "Commission Machine"}
           </PillButton>
         </>
       }
     >
       {err && <FormNote tone="bad">{err}</FormNote>}
       <FieldGrid>
-        <Field label="Machine Tag ID" required>
+        <Field label="Machine code" hint="Short unique code, for example PUMP-205" required>
           {(fid) => <TextInput id={fid} value={id} onChange={setId} mono placeholder="PUMP-205" />}
         </Field>
-        <Field label="Plant" required>
+        <Field label="Plant">
+          {(fid) => <TextInput id={fid} value={plant ? `${plant.code} · ${plant.shortName || plant.name}` : ""} onChange={() => undefined} disabled />}
+        </Field>
+        <Field label="Machine name" wide required>
+          {(fid) => <TextInput id={fid} value={name} onChange={setName} />}
+        </Field>
+        <Field label="Area (factory, section, line)">
           {(fid) => (
             <Select
               id={fid}
-              value={plantId}
-              onChange={setPlantId}
-              options={plants.map((p) => ({ value: p.id, label: `${p.code} · ${p.shortName}` }))}
+              value={areaId}
+              onChange={setAreaId}
+              options={[...areas.map((a) => ({ value: a.id, label: a.name })), { value: "", label: "A new area…" }]}
             />
           )}
         </Field>
-        <Field label="Machine Name" wide required>
-          {(fid) => <TextInput id={fid} value={name} onChange={setName} />}
+        {!areaId && (
+          <Field label="New area name" required>
+            {(fid) => <TextInput id={fid} value={areaName} onChange={setAreaName} placeholder="Kiln line" />}
+          </Field>
+        )}
+        <Field label="Photo, drawing or P&ID" wide>
+          {() => (
+            <PhotoPicker
+              label="Photos or drawings"
+              hint="Claude Code draws the machine's 2D drawing and 3D model from it and shows them here before you add the machine."
+              draft={draftKey ? { draftKey, subject: "machine", name, type, code: id, plantId } : null}
+              previewLabel={name || "Machine"}
+              onState={setDrawing}
+            />
+          )}
         </Field>
-        <Field label="Process Area Name">
-          {(fid) => <TextInput id={fid} value={areaName} onChange={setAreaName} />}
-        </Field>
-        <Field label="Schematic Diagram Archetype">
+        <Field label="Drawing style">
           {(fid) => (
             <Select
               id={fid}
               value={diagramType}
-              onChange={(v) => setDiagramType(v as typeof diagramType)}
+              onChange={setDiagramType}
               options={[
+                ...(drawing.kind ? [{ value: drawing.kind, label: drawing.ready ? "Drawn from the photo" : "Drawn from the photo (being drawn)" }] : []),
                 { value: "pump", label: "Centrifugal / Slurry Pump" },
                 { value: "mill", label: "SAG / Ball Grinding Mill" },
                 { value: "crusher", label: "Gyratory Crusher / Conveyor" },
                 { value: "blower", label: "Centrifugal Blower / Agitator" },
                 { value: "kiln", label: "Rotary Kiln Pyro Line" },
+                // Drawings made with the machine-diagram-2d skill (src/components/assets/diagrams).
+                ...DIAGRAM_SHEETS.map((d) => ({ value: d.diagramType, label: d.label })),
               ]}
             />
           )}
         </Field>
-        <Field label="Equipment Type">
+        <Field label="Machine type">
           {(fid) => <TextInput id={fid} value={type} onChange={setType} />}
         </Field>
-        <Field label="OEM Manufacturer">
+        <Field label="Manufacturer">
           {(fid) => <TextInput id={fid} value={manufacturer} onChange={setManufacturer} />}
         </Field>
-        <Field label="OEM Model Number">
+        <Field label="Model number">
           {(fid) => <TextInput id={fid} value={model} onChange={setModel} />}
         </Field>
-        <Field label="Serial Number">
+        <Field label="Serial number">
           {(fid) => <TextInput id={fid} value={serialNumber} onChange={setSerialNumber} mono />}
         </Field>
-        <Field label="Power Rating">
+        <Field label="Power rating">
           {(fid) => <TextInput id={fid} value={powerRating} onChange={setPowerRating} />}
         </Field>
-        <Field label="Operating Speed">
+        <Field label="Operating speed">
           {(fid) => <TextInput id={fid} value={operatingSpeed} onChange={setOperatingSpeed} />}
         </Field>
-        <Field label="ISO Criticality Class">
+        <Field label="How critical it is" hint="A = plant stops without it, C = general">
           {(fid) => (
             <Select
               id={fid}
@@ -1571,6 +1770,7 @@ function UserDialog({
   user,
   roles,
   plants,
+  canChangeAccess,
   onClose,
   onSave,
   onDelete,
@@ -1579,6 +1779,8 @@ function UserDialog({
   user: UserRecord | null;
   roles: RoleRecord[];
   plants: PlantRecord[];
+  /** False when someone without user management edits their own profile. */
+  canChangeAccess: boolean;
   onClose: () => void;
   onSave: (input: CreateUserInput, existingId?: string) => Promise<void>;
   onDelete?: (id: string) => Promise<void>;
@@ -1588,23 +1790,25 @@ function UserDialog({
   const [title, setTitle] = useState("");
   const [department, setDepartment] = useState("");
   const [phone, setPhone] = useState("");
-  const [shift, setShift] = useState("Day Shift (06:00–18:00)");
-  const [roleId, setRoleId] = useState("role-reliability");
+  const [shift, setShift] = useState("");
+  const [roleId, setRoleId] = useState(roles[0]?.id ?? "");
   const [status, setStatus] = useState<"Active" | "On Call" | "Away" | "Inactive">("Active");
   const [selectedPlants, setSelectedPlants] = useState<Record<string, "admin" | "write" | "read" | "none">>({});
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setErr(null);
+    setPassword("");
     if (user) {
       setFullName(user.fullName);
       setEmail(user.email);
-      setTitle(user.title);
-      setDepartment(user.department);
+      setTitle(user.title ?? "");
+      setDepartment(user.department ?? "");
       setPhone(user.phone ?? "");
-      setShift(user.shift);
+      setShift(user.shift ?? "");
       setRoleId(user.roleId);
       setStatus(user.status);
       const map: Record<string, "admin" | "write" | "read" | "none"> = {};
@@ -1614,17 +1818,26 @@ function UserDialog({
     } else {
       setFullName("");
       setEmail("");
-      setTitle("Senior Vibration Analyst");
-      setDepartment("Condition Monitoring");
-      setPhone("+260 97 800 5500");
-      setShift("Day Shift (06:00–18:00)");
-      setRoleId(roles[2]?.id ?? "role-reliability");
+      setTitle("");
+      setDepartment("");
+      setPhone("");
+      setShift("");
+      setRoleId(roles[0]?.id ?? "");
       setStatus("Active");
       const map: Record<string, "admin" | "write" | "read" | "none"> = {};
       for (const [idx, p] of plants.entries()) map[p.id] = idx === 0 ? "write" : "none";
       setSelectedPlants(map);
     }
   }, [open, user, plants, roles]);
+
+  // The role list may hide the edited person's own role (a super administrator role
+  // for a plant manager): keep it selectable so the form shows the truth.
+  const roleOptions = useMemo(() => {
+    const list = roles.map((r) => ({ value: r.id, label: r.name }));
+    if (user && !roles.some((r) => r.id === user.roleId)) list.unshift({ value: user.roleId, label: user.role.name });
+    return list;
+  }, [roles, user]);
+  const allPlants = roles.find((r) => r.id === roleId)?.allPlants ?? (user?.roleId === roleId && user.role.allPlants);
 
   const submit = async () => {
     setBusy(true);
@@ -1645,10 +1858,15 @@ function UserDialog({
           department,
           phone,
           shift,
-          roleId,
-          status,
-          defaultPlantId: plantAssignments[0]?.plantId ?? null,
-          plantAssignments,
+          ...(password ? { password } : {}),
+          ...(canChangeAccess
+            ? {
+                roleId,
+                status,
+                defaultPlantId: allPlants ? null : (plantAssignments[0]?.plantId ?? null),
+                plantAssignments: allPlants ? [] : plantAssignments,
+              }
+            : { roleId: user?.roleId ?? roleId }),
         },
         user?.id,
       );
@@ -1663,8 +1881,8 @@ function UserDialog({
     <Dialog
       open={open}
       onClose={onClose}
-      title={user ? `Edit Operator · ${user.fullName}` : "Add Operator / Engineer"}
-      subtitle="Assign role-based permissions and M:N plant access (`user_plant_access`)"
+      title={user ? `Edit user · ${user.fullName}` : "Add a user"}
+      subtitle="Choose what this person may change and which plants they can open"
       busy={busy}
       width={620}
       footer={
@@ -1698,19 +1916,20 @@ function UserDialog({
     >
       {err && <FormNote tone="bad">{err}</FormNote>}
       <FieldGrid>
-        <Field label="Full Name" required>
+        <Field label="Full name" required>
           {(id) => <TextInput id={id} value={fullName} onChange={setFullName} placeholder="Mulenga Phiri" />}
         </Field>
-        <Field label="Email Address" required>
+        <Field label="Email address" required>
           {(id) => <TextInput id={id} value={email} onChange={setEmail} placeholder="mulenga.phiri@ultron.industrial" />}
         </Field>
-        <Field label="RBAC Role" required>
+        <Field label="Role" hint="Decides what this person may change" required>
           {(id) => (
             <Select
               id={id}
               value={roleId}
               onChange={setRoleId}
-              options={roles.map((r) => ({ value: r.id, label: r.name }))}
+              options={roleOptions}
+              disabled={!canChangeAccess}
             />
           )}
         </Field>
@@ -1719,6 +1938,7 @@ function UserDialog({
             <Select
               id={id}
               value={status}
+              disabled={!canChangeAccess}
               onChange={(v) => setStatus(v as typeof status)}
               options={[
                 { value: "Active", label: "Active" },
@@ -1729,7 +1949,7 @@ function UserDialog({
             />
           )}
         </Field>
-        <Field label="Job Title">
+        <Field label="Job title">
           {(id) => <TextInput id={id} value={title} onChange={setTitle} />}
         </Field>
         <Field label="Department">
@@ -1741,34 +1961,54 @@ function UserDialog({
         <Field label="Shift">
           {(id) => <TextInput id={id} value={shift} onChange={setShift} />}
         </Field>
+        <Field
+          label={user ? "New password" : "Password"}
+          hint={
+            user
+              ? user.hasPassword
+                ? "Leave empty to keep the current password"
+                : "No password yet: set one so this person can sign in"
+              : "At least 8 characters. Without one this person cannot sign in"
+          }
+        >
+          {(id) => <TextInput id={id} type="password" value={password} onChange={setPassword} autoComplete="new-password" />}
+        </Field>
       </FieldGrid>
 
-      <FieldSection title="Plant Access Assignments (`user_plant_access`)">
-        <FieldGrid>
-          {plants.map((p) => (
-            <Field key={p.id} label={`${p.code} · ${p.shortName}`}>
-              {(id) => (
-                <Select
-                  id={id}
-                  value={selectedPlants[p.id] ?? "none"}
-                  onChange={(v) =>
-                    setSelectedPlants((prev) => ({
-                      ...prev,
-                      [p.id]: v as "admin" | "write" | "read" | "none",
-                    }))
-                  }
-                  options={[
-                    { value: "none", label: "No Access" },
-                    { value: "read", label: "Read-Only Observer" },
-                    { value: "write", label: "Write / Reliability Operator" },
-                    { value: "admin", label: "Plant Administrator" },
-                  ]}
-                />
-              )}
-            </Field>
-          ))}
-        </FieldGrid>
-      </FieldSection>
+      {allPlants ? (
+        <FieldSection title="Which plants this person can open">
+          <FormNote tone="info">This role opens every plant, including plants added later.</FormNote>
+        </FieldSection>
+      ) : (
+        canChangeAccess && (
+          <FieldSection title="Which plants this person can open">
+            <FieldGrid>
+              {plants.map((p) => (
+                <Field key={p.id} label={`${p.code} · ${p.shortName}`}>
+                  {(id) => (
+                    <Select
+                      id={id}
+                      value={selectedPlants[p.id] ?? "none"}
+                      onChange={(v) =>
+                        setSelectedPlants((prev) => ({
+                          ...prev,
+                          [p.id]: v as "admin" | "write" | "read" | "none",
+                        }))
+                      }
+                      options={[
+                        { value: "none", label: "No access" },
+                        { value: "read", label: "Can view only" },
+                        { value: "write", label: "Can view and change" },
+                        { value: "admin", label: "Plant administrator" },
+                      ]}
+                    />
+                  )}
+                </Field>
+              ))}
+            </FieldGrid>
+          </FieldSection>
+        )
+      )}
     </Dialog>
   );
 }

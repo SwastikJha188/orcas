@@ -16,12 +16,16 @@ import { severityTone, type Tone } from "./assets-shell-ui";
 import { RangeBar } from "./overview-ui";
 import { sevLimit, type OverviewDigest } from "./overview-digest";
 import { conditionTone, validityTone } from "@/components/ui/status";
+import { displayName } from "@/lib/display-name";
 
 export const OV_SECTIONS = {
   machine: "ov-machine",
   operating: "ov-operating",
   areas: "ov-areas",
 } as const;
+
+/** sessionStorage key another page sets to open the Operator view's machine Overview at a section id. */
+export const OVERVIEW_SECTION_KEY = "ultron.overview.section";
 
 export interface OvSectionProps {
   machine: AssetMachine;
@@ -53,21 +57,24 @@ export function OvOperatingSection({ d }: OvSectionProps) {
   const live = operating.source === "live";
 
   return (
-    <Section id={OV_SECTIONS.operating} title="Operating point">
+    <Section id={OV_SECTIONS.operating} title="Running conditions">
       <div className="pg-ov-flush">
         <table className="pg-ov-table">
           <thead>
             <tr>
-              <th scope="col">Parameter</th>
-              <th scope="col" className="pg-ov-hide-sm">Tag</th>
-              <th scope="col" className="pg-ov-num">Value</th>
-              {live && <th scope="col" className="pg-ov-num pg-ov-hide-md">Reference</th>}
-              {live && <th scope="col" className="pg-ov-num pg-ov-hide-md">Dev.</th>}
-              <th scope="col" className="pg-ov-num pg-ov-hide-sm">Normal</th>
+              <th scope="col">Reading</th>
+              <th scope="col" className="pg-ov-num">Now</th>
+              {live && <th scope="col" className="pg-ov-num pg-ov-hide-md">Expected</th>}
+              {live && (
+                <th scope="col" className="pg-ov-num pg-ov-hide-md" title="How far the reading is from the expected value, in multiples of its usual spread">
+                  Off expected
+                </th>
+              )}
+              <th scope="col" className="pg-ov-num pg-ov-hide-sm">Normal range</th>
               <th scope="col" className="pg-ov-hide-sm pg-ov-range-col">
                 <span className="pg-ov-sr">Position in range</span>
               </th>
-              <th scope="col">State</th>
+              <th scope="col">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -76,22 +83,34 @@ export function OvOperatingSection({ d }: OvSectionProps) {
               const off = r.status !== "Normal";
               return (
                 <tr key={r.tag} className="pg-ov-row">
-                  <td className="pg-ov-name">{r.name}</td>
-                  <td className="pg-ov-tag ast-num pg-ov-hide-sm">{r.tag}</td>
+                  <td className="pg-ov-name" title={`${r.name} (tag ${r.tag})`}>
+                    {displayName(r.name)}
+                  </td>
                   <td className="pg-ov-num ast-num pg-ov-val">
                     {r.value === null ? r.display || "—" : fmtNum(r.value, r.decimals)}
                     <span className="ast-unit">{r.unit}</span>
-                    {r.calculated && <span className="pg-ov-suffix">calc.</span>}
+                    {r.calculated && (
+                      <span className="pg-ov-suffix" title="Calculated from other readings, not measured directly">
+                        calculated
+                      </span>
+                    )}
                   </td>
                   {live && (
-                    <td className="pg-ov-num ast-num pg-ov-muted pg-ov-hide-md">
-                      {r.setpoint !== null ? `SP ${fmtNum(r.setpoint, r.decimals)}` : fmtNum(r.model, r.decimals)}
+                    <td
+                      className="pg-ov-num ast-num pg-ov-muted pg-ov-hide-md"
+                      title={r.setpoint !== null ? "Target the operator has set" : "What the reading should be at this operating state"}
+                    >
+                      {r.setpoint !== null ? `Target ${fmtNum(r.setpoint, r.decimals)}` : fmtNum(r.model, r.decimals)}
                     </td>
                   )}
                   {live && (
                     <td className="pg-ov-num ast-num pg-ov-hide-md">
-                      <span className="pg-ov-dev" data-tone={off && r.z !== null && Math.abs(r.z) >= 3 ? severityTone(r.status) : undefined}>
-                        {r.z === null ? "—" : `${r.z >= 0 ? "+" : "−"}${Math.abs(r.z).toFixed(1)}σ`}
+                      <span
+                        className="pg-ov-dev"
+                        data-tone={off && r.z !== null && Math.abs(r.z) >= 3 ? severityTone(r.status) : undefined}
+                        title={r.z === null ? undefined : `${Math.abs(r.z).toFixed(1)} times its usual spread ${r.z >= 0 ? "above" : "below"} the expected value`}
+                      >
+                        {r.z === null ? "—" : `${Math.abs(r.z).toFixed(1)}× ${r.z >= 0 ? "above" : "below"}`}
                       </span>
                     </td>
                   )}
@@ -121,6 +140,8 @@ interface AreaRow {
   area: string;
   value: React.ReactNode;
   detail: string;
+  /** Tooltip for the detail when it differs (IDs behind the names). */
+  detailTip?: string;
   tone: Tone;
   state: string;
   page: AssetsSubPage;
@@ -133,18 +154,22 @@ export function areaRows({ d }: Pick<OvSectionProps, "machine" | "d">): AreaRow[
 
   if (findings.source !== "none") {
     const top = findings.active[0];
+    const svc = findings.service[0];
     const crit = findings.active.some((f) => f.severity === "Critical");
     rows.push({
       id: "findings",
-      area: "Findings",
+      area: "Problems",
       value: findings.active.length,
+      detailTip: top ? [top.engName !== top.name ? top.engName : null, top.id].filter(Boolean).join(" · ") : svc ? svc.id : undefined,
       detail: top
-        ? `${top.id} ${top.name}${top.where ? ` · ${top.where}` : ""}${findings.active.length > 1 ? ` · +${findings.active.length - 1} more` : ""}`
+        ? `${top.name}${top.where ? ` · ${top.where}` : ""}${findings.active.length > 1 ? ` · and ${findings.active.length - 1} more` : ""}`
         : findings.pending
-          ? `${findings.pending} pending confirmation`
-          : "None confirmed",
+          ? `${findings.pending} being confirmed`
+          : svc
+            ? `No confirmed problem · ${svc.name}${svc.where ? ` (${svc.where})` : ""}`
+            : "No confirmed problem",
       tone: crit ? "bad" : findings.active.length ? "warn" : "good",
-      state: crit ? "Critical" : findings.active.length ? "Advisory" : "Normal",
+      state: crit ? "Critical" : findings.active.length ? "Alert" : "Normal",
       page: "diagnosis",
       link: "Diagnosis",
     });
@@ -161,15 +186,15 @@ export function areaRows({ d }: Pick<OvSectionProps, "machine" | "d">): AreaRow[
       area: "Health",
       value: (
         <>
-          {overall}
-          <span className="ast-unit">%</span>
+          {overall ?? "—"}
+          {overall !== null && <span className="ast-unit">%</span>}
         </>
       ),
-      detail: lowest ? `Lowest ${lowest.name} ${lowest.health} % · ${flagged} of ${groups.rows.length} flagged` : "No sub-assembly records",
+      detail: lowest ? `Lowest: ${lowest.name} ${lowest.health} % · ${flagged} of ${groups.rows.length} need attention` : "No part scores yet",
       tone: conditionTone(d.conditionLabel),
       state: d.conditionLabel,
-      page: "health",
-      link: "Health",
+      page: "diagnosis",
+      link: "Diagnosis",
     });
   }
 
@@ -184,7 +209,8 @@ export function areaRows({ d }: Pick<OvSectionProps, "machine" | "d">): AreaRow[
           {outlook.intervene}
         </>
       ),
-      detail: `${f.name}${c ? ` · ${c.tag} reaches ${c.level} in ${durationText(c.hours)}` : ""}`,
+      detail: `${f.name}${c ? ` · ${displayName(c.name)} reaches its ${c.level === "alarm" ? "alarm" : "alert"} limit in ${durationText(c.hours)}` : ""}`,
+      detailTip: c ? c.tag : undefined,
       tone: severityTone(outlook.condition),
       state: outlook.condition,
       page: "prognosis",
@@ -193,14 +219,15 @@ export function areaRows({ d }: Pick<OvSectionProps, "machine" | "d">): AreaRow[
   }
 
   if (ai) {
-    const cause = ai.top ? splitCause(ai.top.cause).name : "No active issue source";
+    const cause = ai.top ? splitCause(ai.top.cause).name : "No problem found";
+    const conf = ai.top ? ai.top.confidence : ai.model.confidence;
     rows.push({
       id: "cause",
-      area: "Root cause",
+      area: "Likely cause",
       value: (
         <>
-          {Math.round(ai.top ? ai.top.confidence : ai.model.confidence)}
-          <span className="ast-unit">% conf.</span>
+          {conf === null ? "—" : Math.round(conf)}
+          {conf !== null && <span className="ast-unit">% sure</span>}
         </>
       ),
       detail: ai.top ? `${cause} · ${ai.top.subsystem}` : cause,
@@ -212,7 +239,7 @@ export function areaRows({ d }: Pick<OvSectionProps, "machine" | "d">): AreaRow[
   }
 
   if (sensors.length) {
-    const off = counts.Advisory + counts.Critical;
+    const off = counts.Alert + counts.Critical;
     const bad = (q.suspect ?? 0) + (q.invalid ?? 0) + (q.held ?? 0);
     rows.push({
       id: "sensors",
@@ -221,19 +248,19 @@ export function areaRows({ d }: Pick<OvSectionProps, "machine" | "d">): AreaRow[
         q.live && q.total ? (
           <>
             {q.valid}
-            <span className="ast-unit">/ {q.total} valid</span>
+            <span className="ast-unit">of {q.total} trusted</span>
           </>
         ) : (
           <>
             {sensors.length}
-            <span className="ast-unit">mapped</span>
+            <span className="ast-unit">linked</span>
           </>
         ),
-      detail: [`${off} off-normal`, q.live ? `${q.suspect ?? 0} suspect · ${q.invalid ?? 0} invalid · ${q.held ?? 0} held` : null, `${q.placed} on drawing`]
+      detail: [`${off} need attention`, q.live ? `${q.suspect ?? 0} may be wrong · ${q.invalid ?? 0} wrong · ${q.held ?? 0} frozen` : null, `${q.placed} on the drawing`]
         .filter(Boolean)
         .join(" · "),
       tone: counts.Critical ? "bad" : off || bad ? "warn" : "good",
-      state: counts.Critical ? "Alarm" : off ? "Warning" : bad ? "Suspect" : "Normal",
+      state: counts.Critical ? "Critical" : off || bad ? "Alert" : "Normal",
       page: "sensors",
       link: "Sensors",
     });
@@ -244,14 +271,14 @@ export function areaRows({ d }: Pick<OvSectionProps, "machine" | "d">): AreaRow[
     const protocols = [...new Set(racks.racks.map((r) => r.protocol).filter(Boolean))];
     rows.push({
       id: "acq",
-      area: "Acquisition",
+      area: "Data collection",
       value: (
         <>
           {racks.racks.length}
           <span className="ast-unit">{racks.racks.length === 1 ? "source" : "sources"}</span>
         </>
       ),
-      detail: [`${modules} modules`, protocols.slice(0, 3).join(" · ")].filter(Boolean).join(" · "),
+      detail: [`${modules} input ${modules === 1 ? "card" : "cards"}`, protocols.slice(0, 3).join(" · ")].filter(Boolean).join(" · "),
       tone: "idle",
       state: "—",
       page: "rack",
@@ -264,18 +291,18 @@ export function areaRows({ d }: Pick<OvSectionProps, "machine" | "d">): AreaRow[
     if (shell) {
       rows.push({
         id: "thermal",
-        area: "Shell thermal",
+        area: "Kiln shell heat",
         value: (
           <>
             {shell.display}
-            <span className="ast-unit">{d.frame.defs.signalByTag["CAL-KLN-03"]?.unit ?? "°C"} max</span>
+            <span className="ast-unit">{d.frame.defs.signalByTag["CAL-KLN-03"]?.unit ?? "°C"} hottest</span>
           </>
         ),
-        detail: "Scanner map, 74 m × 360°",
+        detail: "Temperature scan of the whole kiln shell (74 m, all the way round)",
         tone: severityTone(shell.status),
         state: sevLimit(shell.status),
         page: "thermal",
-        link: "Thermal",
+        link: "Shell temperature",
       });
     }
   }
@@ -293,10 +320,10 @@ export function OvAreasSection({ machine, d, go }: OvSectionProps) {
         <table className="pg-ov-table pg-ov-areas">
           <thead>
             <tr>
-              <th scope="col">Area</th>
-              <th scope="col" className="pg-ov-num">Value</th>
-              <th scope="col" className="pg-ov-hide-sm">Detail</th>
-              <th scope="col">State</th>
+              <th scope="col">Topic</th>
+              <th scope="col" className="pg-ov-num">Now</th>
+              <th scope="col" className="pg-ov-hide-sm">Details</th>
+              <th scope="col">Status</th>
               <th scope="col">
                 <span className="pg-ov-sr">Open</span>
               </th>
@@ -312,7 +339,7 @@ export function OvAreasSection({ machine, d, go }: OvSectionProps) {
               >
                 <td className="pg-ov-name">{r.area}</td>
                 <td className="pg-ov-num ast-num pg-ov-val">{r.value}</td>
-                <td className="pg-ov-muted pg-ov-hide-sm pg-ov-detail" title={r.detail}>
+                <td className="pg-ov-muted pg-ov-hide-sm pg-ov-detail" title={r.detailTip ? `${r.detail} (${r.detailTip})` : r.detail}>
                   {r.detail}
                 </td>
                 <td>{r.state === "—" ? <span className="pg-ov-muted">—</span> : <StateCell tone={r.tone} label={r.state} />}</td>

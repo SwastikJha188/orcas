@@ -301,7 +301,7 @@ export const SignalChart = memo(function SignalChart({
       tabIndex={focus ? 0 : undefined}
       onKeyDown={focus ? onKey : undefined}
       onBlur={focus ? onLeave : undefined}
-      aria-label={focus ? `${ariaLabel}. Arrow keys step through samples.` : undefined}
+      aria-label={focus ? `${ariaLabel}. Use the arrow keys to step through the readings.` : undefined}
     >
       {geo && (
         <svg width={width} height={height} role="img" aria-label={ariaLabel} className="pg-trends-svg">
@@ -339,7 +339,7 @@ export const SignalChart = memo(function SignalChart({
           {/* data validity: suspect / invalid spans greyed out (the reading was held out of diagnosis) */}
           {dq.map((d, i) => (
             <rect key={`dq${i}`} style={DQ_SHADE[d.quality]} x={d.x1} y={P.t} width={d.x2 - d.x1} height={geo.plotH}>
-              <title>{`Data ${d.quality.toLowerCase()} · ${d.label}`}</title>
+              <title>{`Reading ${d.quality === "Invalid" ? "not usable" : "may be wrong"} · ${d.label}`}</title>
             </rect>
           ))}
 
@@ -449,7 +449,7 @@ export const SignalChart = memo(function SignalChart({
 
           {label && (
             <text className="pg-trends-direct" x={P.l} y={P.t - 8}>
-              {label} · {unit}
+              {label} · {unit === "σ" ? "× usual spread" : unit}
             </text>
           )}
           <HoverLayer store={crosshair} samples={samples} geo={geo} top={P.t} variant={variant} />
@@ -538,16 +538,16 @@ function FocusTip({
         {s.b !== undefined && (
           <span className="pg-trends-tip-row">
             <i className="pg-trends-key pg-trends-key--model" />
-            Reference
+            Expected
             <span className="pg-trends-tip-v">{fmt(s.b, decimals)}</span>
           </span>
         )}
         {d !== null && (
           <span className="pg-trends-tip-row pg-trends-tip-sub">
-            Residual
+            Difference
             <span className="pg-trends-tip-v">
               {fmtSigned(d, decimals)}
-              {sigma ? ` · ${fmtSigned(d / sigma, 1)} σ` : ""}
+              {sigma ? ` · ${fmt(Math.abs(d / sigma), 1)} × usual spread` : ""}
             </span>
           </span>
         )}
@@ -593,9 +593,9 @@ export const ResidualChart = memo(function ResidualChart({
       height={height}
       scale="limits"
       crosshair={crosshair}
-      label="Residual"
+      label="Difference from expected"
       quiet
-      ariaLabel={`Residual, measured minus reference model, in multiples of σ, with the ±${MODEL_K}σ band`}
+      ariaLabel={`Difference between the reading and the expected value, in multiples of its usual spread, with a band of ${MODEL_K} times the usual spread either way`}
     />
   );
 });
@@ -685,7 +685,7 @@ export const OverlayChart = memo(function OverlayChart({
             </g>
           ))}
           <text className="pg-trends-unit" x={P.l - 8} y={8} textAnchor="end">
-            {axisUnit}
+            {axisUnit === "σ" ? "× spread" : axisUnit}
           </text>
           <line className="pg-trends-axis" x1={P.l} x2={P.l + geo.plotW} y1={P.t + geo.plotH} y2={P.t + geo.plotH} />
           {geo.xt.ticks.map((t) => {

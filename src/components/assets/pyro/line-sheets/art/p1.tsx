@@ -1,114 +1,56 @@
 /**
- * Sheet P-1 — PHC-01 · Preheater — Cyclone stages: gas temperature and draft.
- *
- * Composition of PDF page 9: six stage cyclones in two staggered columns on a
- * two-column steel tower (C1, C3, C5 right; C2, C4, C6 left). Gas rises from
- * the kiln riser into C6 and up stage by stage through the cross-over ducts to
- * C1 and out to the ID fan; meal drops from each cyclone (flap valve) into the
- * duct feeding the stage below; raw meal enters the C2 → C1 duct, C6 meal
- * leaves for the kiln inlet.
+ * Sheet P-1 — PHC-01 · Cyclone stages: gas temperature and draft. Group
+ * images page 2A, left panel (page box 41.5, 91 → 547.5, 540.5): the six
+ * stage cyclones in two columns on the tower steel (C1, C3, C5 right; C2, C4,
+ * C6 left), each stage's outlet duct climbing to the stage above, meal
+ * falling stage to stage, raw meal from the elevator into the C2 → C1 duct,
+ * kiln gas from the riser into C6 and the exit duct from C1 to the ID fan.
  */
 import React from "react";
-import { GroundLine, MX, MachineLabel } from "@/components/assets/machine-kit/machine-kit";
-import { Handrail, Ladder, MealPipe, Pipe } from "../../drawings/fkp-parts";
+import { GroundLine, MX, PAINT } from "@/components/assets/machine-kit/machine-kit";
+import { Pipe } from "../../drawings/fkp-parts";
 import type { LineSheetArt } from "../types";
-import { Arrow, BasePlate, Beam, Bellows, FlapValve, Gusset, StageCyclone, type StageGeom, stageDims } from "./parts-p";
+import { Beam, StageCyclone, type StageGeom, stageDims } from "./parts-p";
+import { Caps, FlowArrow, MealLine } from "./parts-p2";
 
-const W = 824;
-const H = 704;
-const GROUND = 676;
+type Pt = [number, number];
 
-const LX = 315.5; // left column cyclones (C2, C4, C6)
-const RX = 480.5; // right column cyclones (C1, C3, C5)
-const COLS = [248, 554]; // tower columns (centre)
-const DD = 17; // stage duct diameter
-const LANE_R = 406; // up-leg of ducts from left-column stages
-const LANE_L = 390; // up-leg of ducts from right-column stages
+const W = 506;
+const H = 449.5;
+const GROUND = 422.5;
+const RX = 293;
+const LX = 195.5;
+const D = 10;
+/** Roof top of stage n (1 … 6). */
+const T = (n: number) => 43.5 + (n - 1) * 62.3;
+const STAGES: StageGeom[] = [1, 2, 3, 4, 5, 6].map((n) => ({ cx: n % 2 ? RX : LX, top: T(n), inlet: n % 2 ? -1 : 1, w: 58, cyl: 27, cone: 29.5, ow: 18, k: 0.6 }));
+const HALF = 29;
 
-const STAGES: StageGeom[] = [0, 1, 2, 3, 4, 5].map((i) => ({ cx: i % 2 ? LX : RX, top: 34.5 + i * 105, inlet: i % 2 ? 1 : -1 }));
-
-/** Gas duct from stage i (1-based C number) up into stage i - 1. */
-function stageDuct(i: number): [number, number][] {
-  const a = STAGES[i - 1];
-  const b = STAGES[i - 2];
-  const w = stageDims(b).w;
-  const lane = a.cx === LX ? LANE_R : LANE_L;
-  const inX = b.inlet > 0 ? b.cx + w / 2 + 6 : b.cx - w / 2 - 6;
+/** Outlet duct of stage n (2 … 6) up into stage n − 1. */
+function stageDuct(n: number): Pt[] {
+  const left = n % 2 === 0;
+  const y = T(n) - (left ? 8.3 : 8.5);
+  const lane = left ? 249 : 240;
+  const yIn = T(n - 1) + 13.5;
+  const xIn = left ? RX - HALF : LX + HALF;
   return [
-    [a.cx, a.top - 2],
-    [a.cx, a.top - 12],
-    [lane, a.top - 12],
-    [lane, b.top + 22.5],
-    [inX, b.top + 22.5],
+    [left ? LX : RX, T(n) + 1],
+    [left ? LX : RX, y],
+    [lane, y],
+    [lane, yIn],
+    [xIn, yIn],
   ];
 }
 
-const floorY = (g: StageGeom) => stageDims(g).yJ + 6;
-
-function Tower() {
-  const floors = STAGES.map(floorY).sort((a, b) => a - b);
+function Steel() {
   return (
     <g>
-      {COLS.map((x, i) => (
-        <g key={x}>
-          <rect x={x - 4} y={i ? 30 : 16} width={8} height={GROUND - (i ? 30 : 16)} rx={1.5} fill={MX.body} stroke={MX.edge} strokeWidth={MX.w} />
-          <line x1={x} x2={x} y1={(i ? 30 : 16) + 3} y2={GROUND - 8} stroke={MX.fine} strokeWidth={0.8} />
-          <BasePlate x={x} y={GROUND} />
-        </g>
+      {[93.5, 156, 218.5, 281, 343.5].map((y) => (
+        <Beam key={y} x1={157.5} x2={334.5} y={y - 1.25} h={2.5} />
       ))}
-      {floors.map((y) => (
-        <g key={y}>
-          <Handrail x1={COLS[0] + 6} x2={COLS[1] - 6} y={y} h={11} step={18.5} />
-          <Beam x1={COLS[0] + 4} x2={COLS[1] - 4} y={y} />
-          <Gusset x={COLS[0] + 4} y={y + 6} s={1} />
-          <Gusset x={COLS[1] - 4} y={y + 6} s={-1} />
-        </g>
-      ))}
-      {/* access ladder up the right-hand column */}
-      <Ladder x={COLS[1] + 5} y1={floors[0]} y2={GROUND - 6} w={9} />
-    </g>
-  );
-}
-
-function Ducts() {
-  return (
-    <g>
-      {/* kiln riser → C6 */}
-      <Pipe pts={[[601, GROUND + 2], [601, 583], [LX + 54.5, 583]]} d={18} flanges={[[601, 640], [520, 583], [400, 583]]} />
-      <Bellows x={601} y={620} d={18} />
-      {/* stage cross-over ducts C6 → C5 → … → C1 */}
-      {[6, 5, 4, 3, 2].map((i) => {
-        const p = stageDuct(i);
-        const midY = (p[2][1] + p[3][1]) / 2;
-        return (
-          <g key={i}>
-            <Pipe pts={p} d={DD} flanges={[[p[2][0], p[3][1] + 22]]} />
-            <Bellows x={p[2][0]} y={midY + 6} d={DD} />
-          </g>
-        );
-      })}
-      {/* C1 gas outlet → ID fan */}
-      <Pipe pts={[[RX, 33], [RX, 19], [796, 19]]} d={DD} flanges={[[600, 19], [700, 19]]} />
-      <Bellows x={650} y={19} d={DD} vertical={false} />
-    </g>
-  );
-}
-
-function Meal() {
-  const drops: [number, number, number][] = STAGES.map((g, i) => {
-    const y0 = stageDims(g).yOut;
-    const y1 = i === 5 ? GROUND + 2 : i === 4 ? 583 - 10 : STAGES[i + 2].top - 12 - DD / 2 - 1;
-    return [g.cx, y0, y1];
-  });
-  return (
-    <g>
-      {drops.map(([x, y0, y1]) => (
-        <MealPipe key={x + y0} pts={[[x, y0], [x, y1]]} d={7} />
-      ))}
-      {drops.map(([x, y0, y1], i) => (i >= 4 ? null : <FlapValve key={i} x={x} y={y0 + Math.min(30, (y1 - y0) * 0.32)} s={x === LX ? -1 : 1} />))}
-      {/* raw meal from the bucket elevator into the C2 → C1 duct */}
-      <MealPipe pts={[[113, 128], [LX - 11, 128]]} d={7} />
-      <FlapValve x={278} y={128} s={1} horizontal />
+      <rect x={153.5} y={32} width={4} height={GROUND - 32} rx={1} {...PAINT.body} />
+      <rect x={334.5} y={41.5} width={5.5} height={GROUND - 41.5} rx={1} {...PAINT.body} />
+      <line x1={337.25} x2={337.25} y1={44} y2={GROUND - 2} {...PAINT.hair} />
     </g>
   );
 }
@@ -116,53 +58,75 @@ function Meal() {
 function Art() {
   return (
     <g>
-      <GroundLine x1={22} x2={803} y={GROUND} />
-      <Tower />
-      <Ducts />
-      {STAGES.map((g, i) => (
-        <StageCyclone key={i} g={g} label={`C${i + 1}`} />
+      <GroundLine x1={22.5} x2={482.5} y={GROUND} />
+      <Steel />
+      {/* raw meal from the elevator into the C2 → C1 duct */}
+      <Pipe pts={[[111, 97.5], [192, 97.5]]} d={5.5} elbows={false} />
+      <MealLine pts={[[112, 97.5], [188, 97.5]]} w={1.6} />
+      <FlowArrow x1={75} y1={98.5} x2={110} y2={98.5} color="var(--mx-material)" w={1.6} s={4.5} />
+      {/* exit duct to the ID fan, kiln riser into C6, stage ducts */}
+      <Pipe pts={[[RX, T(1) + 1], [RX, 35], [479, 35]]} d={D} />
+      <FlowArrow x1={481} y1={35} x2={495} y2={35} color={MX.label} w={1.2} s={4} />
+      <Pipe pts={[[367, GROUND], [367, 368], [LX + HALF - 1, 368]]} d={D} />
+      {[2, 3, 4, 5, 6].map((n) => (
+        <Pipe key={n} pts={stageDuct(n)} d={D} />
       ))}
-      <Meal />
-      <Arrow x1={798} y1={19} x2={818} y2={19} />
-      <Arrow x1={623} y1={660} x2={623} y2={600} />
-      <MachineLabel x={724} y={46.7} size={9} anchor="start">TO ID FAN (P-3)</MachineLabel>
-      <MachineLabel x={238} y={111.2} size={9} anchor="end">RAW MEAL FROM ELEVATOR</MachineLabel>
-      <MachineLabel x={188} y={690.6} size={8.2} anchor="start">C6 MEAL TO KILN INLET (P-2)</MachineLabel>
-      <MachineLabel x={634} y={651.6} size={8.2} anchor="start">KILN GAS FROM RISER (P-2)</MachineLabel>
+      {STAGES.map((g, i) => (
+        <StageCyclone key={i} g={g} label={`C${i + 1}`} labelSize={6.5} port={false} blaster={false} />
+      ))}
+      {/* meal falling stage to stage; C5 meal to the calciner, C6 meal to the kiln inlet */}
+      {[1, 2, 3, 4].map((n) => {
+        const g = STAGES[n - 1];
+        return <MealLine key={n} pts={[[g.cx, stageDims(g).yOut], [g.cx, T(n + 2) - 5]]} />;
+      })}
+      <MealLine pts={[[RX, stageDims(STAGES[4]).yOut], [RX, 362]]} />
+      <MealLine pts={[[LX, stageDims(STAGES[5]).yOut], [LX, GROUND - 1]]} />
+      {/* kiln gas up the riser */}
+      <FlowArrow x1={377.5} y1={412.5} x2={377.5} y2={377.5} color={MX.gas} w={1.4} s={4.5} />
+      <Caps x={76} y={90}>RAW MEAL FROM ELEVATOR</Caps>
+      <Caps x={492} y={52} anchor="end">
+        TO ID FAN
+      </Caps>
+      <Caps x={384} y={410} color={MX.gas}>
+        KILN GAS FROM RISER
+      </Caps>
+      <Caps x={158} y={433} anchor="middle">
+        C6 MEAL TO KILN INLET
+      </Caps>
     </g>
   );
 }
 
-/** Pad centre per point (sheet units), as on PDF page 9. */
+/** Pad centre per point, at the group-image pads: gas temperature on each stage's outlet, draft on its cylinder wall. */
 const pads: LineSheetArt["pads"] = {
-  "TMP-PHC-01": [480.5, 29],
-  "PRS-PHC-01": [530.5, 68],
-  "TMP-PHC-02": [315.5, 134],
-  "PRS-PHC-02": [265, 173],
-  "TMP-PHC-03": [480.5, 239],
-  "PRS-PHC-03": [530.5, 278],
-  "TMP-PHC-04": [315.5, 344],
-  "PRS-PHC-04": [265, 383],
-  "TMP-PHC-05": [480.5, 449],
-  "PRS-PHC-05": [530.5, 488],
-  "TMP-PHC-06": [315.5, 554],
-  "PRS-PHC-06": [265, 593],
+  "TMP-PHC-01": [293, 40],
+  "PRS-PHC-01": [322.7, 63],
+  "TMP-PHC-02": [195.3, 102.2],
+  "PRS-PHC-02": [165.7, 125.2],
+  "TMP-PHC-03": [293, 164.2],
+  "PRS-PHC-03": [322.7, 187.2],
+  "TMP-PHC-04": [195.5, 226.2],
+  "PRS-PHC-04": [165.7, 249.2],
+  "TMP-PHC-05": [293, 288.5],
+  "PRS-PHC-05": [322.7, 311.5],
+  "TMP-PHC-06": [195.5, 350.5],
+  "PRS-PHC-06": [165.7, 373.8],
 };
 
-/** Tag chip centre per point, as on PDF page 9. */
-const chips: NonNullable<LineSheetArt["chips"]> = {
-  "TMP-PHC-01": [603.5, 45],
-  "PRS-PHC-01": [609, 81.5],
-  "TMP-PHC-02": [192, 148],
-  "PRS-PHC-02": [186.5, 186.5],
-  "TMP-PHC-03": [603.5, 234.5],
-  "PRS-PHC-03": [609, 291.5],
-  "TMP-PHC-04": [192, 339.5],
-  "PRS-PHC-04": [186.5, 396.5],
-  "TMP-PHC-05": [603.5, 444.5],
-  "PRS-PHC-05": [609, 501.5],
-  "TMP-PHC-06": [192, 549.5],
-  "PRS-PHC-06": [186.5, 606.5],
+/** Gas temperatures run along their outlet duct, drafts away from the tower. */
+const callouts: LineSheetArt["callouts"] = {
+  "TMP-PHC-01": [266, 18.2, "start"],
+  "PRS-PHC-01": [339.5, 63.8, "start"],
+  "TMP-PHC-02": [205, 81.5, "start"],
+  "PRS-PHC-02": [148.5, 124.8, "end"],
+  "TMP-PHC-03": [266, 142.5, "start"],
+  "PRS-PHC-03": [347, 188, "start"],
+  "TMP-PHC-04": [205, 205.8, "start"],
+  "PRS-PHC-04": [148.5, 249, "end"],
+  "TMP-PHC-05": [266, 266.8, "start"],
+  "PRS-PHC-05": [347, 312.5, "start"],
+  "TMP-PHC-06": [205, 330, "start"],
+  "PRS-PHC-06": [148.5, 373.2, "end"],
 };
 
-export const sheet: LineSheetArt = { id: "P-1", ready: true, width: W, height: H, Art, pads, chips };
+export const sheet: LineSheetArt = { id: "P-1", ready: true, width: W, height: H, Art, pads, callouts };

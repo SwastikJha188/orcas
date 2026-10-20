@@ -482,3 +482,233 @@ li.is-quiet .pg-diag-in-tag {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ======================================================================
+   Sensor table (prefix: pg-dx-). One row per mapped sensor, fixed order.
+   Red only on rows in alarm (beyond alarm limit or evidence for a raised
+   fault); everything else stays monochrome.
+   ====================================================================== */
+
+
+.pg-dx-filters {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.pg-dx-filters .dxo-filter-chip {
+  padding: 4px 12px;
+}
+
+.pg-dx-filters .dxo-filter-chip[aria-pressed="false"] {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.pg-dx-table td {
+  vertical-align: top;
+}
+
+.pg-dx-table tr:has(.pg-dx-sensor[data-alarm]) td {
+  background: color-mix(in srgb, var(--status-danger) 7%, transparent);
+}
+
+.pg-dx-table tr:has(.pg-dx-sensor[data-alarm]) td:first-child {
+  box-shadow: inset 3px 0 0 var(--status-danger);
+}
+
+.pg-dx-sensor[data-alarm] .ast-cell-title,
+.pg-dx-now[data-alarm] {
+  color: var(--status-danger);
+}
+
+.pg-dx-now {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Past 6 h: thin trace, dashed alarm limit, tick at the alarm onset. */
+.pg-dx-trend {
+  display: block;
+  overflow: visible;
+}
+
+.pg-dx-trend-line {
+  fill: none;
+  stroke: var(--dx-ink-2);
+  stroke-width: 1.25;
+  vector-effect: non-scaling-stroke;
+}
+
+.pg-dx-trend-line[data-alarm] {
+  stroke: var(--status-danger);
+}
+
+.pg-dx-trend-limit {
+  stroke: var(--status-danger);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.55;
+  vector-effect: non-scaling-stroke;
+}
+
+.pg-dx-trend-onset {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+/* Possible faults: one line per candidate, highest match first. */
+.pg-dx-faults {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 240px;
+}
+
+.pg-dx-faults > li {
+  display: grid;
+  gap: 2px;
+}
+
+.pg-dx-fault-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pg-dx-fault-name {
+  color: var(--text-secondary);
+}
+
+.pg-dx-faults > li[data-raised] .pg-dx-fault-name {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.pg-dx-fault-pct {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pg-dx-fault-sub {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.pg-dx-fault-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.pg-dx-links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: var(--fs-sm);
+}
+
+.pg-dx-limit > span {
+  white-space: normal;
+}
+
+/* Long headers wrap instead of widening the table. */
+.pg-dx-table th:is([data-col="chance"], [data-col="since"], [data-col="limit"]) {
+  white-space: normal;
+}
+
+.pg-dx-links > button {
+  white-space: nowrap;
+}
+
+/* Sub-assembly health: number + 0–100 bar with 60 / 85 ticks, grey unless below 85. */
+.pg-dx-health {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pg-dx-health > .pg-dx-hbar {
+  flex: 1;
+  max-width: 480px;
+}
+
+.pg-dx-health-num {
+  min-width: 2ch;
+  font-weight: 600;
+  text-align: right;
+}
+
+.pg-dx-health-num[data-tone] {
+  color: var(--tone);
+}
+
+.pg-dx-hbar {
+  position: relative;
+  display: inline-block;
+  width: 140px;
+  height: 4px;
+  background: var(--dx-track);
+  flex-shrink: 0;
+}
+
+.pg-dx-hbar > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--text-muted);
+}
+
+.pg-dx-hbar[data-tone] > i {
+  background: var(--tone);
+}
+
+.pg-dx-hbar > b {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  background: var(--card-bg);
+}
+
+.pg-dx-subs [data-alarm] {
+  color: var(--status-danger);
+  font-weight: 600;
+}
+
+/* The sub-assembly the sensor table is filtered to. */
+.pg-dx-subs tr.active td {
+  background: var(--pill-active-bg);
+}
+
+.pg-dx-subs tr.active td:first-child {
+  box-shadow: inset 3px 0 0 var(--dx-ink);
+}
+
+/* Sensor tag: opens the sensor in Trends. */
+.pg-dx-tag {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pg-dx-tag:hover,
+.pg-dx-tag:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.pg-dx-fault-sub .pg-diag-inline-link {
+  font-size: inherit;
+  white-space: nowrap;
+}

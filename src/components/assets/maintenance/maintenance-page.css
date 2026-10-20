@@ -30,7 +30,7 @@
   border-radius: inherit;
   background: var(--dx-ink);
   opacity: 0.85;
-  transition: width 0.3s ease;
+  transition: width var(--dur-modal) var(--ease-out);
 }
 
 .mt-bar.is-wide {
@@ -76,11 +76,15 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: none;
 }
 
 .mt-round:hover {
   background: var(--row-hover-bg);
+}
+
+.mt-round:active {
+  transform: scale(0.97);
 }
 
 .mt-round.active {
@@ -148,7 +152,7 @@
 
 .mt-sheet-title h3 {
   margin: 0 0 2px;
-  font-size: 16px;
+  font-size: var(--fs-xl);
   font-weight: 500;
   color: var(--dx-ink);
 }
@@ -160,7 +164,7 @@
 }
 
 .mt-sheet-count {
-  font-size: 20px;
+  font-size: var(--fs-4xl);
   font-weight: 500;
   color: var(--dx-ink);
   white-space: nowrap;
@@ -229,7 +233,7 @@
   align-items: start;
   padding: 10px 12px;
   border-radius: var(--corner-row);
-  transition: background 0.15s ease;
+  transition: none;
 }
 
 .mt-cp-row:hover,
@@ -290,12 +294,6 @@
   line-height: 1.35;
 }
 
-.mt-cp-tag {
-  margin-right: 8px;
-  color: var(--text-muted);
-  font-weight: 500;
-}
-
 .mt-cp-check {
   font-size: var(--fs-md);
   color: var(--page-fg);
@@ -344,7 +342,7 @@
 
 .mt-cp-chevron {
   color: var(--text-muted);
-  transition: transform 0.15s ease;
+  transition: transform var(--dur-fast) var(--ease-out);
 }
 
 .mt-cp-chevron.is-open {
@@ -378,11 +376,15 @@
   border-radius: var(--corner-sm);
   border: 1.5px solid color-mix(in srgb, var(--text-muted) 70%, transparent);
   color: transparent;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
 
 .mt-check:hover span {
   border-color: var(--dx-ink);
+}
+
+.mt-check:active span {
+  transform: scale(0.97);
 }
 
 .mt-check input:checked + span {
@@ -428,6 +430,10 @@
 .mt-cp-more:hover {
   background: var(--hover-faint);
   color: var(--dx-ink);
+}
+
+.mt-cp-more:active {
+  transform: scale(0.97);
 }
 
 .mt-cp-more:focus-visible {
@@ -686,4 +692,9 @@
     margin: 0;
     border-top: 0;
   }
+}
+
+/* One round (a preventive group with a single round): the sheet takes the width. */
+.mt-rounds.is-single {
+  grid-template-columns: minmax(0, 1fr);
 }

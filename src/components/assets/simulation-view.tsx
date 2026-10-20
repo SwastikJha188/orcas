@@ -9,6 +9,8 @@ import { useLivePlantStarting } from "@/providers/kiln-simulation-context";
 import type { KilnScenario } from "@/lib/kiln-sim/scenarios";
 import type { RuleState, SimEvent, StoryProfile } from "@/lib/kiln-sim/engine";
 import type { Severity } from "@/lib/kiln-sim/signals";
+import type { PlantDefs } from "@/lib/plant-defs";
+import { displayName, nameIds } from "@/lib/display-name";
 import { fmtMin, suiteCases, summariseSuite, type SuiteCase, type TestResult } from "@/lib/kiln-sim/test-lab";
 import { pyroSuiteCases, type PyroScenarioRun } from "@/lib/pyro-sim/suite";
 import { SIM_SPEEDS, type KilnSimulation } from "./kiln-seals-simulation";
@@ -30,7 +32,7 @@ import "./simulation-view.css";
  * (kiln: Test Lab `createSim`; pyro: a fresh line per scenario, `pyro-sim/suite`).
  */
 
-/** Severity → tone through the one status scale (Normal good · Advisory warn · Critical bad). */
+/** Severity → tone through the one status scale (Normal good · Alert warn · Critical bad). */
 const TONE = (s: Severity): Tone => conditionTone(s);
 const PHASE_TONE: Record<string, Tone> = { healthy: "good", developing: "warn", detected: "bad", mitigated: "warn", recovering: "info" };
 /** Phase words on the one status scale ("healthy" reads as Normal). */
@@ -41,14 +43,14 @@ const PYRO_CHUNK_MIN = 60;
 
 const PROFILES: Array<{ id: StoryProfile; label: string }> = [
   { id: "healthy", label: "Normal" },
-  { id: "advisory", label: "Advisory" },
+  { id: "advisory", label: "Alert" },
   { id: "critical", label: "Critical" },
   { id: "story", label: "Rotate all faults" },
 ];
 
 const FILTERS: Array<{ id: string; label: string; match: (s: KilnScenario) => boolean }> = [
   { id: "all", label: "All", match: () => true },
-  { id: "quiet", label: "No-fault", match: (s) => s.expected.length === 0 },
+  { id: "quiet", label: "No fault", match: (s) => s.expected.length === 0 },
   { id: "machine", label: "Machine faults", match: (s) => s.expected.length > 0 && s.group !== "Sensor validation" },
   { id: "sensor", label: "Sensor faults", match: (s) => s.group === "Sensor validation" },
 ];
@@ -101,8 +103,11 @@ function SimulationModule({ simulation, suiteKey }: { simulation: KilnSimulation
     speedMultiplier, setSpeedMultiplier, advance, autopilot, setAutopilot, performAction, phase, storyLabel,
     profile, setProfile,
   } = simulation;
-  const { setActiveSubPage } = useIndustrialData();
+  const { setActiveSubPage, allMachines } = useIndustrialData();
+  const machineName = displayName(allMachines.find((m) => m.id === machineId)?.name ?? machineId);
   const isKilnPlant = frame.defs.plant === "kiln";
+  /** Rule name for display; the ID stays in tooltips. */
+  const ruleName = (id: string) => frame.defs.ruleById[id]?.plainTitle ?? frame.defs.ruleById[id]?.name ?? id;
   /** What the copy calls this machine ("this kiln" on the kiln-seal fleet). */
   const noun = isKilnPlant ? "kiln" : "machine";
 
@@ -150,13 +155,13 @@ function SimulationModule({ simulation, suiteKey }: { simulation: KilnSimulation
   const firstDetection = triggered.find((t) => expected.includes(t.id))?.at ?? null;
 
   const verdict: LiveVerdict = isCustom
-    ? { label: triggered.length ? `${triggered.length} raised` : "Running", tone: "info" }
+    ? { label: triggered.length ? `${triggered.length} problems raised` : "Running", tone: "info" }
     : expected.length === 0
       ? triggered.length
         ? { label: "False alarm", tone: "bad" }
         : { label: "Quiet as expected", tone: "good" }
       : hitExpected.length === expected.length
-        ? { label: `Detected +${fmtMin(firstDetection)}`, tone: "good" }
+        ? { label: `Spotted after ${fmtMin(firstDetection)}`, tone: "good" }
         : documented !== null && frame.scenarioMinute > documented
           ? { label: "Not yet detected", tone: "warn" }
           : { label: "Developing", tone: "info" };
@@ -169,6 +174,7 @@ function SimulationModule({ simulation, suiteKey }: { simulation: KilnSimulation
 
   const markers: ResponseMarker[] = triggered.map((t) => ({
     id: t.id,
+    label: ruleName(t.id),
     at: t.at,
     tone: TONE(t.severity) === "good" ? "info" : (TONE(t.severity) as ResponseMarker["tone"]),
     expected: expected.includes(t.id),
@@ -227,7 +233,7 @@ function SimulationModule({ simulation, suiteKey }: { simulation: KilnSimulation
           <p className="sim-context" role="status" aria-live="polite">
             <StatusTag tone={PHASE_TONE[phase]} label={<span className="sim-cap">{PHASE_LABEL[phase] ?? phase}</span>} />
             <span>
-              {machineId} · {storyLabel}
+              {machineName} · {nameIds(storyLabel, frame.defs)}
             </span>
           </p>
         </div>
@@ -240,7 +246,7 @@ function SimulationModule({ simulation, suiteKey }: { simulation: KilnSimulation
             activeId={String(speedMultiplier)}
             onChange={(id) => setSpeedMultiplier(Number(id))}
           />
-          <PillButton variant="secondary" onClick={() => advance(30)} title="Advance the plant 30 simulated minutes">
+          <PillButton variant="secondary" onClick={() => advance(30)} title="Move the simulated plant 30 minutes forward">
             +30 min
           </PillButton>
           {confirmReset ? (
@@ -277,7 +283,7 @@ function SimulationModule({ simulation, suiteKey }: { simulation: KilnSimulation
           ariaLabel="Simulation views"
           items={[
             { id: "control", label: "Plant control" },
-            { id: "scenarios", label: `${machineId} scenarios` },
+            { id: "scenarios", label: `${machineName} scenarios` },
           ]}
           activeId={view}
           onChange={(id) => setView(id as "control" | "scenarios")}
@@ -313,25 +319,25 @@ function SimulationModule({ simulation, suiteKey }: { simulation: KilnSimulation
             <SimKpi
               label="Scenario elapsed"
               value={`+${fmtMin(frame.scenarioMinute)}`}
-              note={documented !== null ? `Documented detection +${fmtMin(documented)} · plant time` : "Must stay quiet · plant time"}
+              note={documented !== null ? `Should be spotted by +${fmtMin(documented)} · plant time` : "Nothing should be raised · plant time"}
             />
             <SimKpi
-              label={expected.length ? "Expected rules triggered" : "Findings raised (expect none)"}
+              label={expected.length ? "Expected problems spotted" : "Problems raised (should be none)"}
               value={expected.length ? `${hitExpected.length} / ${expected.length}` : String(triggered.length)}
               tone={verdict.tone === "good" ? "good" : verdict.tone === "bad" ? "bad" : undefined}
-              note={unexpected.length ? `Unexpected: ${unexpected.map((u) => u.id).join(", ")}` : verdict.label}
+              note={unexpected.length ? `Unexpected: ${unexpected.map((u) => ruleName(u.id)).join(", ")}` : verdict.label}
             />
             <SimKpi
-              label="Open findings"
+              label="Open problems"
               value={`${confirmed.length} confirmed`}
-              note={`${findings.length - confirmed.length} pending · ${p.evaluated} rules evaluated`}
+              note={`${findings.length - confirmed.length} not confirmed yet · ${p.evaluated} checks running`}
               tone={confirmed.some((r) => r.severity === "Critical") ? "bad" : undefined}
             />
             <SimKpi
               label="Machine health"
               value={`${Math.round(frame.overall)} %`}
               tone={condTone === "good" ? "good" : condTone === "bad" ? "bad" : undefined}
-              note={`${frame.condition} · ${p.beyond3s} signals beyond 3σ`}
+              note={`${frame.condition} · ${p.beyond3s} readings far from expected`}
             />
           </dl>
 
@@ -352,7 +358,7 @@ function SimulationModule({ simulation, suiteKey }: { simulation: KilnSimulation
                 <div
                   className="sim-progress"
                   role="progressbar"
-                  aria-label="Progress to the documented detection time"
+                  aria-label="Progress to the time it should be spotted by"
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-valuenow={Math.round(progressPct)}
@@ -374,42 +380,43 @@ function SimulationModule({ simulation, suiteKey }: { simulation: KilnSimulation
             />
             <div className="sim-chart-foot ast-caption ast-num">
               <span>
-                Signals valid {p.valid} · suspect {p.suspect} · invalid {p.invalid}
+                Readings good {p.valid} · may be wrong {p.suspect} · not usable {p.invalid}
               </span>
               <span>
-                Rules matching {p.matching} · pending {p.pending} · confirmed {p.confirmed}
+                Checks seeing a problem {p.matching} · not confirmed yet {p.pending} · confirmed {p.confirmed}
               </span>
             </div>
           </section>
 
           {/* ---------------- scenario register ---------------- */}
-          <section className="ast-card sim-table-card" aria-label="Validation scenarios">
+          <section className="ast-card sim-table-card" aria-label="Test scenarios">
             <div className="ast-card-head sim-card-head sim-card-head-row">
               <div className="sim-card-head-text">
                 <h2 className="ast-card-title">
-                  Validation scenarios <span className="ast-muted ast-num">{scenarios.length}</span>
+                  Test scenarios <span className="ast-muted ast-num">{scenarios.length}</span>
                 </h2>
                 <span className="ast-caption ast-num">
                   {summary && suite
-                    ? `Simulated headless run ${new Date(suite.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${summary.passed}/${summary.total} matched · detection ${pct(summary.detection)} · no false alarm ${pct(summary.noFalseAlarm)} · mean lead ${fmtMin(summary.meanLead)} · not field evidence`
-                    : `Run a scenario live on this ${noun}, or run all headless to score expected against triggered rules.`}
+                    ? `Background run at ${new Date(suite.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${summary.passed} of ${summary.total} as expected · problems spotted ${pct(summary.detection)} · no false alarm ${pct(summary.noFalseAlarm)} · spotted ${fmtMin(summary.meanLead)} early on average · simulated, not from the real plant`
+                    : `Run one scenario live on this ${noun}, or run them all in the background to check each raises the problems it should.`}
                 </span>
               </div>
               <div className="sim-actions">
                 <PillNav items={FILTERS} activeId={filter} onChange={setFilter} />
-                <PillButton variant="secondary" onClick={runSuite} disabled={progress !== null} title="Runs every scenario on its own engine; the live plant is untouched">
-                  {progress ? `Running ${progress.done}/${progress.total}` : suite ? "Re-run all headless" : "Run all headless"}
+                <PillButton variant="secondary" onClick={runSuite} disabled={progress !== null} title="Runs every scenario on its own copy of the plant; the live plant is not touched">
+                  {progress ? `Running ${progress.done} of ${progress.total}` : suite ? "Run all again" : "Run all in background"}
                 </PillButton>
               </div>
             </div>
             {progress && (
-              <div className="sim-progress sim-progress-flush" role="progressbar" aria-label="Headless validation run" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done}>
+              <div className="sim-progress sim-progress-flush" role="progressbar" aria-label="Background test run" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done}>
                 <i style={{ width: `${(progress.done / progress.total) * 100}%` }} />
               </div>
             )}
             <Table
               className="ast-table sim-register"
               columns={registerColumns({
+                ruleName,
                 runningId: scenario.id,
                 numberOf,
                 liveTriggered: triggered,
@@ -424,21 +431,21 @@ function SimulationModule({ simulation, suiteKey }: { simulation: KilnSimulation
           </section>
 
           {/* ---------------- findings ---------------- */}
-          <section className="ast-card sim-table-card" aria-label="Findings raised">
+          <section className="ast-card sim-table-card" aria-label="Problems raised">
             <div className="ast-card-head sim-card-head sim-card-head-row">
               <h2 className="ast-card-title">
-                Findings raised <span className="ast-muted ast-num">{findings.length}</span>
+                Problems raised <span className="ast-muted ast-num">{findings.length}</span>
               </h2>
             </div>
             {findings.length === 0 ? (
               <p className="ast-caption sim-empty">
-                No finding open. All signals follow the reference model · {p.evaluated} rules evaluated · ambient est.{" "}
+                No open problems. Every reading is where it is expected · {p.evaluated} checks running · outside air about{" "}
                 <span className="ast-num">{frame.drivers.ambientEst.toFixed(1)} °C</span>
               </p>
             ) : (
               <Table
                 className="ast-table"
-                columns={findingColumns({ start, expected, performAction, go: setActiveSubPage })}
+                columns={findingColumns({ defs: frame.defs, start, expected, performAction, go: setActiveSubPage })}
                 data={findings}
                 keyExtractor={(r) => r.id}
               />
@@ -465,7 +472,7 @@ function SimulationModule({ simulation, suiteKey }: { simulation: KilnSimulation
             ) : (
               <Table
                 className="ast-table"
-                columns={eventColumns}
+                columns={eventColumns(frame.defs)}
                 data={events.map((e, i) => ({ ...e, key: `${e.t}-${i}-${e.title}` }))}
                 keyExtractor={(e) => e.key}
               />
@@ -495,13 +502,13 @@ function SimKpi({ label, value, note, tone }: { label: string; value: React.Reac
 /* Register                                                            */
 /* ------------------------------------------------------------------ */
 
-function RuleIds({ ids, expected }: { ids: string[]; expected: string[] }) {
+function RuleIds({ ids, expected, ruleName }: { ids: string[]; expected: string[]; ruleName: (id: string) => string }) {
   if (ids.length === 0) return <span className="ast-muted">None</span>;
   return (
-    <span className="sim-ids ast-num">
+    <span className="sim-ids">
       {ids.map((id) => (
-        <span key={id} className="sim-id" data-tone={expected.includes(id) ? "good" : "bad"}>
-          {id}
+        <span key={id} className="sim-id" data-tone={expected.includes(id) ? "good" : "bad"} title={id}>
+          {ruleName(id)}
         </span>
       ))}
     </span>
@@ -509,6 +516,7 @@ function RuleIds({ ids, expected }: { ids: string[]; expected: string[] }) {
 }
 
 function registerColumns(o: {
+  ruleName: (id: string) => string;
   runningId: string;
   numberOf: Map<string, number>;
   liveTriggered: Triggered[];
@@ -531,16 +539,16 @@ function registerColumns(o: {
     {
       key: "exp",
       header: "Expected",
-      render: (s) => (s.expected.length ? <span className="ast-num">{s.expected.join(", ")}</span> : <span className="ast-muted">Quiet</span>),
+      render: (s) => (s.expected.length ? <span title={s.expected.join(", ")}>{s.expected.map(o.ruleName).join(", ")}</span> : <span className="ast-muted">Quiet</span>),
     },
-    { key: "d5", header: "Documented", width: "104px", render: (s) => <span className="ast-num">{s.documentedDetection}</span> },
+    { key: "d5", header: "Should spot by", width: "104px", render: (s) => <span className="ast-num">{s.documentedDetection}</span> },
     {
       key: "trig",
-      header: "Triggered",
+      header: "Spotted",
       render: (s) => {
-        if (s.id === o.runningId) return <RuleIds ids={o.liveTriggered.map((t) => t.id)} expected={s.expected} />;
+        if (s.id === o.runningId) return <RuleIds ids={o.liveTriggered.map((t) => t.id)} expected={s.expected} ruleName={o.ruleName} />;
         const r = o.suiteById.get(s.id);
-        return r ? <RuleIds ids={r.fired.map((f) => f.id)} expected={s.expected} /> : <span className="ast-muted">—</span>;
+        return r ? <RuleIds ids={r.fired.map((f) => f.id)} expected={s.expected} ruleName={o.ruleName} /> : <span className="ast-muted">—</span>;
       },
     },
     {
@@ -554,7 +562,7 @@ function registerColumns(o: {
         return (
           <StatusTag
             tone={r.pass ? "good" : "bad"}
-            label={`${r.pass ? "Matched" : "Mismatch"}${r.detectedAfter !== null ? ` · +${fmtMin(r.detectedAfter)}` : ""}`}
+            label={`${r.pass ? "As expected" : "Not as expected"}${r.detectedAfter !== null ? ` · +${fmtMin(r.detectedAfter)}` : ""}`}
           />
         );
       },
@@ -580,6 +588,7 @@ function registerColumns(o: {
 /* ------------------------------------------------------------------ */
 
 function findingColumns(o: {
+  defs: PlantDefs;
   start: number;
   expected: string[];
   performAction: KilnSimulation["performAction"];
@@ -588,13 +597,15 @@ function findingColumns(o: {
   return [
     {
       key: "rule",
-      header: "Finding",
+      header: "Problem",
       render: (r) => (
         <span className="ast-cell-stack sim-wrap">
-          <span className="ast-cell-title">
-            <span className="ast-num">{r.id}</span> {r.name}
+          <span className="ast-cell-title" title={`${r.id} · ${r.name}`}>
+            {r.plainTitle ?? r.name}
           </span>
-          <span className="ast-cell-sub">{r.evidence}</span>
+          <span className="ast-cell-sub" title={r.evidence}>
+            {nameIds(r.evidence, o.defs)}
+          </span>
         </span>
       ),
     },
@@ -602,7 +613,7 @@ function findingColumns(o: {
       key: "sev",
       header: "Severity",
       width: "104px",
-      render: (r) => <StatusTag tone={r.status === "ACTIVE" ? TONE(r.severity) : "idle"} label={r.status === "ACTIVE" ? r.severity : "Pending"} />,
+      render: (r) => <StatusTag tone={r.status === "ACTIVE" ? TONE(r.severity) : "idle"} label={r.status === "ACTIVE" ? r.severity : "Not confirmed"} />,
     },
     {
       key: "when",
@@ -613,12 +624,12 @@ function findingColumns(o: {
           {r.status === "ACTIVE"
             ? r.since !== null && r.since >= o.start
               ? `Confirmed +${fmtMin(r.since - o.start)}`
-              : "Confirmed (before scenario)"
-            : `Persistence ${r.persistence}/${r.threshold}`}
+              : "Confirmed before this scenario"
+            : `Seen ${r.persistence} of ${r.threshold} times`}
         </span>
       ),
     },
-    { key: "conf", header: "Conf.", width: "64px", render: (r) => <span className="ast-num">{r.confidence} %</span> },
+    { key: "conf", header: "Certainty", width: "64px", render: (r) => <span className="ast-num">{r.confidence} %</span> },
     {
       key: "fit",
       header: "Scenario",
@@ -643,7 +654,7 @@ function findingColumns(o: {
             </PillButton>
           </span>
         ) : (
-          <span className="ast-muted">Awaiting confirmation</span>
+          <span className="ast-muted">Waiting until confirmed</span>
         ),
     },
     {
@@ -652,10 +663,10 @@ function findingColumns(o: {
       width: "150px",
       render: (r) => (
         <span className="sim-row-links">
-          <button type="button" className="sim-link" onClick={() => o.go("diagnosis")} aria-label={`${r.id} in Diagnosis`}>
+          <button type="button" className="sim-link" onClick={() => o.go("diagnosis")} aria-label={`${r.plainTitle ?? r.name} in Diagnosis`}>
             Diagnosis
           </button>
-          <button type="button" className="sim-link" onClick={() => o.go("trends")} aria-label={`${r.id} signals in Trends`}>
+          <button type="button" className="sim-link" onClick={() => o.go("trends")} aria-label={`${r.plainTitle ?? r.name} readings in Trends`}>
             Trends
           </button>
         </span>
@@ -668,7 +679,7 @@ function findingColumns(o: {
 /* Event log                                                           */
 /* ------------------------------------------------------------------ */
 
-const eventColumns: Column<SimEvent & { key: string }>[] = [
+const eventColumns = (defs: PlantDefs): Column<SimEvent & { key: string }>[] => [
   { key: "clock", header: "Time", width: "104px", render: (e) => <span className="ast-num">{e.clock}</span> },
   {
     key: "kind",
@@ -677,7 +688,7 @@ const eventColumns: Column<SimEvent & { key: string }>[] = [
     render: (e) => (
       <StatusTag
         tone={e.kind === "action" || e.kind === "scenario" ? "info" : TONE(e.severity)}
-        label={e.kind === "rule" ? "Finding" : e.kind[0].toUpperCase() + e.kind.slice(1)}
+        label={e.kind === "rule" ? "Problem" : e.kind[0].toUpperCase() + e.kind.slice(1)}
       />
     ),
   },
@@ -686,8 +697,12 @@ const eventColumns: Column<SimEvent & { key: string }>[] = [
     header: "Event",
     render: (e) => (
       <span className="ast-cell-stack sim-wrap">
-        <span className="ast-cell-title">{e.title}</span>
-        <span className="ast-cell-sub">{e.detail}</span>
+        <span className="ast-cell-title" title={e.title}>
+          {nameIds(e.title, defs)}
+        </span>
+        <span className="ast-cell-sub" title={e.detail}>
+          {nameIds(e.detail, defs)}
+        </span>
       </span>
     ),
   },

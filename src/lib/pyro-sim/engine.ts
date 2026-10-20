@@ -42,9 +42,9 @@ import { describeLimit, evaluateLimit, resolveLimit, stateSeverity, type Severit
 import { pyroLimitContext } from "./limits";
 import { PYRO_MACHINES, PYRO_SIGNALS, PYRO_SIGNAL_BY_TAG, PYRO_SUBASSEMBLIES, PYRO_SYSTEMS, type PyroSignalDef } from "./signals";
 import { PYRO_RULES_BY_MACHINE, pyroRule } from "./rules";
-import { PYRO_SCENARIOS, effectLevel, pyroScenario, registerPyroScenario, type PyroScenario } from "./scenarios";
+import { PYRO_SCENARIOS, effectLevel, pyroScenario, registerPyroScenario, signalFaultScenario, type PyroScenario, type SignalFaultSpec } from "./scenarios";
 import { isEquipmentEffect, type PyroSignalEffect } from "./scenarios/common";
-import { EQUIPMENT_IDS, EQUIPMENT_LABEL, EQUIPMENT_MACHINE, defaultEquipment, machineRunning, observedEquipment, unitRunning, type EquipmentId, type EquipmentState, type EquipmentStates } from "./equipment";
+import { EQUIPMENT_IDS, EQUIPMENT_LABEL, EQUIPMENT_MACHINE, defaultEquipment, machineEquipment, machineRunning, observedEquipment, unitRunning, type EquipmentId, type EquipmentState, type EquipmentStates } from "./equipment";
 import { PYRO_DEFS } from "./defs";
 import type { ManualRecord } from "../plant-defs";
 import { CLR_BASE, HANDHELD_EMISSIVITY, PROFILE_N, SCANNER_EMISSIVITY, SIGNED, clamp, emissivityMatched, median, slope } from "./shared";
@@ -86,6 +86,10 @@ const C0 = 10.5;
 const N0 = 3.6;
 const S0 = 890;
 const TA0 = 30;
+/** Burning-zone temperature at the design point (°C, OSW-PE-SNL-PYR-01 Rev. 01 nominal 1,250–1,350). */
+const BZ0 = 1300;
+/** Solid-flow meter tap pressure per unit of the meter's feed share about the design rate (mbar). */
+const SFM_P_GAIN = 1.5;
 
 /** Kiln shell tyres at 11, 39, 60 m (profile 0 … 74 m at 0.5 m). Same geometry as the kiln-seal demo so the Thermal views apply. */
 const TYRE_M = [11, 39, 60];
@@ -144,7 +148,7 @@ function mulberry32(seed: number): Rng {
   return next;
 }
 
-const sevRank: Record<Severity, number> = { Normal: 0, Advisory: 1, Critical: 2 };
+const sevRank: Record<Severity, number> = { Normal: 0, Alert: 1, Critical: 2 };
 const maxSev = (a: Severity, b: Severity): Severity => (sevRank[a] >= sevRank[b] ? a : b);
 const asKiln = (d: PyroSignalDef) => d as unknown as SignalDef;
 
@@ -231,7 +235,7 @@ export interface MachineState {
   rules: Record<string, RuleMemory>;
   smooth: Record<string, number>;
   prevStates: Record<string, string>;
-  limits: Record<string, { shown: Severity; next: Severity; n: number }>;
+  limits: Record<string, { shown: Severity; next: Severity; n: number; /** Side the shown limit was crossed on. */ dir?: "high" | "low" }>;
   events: SimEvent[];
   healthHist: { overall: number[] } & Record<string, number[]>;
   frame: SimFrame | null;
@@ -288,6 +292,10 @@ export interface LineState {
   injections: Injection[];
   /** Minute the event generator next considers an event. */
   nextEventAt: number;
+  /** Live demo: no new fault (held or generated) starts anywhere on the line before this minute. */
+  calmUntil?: number;
+  /** Version of the database simulation settings last applied (src/lib/fleet-boot syncFleetConfig). */
+  simVersion?: number;
   injSeq: number;
 }
 
@@ -319,6 +327,14 @@ export interface LineSimSettings {
   holdMinutes: number;
   /** Machines the generator may pick (missing = allowed). */
   machines: Record<string, boolean>;
+  /** Least minutes between two new faults anywhere on the line (± 20 %), so the picture changes calmly (0: off). */
+  changeGap?: number;
+  /** Version of the live pacing these settings follow; a saved line on an older one takes the current pacing. */
+  pacing?: number;
+  /** Scenario minutes a held fault keeps worsening per minute after reaching its hold point (0: holds still). */
+  holdCreep?: number;
+  /** Calm minutes before a shown limit alarm clears (live demo; the validation suite uses LIMIT_CLEAR_N). */
+  limitClear?: number;
 }
 
 /** One event layered on a machine: a library scenario's effects, time-compressed to `target`. */
@@ -336,6 +352,8 @@ export interface Injection {
   /** Scenario minutes per simulated minute while developing. */
   pace: number;
   scale: number;
+  /** Share of `scale` added every 60 minutes once it reaches its alerting point (0 / absent: stays the same). */
+  grow?: number;
   auto: boolean;
 }
 
@@ -354,8 +372,28 @@ export const QUIET_SIM_SETTINGS: LineSimSettings = {
   machines: {},
 };
 
-/** The live demonstration: an alert about every 5 s at 1×, health moving every few seconds. */
-export const LIVE_SIM_SETTINGS: LineSimSettings = { ...QUIET_SIM_SETTINGS, events: true, healthDrift: 1, holdMinutes: 180 };
+/**
+ * The live demonstration, calm enough to read (1 simulated minute = 1 real second): one generated fault at a
+ * time, a new one about every 12 real minutes (± 20 %), each developing over a minute and staying ~10 minutes
+ * a little past its alerting point (so it does not blink on and off); a held fault keeps slowly worsening for
+ * about 30 real minutes (so the prognosis sees it heading for its limit) before it is repaired and the next one
+ * develops; any two new faults on the line start at least ~10 real minutes apart.
+ */
+export const LIVE_SIM_SETTINGS: LineSimSettings = {
+  ...QUIET_SIM_SETTINGS,
+  events: true,
+  eventEvery: 720,
+  eventLead: 60,
+  eventLife: 600,
+  maxEvents: 1,
+  intensity: 1.25,
+  healthDrift: 1,
+  holdMinutes: 1800,
+  changeGap: 600,
+  pacing: 2,
+  holdCreep: 0.05,
+  limitClear: 300,
+};
 
 /** Minutes an event takes to fade out after `end`. */
 const EVENT_FADE = 6;
@@ -477,6 +515,8 @@ const PUMP_BLEED = 4;
 const STROKE_MIN = 0.4;
 /** Deepest bed the grate holds (× design depth) before clinker spills back to the kiln outlet. */
 const BED_MAX = 2.2;
+/** Cooling-fan shut-off pressure as a share of its design pressure (the most a fan can push against a deep bed). */
+const FAN_SHUTOFF = 1.45;
 /** Time constants (min): process gas / air temperatures once the line is stopped (refractory heat), bearings and windings, support rollers, gearbox oil. */
 const TAU_STOPPED = 45;
 const TAU_BEARING = 30;
@@ -489,6 +529,10 @@ const CLINKER_FACTOR = 1.6;
 /** Inventories (demo; D5 capacities TBC at D3): tonnes per % of level. */
 const SILO_T_PER_PCT = 60;
 const BIN_T_PER_PCT = 1.207;
+/** Share of the kiln feed bin weight on each of its three load cells (the outlet sits slightly off-centre). */
+const LOAD_CELL_SHARE = [0.34, 0.33, 0.33];
+/** Kiln feed bin weight from its three load cells. */
+const binWeight = (v: Record<string, number>) => v["WGT-KFS-01"] + v["WGT-KFS-02"] + v["WGT-KFS-03"];
 const COALBIN_T_PER_PCT = 1.2;
 const CSILO_T_PER_PCT = 50;
 /** Kiln feed bin weight set-point (t) and the weigh-bin extraction controller gain (t/h per t of error). */
@@ -664,8 +708,9 @@ interface PhysicsIn {
  * inventories. A stopped unit's current, speed and vibration are ≈ 0 and its
  * bearings and windings cool to ambient (D5 Tables 5.x.6 "≈ 0 / ambient when
  * stopped"). Design point (D5 §3.1, Tables 5.2.1, 5.3.1, 5.4.1, 5.5.1): kiln
- * feed 330 t/h, coal 10.5 t/h, kiln 3.6 rpm, C1 gas 330 °C, meal to kiln
- * 905 °C, kiln inlet draft −3.6 mbar, burning zone 1,450 °C.
+ * feed 330 t/h, coal 10.5 t/h, kiln 3.6 rpm, C1 gas 330 °C; OSW-PE-SNL-PYR-01 Rev. 01
+ * nominals: meal to kiln 850 °C, kiln inlet draft −8.8 mbar, burning zone 1,300 °C,
+ * secondary air 1,100 °C.
  */
 function physics(p: PhysicsIn): Values {
   const { d, z, eq, inv, t, th } = p;
@@ -680,6 +725,10 @@ function physics(p: PhysicsIn): Values {
   const gasTau = p.slowHeat ? TAU_STOPPED : 0;
   const gas = (tag: string, x: number) => th(`g:${tag}`, x, gasTau);
   const rise = (tag: string, x: number, tau = TAU_BEARING) => Ta + th(tag, x, tau);
+  // Stator winding RTD: copper losses rise with the square of the load; a stopped motor cools to ambient.
+  const wdg = (tag: string, on: boolean, load = 1) => rise(tag, on ? (PYRO_SIGNAL_BY_TAG[tag].base - TA0) * (0.55 + 0.45 * load * load) : 0);
+  // Pulse-jet filter ΔP: saw-tooth over the cleaning cycle.
+  const saw = (period: number) => (((t % period) + period) % period) / period;
   const v: Values = {};
 
   // Cooler air: each running fan's share of the design air (shares ∝ fan current); compartments 1–3 recuperate the heat.
@@ -690,8 +739,8 @@ function physics(p: PhysicsIn): Values {
   const vent = run("clr-vent-fan");
 
   // Kiln heat balance (single firing point at the outlet).
-  const tSec = gas("TMP-BRN-02", 990 + 260 * (z.fIn - 1) - 130 * (A - 1) - 300 * (1 - hotShare) - 400 * p.recupLoss);
-  const tbz = gas("TMP-KLN-14", 1450 + 900 * (c - 1) - 280 * (z.fBz - 1) - 60 * (dr - 1) + 0.15 * (tSec - 990));
+  const tSec = gas("TMP-BRN-02", 1100 + 260 * (z.fIn - 1) - 130 * (A - 1) - 300 * (1 - hotShare) - 400 * p.recupLoss);
+  const tbz = gas("TMP-KLN-14", BZ0 + 900 * (c - 1) - 280 * (z.fBz - 1) - 60 * (dr - 1) + 0.15 * (tSec - 1100));
   const tIn = gas("TMP-KLN-13", 1080 + 500 * (c - 1) - 170 * (z.fInlet - 1) - 40 * (dr - 1));
   const r = (tIn - 20) / 1060;
   const o2In = clamp(2.4 + 5 * (dr - 1) - 7 * (c - 1) + 1.2 * (1 - z.fInlet), 0.2, 20.9);
@@ -703,29 +752,47 @@ function physics(p: PhysicsIn): Values {
   v["LEV-FSL-01"] = inv.silo / SILO_T_PER_PCT;
   v["PRS-FSL-01"] = duty ? 420 + 0.4 * (Ta - TA0) : stby ? 365 + 0.35 * (Ta - TA0) : 4;
   v["ELE-FSL-01"] = duty ? 66 + 0.12 * (Ta - TA0) : stby ? 58 + 0.1 * (Ta - TA0) : 0;
+  v["TMP-FSL-01"] = wdg("TMP-FSL-01", duty || stby, v["ELE-FSL-01"] / 66);
+  v["PRS-FSL-02"] = 10.4 + 2.2 * saw(40);
+  v["ELE-FSL-02"] = 34 + 0.06 * (Ta - TA0);
 
   // KFS-01 · weigh bin inventory, dosing follows feed.
   const elev = run("kfs-elevator");
-  v["LEV-KFS-01"] = inv.bin / BIN_T_PER_PCT;
-  v["WGT-KFS-01"] = inv.bin;
-  v["POS-KFS-01"] = 47 * z.fFeed;
-  v["PRS-KFS-01"] = run("kfs-airslide-blower") ? 52 * (0.9 + 0.1 * z.fFeed) : 0.4;
-  v["FLO-KFS-01"] = z.fFeed * F0;
-  v["PRS-KFS-02"] = 12 * z.fFeed;
+  // Three load cells carry the bin; there is no level sensor.
+  LOAD_CELL_SHARE.forEach((k, i) => (v[`WGT-KFS-0${i + 1}`] = inv.bin * k));
+  v["PRS-KFS-05"] = 9 + 2 * saw(36);
+  v["ELE-KFS-03"] = 22 + 0.04 * (Ta - TA0);
+  const slide = run("kfs-airslide-blower");
+  v["PRS-KFS-01"] = slide ? 39.2 * (0.9 + 0.1 * z.fFeed) : 0.4;
+  v["ELE-KFS-02"] = slide ? 38 * (0.92 + 0.08 * z.fFeed) : 0;
+  // Gates A and B split the bin discharge over slides A and B to the two solid-flow meters (half each).
+  v["FLO-KFS-01"] = 0.5 * z.fFeed * F0;
+  v["FLO-KFS-02"] = 0.5 * z.fFeed * F0;
+  // Meter pressure taps P2 / P3 sit near atmospheric (OSW-PE-SNL-PYR-01: −5 … +5 mmWG) and move with the meter's
+  // throughput around the design rate; with no flow through the meter they read 0.
+  const pSfm = SFM_P_GAIN * (z.fFeed - 1) * Math.min(1, z.fFeed / 0.2);
+  v["PRS-KFS-02"] = pSfm;
+  v["PRS-KFS-06"] = pSfm;
+  v["PRS-KFS-04"] = slide ? 45 * (0.9 + 0.1 * z.fFeed) : 0.5;
   v["ELE-KFS-01"] = elev ? 118 * (0.35 + 0.65 * Math.pow(z.fFeed, 1.1)) : 0;
   v["VIB-KFS-01"] = elev ? 1.8 * (1 + 0.1 * (z.fFeed - 1)) : VIB_STOPPED;
   v["TMP-KFS-01"] = rise("TMP-KFS-01", elev ? 28 + 4 * (z.fFeed - 1) : 0);
   v["SPD-KFS-01"] = elev ? 24.5 : 0;
+  v["TMP-KFS-02"] = wdg("TMP-KFS-02", elev, v["ELE-KFS-01"] / 118);
 
-  // PHC-01 · stage temperatures scale with the kiln exit gas, drafts with the fan (D5 5.3.1: C1 300–360 °C, meal to kiln 890–920 °C).
-  const STAGE = [330, 505, 650, 775, 865, 925];
+  // PHC-01 · stage temperatures scale with the kiln exit gas, drafts with the fan (D5 5.3.1: C1 300–360 °C; OSW-PE-SNL-PYR-01
+  // Rev. 01: C5 820–860, C6 860–890, riser 870–900, meal to kiln 830–870 °C). C5 / C6 / riser sit apart inside their
+  // nominals so the stage order (C6 < riser, R-PHC-V1) holds with the thermocouple scatter.
+  const STAGE = [330, 505, 650, 775, 832, 866];
   STAGE.forEach((b, i) => (v[`TMP-PHC-0${i + 1}`] = 20 + (b - 20) * r * (1 + 0.04 * (dr - 1)) * (1 - 0.02 * (i < 2 ? z.fMeal - 1 : 0))));
-  v["TMP-PHC-08"] = 20 + 1040 * r;
-  v["TMP-PHC-07"] = 20 + 885 * r * (1 - 0.08 * (z.fMeal - 1));
-  const DRAFT = [-62, -51, -40, -30, -21, -9];
+  v["TMP-PHC-08"] = 20 + 872 * r;
+  // Less meal runs a little hotter; the sensitivity keeps the meal below the riser gas (≈ 40 K above it) with no meal at all.
+  v["TMP-PHC-07"] = 20 + 830 * r * (1 - 0.015 * (z.fMeal - 1));
+  // C6 / riser draft −11.2 mbar (nominal −5.9 … −11.8) stays below the kiln inlet (−8.8 mbar): the staircase C1 → C6 → inlet.
+  const DRAFT = [-62, -51, -40, -30, -21, -11.2];
   DRAFT.forEach((b, i) => (v[`PRS-PHC-0${i + 1}`] = b * dr * (1 + 0.12 * (z.fMeal - 1))));
-  v["PRS-PHC-07"] = -24 * dr;
-  v["PRS-PHC-08"] = -16 * dr;
+  v["PRS-PHC-07"] = -5.9 * dr;
+  v["PRS-PHC-08"] = -4.9 * dr;
   v["PRS-PHC-09"] = -7 * dr;
   v["GAS-PHC-01"] = o2Ex;
   v["GAS-PHC-02"] = 300 + 1600 * Math.max(0, 2.6 - o2Ex);
@@ -738,6 +805,23 @@ function physics(p: PhysicsIn): Values {
   v["TMP-PHC-10"] = rise("TMP-PHC-10", fan ? 33 + 10 * (s - 1) : 0);
   v["ELE-PHC-01"] = fan ? 1850 * s * s * s * (1 + 0.08 * (z.fMeal - 1)) * (1 + 0.6 * (dmp - 1)) : 0;
   v["SPD-PHC-01"] = d.idFan;
+  v["TMP-PHC-11"] = wdg("TMP-PHC-11", fan, Math.cbrt(v["ELE-PHC-01"] / 1850));
+  // Calciner outlet (C5 meal split to calciner / riser) and the main baghouse after the ID fan.
+  v["PRS-PHC-10"] = -11 * dr;
+  // Calciner outlet: its own firing keeps O₂ steady; the draft moves it.
+  v["GAS-PHC-03"] = clamp(2.0 + 4 * (dr - 1), 0.2, 20.9);
+  v["GAS-PHC-04"] = 450 + 2400 * Math.max(0, 1.4 - v["GAS-PHC-03"]);
+  v["POS-PHC-02"] = 70;
+  v["TMP-BGH-02"] = 20 + 155 * (v["TMP-PHC-01"] - 20) / 310;
+  v["PRS-BGH-02"] = -18 * dr;
+  v["PRS-BGH-01"] = 12.6 + 2.6 * saw(30);
+  v["ELE-BGH-02"] = 9.5 * (0.9 + 0.1 * z.fFeed);
+  v["GAS-BGH-01"] = 12;
+  v["VIB-BGH-01"] = 2.1;
+  v["TMP-BGH-01"] = rise("TMP-BGH-01", 32);
+  v["ELE-BGH-01"] = 310 * (0.92 + 0.08 * dr);
+  v["SPD-BGH-01"] = 980;
+  v["TMP-BGH-03"] = wdg("TMP-BGH-03", true, v["ELE-BGH-01"] / 310);
 
   // KLN-01 · drive train (load from the kiln hold-up and speed); the aux drive turns the kiln through the gearbox.
   const main = run("kln-main-drive");
@@ -768,30 +852,33 @@ function physics(p: PhysicsIn): Values {
   v["POS-KLN-01"] = -3 + p.axial + (hpu ? 2.2 * Math.sin(floatPhase) : 0);
   v["PRS-KLN-07"] = th("p:PRS-KLN-07", hpu ? 86 * (0.5 + 0.5 * Math.pow(Math.max(0, z.fK), 1.2)) + 4 * Math.cos(floatPhase) : 3, PUMP_BLEED);
   [9, 11, 8].forEach((b, i) => (v[`MIG-KLN-0${i + 1}`] = b - 0.05 * p.shellAtTyre[i]));
+  // Tyre temperatures (DCS read-only) follow the shell under each tyre.
+  [250, 215, 250].forEach((b, i) => (v[`TMP-KLN-${28 + i}`] = b + 0.5 * (Ta - TA0) + 0.3 * p.shellAtTyre[i]));
   v["TMP-KLN-13"] = tIn;
-  v["PRS-KLN-01"] = -3.6 * dr;
+  v["PRS-KLN-01"] = -8.8 * dr;
   v["GAS-KLN-01"] = o2In;
   v["GAS-KLN-02"] = 420 + 2600 * Math.max(0, 1.6 - o2In);
-  v["GAS-KLN-03"] = Math.max(60, 950 + 4.5 * (tbz - 1450) + 120 * (o2In - 2.4));
+  v["GAS-KLN-03"] = Math.max(60, 950 + 4.5 * (tbz - BZ0) + 120 * (o2In - 2.4));
   v["STS-KLN-08"] = 95.9;
   v["TMP-KLN-14"] = tbz;
-  v["TMP-KLN-27"] = 1030 + 0.6 * (tSec - 990) + 0.1 * (tbz - 1450);
+  v["TMP-KLN-27"] = 1030 + 0.6 * (tSec - 1100) + 0.1 * (tbz - BZ0);
   // Hood: held slightly negative by the ID fan; without draft the cooler air (and without the vent fan its excess) blows back (D5 FP-30).
-  v["PRS-KLN-03"] = -0.3 * dr + 0.15 * (Aeff - 1) + 0.35 * (1 - Math.min(1, dr)) * Math.min(1, Aeff) + (vent ? 0 : 0.4);
+  v["PRS-KLN-03"] = -0.147 * dr + 0.074 * (Aeff - 1) + 0.17 * (1 - Math.min(1, dr)) * Math.min(1, Aeff) + (vent ? 0 : 0.2);
   const outFan = run("kln-outlet-fan");
-  v["TMP-KLN-25"] = rise("TMP-KLN-25", outFan ? 12 : 48, 15);
-  v["TMP-KLN-26"] = 185 + 0.12 * (tbz - 1450) + 0.5 * (Ta - TA0) + th("TMP-KLN-26", outFan ? 0 : 75, 30);
+  v["TMP-KLN-25"] = rise("TMP-KLN-25", outFan ? 60 : 140, 15);
+  v["TMP-KLN-26"] = 250 + 0.16 * (tbz - BZ0) + 0.5 * (Ta - TA0) + th("TMP-KLN-26", outFan ? 0 : 115, 30);
   v["LAB-KLN-01"] = 22;
 
   // BRN-01 · primary air on a controlled header, coal on its own line.
   const pa = run("brn-pafan");
   const blower = run("brn-coal-blower");
-  v["PRS-BRN-03"] = pa ? 255 : 2;
-  v["PRS-BRN-01"] = pa ? 165 : 1.5;
-  v["PRS-BRN-02"] = pa ? 235 : 2;
+  v["PRS-BRN-03"] = pa ? 675 : 2;
+  v["PRS-BRN-01"] = pa ? 65 : 1.5;
+  v["PRS-BRN-02"] = pa ? 625 : 2;
   v["VIB-BRN-01"] = pa ? 1.9 : VIB_STOPPED;
   v["TMP-BRN-01"] = rise("TMP-BRN-01", pa ? 30 : 0);
   v["ELE-BRN-01"] = pa ? 142 + 0.1 * (Ta - TA0) : 0;
+  v["TMP-BRN-05"] = wdg("TMP-BRN-05", pa, v["ELE-BRN-01"] / 142);
   v["TMP-BRN-02"] = tSec;
   v["TMP-BRN-04"] = Ta + 26;
   v["GAS-BRN-01"] = 18;
@@ -801,15 +888,27 @@ function physics(p: PhysicsIn): Values {
   v["PRS-BRN-04"] = blower ? 410 * (0.1 + 0.9 * Math.pow(Math.max(0, c), 0.7)) : 3;
   v["VIB-BRN-02"] = blower ? 2.6 : VIB_STOPPED;
   v["ELE-BRN-02"] = blower ? 205 * (1 + 0.08 * (c - 1)) : 0;
+  v["TMP-BRN-06"] = wdg("TMP-BRN-06", blower, v["ELE-BRN-02"] / 205);
+  // Calciner coal runs on its own outlet-temperature control (steady here), interlocked with the meal feed (elevator);
+  // tertiary air comes hot from the cooler hood.
+  v["FLO-BRN-02"] = run("kfs-elevator") ? 14.5 : 0;
+  v["POS-BRN-01"] = 65;
+  v["TMP-BRN-03"] = 880 + 0.5 * (tSec - 1100);
+  v["PRS-BRN-05"] = -3.43 * dr;
 
   // CLR-01 · grate stroke follows the clinker rate so the bed stays at depth; a stopped fan's chamber only sees leakage.
   CLR_BASE.forEach((b, i) => {
     const res = bedResistance(i < 3 ? z.bedHot : z.bedCold);
-    v[`PRS-CLR-0${i + 1}`] = (fanRun[i] ? A * A : 0.08) * b * Math.pow(res, 0.8);
+    // A centrifugal fan cannot push past its shut-off pressure (≈ 1.45 × design), however deep the bed gets.
+    v[`PRS-CLR-0${i + 1}`] = (fanRun[i] ? A * A : 0.08) * b * Math.min(Math.pow(res, 0.8), FAN_SHUTOFF);
     v[`ELE-CLR-0${i + 1}`] = fanRun[i] ? CLR_FAN_I[i] * A * A * A * Math.pow(res, 0.3) : 0;
     v[`TMP-CLR-0${i + 1}`] = rise(`TMP-CLR-0${i + 1}`, fanRun[i] ? CLR_FAN_T[i] + 4 * (A - 1) : 0);
   });
   CLR_FAN_V.forEach((b, i) => (v[`VIB-CLR-0${i + 1}`] = fanRun[i] ? b * A : VIB_STOPPED));
+  // Cooling-fan windings follow the fan's run state (its load moves with the bed, which the reference model cannot see).
+  CLR_FAN_I.forEach((_, i) => (v[`TMP-CLR-${17 + i}`] = wdg(`TMP-CLR-${17 + i}`, fanRun[i])));
+  // Under-grate hoppers (DCS read-only): fine clinker falling through the grate; hotter where the bed is hot.
+  [95, 86, 115, 115, 115, 115].forEach((b, i) => (v[`TMP-CLR-${11 + i}`] = gas(`TMP-CLR-${11 + i}`, b + 0.6 * (Ta - TA0) + (fanRun[i] ? 0 : 25))));
   const grate = run("clr-grate-hpu");
   v["SPD-CLR-01"] = 10.5 * z.sr;
   // Hydraulic working pressure: moving the empty grate frame takes about 60 %, the clinker load the rest.
@@ -822,6 +921,7 @@ function physics(p: PhysicsIn): Values {
   v["VIB-CLR-07"] = vent ? 2.2 : VIB_STOPPED;
   v["TMP-CLR-10"] = rise("TMP-CLR-10", vent ? 34 : 0);
   v["ELE-CLR-07"] = vent ? 385 * (1 + 0.1 * (A - 1)) : 0;
+  v["TMP-CLR-23"] = wdg("TMP-CLR-23", vent, v["ELE-CLR-07"] / 385);
 
   // HMR-01 · crusher load follows the clinker rate (no-load current when empty).
   const crush = run("hmr-crusher");
@@ -844,6 +944,7 @@ function physics(p: PhysicsIn): Values {
   v["ELE-CSL-01"] = conv ? 74 * (0.45 + 0.55 * z.fCsl * (1 - brk)) : 0;
   v["VIB-CSL-01"] = conv ? 1.9 : VIB_STOPPED;
   v["SPD-CSL-01"] = conv ? 6.2 * (1 - brk) : 0;
+  v["TMP-CSL-02"] = wdg("TMP-CSL-02", conv);
   // Baghouse ΔP: saw-tooth with the pulse-cleaning cycle; without cleaning the cake builds and ΔP stops cycling.
   const pulse = clamp(p.pulseStop, 0, 1);
   v["PRS-CSL-01"] = dust ? 11.4 + 2.2 * (1 - pulse) * ((((t % 30) + 30) % 30) / 30) + 3 * pulse : 0.4;
@@ -938,6 +1039,8 @@ const REPAIR_AFTER = 80;
 const REPAIR_MIN = 30;
 const DISTURBANCE_MIN = 40;
 const HOLD_LEAD = 30;
+/** Live demo: scenario minutes a held fault advances per minute after reaching its hold point. */
+const HOLD_CREEP = 0.05;
 const HOLD_MIN = 150;
 const HOLD_VAR = 90;
 const BG_GAP_MIN = 120;
@@ -946,6 +1049,8 @@ const BG_LEN_MIN = 18;
 const BG_LEN_VAR = 20;
 const LIMIT_RAISE_N = 3;
 const LIMIT_CLEAR_N = 6;
+/** Live demo: calm minutes (= real seconds) before a shown limit alarm clears. */
+const LIVE_LIMIT_CLEAR_N = 300;
 
 /**
  * Hold profiles: the faults each condition rotates through, with the scenario
@@ -975,7 +1080,7 @@ export const PYRO_HOLDS: Record<string, { advisory: Array<{ id: string; at: numb
   },
   "PYR-CLR-01": {
     advisory: [{ id: "clr-fan2-bearing", at: 245 }, { id: "clr-hydraulic", at: 185 }, { id: "clr-vent-imbalance", at: 170 }, { id: "clr-fan5-bearing", at: 215 }],
-    // SW-CLR-01 (grate plate) is a suspicion capped at Advisory (no flow / bed-depth / damper inputs), so it is not a critical hold.
+    // SW-CLR-01 (grate plate) is a suspicion capped at Alert (no flow / bed-depth / damper inputs), so it is not a critical hold.
     critical: [{ id: "clr-red-river", at: 170 }, { id: "clr-fan2-bearing", at: 330 }],
   },
   "PYR-CCT-01": {
@@ -1161,9 +1266,14 @@ function injectionMinute(j: Injection, t: number): number {
   return Math.min((t - j.start) * j.pace, j.target);
 }
 
-/** Effect scale at `t`: full until `end`, then fading to zero over EVENT_FADE minutes. */
+/** Most an event can grow to (× its starting scale). */
+const GROW_MAX = 4;
+
+/** Effect scale at `t`: full (growing by `grow` once in place) until `end`, then fading to zero over EVENT_FADE minutes. */
 function injectionScale(j: Injection, t: number): number {
-  return t <= j.end ? j.scale : j.scale * Math.max(0, 1 - (t - j.end) / EVENT_FADE);
+  const reached = Number.isFinite(j.target) ? j.start + j.target / j.pace : j.start;
+  const grown = j.scale * Math.min(GROW_MAX, 1 + ((j.grow ?? 0) * Math.max(0, Math.min(t, j.end) - reached)) / 60);
+  return t <= j.end ? grown : grown * Math.max(0, 1 - (t - j.end) / EVENT_FADE);
 }
 
 export interface InjectOptions {
@@ -1171,6 +1281,8 @@ export interface InjectOptions {
   life?: number;
   /** Severity scale (default `intensity`). */
   scale?: number;
+  /** Share of `scale` added every 60 minutes once in place (keeps getting worse). */
+  grow?: number;
   auto?: boolean;
 }
 
@@ -1200,6 +1312,7 @@ export function injectEvent(line: LineState, machine: string, scenarioId: string
     target,
     pace,
     scale: opts.scale ?? cfg.intensity,
+    ...(opts.grow ? { grow: opts.grow } : {}),
     auto: opts.auto ?? false,
   };
   line.injections.push(j);
@@ -1236,9 +1349,14 @@ function stepEvents(s: LineState): void {
   s.injections = s.injections.filter((j) => t < j.end + EVENT_FADE);
   const cfg = s.sim;
   if (!cfg.events || cfg.eventEvery <= 0 || t < s.nextEventAt) return;
-  s.nextEventAt = t + Math.max(1, Math.round(cfg.eventEvery * (0.7 + 0.6 * s.rand())));
+  s.nextEventAt = t + Math.max(1, Math.round(cfg.eventEvery * (0.8 + 0.4 * s.rand())));
   if (s.injections.filter((j) => j.auto && t < j.end).length >= cfg.maxEvents) return;
-  raiseEvent(s, s.rand() < cfg.sensorShare ? "sensor" : "fault", undefined, true);
+  if (!lineCalm(s)) {
+    // Too soon after the last new fault: try again once the line's calm gap has passed.
+    s.nextEventAt = s.calmUntil ?? t + 1;
+    return;
+  }
+  if (raiseEvent(s, s.rand() < cfg.sensorShare ? "sensor" : "fault", undefined, true)) markChange(s);
 }
 
 /**
@@ -1272,46 +1390,15 @@ export function raiseEvent(s: LineState, kind: "sensor" | "fault", machine?: str
   return null;
 }
 
-/** A hand-made fault on one signal (Simulation page builder). */
-export interface SignalFaultSpec {
-  machine: string;
-  tag: string;
-  /** step: offset · drift: grows by `delta` per `rampMin` · ramp: reaches `delta` over `rampMin` · osc: ±`delta` with period `rampMin` · spike: `delta` for `rampMin` · noise: random ±`delta` · freeze: reading stuck. */
-  shape: "step" | "ramp" | "drift" | "osc" | "spike" | "noise" | "freeze";
-  delta: number;
-  rampMin: number;
-  /** Only the reading is wrong (instrument fault); otherwise the plant itself moves. */
-  sensor: boolean;
-  /** Minutes until it eases off. */
-  life: number;
-}
+export type { SignalFaultSpec } from "./scenarios";
 
-let customSeq = 0;
-
-/** Register `spec` as a custom scenario and run it as an event in real time. */
+/** Run a one-reading fault as an event in real time (its scenario id carries the whole fault; `signalFaultId`). */
 export function injectSignalFault(line: LineState, spec: SignalFaultSpec): Injection | null {
-  const def = PYRO_SIGNAL_BY_TAG[spec.tag];
-  if (!def || !line.machines[spec.machine]) return null;
-  const freeze = spec.shape === "freeze";
-  const what = freeze
-    ? "reading frozen"
-    : `${spec.shape} ${spec.delta >= 0 ? "+" : "−"}${Math.abs(spec.delta)}${def.unit ? ` ${def.unit}` : ""}`;
-  const sc: PyroScenario = {
-    id: `custom-${++customSeq}`,
-    machine: spec.machine,
-    name: `${def.name}: ${what}${spec.sensor || freeze ? " (sensor)" : ""}`,
-    group: "Custom",
-    expected: [],
-    documentedDetection: "quiet",
-    description: `Custom ${spec.sensor || freeze ? "instrument" : "process"} fault on ${spec.tag} built on the Simulation page.`,
-    effects: [
-      freeze
-        ? { target: { kind: "signal", tag: spec.tag }, hold: true, onsetMin: 0, rampMin: 0, shape: "step", sensor: true }
-        : { target: { kind: "signal", tag: spec.tag }, delta: spec.delta, onsetMin: 0, rampMin: Math.max(0, spec.rampMin), shape: spec.shape as Exclude<SignalFaultSpec["shape"], "freeze">, sensor: spec.sensor },
-    ],
-  };
+  if (!line.machines[spec.machine]) return null;
+  const sc = signalFaultScenario(spec);
+  if (!sc) return null;
   registerPyroScenario(sc);
-  return injectEvent(line, spec.machine, sc.id, { life: spec.life, scale: 1 });
+  return injectEvent(line, spec.machine, sc.id, { life: spec.life, scale: 1, grow: spec.grow });
 }
 
 const isHeld = (ms: MachineState) => ms.fx.hold !== null && (ms.story.profile === "advisory" || ms.story.profile === "critical");
@@ -1380,6 +1467,17 @@ function stepBackground(_line: LineState, ms: MachineState): void {
   ms.bg = null;
 }
 
+/** True when a new fault may start now (the line's calm gap since the last one has passed). */
+function lineCalm(line: LineState): boolean {
+  return !line.sim.changeGap || line.t >= (line.calmUntil ?? 0);
+}
+
+/** A new fault started: hold the next one off for the calm gap (± 20 %). */
+function markChange(line: LineState): void {
+  const gap = line.sim.changeGap ?? 0;
+  if (gap > 0) line.calmUntil = line.t + Math.round(gap * (0.8 + 0.4 * line.rand()));
+}
+
 function stepStory(line: LineState, ms: MachineState): void {
   const st = ms.story;
   const fx = ms.fx;
@@ -1420,7 +1518,7 @@ function stepStory(line: LineState, ms: MachineState): void {
 
   if (st.autopilot && isHeld(ms) && (st.phase === "developing" || st.phase === "detected")) {
     if (st.phase === "detected" && st.detectedAt !== null && !st.acked && t - st.detectedAt >= ACK_AFTER) performAction(line, ms.id, sc.expected[0], "acknowledge", true);
-    if (t >= st.holdUntil && (st.phase === "detected" || t - ms.scenarioStart > 240)) {
+    if (t >= st.holdUntil && (st.phase === "detected" || t - ms.scenarioStart > 240) && lineCalm(line)) {
       pushEvent(line, ms, {
         kind: "action",
         severity: "Normal",
@@ -1429,6 +1527,7 @@ function stepStory(line: LineState, ms: MachineState): void {
         action: { ruleId: sc.expected[0], kind: "complete", auto: true },
       });
       startHold(line, ms);
+      markChange(line);
     }
   } else if (st.autopilot) {
     if ((st.phase === "detected" || st.phase === "mitigated") && st.detectedAt !== null) {
@@ -1447,8 +1546,9 @@ function stepStory(line: LineState, ms: MachineState): void {
             setScenario(line, ms.id, id);
             sc = pyroScenario(ms.id, id);
           }
-        } else if (t >= st.nextFaultAt && (st.profile === "advisory" || st.profile === "critical")) {
+        } else if (t >= st.nextFaultAt && (st.profile === "advisory" || st.profile === "critical") && lineCalm(line)) {
           startHold(line, ms);
+          markChange(line);
           sc = pyroScenario(ms.id, ms.scenarioId);
         }
       } else if (fx.repairStart === null && t - ms.scenarioStart >= DISTURBANCE_MIN) {
@@ -1471,7 +1571,7 @@ function limitText(def: PyroSignalDef, sev: Severity): string {
   return sev === "Critical" ? d.alarm : d.warning;
 }
 
-function trackLimit(line: LineState, ms: MachineState, def: PyroSignalDef, sev: Severity, display: string): void {
+function trackLimit(line: LineState, ms: MachineState, def: PyroSignalDef, sev: Severity, display: string, residual = 0): void {
   const m = (ms.limits[def.tag] ??= { shown: "Normal", next: "Normal", n: 0 });
   if (sev === m.shown) {
     m.next = sev;
@@ -1484,10 +1584,11 @@ function trackLimit(line: LineState, ms: MachineState, def: PyroSignalDef, sev: 
   }
   m.n += 1;
   const rising = sevRank[sev] > sevRank[m.shown];
-  if (m.n < (rising ? LIMIT_RAISE_N : LIMIT_CLEAR_N)) return;
+  if (m.n < (rising ? LIMIT_RAISE_N : line.sim.events ? (line.sim.limitClear ?? LIVE_LIMIT_CLEAR_N) : LIMIT_CLEAR_N)) return;
   const was = m.shown;
   m.shown = sev;
   m.n = 0;
+  if (rising) m.dir = residual >= 0 ? "high" : "low";
   const u = def.unit ? ` ${def.unit}` : "";
   pushEvent(line, ms, {
     kind: "limit",
@@ -1549,6 +1650,30 @@ export function thawLine(f: FrozenLine): LineState {
   const { mem, ...rest } = f;
   const s: LineState = { ...rest, rand: mulberry32(f.rand), machines };
   adoptLineMemory(s, mem);
+  // A snapshot from before the OSW-PE-SNL-PYR-01 sensor list: WGT-KFS-01 was the whole bin (now load cell 1),
+  // FLO-KFS-01 the whole kiln feed (now SFM A, half) and POS-KFS-01 a % dosing gate (now gate A open / closed).
+  if (!s.hist["WGT-KFS-02"]) {
+    for (const h of [s.hist, s.modelHist]) {
+      if (h["WGT-KFS-01"]) h["WGT-KFS-01"] = h["WGT-KFS-01"].map((v) => v * LOAD_CELL_SHARE[0]);
+      if (h["FLO-KFS-01"]) h["FLO-KFS-01"] = h["FLO-KFS-01"].map((v) => v / 2);
+      if (h["POS-KFS-01"]) h["POS-KFS-01"] = h["POS-KFS-01"].map(() => 1);
+    }
+    for (const [i, k] of LOAD_CELL_SHARE.entries()) if (i > 0) for (const h of [s.hist, s.modelHist]) h[`WGT-KFS-0${i + 1}`] = (h["WGT-KFS-01"] ?? []).map((v) => (v / LOAD_CELL_SHARE[0]) * k);
+  }
+  // Signals added to the catalogue after the snapshot was taken start with a flat history at their base value.
+  for (const def of SERIES_SIGNALS) {
+    const flat = () => s.times.map(() => (def.type === "state" ? 1 : def.base));
+    if (!s.hist[def.tag]) s.hist[def.tag] = flat();
+    if (!s.modelHist[def.tag]) s.modelHist[def.tag] = flat();
+    if (!s.qualHist[def.tag]) s.qualHist[def.tag] = s.times.map(() => 0);
+  }
+  // A live snapshot from before the calm pacing (a fault every few seconds): take the calm live pacing, keeping
+  // the noise, health and machine choices the snapshot carries.
+  if (s.sim.events && (s.sim.pacing ?? 0) < (LIVE_SIM_SETTINGS.pacing ?? 0)) {
+    const { eventEvery, eventLead, eventLife, maxEvents, intensity, holdMinutes, changeGap, pacing } = LIVE_SIM_SETTINGS;
+    s.sim = { ...s.sim, eventEvery, eventLead, eventLife, maxEvents, intensity, holdMinutes, changeGap, pacing };
+    s.nextEventAt = Math.min(s.nextEventAt, s.t + 1);
+  }
   return s;
 }
 
@@ -1585,6 +1710,9 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
     const sc = pyroScenario(ms.id, ms.scenarioId);
     scenarioOf[ms.id] = sc;
     const fx = ms.fx;
+    // Live demo: a held fault keeps slowly worsening (as a real one would) instead of sitting still, so its
+    // readings trend toward the next limit and the prognosis has a time left to show.
+    if (fx.hold !== null && s.sim.events && fx.repairStart === null && !fx.mitigated && fx.scMin >= fx.hold) fx.hold += s.sim.holdCreep ?? HOLD_CREEP;
     const advanced = fx.scMin + (fx.repairStart !== null ? 0 : fx.mitigated ? 0.3 : ms.story.pace);
     const sm = fx.hold !== null ? Math.min(advanced, Math.max(fx.hold, fx.scMin)) : advanced;
     fx.scMin = sm;
@@ -1670,10 +1798,10 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
     for (const id of EQUIPMENT_IDS) {
       if (eq[id] === P.eq[id]) continue;
       const ms = s.machines[EQUIPMENT_MACHINE[id]];
-      const sev: Severity = eq[id] === "tripped" ? "Critical" : eq[id] === "run" ? "Normal" : "Advisory";
+      const sev: Severity = eq[id] === "tripped" ? "Critical" : eq[id] === "run" ? "Normal" : "Alert";
       pushEvent(s, ms, { kind: "state", severity: sev, title: `${EQUIPMENT_LABEL[id]} ${eq[id] === "run" ? "running" : eq[id]}`, detail: `${id}: ${P.eq[id]} → ${eq[id]}${forced[id] ? "" : " (interlock / change-over)"}` });
     }
-    if (ctl.lineStop && P.lineStopSince === null) for (const ms of Object.values(s.machines)) pushEvent(s, ms, { kind: "state", severity: "Advisory", title: "Line stop: kiln feed off", detail: `Cause: ${ctl.cause}. Kiln feed stopped${ctl.cause && /fan|drive|flame/.test(ctl.cause) ? " and fuel cut at once" : ", fuel cut over 5 min"}; kiln turned down` });
+    if (ctl.lineStop && P.lineStopSince === null) for (const ms of Object.values(s.machines)) pushEvent(s, ms, { kind: "state", severity: "Alert", title: "Line stop: kiln feed off", detail: `Cause: ${ctl.cause}. Kiln feed stopped${ctl.cause && /fan|drive|flame/.test(ctl.cause) ? " and fuel cut at once" : ", fuel cut over 5 min"}; kiln turned down` });
     if (!ctl.lineStop && P.lineStopSince !== null) for (const ms of Object.values(s.machines)) pushEvent(s, ms, { kind: "state", severity: "Normal", title: "Line restart", detail: "Kiln feed, coal and speed ramp back at 2 % / min" });
   }
   for (const id of EQUIPMENT_IDS) {
@@ -1753,7 +1881,10 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
   // within a capacity that needs aeration, an open gate and no bridging.
   const aeration = lagStep(P.lag, "T:aer", run("fsl-blower-duty") ? 1 : run("fsl-blower-standby") ? 0.92 : 0, 0, 3);
   const extractionCap = 1.5 * F0 * aeration * clamp(1 + (driverDelta.extraction ?? 0), 0, 1.5) * (run("fsl-gate") ? 1 : 0);
-  const wgtPrev = s.hist["WGT-KFS-01"].at(-1) ?? BIN_SP;
+  // Bin weight for the extraction control from the valid load cells (a flagged cell is left out, the others scaled up).
+  const okCells = LOAD_CELL_SHARE.map((k, i) => [k, `WGT-KFS-0${i + 1}`] as const).filter(([, tg]) => !s.flags[tg]);
+  const okShare = okCells.reduce((acc, [k]) => acc + k, 0);
+  const wgtPrev = okCells.length ? okCells.reduce((acc, [k, tg]) => acc + (s.hist[tg]?.at(-1) ?? BIN_SP * k), 0) / okShare : BIN_SP;
   const extraction = clamp(truthDrivers.feed + BIN_GAIN * (BIN_SP - wgtPrev), 0, Math.min(extractionCap, TI.silo * 60));
   P.rawMill = P.rawMill ? TI.silo / SILO_T_PER_PCT < 74 : TI.silo / SILO_T_PER_PCT < 52;
   TI.silo = clamp(TI.silo + ((P.rawMill ? RAW_MILL : 0) - extraction) / 60, 0, 98.5 * SILO_T_PER_PCT);
@@ -1800,7 +1931,7 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
   }
   // Material levels are physical: a silo or bin is never below empty or above its brim.
   for (const def of ANALOG) if (def.unit === "%" && def.tag.startsWith("LEV-") && def.tag in truth) truth[def.tag] = clamp(truth[def.tag], 1, 98.5);
-  P.binLevel = truth["LEV-KFS-01"];
+  P.binLevel = binWeight(truth) / BIN_T_PER_PCT;
   P.cSiloLevel = truth["LEV-CSL-01"];
 
   /* ---------------- readings ---------------- */
@@ -1835,12 +1966,14 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
   const setState = (tag: string, value: string) => {
     if (stateOverride[tag] === undefined) states[tag] = value;
   };
-  if (truth["LEV-KFS-01"] <= 22) setState("LEV-KFS-03", "LOW");
-  if (truth["LEV-KFS-01"] >= 93) setState("LEV-KFS-02", "HIGH");
   if (Math.abs(truth["POS-KLN-01"]) >= 40) setState("POS-KLN-02", "LIMIT");
   // Status points follow the equipment run states (D5 Table 6.13 controller status).
   setState("STS-FSL-02", run("fsl-blower-duty") ? "DUTY RUN" : run("fsl-blower-standby") ? "STANDBY RUN" : "NOT AVAILABLE");
-  setState("STS-FSL-01", run("fsl-gate") ? "OPEN" : eq["fsl-gate"] === "tripped" ? "FAULT" : "CLOSED");
+  for (const k of [1, 2, 3, 4, 5, 6]) setState(`POS-FSL-0${k}`, run("fsl-gate") ? "OPEN" : eq["fsl-gate"] === "tripped" ? "FAULT" : "CLOSED");
+  setState("STS-FSL-03", run("fsl-blower-duty") || run("fsl-blower-standby") ? "SEQUENCE RUN" : "HOLD");
+  // Discharge gates A / B close when the kiln feed stops; the slide blower reports its own run state.
+  for (const g of ["POS-KFS-01", "POS-KFS-02"]) setState(g, truth["FLO-KFS-01"] + truth["FLO-KFS-02"] > 0.02 * F0 ? "OPEN" : "CLOSED");
+  setState("STS-KFS-01", run("kfs-airslide-blower") ? "RUNNING" : eq["kfs-airslide-blower"] === "tripped" ? "TRIPPED" : "STOPPED");
   setState("STS-KLN-11", run("kln-aux-drive") ? "RUNNING" : eq["kln-aux-drive"] === "tripped" ? "NOT READY" : states["STS-KLN-11"]);
   if (!run("kln-lube-pump")) setState("FLO-KLN-05", "NO FLOW");
   if (!run("kln-spray")) {
@@ -1861,7 +1994,10 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
   // Ambient from the 12 support-roller RTDs (D5 Table 9.4.1) less the model's load / speed rise of each (it lags the kiln).
   const ambSamples = ROLLER_TAGS.filter((tg) => !flagged(tg)).map((tg) => measured[tg] - (P.lag[`M:th:${tg}`]?.y ?? ROLLER_OFFSET[tg]));
   const ambientEst = median(ambSamples);
-  const feedMeter = measured["FLO-KFS-01"];
+  // Kiln feed = solid-flow meters A + B (two parallel slides); a flagged meter is replaced by twice the other.
+  const sfmA = flagged("FLO-KFS-01");
+  const sfmB = flagged("FLO-KFS-02");
+  const feedMeter = sfmA && !sfmB ? 2 * measured["FLO-KFS-02"] : sfmB && !sfmA ? 2 * measured["FLO-KFS-01"] : measured["FLO-KFS-01"] + measured["FLO-KFS-02"];
   const coalMeter = measured["FLO-BRN-01"];
   // Witnesses (D5 Table 5.2.6 "flow agrees with … elevator current"; Table 5.5.6 "flow agrees with burning-zone
   // response"). The kiln torque and the burning zone see the feed after the kiln transport lag (meter feed lagged the same way).
@@ -1874,8 +2010,8 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
   const feedTorque = run("kln-main-drive") ? F0 * Math.pow(Math.max(0, (torqueRel - 0.3) / 0.7), 1 / 0.9) : feedMeter;
   const coalLine = run("brn-coal-blower") ? C0 * Math.pow(Math.max(0, (measured["PRS-BRN-04"] / 410 - 0.1) / 0.9), 1 / 0.7) : coalMeter;
   const dM = Math.pow(measured["SPD-PHC-01"] / S0, 2);
-  const coalBz = slowHeat ? coalMeter : C0 * (1 + (measured["TMP-KLN-14"] - 1450 + 280 * (wBz - 1) + 60 * (dM - 1)) / 900);
-  const feedForModel = flagged("FLO-KFS-01") ? (feedElev + feedTorque) / 2 : feedMeter;
+  const coalBz = slowHeat ? coalMeter : C0 * (1 + (measured["TMP-KLN-14"] - BZ0 + 280 * (wBz - 1) + 60 * (dM - 1)) / 900);
+  const feedForModel = sfmA && sfmB ? (feedElev + feedTorque) / 2 : feedMeter;
   const coalForModel = flagged("FLO-BRN-01") ? (coalLine + coalBz) / 2 : coalMeter;
 
   // Reference-model flows: the same transport lags and cooler bed on the measured feed and the known run states.
@@ -1884,9 +2020,10 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
   const zM = zoneStep(P.lag, "M:", feedForModel, 0, measured["SPD-KLN-01"], eqObs, MI, run("hmr-crusher") && run("csl-conveyor"));
   // Inventories: mass balance on the measured / commanded flows, held to the readings by a slow observer.
   {
-    const lvlBin = measured["LEV-KFS-01"] * BIN_T_PER_PCT;
-    const wgt = measured["WGT-KFS-01"];
-    const binObs = flagged("WGT-KFS-01") ? (flagged("LEV-KFS-01") ? MI.bin : lvlBin) : flagged("LEV-KFS-01") ? wgt : (wgt + lvlBin) / 2;
+    // No level sensor: the bin is observed through its three load cells; a flagged cell is replaced by the other two.
+    const okCells = LOAD_CELL_SHARE.map((k, i) => [k, `WGT-KFS-0${i + 1}`] as const).filter(([, tg]) => !flagged(tg));
+    const shareOk = okCells.reduce((acc, [k]) => acc + k, 0);
+    const binObs = okCells.length ? okCells.reduce((acc, [, tg]) => acc + measured[tg], 0) / shareOk : MI.bin;
     const aerationM = lagStep(P.lag, "M:aer", run("fsl-blower-duty") ? 1 : run("fsl-blower-standby") ? 0.92 : 0, 0, 3);
     const capM = 1.5 * F0 * aerationM * (run("fsl-gate") ? 1 : 0);
     const extractionM = clamp(feedForModel + BIN_GAIN * (BIN_SP - wgtPrev), 0, capM);
@@ -1939,7 +2076,8 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
   }
   model["GAS-KLN-02"] = 420 + 2600 * Math.max(0, 1.6 - measured["GAS-KLN-01"]);
   model["GAS-PHC-02"] = 300 + 1600 * Math.max(0, 2.6 - measured["GAS-PHC-01"]);
-  model["FLO-KFS-01"] = feedSp;
+  model["FLO-KFS-01"] = feedSp / 2;
+  model["FLO-KFS-02"] = feedSp / 2;
   model["FLO-BRN-01"] = coalSp;
   // Speed references are the commands (main drive / aux drive / stopped); a tripped fan's reference is zero.
   model["SPD-KLN-01"] = speedRef;
@@ -2005,7 +2143,8 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
   measured["CAL-PHC-01"] = measured["GAS-PHC-01"] - measured["GAS-KLN-01"];
   model["CAL-PHC-01"] = model["GAS-PHC-01"] - model["GAS-KLN-01"];
   // Coal-to-feed ratio: not computed while the kiln feed is off (below 5 % of design).
-  measured["CAL-BRN-01"] = measured["FLO-KFS-01"] >= 0.05 * F0 ? (measured["FLO-BRN-01"] / measured["FLO-KFS-01"]) * 100 : 0;
+  const feedAB = measured["FLO-KFS-01"] + measured["FLO-KFS-02"];
+  measured["CAL-BRN-01"] = feedAB >= 0.05 * F0 ? (measured["FLO-BRN-01"] / feedAB) * 100 : 0;
   model["CAL-BRN-01"] = feedSp * headSp >= 0.05 * F0 ? (coalSp / (feedSp * headSp)) * 100 : 0;
   {
     // Laboratory oil sample twice a day; handheld shell round every four hours.
@@ -2097,7 +2236,7 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
     }
   }
   // Residual coupling the model cannot see for the coal-to-feed ratio when a meter is out-voted.
-  if ((flagged("FLO-KFS-01") || flagged("FLO-BRN-01")) && feedForModel >= 0.05 * F0) model["CAL-BRN-01"] = (coalForModel / feedForModel) * 100;
+  if ((sfmA || sfmB || flagged("FLO-BRN-01")) && feedForModel >= 0.05 * F0) model["CAL-BRN-01"] = (coalForModel / feedForModel) * 100;
 
   /* ---------------- history ---------------- */
   s.times.push(t);
@@ -2162,7 +2301,7 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
   const { scannerSuspect } = screen;
   const quality = signalQuality(s, screen);
   const good = (...tags: string[]) => tags.every((tg) => quality(tg) === "Good");
-  const steadyFeed = Math.abs(z("FLO-KFS-01")) < 4 && resStd("FLO-KFS-01", 10) < 2.5;
+  const steadyFeed = ["FLO-KFS-01", "FLO-KFS-02"].every((tg) => Math.abs(z(tg)) < 4 && resStd(tg, 10) < 2.5 / Math.SQRT2);
   const steadyCoal = Math.abs(z("FLO-BRN-01")) < 4 && resStd("FLO-BRN-01", 10) < 0.15;
 
   // Per-sample validity, aligned with the history (Trends greys out invalid / suspect spans).
@@ -2327,7 +2466,7 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
     for (const def of ruleDefs) {
       const mem = ms.rules[def.id];
       if (mem.status !== "ACTIVE") continue;
-      for (const tg of mem.tags) ruleSevByTag[tg] = maxSev(ruleSevByTag[tg] ?? "Normal", def.category === "Data quality" ? "Advisory" : mem.severity);
+      for (const tg of mem.tags) ruleSevByTag[tg] = maxSev(ruleSevByTag[tg] ?? "Normal", def.category === "Data quality" ? "Alert" : mem.severity);
     }
 
     const signals: Record<string, LiveSignal> = {};
@@ -2350,7 +2489,7 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
       const zz = r / (def.sigma || 1);
       const spKey = defs.setpoints[def.tag];
       // D5 Table 9.2 (./limits): relative kinds judge against the reference model, pair, drive and rate.
-      const lr = evaluateLimit(asKiln(def), v, pyroLimitContext(def, { measured, model, hist: s.hist, modelHist: s.modelHist, running: running[id], transient, hold: ms.frame?.signals[def.tag]?.limitSeverity, setpoint: spKey === "feedSp" ? feedSp : spKey === "fuelSp" ? coalSp : undefined }));
+      const lr = evaluateLimit(asKiln(def), v, pyroLimitContext(def, { measured, model, hist: s.hist, modelHist: s.modelHist, running: running[id], transient, hold: ms.frame?.signals[def.tag]?.limitSeverity, setpoint: spKey ? (spKey === "feedSp" ? feedSp : coalSp) * (defs.setpointShare?.[def.tag] ?? 1) : undefined }));
       const ls = lr.severity;
       const sl = def.origin === "manual" ? null : slope(s.hist[def.tag], 30);
       let ttl: string | null = null;
@@ -2360,10 +2499,13 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
         const gap = target - v;
         if (Math.abs(sl) > (def.sigma || 0.01) * 0.02 && Math.sign(gap) === Math.sign(sl) && Math.abs(gap / sl) < 72 * 60) ttl = formatDuration(gap / sl);
       }
-      let status = maxSev(ls, ruleSevByTag[def.tag] ?? "Normal");
-      if (q !== "Good") status = maxSev(status, "Advisory");
-      if (q === "Good" && !def.calculated && def.origin !== "manual" && t > 0) trackLimit(s, ms, def, ls, displayValue(def, v, null));
-      signals[def.tag] = { tag: def.tag, value: v, state: null, display: displayValue(def, v, null), model: mv, residual: r, z: def.sigma ? zz : null, limitSeverity: ls, limitNote: lr.why, status, quality: q, qualityNote: qNote, slopePerHour: sl === null ? null : sl * 60, timeToLimit: ttl, sourceTs, receivedTs };
+      if (q === "Good" && (!def.calculated || s.sim.events) && def.origin !== "manual" && t > 0) trackLimit(s, ms, def, ls, displayValue(def, v, null), r);
+      // Live demo: the limit state people see is the debounced one (raised after LIMIT_RAISE_N minutes, cleared
+      // after LIVE_LIMIT_CLEAR_N calm minutes), so a reading sitting on its limit does not blink on and off.
+      const shownLs = s.sim.events && ms.limits[def.tag] ? ms.limits[def.tag].shown : ls;
+      let status = maxSev(shownLs, ruleSevByTag[def.tag] ?? "Normal");
+      if (q !== "Good") status = maxSev(status, "Alert");
+      signals[def.tag] = { tag: def.tag, value: v, state: null, display: displayValue(def, v, null), model: mv, residual: r, z: def.sigma ? zz : null, limitSeverity: shownLs, limitNow: ls, limitDir: ms.limits[def.tag]?.dir ?? null, limitNote: lr.why, status, quality: q, qualityNote: qNote, slopePerHour: sl === null ? null : sl * 60, timeToLimit: ttl, sourceTs, receivedTs };
     }
 
     const rules: RuleState[] = ruleDefs.map((def) => {
@@ -2402,6 +2544,9 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
         cause: def.cause,
         consequence: def.consequence,
         action: def.action,
+        plainTitle: def.plainTitle,
+        plainWhat: def.plainWhat,
+        plainTodo: def.plainTodo,
         since: mem.since,
         owner: def.owner,
         unproven: def.unproven,
@@ -2426,7 +2571,7 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
           scatter += Math.min(3, Math.abs(sg.z));
           scattered += 1;
         }
-        penalty += sg.limitSeverity === "Critical" ? 22 : sg.limitSeverity === "Advisory" ? 9 : 0;
+        penalty += sg.limitSeverity === "Critical" ? 22 : sg.limitSeverity === "Alert" ? 9 : 0;
       }
       for (const r of rules) {
         if (r.status === "QUIET" || NOT_SCORED.has(r.category)) continue;
@@ -2456,7 +2601,7 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
       const prevInt = ms.smooth[intKey];
       const h = prevInt !== undefined && Math.abs(sm2 - prevInt) < (drift > 0 ? 0.4 : 0.7) ? prevInt : Math.round(sm2);
       ms.smooth[intKey] = h;
-      let status: Severity = h < 60 ? "Critical" : h < 85 ? "Advisory" : "Normal";
+      let status: Severity = h < 60 ? "Critical" : h < 85 ? "Alert" : "Normal";
       for (const r of rules) if (r.status === "ACTIVE" && r.subs.includes(sa.id) && !NOT_SCORED.has(r.category)) status = maxSev(status, r.severity);
       subs[sa.id] = { id: sa.id, name: sa.name, health: h, status };
     }
@@ -2472,7 +2617,7 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
     const overall = Math.round(0.5 * (scored.reduce((a, c) => a + c.health, 0) / Math.max(1, scored.length)) + 0.5 * Math.min(...scored.map((c) => c.health)));
     const anyCrit = rules.some((r) => r.status === "ACTIVE" && r.severity === "Critical" && r.category !== "Data quality" && r.category !== "Service life");
     const anyAdv = rules.some((r) => r.status === "ACTIVE" && r.category !== "Data quality" && r.category !== "Service life");
-    const condition: SimFrame["condition"] = anyCrit || overall < 60 ? "Critical" : anyAdv || overall < 85 ? "Advisory" : "Healthy";
+    const condition: SimFrame["condition"] = anyCrit || overall < 60 ? "Critical" : anyAdv || overall < 85 ? "Alert" : "Healthy";
 
     ms.healthHist.overall.push(overall);
     for (const sy of defs.systems) (ms.healthHist[sy.id] ??= []).push(systems[sy.id].health);
@@ -2531,6 +2676,7 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
       records: isKiln ? s.records : undefined,
       qualityHistory: emit ? Object.fromEntries(myTags.map((tg) => [tg, s.qualHist[tg]])) : s.qualHist,
       shiftValidity: shiftValidityOf(s, myTags),
+      equipment: machineEquipment(eqObs, id),
       shellScans: isKiln ? s.shellScans : undefined,
       shellThermal: isKiln ? shellThermal : undefined,
       operatingState: {

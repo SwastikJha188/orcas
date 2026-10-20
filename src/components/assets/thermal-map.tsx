@@ -333,8 +333,8 @@ export function ShellMapFigure({
       y: (e.clientY - wr.top) / uz + 14,
       where: `${(i * SHELL_DZ).toFixed(1)} m · ${k * SHELL_DA}°`,
       zone: shellZoneAt(z),
-      value: off ? (lg ? `No view · last good ${lg.v.toFixed(0)} °C` : "No view") : `${map.temp[j].toFixed(0)} °C`,
-      delta: off ? (lg ? `${lg.age} min ago` : null) : `${signed(map.temp[j] - map.model[i])} K vs model`,
+      value: off ? (lg ? `Hidden from scanner · last seen ${lg.v.toFixed(0)} °C` : "Hidden from scanner") : `${map.temp[j].toFixed(0)} °C`,
+      delta: off ? (lg ? `${lg.age} min ago` : null) : `${signed(map.temp[j] - map.model[i])} °C vs expected`,
     });
   };
 
@@ -433,7 +433,7 @@ export function ShellMapFigure({
           const hy = YT((((p.angle % 360) + 360) % 360) + SHELL_DA / 2);
           return (
             <g key={`hh-${p.m}-${p.angle}`} className="thm-hand" data-tone={p.gap !== null && Math.abs(p.gap) > 25 ? "warn" : undefined}>
-              <title>{`Handheld ${p.m} m · ${p.angle}°: ${p.hand.toFixed(0)} °C · scanner ${p.scan === null ? "no view" : `${p.scan.toFixed(0)} °C`}${p.gap === null ? "" : ` · ${signed(p.gap)} K`}`}</title>
+              <title>{`Hand-held reading at ${p.m} m, ${p.angle}°: ${p.hand.toFixed(0)} °C · scanner ${p.scan === null ? "cannot see it" : `${p.scan.toFixed(0)} °C`}${p.gap === null ? "" : ` · ${signed(p.gap)} °C apart`}`}</title>
               <path d={`M${hx},${hy - 6}l6,6l-6,6l-6,-6z`} />
             </g>
           );
@@ -484,7 +484,7 @@ export function ShellMapFigure({
           className="thm-hit"
           tabIndex={0}
           role="slider"
-          aria-label="Shell section: arrow keys move along the kiln, Enter or Space selects the hottest section"
+          aria-label="Position along the kiln: arrow keys move along it, Enter or Space jumps to the hottest ring"
           aria-valuemin={0}
           aria-valuemax={SHELL_LEN}
           aria-valuenow={Number((selI * SHELL_DZ).toFixed(1))}
@@ -589,8 +589,8 @@ export function HeatScale({ range }: { range: { lo: number; hi: number } }) {
   // Range ends plus a midpoint; drop a label that would collide with a limit's.
   const ticks = [lo, Math.round((lo + hi) / 20) * 10, hi].filter((v) => limits.every((l) => Math.abs(X(v) - X(l.v)) > 28));
   const label =
-    `Heat scale ${lo} to ${hi} °C (auto range, ironbow)` +
-    limits.map((l) => `; ${l.tone === "warn" ? "warning" : "danger"} from ${l.v} °C`).join("");
+    `Colour scale ${lo} to ${hi} °C (fitted to the readings)` +
+    limits.map((l) => `; ${l.tone === "warn" ? "Alert" : "Critical"} from ${l.v} °C`).join("");
   return (
     <svg viewBox={`-14 0 ${W + 48} 30`} className="thm-scale" role="img" aria-label={label}>
       <defs>

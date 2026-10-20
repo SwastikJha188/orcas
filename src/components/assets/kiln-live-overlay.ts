@@ -6,11 +6,16 @@
  */
 import type { SimFrame, LiveSignal } from "@/lib/kiln-sim/engine";
 import { SIGNAL_BY_TAG } from "@/lib/kiln-sim/signals";
-import type { SubAssemblySpec } from "./kiln-subassembly-specs";
 import type { MachineProcessStage } from "./process-data";
 import { isConditionRule } from "@/lib/plant-defs";
 
-type Sev = "Normal" | "Advisory" | "Critical";
+type Sev = "Normal" | "Alert" | "Critical";
+
+/** An upstream-driver readout: label and its live value. */
+export interface DriverReadout {
+  label: string;
+  value: string;
+}
 
 const signed = (v: number, d: number) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(d)}`;
 
@@ -60,8 +65,8 @@ const DRIVER_VALUES: Array<[RegExp, (f: SimFrame) => string]> = [
  * frame can answer are returned; a driver without a live source is dropped
  * rather than shown with a static number.
  */
-export function liveDrivers(drivers: SubAssemblySpec["upstreamDrivers"], frame: SimFrame): SubAssemblySpec["upstreamDrivers"] {
-  const out: SubAssemblySpec["upstreamDrivers"] = [];
+export function liveDrivers(drivers: DriverReadout[], frame: SimFrame): DriverReadout[] {
+  const out: DriverReadout[] = [];
   for (const d of drivers) {
     const hit = DRIVER_VALUES.find(([re]) => re.test(d.label));
     if (hit) out.push({ ...d, value: hit[1](frame) });
@@ -172,7 +177,7 @@ export function liveProcessStages(
     const subs = links[st.id]?.subs ?? [];
     const cells = subs.map((id) => frame.subs[id as keyof SimFrame["subs"]]).filter(Boolean);
     const health = cells.length ? Math.round(cells.reduce((a, c) => a + c.health, 0) / cells.length * 0.5 + Math.min(...cells.map((c) => c.health)) * 0.5) : st.health;
-    const status: Sev = !cells.length ? st.status : cells.some((c) => c.status === "Critical") ? "Critical" : cells.some((c) => c.status === "Advisory") ? "Advisory" : "Normal";
+    const status: Sev = !cells.length ? st.status : cells.some((c) => c.status === "Critical") ? "Critical" : cells.some((c) => c.status === "Alert") ? "Alert" : "Normal";
     const parameters = st.parameters.map((p) => {
       const tag = parameterTag(p.label, frameTags);
       const sig = tag ? frame.signals[tag] : undefined;

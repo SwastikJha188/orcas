@@ -60,6 +60,21 @@
       "port": 3140
     },
     {
+      "name": "ultron-backend",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "next",
+        "dev",
+        "--turbopack",
+        "-p",
+        "3150"
+      ],
+      "env": {
+        "NEXT_DIST_DIR": ".next-backend"
+      },
+      "port": 3150
+    },
+    {
       "name": "ultron-plant",
       "runtimeExecutable": "npx",
       "runtimeArgs": [

@@ -145,10 +145,10 @@ export function DevicesHierarchy({
           {sectionNav}
           <div className="ast-card ast-empty" role={error ? "alert" : "status"}>
             {loading || !error ? (
-              <strong className="hx-empty-title">Loading device registry…</strong>
+              <strong className="hx-empty-title">Loading the list of devices…</strong>
             ) : (
               <>
-                <strong className="hx-empty-title">Device registry unavailable. Retry.</strong>
+                <strong className="hx-empty-title">The list of devices could not be loaded. Try again.</strong>
                 <PillButton variant="secondary" onClick={() => void refresh()}>
                   Retry
                 </PillButton>
@@ -257,7 +257,7 @@ export function DevicesHierarchy({
         onSelect={select}
         onAddGateway={connect}
       />
-      <div className="assets-directory-workspace ast-root hx-contents dv-contents" aria-label="Device hierarchy contents">
+      <div className="assets-directory-workspace ast-root hx-contents dv-contents" aria-label="Device tree contents">
         {contents}
       </div>
 

@@ -287,10 +287,15 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-family: var(--font-mono);
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.pg-rack-chlist-tag > span:last-child {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .pg-rack-chlist-val {
@@ -339,7 +344,7 @@
 .rack-slot-num {
   font-size: var(--fs-2xs);
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   fill: var(--mx-label);
   font-variant-numeric: tabular-nums;
 }
@@ -372,7 +377,7 @@
 .rack-mod-type {
   font-size: var(--fs-xs);
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
   fill: var(--dx-ink-2);
 }
 
@@ -385,7 +390,7 @@
 .rack-mod-tag {
   font-size: var(--fs-2xs);
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   fill: var(--dx-ink-2);
   font-variant-numeric: tabular-nums;
 }
@@ -399,7 +404,7 @@
 .rack-card-label {
   font-size: var(--fs-2xs);
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   fill: var(--mx-label);
 }
 
@@ -418,12 +423,17 @@
   stroke: var(--mx-fine);
   stroke-width: 1;
   stroke-dasharray: 4 3;
-  transition: stroke 0.12s ease;
+  transition: stroke var(--dur-fast) var(--ease-out);
 }
 
 .rack-slot {
   cursor: pointer;
   outline: none;
+}
+
+.rack-slot:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
 .rack-slot-hit {

@@ -7,8 +7,10 @@
  *
  * The kiln and the VPC-066 casting cell are built models in real metres
  * (kiln-twin-3d, vpc-twin-3d), with every scheduled signal on its physical
- * anchor. Other machine types are extruded from their schematic
- * primitives (machine-twin-model). Sensor points are not drawn on the twin;
+ * anchor. A drawing kind with a model made by the machine-diagram-3d skill
+ * (./models, matched on diagramType) shows that model, each named part owned
+ * by the DB subsystem of the same name. Other machine types are extruded from
+ * their schematic primitives (machine-twin-model). Sensor points are not drawn on the twin;
  * pyro sensor coordinates only place the field instruments and size each
  * component's label anchor. Status is carried by the component labels;
  * selection by signal-blue edges.
@@ -16,8 +18,8 @@
  * Loaded with next/dynamic (ssr: false).
  */
 import { Edges } from "@react-three/drei";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
+import React, { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { SchematicDot } from "@/components/assets/machine-schematic";
@@ -46,6 +48,8 @@ import { PartCtx, TwinPart, useTwinMaterials, type PartCtxValue, type ShellSkin,
 import { TWIN_GL, TwinLighting } from "./twin-lighting";
 import { TWIN_RESIZE, twinEvents, useTwinDpr } from "./use-ui-zoom";
 import { applyKitPalette, buildPyroMachine, createKitMats, readPalette, type MachineKey } from "./pyro-plant-model";
+import { buildKitModel, hasCodeModel, kitModelForType, type BuiltKitModel } from "./models";
+import { useDbDiagram } from "@/components/assets/diagrams/db-diagrams";
 
 /** Pyro-line diagram types → their machine(s) in the detailed pyro plant model (the feed system and clinker transport are two site nodes each). */
 const PYRO_KEY: Record<string, MachineKey[]> = {
@@ -62,7 +66,8 @@ export type { TwinNavMode };
 export interface MachineTwinSystem {
   id: string;
   name: string;
-  health: number;
+  /** null = not yet evaluated. */
+  health: number | null;
   status: string;
   tone: Tone;
   bbox?: { x: number; y: number; width: number; height: number };
@@ -259,7 +264,7 @@ function SystemLabel({
           </span>
           <span className="ph-twin-label-meta">
             {system.status}
-            <b>{system.health}%</b>
+            <b>{system.health === null ? "—" : `${system.health}%`}</b>
           </span>
           {active && (
             <span className="ph-twin-label-more">
@@ -395,6 +400,66 @@ function CameraRig({
 
 /* ---------------------------------------------------------------- scene */
 
+/* ---------------------------------------------------------------- generated model */
+
+const plainName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/** DB subsystem a generated model's part belongs to: same name, else one name containing the other. */
+function kitPartOwner(part: string, systems: Array<{ id: string; name: string }>): string | null {
+  const p = plainName(part);
+  const exact = systems.find((s) => plainName(s.name) === p);
+  if (exact) return exact.id;
+  const near = systems.filter((s) => {
+    const n = plainName(s.name);
+    return n && (n.includes(p) || p.includes(n));
+  });
+  return near.length === 1 ? near[0].id : null;
+}
+
+/**
+ * A machine-diagram-3d model in the twin: hovering or clicking a part acts on
+ * its owning subsystem (PartCtx, as TwinPart), whose parts' rims light up.
+ */
+function KitTwin({ built, owners }: { built: BuiltKitModel; owners: Map<string, string | null> }) {
+  const ctx = useContext(PartCtx);
+  const select = ctx?.selectColor;
+  const selectedId = ctx?.selectedId ?? null;
+  const hoverId = ctx?.hoverId ?? null;
+  const invalidate = useThree((st) => st.invalidate);
+  useEffect(() => {
+    if (!select || !ctx) return;
+    for (const [part, rim] of built.rims) {
+      const id = owners.get(part);
+      const lit = !!id && (id === selectedId || id === hoverId);
+      rim.color.set(lit ? select : ctx.edgeColor);
+      rim.opacity = lit ? 1 : 0.85;
+    }
+    invalidate();
+  }, [built, owners, select, selectedId, hoverId, ctx, invalidate]);
+  if (!ctx) return null;
+  const systemOf = (o: THREE.Object3D) => (o.userData.system as string | null | undefined) ?? null;
+  return (
+    <primitive
+      object={built.root}
+      onPointerOver={(e: ThreeEvent<PointerEvent>) => {
+        const id = systemOf(e.object);
+        if (!id) return;
+        e.stopPropagation();
+        ctx.onOver(id);
+      }}
+      onPointerOut={(e: ThreeEvent<PointerEvent>) => {
+        if (systemOf(e.object)) ctx.onOut();
+      }}
+      onClick={(e: ThreeEvent<MouseEvent>) => {
+        const id = systemOf(e.object);
+        if (!id) return;
+        e.stopPropagation();
+        ctx.onPick(id);
+      }}
+    />
+  );
+}
+
 function corners(b: THREE.Box3): THREE.Vector3[] {
   const out: THREE.Vector3[] = [];
   for (const x of [b.min.x, b.max.x]) for (const y of [b.min.y, b.max.y]) for (const z of [b.min.z, b.max.z]) out.push(new THREE.Vector3(x, y, z));
@@ -426,7 +491,31 @@ function SceneContents({
   const pyroKey = (diagramType && PYRO_KEY[diagramType]) || null;
   const isKiln = !pyroKey && twinKind(diagramType) === "kiln";
   const isVpc = !pyroKey && twinKind(diagramType) === "vpc-casting";
-  const built = isKiln || isVpc;
+  // A model made with the machine-diagram-3d skill for this drawing kind.
+  // A 3D model stored in the DB for this drawing kind loads on demand (no rebuild for a new plant).
+  const ownModel = Boolean(pyroKey) || isKiln || isVpc;
+  useDbDiagram("3d", diagramType, ownModel || hasCodeModel(diagramType) || ["mill", "crusher", "pump", "blower", "kiln"].includes(diagramType ?? ""));
+  const kitModel = !ownModel ? kitModelForType(diagramType) : null;
+  const kit = useMemo(() => {
+    if (!kitModel) return null;
+    const mats = createKitMats();
+    const edgeMat = new THREE.LineBasicMaterial({ transparent: true, opacity: 0.85 });
+    return { mats, edgeMat, built: buildKitModel(kitModel, mats, edgeMat) };
+  }, [kitModel]);
+  useEffect(
+    () => () => {
+      if (!kit) return;
+      kit.built.dispose();
+      for (const m of Object.values(kit.mats)) m.dispose();
+      kit.edgeMat.dispose();
+    },
+    [kit],
+  );
+  // A theme switch recolours the kit materials; the model is not rebuilt.
+  useEffect(() => {
+    if (kit) applyKitPalette(kit.mats, kit.edgeMat, readPalette());
+  }, [kit, paints]);
+  const built = isKiln || isVpc || !!kit;
   const pyro = useMemo(() => {
     if (!pyroKey) return null;
     const mats = createKitMats();
@@ -474,6 +563,17 @@ function SceneContents({
     for (const [r, id] of Object.entries(vpcOwn) as Array<[VpcRole, string | null]>) if (id) m.set(id, r);
     return m;
   }, [vpcOwn]);
+  // Generated model: each named part belongs to the DB subsystem of the same name (structure to none).
+  const kitOwn = useMemo(() => {
+    const own = new Map<string, string | null>();
+    if (!kit) return own;
+    for (const part of kit.built.parts) own.set(part, kitPartOwner(part, systems));
+    kit.built.root.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh) o.userData.system = own.get(o.userData.part as string) ?? null;
+    });
+    return own;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on systemKey
+  }, [kit, systemKey]);
   const genericOwn = useMemo(
     () => generic.prims.map((p) => ownerOf(p, systems.map((s) => ({ id: s.id, bbox: s.bbox && toModel.box(s.bbox) })))),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on systemKey
@@ -514,7 +614,7 @@ function SceneContents({
     });
     setBounds({ all, bySystem, samples });
     invalidate();
-  }, [isKiln, isVpc, pyro, generic, kilnOwn, vpcOwn, genericOwn, invalidate]);
+  }, [isKiln, isVpc, pyro, kit, generic, kilnOwn, vpcOwn, kitOwn, genericOwn, invalidate]);
 
   // Sensor pads: kiln tags on their physical anchors; others raycast onto the surface.
   // `dots` is a new array every live tick, but only the sensors' positions matter here:
@@ -536,7 +636,7 @@ function SceneContents({
     const ray = new THREE.Raycaster();
     const dir = new THREE.Vector3(0, 0, -1);
     const down = new THREE.Vector3(0, -1, 0);
-    if (pyro) {
+    if (pyro || kit) {
       // Drawing x / y (% of the machine's own sheet) spread over the model's front elevation, dropped onto its surface.
       const b = bounds.all;
       const sz = b.getSize(new THREE.Vector3());
@@ -580,12 +680,12 @@ function SceneContents({
       return [{ dot, p: new THREE.Vector3(wx, wy, hit ? hit.point.z + 0.1 : 0) }];
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on dotPlaces, not on live values
-  }, [isKiln, isVpc, pyro, dotPlaces, map, bounds, toModel]);
+  }, [isKiln, isVpc, pyro, kit, dotPlaces, map, bounds, toModel]);
 
   // Pyro models are merged per material, so a subsystem's extent comes from its sensor pads.
   const padBounds = useMemo(() => {
     const m = new Map<string, THREE.Box3>();
-    if (!pyro) return m;
+    if (!pyro && !kit) return m;
     for (const { dot, p } of pads) {
       if (!dot.systemId) continue;
       const b = m.get(dot.systemId) ?? new THREE.Box3();
@@ -594,16 +694,16 @@ function SceneContents({
     }
     for (const b of m.values()) b.expandByScalar(2);
     return m;
-  }, [pyro, pads]);
+  }, [pyro, kit, pads]);
   const systemBox = (id: string) => bounds?.bySystem.get(id) ?? padBounds.get(id);
 
   const points = useMemo(() => {
     if (!bounds) return [];
     // The model's own silhouette plus a little headroom over its top for the labels.
     const c = bounds.all.getCenter(new THREE.Vector3());
-    const head = new THREE.Vector3(c.x, bounds.all.max.y + (isKiln ? 3 : isVpc ? 0.5 : 2), c.z);
+    const head = new THREE.Vector3(c.x, bounds.all.max.y + (isKiln ? 3 : isVpc || kit ? 0.5 : 2), c.z);
     return bounds.samples.length ? [...bounds.samples, head] : corners(bounds.all);
-  }, [bounds, isKiln, isVpc]);
+  }, [bounds, isKiln, isVpc, kit]);
   const focus = useMemo(() => {
     const b = selectedId ? systemBox(selectedId) : undefined;
     return b ? corners(b) : null;
@@ -642,7 +742,7 @@ function SceneContents({
   const size = all.getSize(new THREE.Vector3());
   const centre = useMemo(() => all.getCenter(new THREE.Vector3()).setY(0), [all]);
   const radius = Math.max(4, size.length() / 2);
-  const pad = isKiln || pyro ? 4 : isVpc ? 1.2 : 1.6;
+  const pad = isKiln || pyro ? 4 : isVpc || kit ? 1.2 : 1.6;
   const slabW = size.x + pad;
   const slabD = size.z + pad;
   // Machine-kit rule: the slab rim stays quiet; status lives on the measurement pads and labels.
@@ -658,10 +758,12 @@ function SceneContents({
         <KilnModel owners={kilnOwn} />
       ) : isVpc ? (
         <VpcModel owners={vpcOwn} />
+      ) : kit ? (
+        <KitTwin built={kit.built} owners={kitOwn} />
       ) : (
         <GenericModel prims={generic.prims} map={map} owners={genericOwn} />
       ),
-    [pyro, isKiln, isVpc, kilnOwn, vpcOwn, generic.prims, map, genericOwn],
+    [pyro, isKiln, isVpc, kit, kilnOwn, vpcOwn, kitOwn, generic.prims, map, genericOwn],
   );
 
   return (

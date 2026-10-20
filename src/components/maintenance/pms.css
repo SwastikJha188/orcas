@@ -119,8 +119,7 @@
 .pm-def dt {
   font-size: var(--fs-xs);
   font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--text-muted);
   padding-top: 2px;
 }
@@ -159,7 +158,7 @@
 .pm-callout {
   margin: 12px 0 0;
   padding: 8px 12px;
-  border-radius: var(--corner-sm, 8px);
+  border-radius: var(--corner-sm);
   border: 1px solid color-mix(in srgb, var(--tone) 32%, transparent);
   background: color-mix(in srgb, var(--tone) 10%, transparent);
   font-size: var(--fs-sm);
@@ -202,7 +201,6 @@
   font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--dx-ink);
-  text-transform: uppercase;
 }
 
 .pm-up-day[data-tone] {
@@ -268,6 +266,15 @@
   text-underline-offset: 3px;
 }
 
+.pm-link:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.pm-link:active {
+  transform: scale(0.97);
+}
+
 .pm-gantt {
   display: block;
   height: 6px;
@@ -323,8 +330,7 @@
   padding: 4px 8px;
   font-size: var(--fs-xs);
   font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--text-muted);
 }
 
@@ -390,12 +396,19 @@
   padding: 5px 8px 5px 10px;
   border: 0;
   border-left: 2px solid var(--tone);
-  border-radius: 6px;
+  border-radius: var(--corner-sm);
   background: var(--row-hover-bg);
   color: var(--dx-ink);
   font: inherit;
   text-align: left;
   cursor: pointer;
+}
+.pm-cal-item:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+.pm-cal-item:active {
+  transform: scale(0.97);
 }
 
 .pm-cal-item[data-kind="wo"] {
@@ -761,7 +774,7 @@
 .pm-trend-label {
   fill: var(--text-muted);
   font-family: var(--font-ui);
-  font-size: 10px;
+  font-size: var(--fs-2xs);
 }
 
 .pm-trend-label {
@@ -862,6 +875,15 @@
 .pm-machine:hover,
 .pm-machine[aria-pressed="true"] {
   background: var(--row-hover-bg);
+}
+
+.pm-machine:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.pm-machine:active {
+  transform: scale(0.97);
 }
 
 .pm-machine-name {
@@ -1031,7 +1053,7 @@ td[data-tone] .pm-value {
   align-items: center;
   min-width: 0;
   padding: 0 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--tone) 18%, transparent);
   border-left: 2px solid var(--tone);
   font-style: normal;
@@ -1198,7 +1220,7 @@ button.pm-cal-more:hover {
   padding: 6px 8px 6px 10px;
   border: 0;
   border-left: 2px solid var(--tone);
-  border-radius: 6px;
+  border-radius: var(--corner-sm);
   background: color-mix(in srgb, var(--tone) 12%, transparent);
   color: var(--dx-ink);
   font: inherit;
@@ -1218,6 +1240,15 @@ button.pm-cal-more:hover {
 
 .pm-cal-backlog:hover {
   background: color-mix(in srgb, var(--tone) 20%, transparent);
+}
+
+.pm-cal-backlog:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.pm-cal-backlog:active {
+  transform: scale(0.97);
 }
 
 /* Header: title row only; tabs sit directly beneath. */
@@ -1279,7 +1310,7 @@ button.pm-cal-more:hover {
 
 .pm-up-day {
   font-size: var(--fs-xs);
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
 }
 
 .pm-nofault {
@@ -1322,102 +1353,44 @@ button.pm-cal-more:hover {
   text-overflow: clip;
 }
 
-/* ==========================================================================
-   Preventive · Predictive · Proactive Maintenance + Boots on Ground (BOG)
-   ========================================================================== */
+/* ---- Proactive: share of a part's service life used ---- */
 
-.pm-bog-toggle {
+.pm-life {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 10px;
-  border-radius: var(--corner-pill, 999px);
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-canvas);
-  color: var(--text-muted);
-  font-family: var(--font-ui);
-  font-size: var(--fs-xs, 12px);
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: border-color 140ms cubic-bezier(0.23, 1, 0.32, 1), background-color 140ms cubic-bezier(0.23, 1, 0.32, 1), color 140ms cubic-bezier(0.23, 1, 0.32, 1);
+  min-width: 120px;
 }
 
-.pm-bog-toggle:hover {
-  border-color: var(--border-hover);
-  background: var(--row-hover-bg);
-}
-
-.pm-bog-toggle:active {
-  transform: scale(0.97);
-}
-
-.pm-bog-toggle[aria-checked="true"] {
-  border-color: color-mix(in srgb, var(--accent-primary) 45%, var(--border-subtle));
-  background: color-mix(in srgb, var(--accent-primary) 12%, var(--card-bg));
-  color: var(--dx-ink);
-}
-
-.pm-bog-track {
+.pm-life-bar {
+  --tone: var(--dx-ink);
   position: relative;
-  width: 28px;
-  height: 16px;
-  border-radius: 999px;
-  background: var(--separator);
-  flex-shrink: 0;
-  transition: background-color 140ms cubic-bezier(0.23, 1, 0.32, 1);
-}
-
-.pm-bog-toggle[aria-checked="true"] .pm-bog-track {
-  background: var(--accent-primary);
-}
-
-.pm-bog-thumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: #ffffff;
-  transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1);
-}
-
-.pm-bog-toggle[aria-checked="true"] .pm-bog-thumb {
-  transform: translateX(12px);
-}
-
-.pm-lifespan-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 170px;
-}
-
-.pm-lifespan-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
-  font-size: var(--fs-xs, 12px);
-}
-
-.pm-lifespan-bar {
-  width: 100%;
-  height: 6px;
-  border-radius: 999px;
+  display: block;
+  flex: 1;
+  height: 4px;
+  min-width: 64px;
+  border-radius: var(--corner-pill);
   background: var(--separator);
   overflow: hidden;
 }
 
-.pm-lifespan-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: var(--tone, var(--accent-primary));
+.pm-life-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--tone);
+  opacity: 0.85;
 }
 
-.pm-table-wrap td {
-  white-space: normal !important;
-  vertical-align: top;
+.pm-life-bar[data-tone="warn"] {
+  --tone: var(--status-warning);
 }
 
+.pm-life-bar[data-tone="bad"] {
+  --tone: var(--status-danger);
+}
+
+.pm-life > .ast-num {
+  min-width: 40px;
+  text-align: right;
+}

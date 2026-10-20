@@ -15,10 +15,12 @@ import { PillButton, PillNav, Tile, TileGrid, type TileFact } from "@/components
 import type { SimFrame } from "@/lib/kiln-sim/engine";
 import type { PlantDefs } from "@/lib/plant-defs";
 import { formatLocalTime } from "@/lib/time";
+import { displayName, nameIds } from "@/lib/display-name";
 import type { AssetMachine } from "./assets-data";
 import type { AssetsSubPage } from "./assets-view";
 import type { TrendSample } from "./sensor-trend-graph";
-import { PYRO_DEMO_LIMIT } from "./sensors-model";
+import { QUALITY_LABEL, limitApprovalText, limitsApprovalText } from "./sensors-model";
+import { useMachineMeasurements, useStoredCatalog } from "./use-machine-catalog";
 import { Chevron, ItemCell, KpiStrip, Section, WhyDisclosure, type KpiItem } from "./analysis/an-ui";
 import {
   OVERLAY_STYLES,
@@ -105,16 +107,13 @@ export interface TrendsCtx {
    Small shared pieces
    ========================================================================== */
 
-/** Caption for every pyro-line limit line and limit status (D4 §7.2). */
-const DEMO_LIMIT_NOTE = PYRO_DEMO_LIMIT;
-
 /** Sensor-validation verdict: muted when good, status colour only when the data cannot be trusted. */
 export function QualityMark({ quality, note }: { quality: string | null; note?: string | null }) {
   if (quality === null) return <span className="pg-trends-muted">—</span>;
-  if (quality === "Good") return <span className="pg-trends-muted" title={note ?? "Passes data-quality and sensor-validation checks"}>Good</span>;
+  if (quality === "Good") return <span className="pg-trends-muted" title={note ?? "Passes every automatic check that the reading can be trusted"}>Good</span>;
   return (
     <span title={note ?? undefined}>
-      <StatusTag tone={quality === "Suspect" ? "warn" : "bad"} label={quality} />
+      <StatusTag tone={quality === "Suspect" ? "warn" : "bad"} label={(QUALITY_LABEL as Record<string, string>)[quality] ?? quality} />
     </span>
   );
 }
@@ -155,7 +154,7 @@ function Pills<T extends string>({
 }
 
 const capsuleTone = (k: ExcursionKind): ChartCapsule["tone"] => (k === "alarm" ? "bad" : k === "warning" ? "warn" : "idle");
-const KIND_LABEL: Record<ExcursionKind, string> = { alarm: "Alarm limit", warning: "Warning limit", model: `Model ±${MODEL_K}σ` };
+const KIND_LABEL: Record<ExcursionKind, string> = { alarm: "Past Critical limit", warning: "Past Alert limit", model: "Far from expected" };
 
 const clock = (t: number, timeZone: string | undefined, seconds = false) => formatLocalTime(t, { seconds, timeZone });
 
@@ -177,22 +176,22 @@ export function KpiRow({ ctx }: { ctx: TrendsCtx }) {
   const inWin = ctx.events.filter((e) => e.at >= ctx.domain[0] && e.at <= ctx.domain[1]);
   const inWinAlarm = inWin.filter((e) => e.cat === "alarm").length;
   const tiles: KpiItem[] = [
-    { label: "Outside limits", value: String(alarm + warn), unit: "now", foot: `${alarm} alarm · ${warn} warning`, tone: alarm ? "bad" : warn ? "warn" : undefined },
+    { label: "Outside normal limits", value: String(alarm + warn), unit: "now", foot: `${alarm} Critical · ${warn} Alert`, tone: alarm ? "bad" : warn ? "warn" : undefined },
     {
-      label: "Excursions",
+      label: "Times outside limits",
       value: String(ctx.excursions.length),
       unit: ctx.winLabel,
-      foot: ctx.live ? `${exLimit} limit · ${ctx.excursions.length - exLimit} model band` : `${exLimit} limit`,
+      foot: ctx.live ? `${exLimit} past a limit · ${ctx.excursions.length - exLimit} far from expected` : `${exLimit} past a limit`,
       tone: exAlarm ? "bad" : exLimit ? "warn" : undefined,
     },
     {
-      label: "Max deviation",
+      label: "Furthest from expected",
       value: dev ? fmt(dev.s, 1) : "—",
-      unit: dev ? (dev.ch.sigma ? "σ" : "σ est.") : undefined,
-      foot: dev ? `${dev.ch.id} · ${dev.ch.name}` : "No reference stored",
+      unit: dev ? (dev.ch.sigma ? "× usual spread" : "× usual spread (estimated)") : undefined,
+      foot: dev ? displayName(dev.ch.name) : "No expected values saved",
       tone: dev && dev.ch.sigma && dev.s > MODEL_K ? "warn" : undefined,
     },
-    { label: "Events", value: String(inWin.length), unit: ctx.winLabel, foot: `${inWinAlarm} alarm / rule · ${ctx.events.length} logged`, tone: inWinAlarm ? "warn" : undefined },
+    { label: "Events", value: String(inWin.length), unit: ctx.winLabel, foot: `${inWinAlarm} alarms or problems · ${ctx.events.length} in the log`, tone: inWinAlarm ? "warn" : undefined },
   ];
   return <KpiStrip page items={tiles} label="Key figures" />;
 }
@@ -226,15 +225,15 @@ export function SignalPicker({ channels, value, onChange, groupName }: { channel
   const step = (d: number) => channels.length && onChange(channels[(idx + d + channels.length) % channels.length].id);
   const option = (c: Channel) => {
     const z = channelZone(c);
-    return <option key={c.id} value={c.id}>{`${c.id} · ${c.name}${z === "normal" ? "" : ` (${ZONE_LABEL[z]})`}${hasHistory(c) ? "" : " · no history"}`}</option>;
+    return <option key={c.id} value={c.id} title={c.id}>{`${displayName(c.name)}${z === "normal" ? "" : ` (${ZONE_LABEL[z]})`}${hasHistory(c) ? "" : " · no saved readings"}`}</option>;
   };
   return (
     <div className="pg-trends-picker">
-      <button type="button" className="pg-trends-icon-btn" onClick={() => step(-1)} aria-label="Previous signal" disabled={channels.length < 2}>
+      <button type="button" className="pg-trends-icon-btn" onClick={() => step(-1)} aria-label="Previous sensor" disabled={channels.length < 2}>
         <Chevron className="pg-trends-flip" />
       </button>
       <label className="pg-trends-select-wrap">
-        <span className="pg-trends-sr">Signal</span>
+        <span className="pg-trends-sr">Sensor</span>
         <select className="pg-trends-select" value={value} onChange={(e) => onChange(e.target.value)}>
           {groups.length > 1
             ? groups.map(([g, list]) => (
@@ -245,12 +244,12 @@ export function SignalPicker({ channels, value, onChange, groupName }: { channel
             : channels.map(option)}
         </select>
       </label>
-      <button type="button" className="pg-trends-icon-btn" onClick={() => step(1)} aria-label="Next signal" disabled={channels.length < 2}>
+      <button type="button" className="pg-trends-icon-btn" onClick={() => step(1)} aria-label="Next sensor" disabled={channels.length < 2}>
         <Chevron />
       </button>
       {idx >= 0 && (
         <span className="pg-trends-muted ast-num">
-          {idx + 1}/{channels.length}
+          {idx + 1} of {channels.length}
         </span>
       )}
     </div>
@@ -287,8 +286,8 @@ export function ExplorerSection({
     () =>
       ctx.events
         .filter((e) => e.exact && e.at >= ctx.domain[0] && e.at <= ctx.domain[1] && (e.cat !== "telemetry" || e.sensor === active.id))
-        .map((e) => ({ t: e.at, tone: SEVERITY_TONE[e.severity], label: `${clock(e.at, ctx.timeZone)} · ${e.title}` })),
-    [ctx.events, ctx.domain, ctx.timeZone, active.id]
+        .map((e) => ({ t: e.at, tone: SEVERITY_TONE[e.severity], label: `${clock(e.at, ctx.timeZone)} · ${nameIds(e.title, ctx.defs)}` })),
+    [ctx.events, ctx.domain, ctx.timeZone, ctx.defs, active.id]
   );
 
   const d = active.decimals;
@@ -300,32 +299,38 @@ export function ExplorerSection({
   const hiTxt = pair(lim?.warnHi, lim?.alarmHi);
   const loTxt = pair(lim?.warnLo, lim?.alarmLo);
   const resid = active.baseline !== null ? cur - active.baseline : null;
-  const est = active.calculated ? " calc." : ctx.defs?.signalByTag[active.id]?.origin === "manual" ? " manual" : active.live ? " sim." : "";
-  const demo = ctx.defs?.plant === "pyro" && Boolean(lim);
+  const est = active.calculated ? " (calculated)" : ctx.defs?.signalByTag[active.id]?.origin === "manual" ? " (typed in by hand)" : "";
+  // Limit approval from the DB limit row: provisional limits are captioned as such.
+  const { byTag: measurements } = useMachineMeasurements(ctx.machine.id);
+  const dbLimit = measurements.get(active.id)?.limit ?? null;
+  const demo = Boolean(lim) && dbLimit?.approval === "provisional";
+  const DEMO_LIMIT_NOTE = limitApprovalText(dbLimit) ?? "";
 
   const cells: Array<[string, React.ReactNode]> = [];
-  if (active.baseline !== null) cells.push([active.live ? "Reference" : "Baseline", fmt(active.baseline, d)]);
-  if (resid !== null) cells.push(["Residual", active.sigma ? `${fmtSigned(resid, d)} · ${fmtSigned(resid / active.sigma, 1)}σ` : fmtSigned(resid, d)]);
+  if (active.baseline !== null) cells.push([active.live ? "Expected" : "Usual value", fmt(active.baseline, d)]);
+  if (resid !== null) cells.push(["Difference", active.sigma ? `${fmtSigned(resid, d)} (${fmt(Math.abs(resid / active.sigma), 1)} × usual spread)` : fmtSigned(resid, d)]);
   if (stats) {
-    cells.push(["Min", fmt(stats.min, d)], ["Mean", fmt(stats.mean, d)], ["Max", fmt(stats.max, d)], ["Std dev", fmt(stats.sd, Math.min(3, d + 1))]);
-    if (lim) cells.push(["Outside", `${fmt(stats.outside * 100, 0)} %`]);
+    cells.push(["Lowest", fmt(stats.min, d)], ["Average", fmt(stats.mean, d)], ["Highest", fmt(stats.max, d)], ["Usual spread", fmt(stats.sd, Math.min(3, d + 1))]);
+    if (lim) cells.push(["Time outside limits", `${fmt(stats.outside * 100, 0)} %`]);
   }
-  const demoTag = demo ? " (demo)" : "";
-  if (hiTxt) cells.push([`${lim?.abs ? "Warning / alarm |x|" : "Warning / alarm hi"}${demoTag}`, hiTxt]);
-  if (loTxt) cells.push([`Warning / alarm lo${demoTag}`, loTxt]);
-  if (active.timeToLimit) cells.push(["To limit", active.timeToLimit]);
-  if (dq.length) cells.push(["Not valid", `${fmt(dqShare * 100, 0)} % of window`]);
+  const demoTag = demo ? " (draft)" : "";
+  if (hiTxt) cells.push([`${lim?.abs ? "Alert and Critical, either way" : "Alert and Critical, high"}${demoTag}`, hiTxt]);
+  if (loTxt) cells.push([`Alert and Critical, low${demoTag}`, loTxt]);
+  if (active.timeToLimit) cells.push(["Time to limit", active.timeToLimit]);
+  if (dq.length) cells.push(["Doubtful readings", `${fmt(dqShare * 100, 0)} % of the time`]);
 
   return (
-    <Section id={SECTION.explorer} title="Signal" right={<SignalPicker channels={ctx.channels} value={active.id} onChange={onSelect} groupName={ctx.groupName} />}>
+    <Section id={SECTION.explorer} title="Chosen sensor" right={<SignalPicker channels={ctx.channels} value={active.id} onChange={onSelect} groupName={ctx.groupName} />}>
       <section className="pg-trends-card" aria-label={`${active.name} trend`}>
         <header className="pg-trends-ex-head">
           <div className="pg-trends-ex-title">
-            <h4 className="pg-trends-h">{active.name}</h4>
+            <h4 className="pg-trends-h" title={`${active.id} · ${active.name}`}>
+              {displayName(active.name)}
+            </h4>
             <span className="pg-trends-muted ast-num">
-              {active.id} · {active.subassembly || active.component || "—"} · {CLASS_LABEL[active.cls]}
+              {active.subassembly || active.component || "—"} · {CLASS_LABEL[active.cls]}
               {active.rate ? ` · ${active.rate}` : ""}
-              {active.quality !== null ? ` · data ${active.quality.toLowerCase()}${active.qualityNote ? `: ${active.qualityNote}` : ""}` : ""}
+              {active.quality !== null ? ` · reading ${((QUALITY_LABEL as Record<string, string>)[active.quality] ?? active.quality).toLowerCase()}${active.qualityNote ? `: ${active.qualityNote}` : ""}` : ""}
               {demo ? ` · ${DEMO_LIMIT_NOTE}` : ""}
             </span>
           </div>
@@ -334,15 +339,15 @@ export function ExplorerSection({
             {zone !== "normal" && <ZoneMark zone={zone} />}
             <Pills<"data" | "limits">
               items={[
-                { id: "data", label: "Fit" },
-                { id: "limits", label: "Limits" },
+                { id: "data", label: "Fit to data" },
+                { id: "limits", label: "Show limits" },
               ]}
               value={scale}
               onChange={setScale}
               label="Value scale"
             />
-            <PillButton variant="secondary" className="pg-trends-btn-sm" disabled={raw.length === 0} onClick={() => onExport(active, raw)} title="Download this signal's samples as CSV">
-              Export CSV
+            <PillButton variant="secondary" className="pg-trends-btn-sm" disabled={raw.length === 0} onClick={() => onExport(active, raw)} title="Download this sensor's readings as a spreadsheet file (CSV)">
+              Download CSV
             </PillButton>
           </div>
         </header>
@@ -380,22 +385,22 @@ export function ExplorerSection({
               crosshair={ctx.cross}
               limitNote={demo ? DEMO_LIMIT_NOTE : undefined}
               quality={dq}
-              ariaLabel={`${active.name} in ${active.unit} over the last ${ctx.winLabel}${demo ? `; ${DEMO_LIMIT_NOTE}` : ""}${dq.length ? `; ${dq.length} span${dq.length > 1 ? "s" : ""} of suspect or invalid data greyed out` : ""}`}
+              ariaLabel={`${active.name} in ${active.unit} over the last ${ctx.winLabel}${demo ? `; ${DEMO_LIMIT_NOTE}` : ""}${dq.length ? `; ${dq.length} stretch${dq.length > 1 ? "es" : ""} of doubtful readings greyed out` : ""}`}
             />
             {active.sigma && <ResidualChart samples={samples} domain={ctx.domain} sigma={active.sigma} crosshair={ctx.cross} />}
           </>
         ) : (
           <div className="pg-trends-nohist" role="note">
             {active.manualRecords
-              ? `Manual record: ${samples.length === 1 ? "one dated record" : "no dated record"} in this window. Manual records are plotted only at their record times, never as a live series.`
+              ? `Typed in by hand: ${samples.length === 1 ? "one record" : "no record"} in this time range. Hand records show only at the time they were taken, never as a live line.`
               : active.record
-                ? "No stored samples in this window."
-                : "No history recorded; current value only."}
+                ? "No saved readings in this time range."
+                : "No past readings saved; only the current value is known."}
           </div>
         )}
 
         {eq && (
-          <WhyDisclosure summary="Reference model">
+          <WhyDisclosure summary="How the expected value is worked out">
             <p className="pg-trends-prose ast-num">
               {eq.expr} · σ {fmt(active.sigma, Math.min(3, d + 1))} {active.unit} · kiln specification D5, Table 9.5
             </p>
@@ -446,8 +451,10 @@ export function OverlaySection({ ctx, active, trendable }: { ctx: TrendsCtx; act
   const [mode, setMode] = useState<OvMode>("overlay");
   const trendIds = useMemo(() => new Set(trendable.map((c) => c.id)), [trendable]);
 
-  // Kiln-seal fleet: D5 Table 9.5 model inputs + fixed relationships; pyro line: rule inputs (defs.rules).
-  const presets = useMemo(() => comparePresets(ctx.defs, active?.id, trendIds, ctx.live), [ctx.defs, active?.id, trendIds, ctx.live]);
+  // Kiln-seal fleet: D5 Table 9.5 model inputs + the catalogue's sub-assembly groups; pyro line: rule inputs (defs.rules).
+  const { subassemblies } = useStoredCatalog(ctx.machine);
+  const groups = useMemo(() => subassemblies.map((sa) => ({ id: sa.subassemblyId, name: sa.name, tags: sa.sensorTags })), [subassemblies]);
+  const presets = useMemo(() => comparePresets(ctx.defs, active?.id, trendIds, ctx.live, groups), [ctx.defs, active?.id, trendIds, ctx.live, groups]);
 
   const defaults = useMemo(() => {
     if (presets[0]) return presets[0].tags;
@@ -469,7 +476,7 @@ export function OverlaySection({ ctx, active, trendable }: { ctx: TrendsCtx; act
         const range = st && st.max > st.min ? st.max - st.min : 1;
         return {
           id: ch.id,
-          label: ch.id,
+          label: displayName(ch.name),
           unit: ch.unit,
           decimals: ch.decimals,
           samples: downsample(ctx.series.get(ch.id) ?? [], 700),
@@ -488,28 +495,30 @@ export function OverlaySection({ ctx, active, trendable }: { ctx: TrendsCtx; act
       title="Compare"
       right={
         <>
-          <Pills<Norm> items={[{ id: "z", label: "z-score" }, { id: "pct", label: "% range" }]} value={norm} onChange={setNorm} label="Normalisation" />
-          <Pills<OvMode> items={[{ id: "overlay", label: "Overlay" }, { id: "stacked", label: "Stacked" }]} value={mode} onChange={setMode} label="Layout" />
+          <Pills<Norm> items={[{ id: "z", label: "By usual spread" }, { id: "pct", label: "% of range" }]} value={norm} onChange={setNorm} label="Scale" />
+          <Pills<OvMode> items={[{ id: "overlay", label: "On one chart" }, { id: "stacked", label: "One below another" }]} value={mode} onChange={setMode} label="Layout" />
         </>
       }
     >
-      <section className="pg-trends-card" aria-label="Signal comparison">
+      <section className="pg-trends-card" aria-label="Sensor comparison">
         {((ids.length < 4 && addable.length > 0) || presets.length > 0) && (
         <div className="pg-trends-ov-controls">
           {ids.length < 4 && addable.length > 0 && (
             <label className="pg-trends-select-wrap pg-trends-add">
-              <span className="pg-trends-sr">Add signal</span>
+              <span className="pg-trends-sr">Add sensor</span>
               <select className="pg-trends-select" value="" onChange={(e) => e.target.value && setIds([...ids, e.target.value])}>
-                <option value="">Add signal</option>
+                <option value="">Add sensor</option>
                 {addable.map((c) => (
-                  <option key={c.id} value={c.id}>{`${c.id} · ${c.name}`}</option>
+                  <option key={c.id} value={c.id} title={c.id}>
+                    {displayName(c.name)}
+                  </option>
                 ))}
               </select>
             </label>
           )}
           {presets.length > 0 && (
             <label className="pg-trends-select-wrap pg-trends-add">
-              <span className="pg-trends-sr">Process relationship</span>
+              <span className="pg-trends-sr">Related sensors</span>
               <select
                 className="pg-trends-select"
                 value=""
@@ -518,9 +527,9 @@ export function OverlaySection({ ctx, active, trendable }: { ctx: TrendsCtx; act
                   if (p) setIds(p.tags);
                 }}
               >
-                <option value="">Relationship</option>
+                <option value="">Related sensors</option>
                 {presets.map((p) => (
-                  <option key={p.id} value={p.id}>
+                  <option key={p.id} value={p.id} title={p.title}>
                     {p.label}
                   </option>
                 ))}
@@ -531,7 +540,7 @@ export function OverlaySection({ ctx, active, trendable }: { ctx: TrendsCtx; act
         )}
 
         {mode === "overlay" ? (
-          <OverlayChart series={series} domain={ctx.domain} axisUnit={norm === "z" ? "σ" : "%"} crosshair={ctx.cross} ariaLabel={`Normalised overlay of ${chans.map((c) => c.name).join(", ")}`} />
+          <OverlayChart series={series} domain={ctx.domain} axisUnit={norm === "z" ? "σ" : "%"} crosshair={ctx.cross} ariaLabel={`Sensors compared on one scale: ${chans.map((c) => c.name).join(", ")}`} />
         ) : (
           <div className="pg-trends-stack">
             {chans.map((c, i) => (
@@ -546,7 +555,7 @@ export function OverlaySection({ ctx, active, trendable }: { ctx: TrendsCtx; act
                 variant="strip"
                 height={112}
                 crosshair={ctx.cross}
-                label={c.id}
+                label={displayName(c.name)}
                 ariaLabel={`${c.name} in ${c.unit}`}
               />
             ))}
@@ -575,22 +584,22 @@ function OverlayLegend({
 }) {
   const { t, values } = useOverlayReadout(ctx.cross, series);
   return (
-    <div className="pg-trends-legend" role="list" aria-label={t === null ? "Compared signals, latest values" : `Compared signals at ${clock(t, ctx.timeZone, true)}`}>
+    <div className="pg-trends-legend" role="list" aria-label={t === null ? "Compared sensors, latest readings" : `Compared sensors at ${clock(t, ctx.timeZone, true)}`}>
       {chans.map((c, i) => {
         const st = ctx.stats.get(c.id);
         const r = i === 0 ? null : corr[i];
         return (
-          <div key={c.id} role="listitem" className="pg-trends-legend-item is-clickable" title={`Show ${c.id} in Signal`} {...rowActivate(() => ctx.focus(c.id))}>
+          <div key={c.id} role="listitem" className="pg-trends-legend-item is-clickable" title={`${c.id} · show as the chosen sensor`} {...rowActivate(() => ctx.focus(c.id))}>
             <div className="pg-trends-legend-head">
               <svg width="16" height="6" aria-hidden="true">
                 <line className={`pg-trends-ov pg-trends-ov--${i % OVERLAY_STYLES}`} x1="1" x2="15" y1="3" y2="3" />
               </svg>
-              <span className="pg-trends-legend-tag ast-num">{c.id}</span>
+              <span className="pg-trends-legend-tag">{displayName(c.name)}</span>
               {onRemove && (
                 <button
                   type="button"
                   className="pg-trends-ov-x"
-                  aria-label={`Remove ${c.id}`}
+                  aria-label={`Remove ${displayName(c.name)}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     onRemove(c.id);
@@ -609,15 +618,15 @@ function OverlayLegend({
             </span>
             <dl className="pg-trends-legend-facts">
               <div>
-                <dt>Min</dt>
+                <dt>Lowest</dt>
                 <dd className="ast-num">{fmt(st?.min, c.decimals)}</dd>
               </div>
               <div>
-                <dt>Max</dt>
+                <dt>Highest</dt>
                 <dd className="ast-num">{fmt(st?.max, c.decimals)}</dd>
               </div>
-              <div title={`Pearson correlation with ${chans[0]?.id ?? "the first signal"} over the window (calculated)`}>
-                <dt>r</dt>
+              <div title={`How closely it moves with ${chans[0] ? displayName(chans[0].name) : "the first sensor"} over this time range: +1 = exactly together, 0 = not at all, −1 = exactly opposite (Pearson r, calculated)`}>
+                <dt>Moves with</dt>
                 <dd className="ast-num">{r === null || r === undefined ? "—" : fmtSigned(r, 2)}</dd>
               </div>
             </dl>
@@ -647,7 +656,7 @@ export function SignalsSection({
   const [cls, setCls] = useState<"all" | SignalClass>("all");
   const [sort, setSort] = useState<"system" | "changed">("system");
   const classes = new Set(ctx.channels.map((c) => c.cls));
-  const demo = ctx.defs?.plant === "pyro";
+  const { byTag: measurements } = useMachineMeasurements(ctx.machine.id);
 
   const groups = useMemo(() => {
     const shown = ctx.channels.filter((c) => cls === "all" || c.cls === cls);
@@ -672,12 +681,12 @@ export function SignalsSection({
           ]}
           value={cls}
           onChange={(v) => setCls(v as "all" | SignalClass)}
-          label="Signal class"
+          label="Kind of sensor"
         />
       )}
       <Pills<"system" | "changed">
         items={[
-          { id: "system", label: "By system" },
+          { id: "system", label: "By part" },
           { id: "changed", label: "Most changed" },
         ]}
         value={sort}
@@ -688,24 +697,28 @@ export function SignalsSection({
   );
 
   return (
-    <Section id={SECTION.signals} title="Signals" right={right} bare>
+    <Section id={SECTION.signals} title="All sensors" right={right} bare>
       {groups.map(([g, list]) => {
         const out = list.filter((c) => channelZone(c) !== "normal").length;
+        // Limit approval of the group's DB limit rows.
+        const limits = list.map((c) => measurements.get(c.id)?.limit);
+        const demo = limits.some((l) => l?.approval === "provisional");
+        const DEMO_LIMIT_NOTE = limitsApprovalText(limits) ?? undefined;
         return (
           <React.Fragment key={g || "all"}>
             {g && (
               <div className="ui-tiles-head">
                 <span>
-                  <b>{ctx.groupName(g)}</b> · {g === TREND_GROUP ? "stored" : CLASS_LABEL[list[0].cls].toLowerCase()}
+                  <b>{ctx.groupName(g)}</b> · {g === TREND_GROUP ? "saved" : CLASS_LABEL[list[0].cls].toLowerCase()}
                 </span>
                 <span className="ast-num" title={demo ? DEMO_LIMIT_NOTE : undefined}>
-                  {list.length} signal{list.length === 1 ? "" : "s"}
-                  {out > 0 ? ` · ${out} outside limits` : ""}
-                  {demo ? " · demo limits" : ""}
+                  {list.length} sensor{list.length === 1 ? "" : "s"}
+                  {out > 0 ? ` · ${out} outside normal limits` : ""}
+                  {demo ? " · draft limits" : ""}
                 </span>
               </div>
             )}
-            <TileGrid fill={false} className="is-compact pg-trends-signal-grid" label={g ? `${ctx.groupName(g)} signals` : "Signals by change in window"} min={220}>
+            <TileGrid fill={false} className="is-compact pg-trends-signal-grid" label={g ? `${ctx.groupName(g)} sensors` : "Sensors, most changed first"} min={220}>
               {list.map((c) => (
                 <SignalTile
                   key={c.id}
@@ -751,18 +764,17 @@ const SignalTile = memo(function SignalTile({
   const devOff = dev !== null && Boolean(ch.sigma) && Math.abs(dev) > MODEL_K;
   const d = ch.decimals;
   const facts: TileFact[] = [
-    { label: live ? "Ref." : "Baseline", value: fmt(ch.baseline, d) },
-    { label: ch.sigma || dev === null ? "Dev. σ" : "Dev. σ est.", value: dev === null ? "—" : fmtSigned(dev, 1), tone: devOff ? "warn" : undefined },
-    { label: "Min", value: fmt(stats?.min, d) },
-    { label: "Max", value: fmt(stats?.max, d) },
+    { label: live ? "Expected" : "Usual", value: fmt(ch.baseline, d) },
+    { label: ch.sigma || dev === null ? "Off usual" : "Off usual (est.)", value: dev === null ? "—" : `${fmtSigned(dev, 1)}×`, tone: devOff ? "warn" : undefined },
+    { label: "Lowest", value: fmt(stats?.min, d) },
+    { label: "Highest", value: fmt(stats?.max, d) },
   ];
   const badData = live && ch.quality !== null && ch.quality !== "Good";
   const tone = zone === "normal" ? undefined : ZONE_TONE[zone];
   return (
     <Tile
       className="pg-trends-sigtile"
-      title={ch.id}
-      sub={ch.name}
+      title={<span title={`${ch.id} · ${ch.name}`}>{displayName(ch.name)}</span>}
       status={{ label: ZONE_LABEL[zone], tone }}
       value={fmt(cur, d)}
       unit={ch.unit}
@@ -782,9 +794,9 @@ const SignalTile = memo(function SignalTile({
     >
       <div className="pg-trends-tile-spark">
         {spark.length > 1 ? (
-          <SignalChart samples={spark} domain={domain} unit={ch.unit} decimals={d} limits={ch.limits} sigma={null} variant="spark" height={32} showModel={false} ariaLabel={`${ch.name} sparkline`} />
+          <SignalChart samples={spark} domain={domain} unit={ch.unit} decimals={d} limits={ch.limits} sigma={null} variant="spark" height={32} showModel={false} ariaLabel={`${ch.name}, recent readings`} />
         ) : (
-          <span className="pg-trends-muted">{ch.record ? "No samples in window" : "No history"}</span>
+          <span className="pg-trends-muted">{ch.record ? "No readings in this time range" : "No saved readings"}</span>
         )}
       </div>
     </Tile>
@@ -819,21 +831,21 @@ export function ExcursionsSection({ ctx }: { ctx: TrendsCtx }) {
   );
   const items: Array<{ id: "all" | ExcursionKind; label: string; count: number; tone?: Tone }> = [
     { id: "all", label: "All", count: ctx.excursions.length },
-    { id: "alarm", label: "Alarm", count: count("alarm"), tone: count("alarm") ? "bad" : undefined },
-    { id: "warning", label: "Warning", count: count("warning"), tone: count("warning") ? "warn" : undefined },
+    { id: "alarm", label: "Critical", count: count("alarm"), tone: count("alarm") ? "bad" : undefined },
+    { id: "warning", label: "Alert", count: count("warning"), tone: count("warning") ? "warn" : undefined },
   ];
-  if (ctx.live) items.push({ id: "model", label: `±${MODEL_K}σ`, count: count("model") });
+  if (ctx.live) items.push({ id: "model", label: "Far from expected", count: count("model") });
   const shown = all ? rows : rows.slice(0, EXCURSION_CARDS);
   const secs = ctx.span < 3_600_000;
 
   return (
-    <Section id={SECTION.excursions} title="Excursions" right={<Pills items={items} value={kind} onChange={setKind} label="Excursion type" />} bare>
+    <Section id={SECTION.excursions} title="Times outside limits" right={<Pills items={items} value={kind} onChange={setKind} label="Kind" />} bare>
       {rows.length === 0 ? (
         <section className="ast-card pg-trends-none" role="status">
-          None of this type in the last {ctx.winLabel}
+          None of this kind in the last {ctx.winLabel}
         </section>
       ) : (
-        <TileGrid label="Excursions, most severe first" min={220}>
+        <TileGrid label="Times outside limits, worst first" min={220}>
           {shown.map((e) => {
             const tone = capsuleTone(e.kind);
             const alert = tone === "idle" ? undefined : tone;
@@ -841,22 +853,21 @@ export function ExcursionsSection({ ctx }: { ctx: TrendsCtx }) {
               <Tile
                 key={e.id}
                 className="pg-trends-extile"
-                title={e.tag}
-                sub={e.name}
+                title={<span title={`${e.tag} · ${e.name}`}>{displayName(e.name)}</span>}
                 status={{ label: KIND_LABEL[e.kind], tone: alert }}
                 value={fmt(e.peak, e.decimals)}
-                unit={`${e.unit ? `${e.unit} ` : ""}peak${e.peakSigma === null ? "" : ` · ${fmt(e.peakSigma, 1)}σ`}`}
+                unit={`${e.unit ? `${e.unit} ` : ""}peak${e.peakSigma === null ? "" : ` · ${fmt(e.peakSigma, 1)} × usual spread`}`}
                 tone={alert}
                 facts={[
                   { label: "Start", value: clock(e.start, ctx.timeZone, secs) },
-                  { label: "Duration", value: fmtSpan(e.end - e.start) },
-                  { label: "End", value: e.ongoing ? "Ongoing" : clock(e.end, ctx.timeZone, secs), tone: e.ongoing ? alert : undefined },
+                  { label: "Lasted", value: fmtSpan(e.end - e.start) },
+                  { label: "End", value: e.ongoing ? "Still going" : clock(e.end, ctx.timeZone, secs), tone: e.ongoing ? alert : undefined },
                 ]}
                 actions={
                   e.rule ? (
-                    <button type="button" className="pg-trends-link pg-trends-tile-rule" onClick={() => ctx.go("diagnosis")} title={`${e.rule.id} ${e.rule.name} (${e.rule.status.toLowerCase()}) · open Diagnosis`}>
-                      <span className="ast-num">{e.rule.id}</span> {e.rule.name}
-                      <span className="pg-trends-muted"> · {e.rule.status === "ACTIVE" ? "active" : "pending"}</span>
+                    <button type="button" className="pg-trends-link pg-trends-tile-rule" onClick={() => ctx.go("diagnosis")} title={`${e.rule.id} ${e.rule.eng} (${e.rule.status.toLowerCase()}) · open Diagnosis`}>
+                      {e.rule.name}
+                      <span className="pg-trends-muted"> · {e.rule.status === "ACTIVE" ? "happening now" : "not confirmed yet"}</span>
                     </button>
                   ) : undefined
                 }
@@ -910,9 +921,9 @@ export function EventsSection({ ctx }: { ctx: TrendsCtx }) {
                 <th scope="col">Time</th>
                 <th scope="col">Event</th>
                 <th scope="col">Type</th>
-                <th scope="col">Signal</th>
+                <th scope="col">Sensor or problem</th>
                 <th scope="col" className="pg-trends-num">Value</th>
-                <th scope="col">Source</th>
+                <th scope="col">From</th>
               </tr>
             </thead>
             <tbody>
@@ -930,7 +941,14 @@ export function EventsSection({ ctx }: { ctx: TrendsCtx }) {
                       </span>
                     </td>
                     <td className="pg-trends-msg">
-                      <ItemCell icon={EVENT_ICON[e.cat]} tone={tone === "idle" ? undefined : tone} title={e.title} sub={e.detail || undefined} />
+                      <ItemCell
+                        icon={EVENT_ICON[e.cat]}
+                        tone={tone === "idle" ? undefined : tone}
+                        title={nameIds(e.title, ctx.defs)}
+                        titleTip={e.title}
+                        sub={e.detail ? nameIds(e.detail, ctx.defs) : undefined}
+                        subTip={e.detail || undefined}
+                      />
                     </td>
                     <td className="pg-trends-muted">
                       {e.kind}
@@ -938,15 +956,15 @@ export function EventsSection({ ctx }: { ctx: TrendsCtx }) {
                     <td>
                       {e.sensor ? (
                         canFocus ? (
-                          <button type="button" className="pg-trends-link ast-num" onClick={() => ctx.focus(e.sensor!)} title={`Show ${e.sensor} in Signal`}>
-                            {e.sensor}
+                          <button type="button" className="pg-trends-link" onClick={() => ctx.focus(e.sensor!)} title={`${e.sensor} · show as the chosen sensor`}>
+                            {nameIds(e.sensor, ctx.defs)}
                           </button>
                         ) : (
-                          <span className="ast-num">{e.sensor}</span>
+                          <span title={e.sensor}>{nameIds(e.sensor, ctx.defs)}</span>
                         )
                       ) : e.rule ? (
-                        <button type="button" className="pg-trends-link ast-num" onClick={() => ctx.go("diagnosis")} title={`${e.rule} · open Diagnosis`}>
-                          {e.rule}
+                        <button type="button" className="pg-trends-link" onClick={() => ctx.go("diagnosis")} title={`${e.rule} · open Diagnosis`}>
+                          {nameIds(e.rule, ctx.defs)}
                         </button>
                       ) : (
                         <span className="pg-trends-muted">—</span>
@@ -963,7 +981,7 @@ export function EventsSection({ ctx }: { ctx: TrendsCtx }) {
         {rows.length > limit && (
           <div className="pg-trends-more">
             <PillButton variant="secondary" className="pg-trends-btn-sm" onClick={() => setLimit((l) => l + 50)}>
-              {rows.length - limit} more
+              Show {rows.length - limit} more
             </PillButton>
           </div>
         )}
@@ -991,28 +1009,27 @@ export function StatesSection({ ctx, highlight }: { ctx: TrendsCtx; highlight: s
   const anyHistory = rows.some((r) => r.pts.length > 0);
 
   return (
-    <Section id={SECTION.states} title="States">
-      <section className="pg-trends-card pg-trends-card--table" aria-label="State signals">
+    <Section id={SECTION.states} title="On and off">
+      <section className="pg-trends-card pg-trends-card--table" aria-label="On and off sensors">
         <div className="ui-table-container ast-table pg-trends-table">
           <table className="ui-table">
             <thead>
               <tr>
-                <th scope="col">Signal</th>
-                <th scope="col">State</th>
+                <th scope="col">Sensor</th>
+                <th scope="col">Now</th>
                 {anyHistory && <th scope="col" className="pg-trends-strip-col">Last {ctx.winLabel}</th>}
-                {anyHistory && <th scope="col" className="pg-trends-num">Off-normal</th>}
+                {anyHistory && <th scope="col" className="pg-trends-num">Not normal</th>}
                 {anyHistory && <th scope="col" className="pg-trends-num">Changes</th>}
               </tr>
             </thead>
             <tbody>
               {rows.map(({ s, pts, offPct, changes }) => {
-                const z: Zone = s.status === "Critical" ? "alarm" : s.status === "Advisory" ? "warning" : "normal";
+                const z: Zone = s.status === "Critical" ? "alarm" : s.status === "Alert" ? "warning" : "normal";
                 return (
                   <tr key={s.id} className={highlight === s.id ? "active" : undefined}>
                     <td>
                       <span className="pg-trends-sig">
-                        <span className="ast-num pg-trends-tagcol">{s.id}</span>
-                        <span className="pg-trends-name">{s.name}</span>
+                        <span className="pg-trends-name" title={`${s.id} · ${s.name}`}>{displayName(s.name)}</span>
                       </span>
                     </td>
                     <td>{z === "normal" ? <span className="pg-trends-strong">{s.display || "—"}</span> : <ZoneMark zone={z} label={s.display || ZONE_LABEL[z]} />}</td>

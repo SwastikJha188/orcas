@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
  * ./machine-kit/machine-kit.tsx. Colour stays reserved for operational state.
  */
 
-export type DiagramState = "Normal" | "Advisory" | "Critical";
+export type DiagramState = "Normal" | "Alert" | "Critical";
 
 /** Monoline drawing tokens shared by every kiln schematic. */
 export const DIAGRAM = {
@@ -44,7 +44,7 @@ export const DIAGRAM = {
 
 export function diagramStateColor(status: string | undefined): string {
   if (status === "Critical" || status === "Active" || status === "Alarm" || status === "Trip") return DIAGRAM.bad;
-  if (status === "Advisory" || status === "Alert" || status === "Warning") return DIAGRAM.warn;
+  if (status === "Alert" || status === "Warning") return DIAGRAM.warn;
   return DIAGRAM.good;
 }
 

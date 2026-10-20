@@ -40,9 +40,10 @@ const num = (v: unknown): number | null => {
  */
 export function useMachineHistory(machineId: string): MachineHistory {
   const q = encodeURIComponent(machineId);
-  const trends = useApi<Array<{ machineId: string; metrics: TrendRecordMetric[] }>>(`/api/trends?machineId=${q}`);
-  const events = useApi<OperatingEvent[]>(`/api/history?machineId=${q}`);
-  const catalog = useApi<{ sensors?: Array<{ tag: string; defaultBaseline?: unknown }> }>(`/api/catalog?machineId=${q}`);
+  // No id yet: ask nothing (an empty id is a 400) and report empty history.
+  const trends = useApi<Array<{ machineId: string; metrics: TrendRecordMetric[] }>>(machineId ? `/api/trends?machineId=${q}` : null);
+  const events = useApi<OperatingEvent[]>(machineId ? `/api/history?machineId=${q}` : null);
+  const catalog = useApi<{ sensors?: Array<{ tag: string; defaultBaseline?: unknown }> }>(machineId ? `/api/catalog?machineId=${q}` : null);
   const loaded = !trends.isLoading && !events.isLoading && !catalog.isLoading;
 
   return useMemo(() => {

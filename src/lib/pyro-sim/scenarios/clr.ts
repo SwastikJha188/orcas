@@ -19,7 +19,7 @@ export const CLR_SCENARIOS: PyroScenario[] = list("PYR-CLR-01", [
     documentedDetection: "+1h 19m",
     description: "FP-35. A grate plate fails over compartment 2: air short-circuits, the compartment pressure falls while the fan draws more current, and clinker leaves hotter.",
     effects: [
-      { target: sig("PRS-CLR-02"), delta: -21, onsetMin: 5, rampMin: 120, shape: "ramp" },
+      { target: sig("PRS-CLR-02"), delta: -17.9, onsetMin: 5, rampMin: 120, shape: "ramp" },
       { target: sig("ELE-CLR-02"), delta: 14, onsetMin: 5, rampMin: 120, shape: "ramp" },
       { target: sig("TMP-CLR-08"), delta: 20, onsetMin: 20, rampMin: 180, shape: "ramp" },
       // Less heat recuperated: the secondary air (TMP-BRN-02) cools by ≈ 50 K and the flame and hood follow (D5 Table 3.1 air chain).
@@ -73,8 +73,8 @@ export const CLR_SCENARIOS: PyroScenario[] = list("PYR-CLR-01", [
       { target: sig("PRS-CLR-07"), delta: -58, onsetMin: 5, rampMin: 120, shape: "ramp" },
       { target: sig("SPD-CLR-01"), delta: -2.6, onsetMin: 5, rampMin: 120, shape: "ramp" },
       { target: sig("PRS-CLR-04"), delta: 3, onsetMin: 30, rampMin: 120, shape: "ramp" },
-      { target: sig("PRS-CLR-05"), delta: 2.5, onsetMin: 30, rampMin: 120, shape: "ramp" },
-      { target: sig("PRS-CLR-06"), delta: 2, onsetMin: 30, rampMin: 120, shape: "ramp" },
+      { target: sig("PRS-CLR-05"), delta: 2.0, onsetMin: 30, rampMin: 120, shape: "ramp" },
+      { target: sig("PRS-CLR-06"), delta: 1.3, onsetMin: 30, rampMin: 120, shape: "ramp" },
     ],
   },
   {
@@ -87,7 +87,7 @@ export const CLR_SCENARIOS: PyroScenario[] = list("PYR-CLR-01", [
     effects: [
       { target: sig("SPD-CLR-01"), delta: -1.3, onsetMin: 5, rampMin: 60, shape: "settle" },
       { target: sig("PRS-CLR-04"), delta: 2.5, onsetMin: 20, rampMin: 120, shape: "ramp" },
-      { target: sig("PRS-CLR-05"), delta: 2, onsetMin: 20, rampMin: 120, shape: "ramp" },
+      { target: sig("PRS-CLR-05"), delta: 1.6, onsetMin: 20, rampMin: 120, shape: "ramp" },
     ],
   },
   {
@@ -124,7 +124,7 @@ export const CLR_SCENARIOS: PyroScenario[] = list("PYR-CLR-01", [
     effects: [
       { target: sig("TMP-CLR-08"), delta: 95, onsetMin: 5, rampMin: 140, shape: "accel" },
       { target: sig("PRS-CLR-01"), delta: 7, onsetMin: 5, rampMin: 140, shape: "ramp" },
-      { target: sig("PRS-CLR-02"), delta: -6, onsetMin: 5, rampMin: 140, shape: "ramp" },
+      { target: sig("PRS-CLR-02"), delta: -5.1, onsetMin: 5, rampMin: 140, shape: "ramp" },
     ],
   },
   {
@@ -136,7 +136,7 @@ export const CLR_SCENARIOS: PyroScenario[] = list("PYR-CLR-01", [
     description: "FP-36, snowman. Sticky clinker builds a mound at the inlet: compartment 1 pressure rises under it while compartment 3 thins out, and the poorly distributed bed sends hotter clinker to the discharge.",
     effects: [
       { target: sig("PRS-CLR-01"), delta: 13, onsetMin: 5, rampMin: 150, shape: "ramp" },
-      { target: sig("PRS-CLR-03"), delta: -7, onsetMin: 5, rampMin: 150, shape: "ramp" },
+      { target: sig("PRS-CLR-03"), delta: -5.9, onsetMin: 5, rampMin: 150, shape: "ramp" },
       { target: sig("TMP-CLR-08"), delta: 28, onsetMin: 10, rampMin: 150, shape: "ramp" },
     ],
   },

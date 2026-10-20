@@ -96,6 +96,8 @@ export interface MqttMeasurement {
   alertActive: boolean;
   dangerActive: boolean;
   updatedAt: string;
+  /** When the source says the value was acquired (ISO), when it says; null when only the receipt time is known. */
+  sampledAt?: string | null;
 }
 
 export interface MqttAlarm {

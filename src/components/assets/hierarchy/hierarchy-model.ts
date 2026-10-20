@@ -1,3 +1,4 @@
+import { displayName } from "@/lib/display-name";
 import type { AssetMachine, HierarchyNode } from "../assets-data";
 import { machineTone, type Tone } from "../assets-shell-ui";
 
@@ -11,12 +12,12 @@ export type NodeType = HierarchyNode["type"];
 export const TYPE_LABEL: Record<NodeType, string> = {
   plant: "Plant",
   area: "Area",
-  group: "Process cell",
+  group: "Line section",
   machine: "Machine",
 };
 
 /** Live machine condition, keyed by machine id. */
-export type MachineLookup = Map<string, { machine: AssetMachine | undefined; status: string; health: number; isLive: boolean }>;
+export type MachineLookup = Map<string, { machine: AssetMachine | undefined; status: string; health: number | null; isLive: boolean }>;
 
 const TONE_RANK: Record<Tone, number> = { good: 0, info: 0, idle: 1, warn: 2, bad: 3 };
 
@@ -36,8 +37,9 @@ export function shortName(name: string): string {
 export function machineCondition(node: HierarchyNode, lookup: MachineLookup) {
   const hit = node.machineId ? lookup.get(node.machineId) : undefined;
   return {
-    status: hit?.status ?? node.status ?? "Operational",
-    health: hit?.health ?? node.health ?? 0,
+    status: hit?.status ?? node.status ?? "No data",
+    // null = not yet evaluated (never a made-up score).
+    health: hit ? hit.health : (node.health ?? null),
     machine: hit?.machine,
     isLive: hit?.isLive ?? false,
   };
@@ -83,9 +85,10 @@ export function distribution(machines: HierarchyNode[], lookup: MachineLookup): 
 }
 
 export function averageHealth(machines: HierarchyNode[], lookup: MachineLookup): number | null {
-  if (machines.length === 0) return null;
-  const sum = machines.reduce((n, m) => n + machineCondition(m, lookup).health, 0);
-  return Math.round(sum / machines.length);
+  // Average of the machines that have a score; null when none has one.
+  const scores = machines.map((m) => machineCondition(m, lookup).health).filter((h): h is number => h !== null);
+  if (scores.length === 0) return null;
+  return Math.round(scores.reduce((n, h) => n + h, 0) / scores.length);
 }
 
 /** Path of nodes from a root to `id` (inclusive), or [] when not found. */
@@ -99,7 +102,8 @@ export function findPath(roots: HierarchyNode[], id: string): HierarchyNode[] {
 }
 
 export function nodeLabel(node: HierarchyNode): string {
-  return node.type === "plant" ? shortName(node.name) : node.name;
+  // Machine nodes drop a bracketed code ("Clinker Cooler and Fans (CLR-01)"); the ID stays on the node.
+  return node.type === "plant" ? shortName(node.name) : node.type === "machine" ? displayName(node.name) : node.name;
 }
 
 /** Text a filter query matches: name, machine id and machine type. */
@@ -150,7 +154,7 @@ export function toneRank(tone: Tone): number {
 
 /** Status label for a rolled-up tone. */
 export function rollupLabel(tone: Tone): string {
-  return tone === "bad" ? "Critical" : tone === "warn" ? "Advisory" : tone === "idle" ? "Standby" : "Normal";
+  return tone === "bad" ? "Critical" : tone === "warn" ? "Alert" : tone === "idle" ? "Standby" : "Normal";
 }
 
 /** Machine sub-page an operator lands on: attention opens Diagnosis, otherwise Overview. */
@@ -165,7 +169,7 @@ export interface MachineEntry {
   location: string[];
   status: string;
   tone: Tone;
-  health: number;
+  health: number | null;
   isLive: boolean;
   machine: AssetMachine | undefined;
 }

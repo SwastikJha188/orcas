@@ -26,8 +26,8 @@ export const PHC_SCENARIOS: PyroScenario[] = list("PYR-PHC-01", [
     documentedDetection: "+1h 30m",
     description: "FP-07. Meal builds up in the C5 cone: cone pressure rises toward zero, the C5 gas runs hotter and the hot meal to the kiln cools.",
     effects: [
-      { target: sig("PRS-PHC-08"), delta: 13, onsetMin: 5, rampMin: 150, shape: "accel" },
-      { target: sig("TMP-PHC-05"), delta: 16, onsetMin: 5, rampMin: 150, shape: "ramp" },
+      { target: sig("PRS-PHC-08"), delta: 4.0, onsetMin: 5, rampMin: 150, shape: "accel" },
+      { target: sig("TMP-PHC-05"), delta: 12, onsetMin: 5, rampMin: 150, shape: "ramp" },
       { target: sig("TMP-PHC-07"), delta: -48, onsetMin: 10, rampMin: 160, shape: "accel" },
     ],
   },
@@ -39,8 +39,8 @@ export const PHC_SCENARIOS: PyroScenario[] = list("PYR-PHC-01", [
     documentedDetection: "+2h 00m",
     description: "FP-08 riser. A ring forms in the kiln riser: the C6-to-kiln-inlet pressure loss rises, kiln-inlet draft weakens and riser gas runs hotter.",
     effects: [
-      { target: sig("PRS-PHC-06"), delta: -4.5, onsetMin: 5, rampMin: 240, shape: "ramp" },
-      { target: sig("PRS-KLN-01"), delta: 1.4, onsetMin: 5, rampMin: 240, shape: "ramp" },
+      { target: sig("PRS-PHC-06"), delta: -5.5, onsetMin: 5, rampMin: 240, shape: "ramp" },
+      { target: sig("PRS-KLN-01"), delta: 3.4, onsetMin: 5, rampMin: 240, shape: "ramp" },
       { target: sig("TMP-PHC-08"), delta: 34, onsetMin: 5, rampMin: 240, shape: "ramp" },
     ],
   },
@@ -54,7 +54,7 @@ export const PHC_SCENARIOS: PyroScenario[] = list("PYR-PHC-01", [
     effects: [
       { target: sig("PRS-PHC-04"), delta: -2.5, onsetMin: 5, rampMin: 240, shape: "ramp" },
       { target: sig("PRS-PHC-05"), delta: 1.5, onsetMin: 5, rampMin: 240, shape: "ramp" },
-      { target: sig("TMP-PHC-05"), delta: 20, onsetMin: 5, rampMin: 240, shape: "ramp" },
+      { target: sig("TMP-PHC-05"), delta: 13, onsetMin: 5, rampMin: 240, shape: "ramp" },
     ],
   },
   {
@@ -160,7 +160,7 @@ export const PHC_SCENARIOS: PyroScenario[] = list("PYR-PHC-01", [
     expected: ["R-PHC-V1"],
     documentedDetection: "+0h 50m",
     description: "A shorted junction makes the C5 outlet thermocouple read low until it falls below the C4 gas above it (D5 Table 5.3.6: each stage between its neighbours).",
-    effects: [{ target: sig("TMP-PHC-05"), delta: -130, onsetMin: 2, rampMin: 60, shape: "ramp", sensor: true }],
+    effects: [{ target: sig("TMP-PHC-05"), delta: -103, onsetMin: 2, rampMin: 60, shape: "ramp", sensor: true }],
   },
   {
     id: "phc-tap-blocked",
@@ -172,7 +172,7 @@ export const PHC_SCENARIOS: PyroScenario[] = list("PYR-PHC-01", [
     effects: [
       { target: drv("idFan"), delta: 36, onsetMin: 10, rampMin: 20, shape: "settle" },
       // The plugged tap keeps transmitter noise but no longer sees the draft change.
-      { target: sig("PRS-PHC-07"), delta: 1.98, onsetMin: 10, rampMin: 20, shape: "settle", sensor: true },
+      { target: sig("PRS-PHC-07"), delta: 0.49, onsetMin: 10, rampMin: 20, shape: "settle", sensor: true },
     ],
   },
   {

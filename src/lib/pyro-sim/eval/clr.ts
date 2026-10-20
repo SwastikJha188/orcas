@@ -35,7 +35,7 @@ export function evalClr(c: EvalContext): void {
       const k = comp.k;
       // Suspicion only (Table 8.3): pressure change is multi-causal and the inputs to separate the causes do not exist.
       H(M, "SW-CLR-01", {
-        severity: "Advisory",
+        severity: "Alert",
         evidence: `Compartment ${k} ${measured[`PRS-CLR-0${k}`].toFixed(0)} mbar (${fmtSigned(comp.rel * 100, 0)} % vs bed-corrected model) with fan ${k} current ${fmtSigned(res(`ELE-CLR-0${k}`), 0)} A (${fmtSigned(comp.relI * 100, 0)} %) — air short-circuiting at a steady fan · discharge ${fmtSigned(disR, 0)} K${disR > 10 ? " (corroborates)" : ""} · secondary air ${good("TMP-BRN-02") ? `${measured["TMP-BRN-02"].toFixed(0)} °C (trend only)` : "not valid"} · missing inputs: cooling-air flow, bed depth, fan damper position, tap validation — suspicion only`,
         tags: [`PRS-CLR-0${k}`, `ELE-CLR-0${k}`, "TMP-CLR-08"],
         subs: [k <= 3 ? "clr-hot" : "clr-cold"],
@@ -62,7 +62,7 @@ export function evalClr(c: EvalContext): void {
         if (dT > 6 && res(ele) > 2) {
           const others = FANS.filter((j) => j !== k && good(`TMP-CLR-0${j}`)).map((j) => meanRes(`TMP-CLR-0${j}`, 5));
           H(M, "R-CLR-02", {
-            severity: measured[tmp] >= 85 || dT > 16 ? "Critical" : "Advisory",
+            severity: measured[tmp] >= 85 || dT > 16 ? "Critical" : "Alert",
             evidence: `Fan ${k} bearing +${dT.toFixed(1)} K above model (other fan bearings ${fmtSigned(median(others), 1)} K) with current ${fmtSigned(res(ele), 0)} A (no vibration pickup on fan ${k})`,
             tags: [tmp, ele],
             subs: ["clr-fans46"],
@@ -98,7 +98,7 @@ export function evalClr(c: EvalContext): void {
         strokeOff || stalled ? `stroke ${spd.toFixed(1)} /min vs ${spdRef.toFixed(1)} controller target (${fmtSigned((spdR / spdRef) * 100, 0)} %)${stalled ? " — grate stopped with the drive on" : ""}` : null,
       ].filter(Boolean);
       H(M, "R-CLR-03", {
-        severity: p >= 175 || measured["TMP-CLR-07"] >= 62 || p <= 70 || stalled || spd <= 6 || spd >= 17 ? "Critical" : "Advisory",
+        severity: p >= 175 || measured["TMP-CLR-07"] >= 62 || p <= 70 || stalled || spd <= 6 || spd >= 17 ? "Critical" : "Alert",
         evidence: `Grate hydraulics ${p.toFixed(0)} bar · ${what.join(" · ")} · cold-end compartments ${bedNow.length ? `${fmtSigned(bedRel * 100, 0)} % vs model` : "not valid"} (bed build-up)`,
         tags: ["PRS-CLR-07", "SPD-CLR-01", "TMP-CLR-07"],
         subs: ["clr-drive"],
@@ -116,7 +116,7 @@ export function evalClr(c: EvalContext): void {
       const heating = dT > 1.5;
       const exh = good("TMP-CLR-09") ? meanRes("TMP-CLR-09", 10) : null;
       H(M, "R-CLR-04", {
-        severity: measured["VIB-CLR-07"] >= 4.5 || measured["TMP-CLR-10"] >= 85 ? "Critical" : "Advisory",
+        severity: measured["VIB-CLR-07"] >= 4.5 || measured["TMP-CLR-10"] >= 85 ? "Critical" : "Alert",
         evidence: `Vent fan vibration ×${vr.toFixed(2)} model · bearing ${fmtSigned(dT, 1)} K · current ${fmtSigned(iR, 0)} A — ${heating ? "bearing defect" : iR < -8 ? "impeller build-up (less flow)" : "impeller build-up or looseness (current steady)"} · exhaust ${exh === null ? "not valid" : `${fmtSigned(exh, 0)} K vs model`}`,
         tags: heating ? ["VIB-CLR-07", "TMP-CLR-10", "ELE-CLR-07"] : ["VIB-CLR-07", "ELE-CLR-07"],
         subs: ["clr-vent"],
@@ -135,7 +135,7 @@ export function evalClr(c: EvalContext): void {
       const hi = hot.reduce((a, b) => (b.r > a.r ? b : a), hot[0]);
       const lo = hot.reduce((a, b) => (b.r < a.r ? b : a), hot[0]);
       H(M, "R-CLR-05", {
-        severity: measured["TMP-CLR-08"] >= 200 || disR > 70 ? "Critical" : "Advisory",
+        severity: measured["TMP-CLR-08"] >= 200 || disR > 70 ? "Critical" : "Alert",
         evidence: `Discharge ${measured["TMP-CLR-08"].toFixed(0)} °C, ${fmtSigned(disR, 0)} K above the model at the same feed and air · hot-zone compartments ${hot.length >= 2 ? `diverging ${(spread * 100).toFixed(0)} % (C${hi.k} ${fmtSigned(hi.r * 100, 0)} %, C${lo.k} ${fmtSigned(lo.r * 100, 0)} %)` : "not valid"}`,
         tags: ["TMP-CLR-08", "PRS-CLR-01", "PRS-CLR-02", "PRS-CLR-03"],
         subs: ["clr-discharge", "clr-hot"],
@@ -168,5 +168,5 @@ export function evalClr(c: EvalContext): void {
   if (hand && hand.comparable && hand.scan !== undefined && t - hand.at <= HANDHELD_MAX_AGE && Math.abs(hand.scan - hand.value) > 25) {
     flag("TMP-CLR-08", `TMP-CLR-08 read ${hand.scan.toFixed(0)} °C against a handheld ${hand.value.toFixed(0)} °C ${t - hand.at} min ago (${fmtSigned(hand.scan - hand.value, 0)} K) — IR window dirty or misaligned`);
   }
-  if (sv.length) H(M, "SV-CLR-01", { severity: "Advisory", evidence: sv.join(" · "), tags: svTags, subs: subsOf(svTags), stateRule: svTags.includes("TMP-CLR-08") });
+  if (sv.length) H(M, "SV-CLR-01", { severity: "Alert", evidence: sv.join(" · "), tags: svTags, subs: subsOf(svTags), stateRule: svTags.includes("TMP-CLR-08") });
 }

@@ -18,6 +18,7 @@ import { EQUATION_BY_TARGET, type Equation } from "@/lib/kiln-sim/relationships"
 import { limitBand } from "@/lib/kiln-sim/signals";
 import type { DefSignal, PlantDefs } from "@/lib/plant-defs";
 import { zoneOffsetMs, zonedParts } from "@/lib/time";
+import { displayName } from "@/lib/display-name";
 
 /* ==========================================================================
    Time
@@ -84,11 +85,11 @@ export interface Limits {
 }
 
 export const ZONE_TONE: Record<Zone, Tone> = { normal: "good", warning: "warn", alarm: "bad" };
-export const ZONE_LABEL: Record<Zone, string> = { normal: "Normal", warning: "Warning", alarm: "Alarm" };
+export const ZONE_LABEL: Record<Zone, string> = { normal: "Normal", warning: "Alert", alarm: "Critical" };
 const ZONE_RANK: Record<Zone, number> = { normal: 0, warning: 1, alarm: 2 };
 export const worst = (a: Zone, b: Zone): Zone => (ZONE_RANK[a] >= ZONE_RANK[b] ? a : b);
 export const zoneRank = (z: Zone) => ZONE_RANK[z];
-export const reportedZone = (s: string): Zone => (s === "Critical" ? "alarm" : s === "Advisory" ? "warning" : "normal");
+export const reportedZone = (s: string): Zone => (s === "Critical" ? "alarm" : s === "Alert" ? "warning" : "normal");
 
 export function zoneOf(v: number, L: Limits | undefined): Zone {
   if (!L || !Number.isFinite(v)) return "normal";
@@ -163,7 +164,7 @@ function defLimits(def: DefSignal, frame: SimFrame | null, defs: PlantDefs): Lim
       return { warnHi: l.warnHi, alarmHi: l.alarmHi, warnLo: l.warnLo, alarmLo: l.alarmLo };
     case "setpoint": {
       const key = defs.setpoints[def.tag];
-      const sp = key ? frame?.drivers[key] : undefined;
+      const sp = key && frame ? frame.drivers[key] * (defs.setpointShare?.[def.tag] ?? 1) : undefined;
       if (!sp) return undefined;
       return {
         warnHi: sp * (1 + l.warnPct / 100),
@@ -186,7 +187,7 @@ function defLimits(def: DefSignal, frame: SimFrame | null, defs: PlantDefs): Lim
 
 /** D4 §4: health-scored systems carry condition signals; unscored systems (PRC-…) are process context. */
 export type SignalClass = "condition" | "process";
-export const CLASS_LABEL: Record<SignalClass, string> = { condition: "Condition", process: "Process context" };
+export const CLASS_LABEL: Record<SignalClass, string> = { condition: "Machine health", process: "Process" };
 
 export interface Channel {
   id: string;
@@ -322,7 +323,7 @@ export function buildChannels(
       id: r.key,
       name: r.label,
       unit: r.unit,
-      component: "Stored trend record",
+      component: "Saved trend record",
       rate: "Trend record",
       group: TREND_GROUP,
       subassembly: "",
@@ -375,6 +376,16 @@ function recordSamples(rec: TrendRecordMetric, now: number, skipNow: boolean, ti
   for (let i = rec.points.length - 1; i >= 0; i--) {
     const p = rec.points[i];
     const label = p.time.trim().toLowerCase();
+    // Readings from the database carry their acquisition time (ISO 8601).
+    if (/^\d{4}-\d{2}-\d{2}t/.test(label)) {
+      const t = Date.parse(p.time);
+      if (Number.isFinite(t)) {
+        out.push({ t, v: p.value, b });
+        next = t;
+        first = false;
+      }
+      continue;
+    }
     if (label === "now") {
       if (first && !skipNow) out.push({ t: now, v: p.value, b });
       continue;
@@ -587,7 +598,8 @@ export interface Excursion {
   peak: number;
   peakAt: number;
   peakSigma: number | null;
-  rule: { id: string; name: string; status: string } | null;
+  /** `name` is the plain title when the rule has one; `eng` the engineering name (tooltip). */
+  rule: { id: string; name: string; eng: string; status: string } | null;
 }
 
 export const MODEL_K = 3;
@@ -598,7 +610,7 @@ function ruleFor(tag: string, frame: SimFrame | null): Excursion["rule"] {
   if (!frame) return null;
   const hits = frame.rules.filter((r) => r.status !== "QUIET" && (r.tags.includes(tag) || frame.defs.ruleById[r.id]?.inputs.includes(tag)));
   const r = hits.find((x) => x.status === "ACTIVE") ?? hits[0];
-  return r ? { id: r.id, name: r.name, status: r.status } : null;
+  return r ? { id: r.id, name: r.plainTitle ?? r.name, eng: r.name, status: r.status } : null;
 }
 
 export function findExcursions(ch: Channel, samples: TrendSample[], frame: SimFrame | null): Excursion[] {
@@ -688,10 +700,10 @@ export function findExcursions(ch: Channel, samples: TrendSample[], frame: SimFr
 
 export type EventCat = "alarm" | "maintenance" | "operator" | "telemetry";
 export const EVENT_CAT_LABEL: Record<EventCat, string> = {
-  alarm: "Alarm / rule",
+  alarm: "Alarms and problems",
   maintenance: "Maintenance",
   operator: "Operator",
-  telemetry: "Telemetry",
+  telemetry: "Sensor events",
 };
 
 export interface LogEvent {
@@ -792,11 +804,11 @@ function storedEvent(e: OperatingEvent, now: number, timeZone: string | undefine
 }
 
 const LIVE_KIND: Record<SimFrame["events"][number]["kind"], { cat: EventCat; kind: string; source: string }> = {
-  rule: { cat: "alarm", kind: "Rule finding", source: "ULTRON rule engine" },
-  limit: { cat: "alarm", kind: "Limit crossing", source: "Alarm matrix" },
-  quality: { cat: "telemetry", kind: "Sensor validation", source: "Sensor validation" },
-  state: { cat: "telemetry", kind: "State change", source: "PLC / DCS status" },
-  scenario: { cat: "operator", kind: "Operating change", source: "Demonstration scenario" },
+  rule: { cat: "alarm", kind: "Problem found", source: "Automatic checks" },
+  limit: { cat: "alarm", kind: "Crossed a limit", source: "Limit alarms" },
+  quality: { cat: "telemetry", kind: "Sensor check", source: "Automatic sensor checks" },
+  state: { cat: "telemetry", kind: "Status change", source: "Plant control system" },
+  scenario: { cat: "operator", kind: "Operating change", source: "Demo scenario" },
   action: { cat: "operator", kind: "Operator action", source: "Operator action" },
 };
 
@@ -808,7 +820,7 @@ function liveEvents(frame: SimFrame, now: number, timeZone: string | undefined):
     return {
       id: `live-${e.t}-${i}`,
       cat: e.kind === "action" && e.action?.kind === "repair" ? "maintenance" : k.cat,
-      kind: e.action ? `${e.action.auto ? "Auto-crew" : "Operator"} · ${e.action.kind}` : k.kind,
+      kind: e.action ? `${e.action.auto ? "Automatic crew" : "Operator"} · ${e.action.kind}` : k.kind,
       severity: e.severity,
       title: e.title,
       detail: e.detail,
@@ -840,12 +852,12 @@ export function buildEvents(
 export function dayLabel(d: number): string {
   if (d === 0) return "Today";
   if (d === 1) return "Yesterday";
-  if (d < 14) return `${d} d ago`;
-  if (d < 28) return `${Math.round(d / 7)} wk ago`;
-  return `${Math.round(d / 30)} mo ago`;
+  if (d < 14) return `${d} days ago`;
+  if (d < 28) return `${Math.round(d / 7)} weeks ago`;
+  return `${Math.round(d / 30)} months ago`;
 }
 
-export const SEVERITY_TONE: Record<OperatingEvent["severity"], Tone> = { Normal: "idle", Advisory: "warn", Critical: "bad" };
+export const SEVERITY_TONE: Record<OperatingEvent["severity"], Tone> = { Normal: "idle", Alert: "warn", Critical: "bad" };
 
 /* ==========================================================================
    Compare presets — signals that belong together
@@ -854,17 +866,17 @@ export const SEVERITY_TONE: Record<OperatingEvent["severity"], Tone> = { Normal:
 export interface ComparePreset {
   id: string;
   label: string;
+  /** Tooltip: the rule ID or tags behind the label. */
+  title?: string;
   tags: string[];
 }
 
-/** D5 Table 9.5 relationships worth comparing side by side (kiln-seal fleet only). */
-const KILN_PRESETS: ComparePreset[] = [
-  { id: "feed", label: "Feed · torque · winding", tags: ["FLO-KLN-01", "ELE-KLN-01", "TMP-KLN-21"] },
-  { id: "fuel", label: "Fuel · burning zone · inlet gas", tags: ["FLO-KLN-02", "TMP-KLN-14", "TMP-KLN-13"] },
-  { id: "o2", label: "O₂ · CO · fuel", tags: ["GAS-KLN-01", "GAS-KLN-02", "FLO-KLN-02"] },
-  { id: "oil", label: "Oil temp · oil pressure", tags: ["TMP-KLN-15", "PRS-KLN-04"] },
-  { id: "shell", label: "Fuel · shell max", tags: ["FLO-KLN-02", "CAL-KLN-03", "TMP-KLN-14"] },
-];
+/** A group of tags that belong together in the machine's DB catalogue (a sub-assembly). */
+export interface CatalogGroup {
+  id: string;
+  name: string;
+  tags: string[];
+}
 
 const MAX_COMPARE = 4;
 
@@ -875,19 +887,37 @@ export function referenceEquation(defs: PlantDefs | null | undefined, tag: strin
 
 /**
  * Relationship groups for Compare, restricted to signals with samples in the window.
- * Kiln-seal fleet: the active signal's D5 Table 9.5 model inputs, then the fixed
- * D5 relationships (live only). Other live machines: the inputs of each rule in
- * `defs.rules`, rules that use the active signal first.
+ * Kiln-seal fleet: the active signal's D5 Table 9.5 model inputs, then the
+ * catalogue's sub-assemblies with two or more trended signals (live only), the
+ * active signal's sub-assembly first. Other live machines: the inputs of each
+ * rule in `defs.rules`, rules that use the active signal first.
  */
-export function comparePresets(defs: PlantDefs | null | undefined, activeId: string | undefined, trendIds: ReadonlySet<string>, live: boolean): ComparePreset[] {
+export function comparePresets(
+  defs: PlantDefs | null | undefined,
+  activeId: string | undefined,
+  trendIds: ReadonlySet<string>,
+  live: boolean,
+  groups: ReadonlyArray<CatalogGroup> = [],
+): ComparePreset[] {
   const list: ComparePreset[] = [];
   if (!defs) return list;
   if (defs.plant === "kiln") {
     if (activeId && trendIds.has(activeId)) {
       const inputs = (EQUATION_BY_TARGET[activeId]?.inputs ?? []).filter((t) => trendIds.has(t));
-      if (inputs.length) list.push({ id: "model", label: `${activeId} · model inputs`, tags: [activeId, ...inputs].slice(0, MAX_COMPARE) });
+      if (inputs.length) list.push({ id: "model", label: `${displayName(defs.signalByTag[activeId]?.name ?? activeId)} and what drives it`, title: activeId, tags: [activeId, ...inputs].slice(0, MAX_COMPARE) });
     }
-    if (live) for (const p of KILN_PRESETS) if (p.tags.every((t) => trendIds.has(t))) list.push(p);
+    if (live) {
+      const withActive: ComparePreset[] = [];
+      const rest: ComparePreset[] = [];
+      for (const g of groups) {
+        const inputs = g.tags.filter((t) => trendIds.has(t));
+        const hasActive = activeId !== undefined && inputs.includes(activeId);
+        const tags = (hasActive ? [activeId, ...inputs.filter((t) => t !== activeId)] : inputs).slice(0, MAX_COMPARE);
+        if (tags.length < 2) continue;
+        (hasActive ? withActive : rest).push({ id: `sub-${g.id}`, label: g.name, title: tags.join(" · "), tags });
+      }
+      list.push(...withActive, ...rest);
+    }
     return list;
   }
   const seen = new Set<string>();
@@ -901,7 +931,7 @@ export function comparePresets(defs: PlantDefs | null | undefined, activeId: str
     const key = [...tags].sort().join("|");
     if (seen.has(key)) continue;
     seen.add(key);
-    (hasActive ? withActive : rest).push({ id: r.id, label: `${r.id} · ${r.name}`, tags });
+    (hasActive ? withActive : rest).push({ id: r.id, label: r.plainTitle ?? r.name, title: `${r.id} · ${r.name}`, tags });
   }
   return [...withActive, ...rest];
 }

@@ -38,12 +38,12 @@
 }
 
 .pg-devices-kpis {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 @media (max-width: 1280px) {
   .pg-devices-kpis {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -76,7 +76,7 @@
 
 .pg-devices-lane {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(140px, 1.1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(220px, 1.45fr);
   align-items: center;
   column-gap: 0;
   row-gap: 6px;
@@ -203,6 +203,8 @@
   flex-wrap: wrap;
   gap: 6px;
   padding-left: 16px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .pg-devices-lane-foot {
@@ -227,6 +229,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  max-width: 100%;
   padding: 3px 10px;
   border: 0;
   border-radius: var(--corner-pill);
@@ -237,6 +240,8 @@
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pg-devices-machine:hover {

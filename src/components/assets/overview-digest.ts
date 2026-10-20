@@ -20,26 +20,27 @@ import { formatLocalTime } from "@/lib/time";
 import { simTimeMs, type RuleState, type SimFrame } from "@/lib/kiln-sim/engine";
 import { limitBand, type LimitRule } from "@/lib/kiln-sim/signals";
 import { defsFor } from "@/lib/live-defs";
+import { isConditionRule } from "@/lib/plant-defs";
 import type { Severity } from "@/server/services/insights-service";
 import { useMachineInsights } from "./use-machine-insights";
+import { useWorkOrderPriorities } from "@/lib/reference-data";
 import { useMachineRackUnits } from "./use-machine-rack-units";
 import { useMachineOverview } from "./overview-data";
 import { crossingsAt, rangeText, rulRows, type RulRow } from "./prognosis/prognosis-derive";
 import type { DetailedSensorInfo } from "./machine-sensor-mapping-view";
 import type { SchematicDot } from "./machine-schematic";
 
-export const SEV_RANK: Record<Severity, number> = { Critical: 0, Advisory: 1, Normal: 2 };
-const PRIO_RANK: Record<RuleState["priority"], number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
+export const SEV_RANK: Record<Severity, number> = { Critical: 0, Alert: 1, Normal: 2 };
 
 export const tagOf = (s: DetailedSensorInfo): string => s.parameter || s.id;
 
 /** A signal's severity against its limits, as a limit-state word (Normal / Warning / Alarm). */
-export function sevLimit(status: string): "Normal" | "Warning" | "Alarm" {
-  return status === "Critical" ? "Alarm" : status === "Advisory" || status === "Warning" ? "Warning" : "Normal";
+export function sevLimit(status: string): "Normal" | "Alert" | "Critical" {
+  return status === "Critical" ? "Critical" : status === "Alert" || status === "Warning" ? "Alert" : "Normal";
 }
 
 export function toSeverity(status: string): Severity {
-  return status === "Critical" ? "Critical" : status === "Advisory" || status === "Warning" ? "Advisory" : "Normal";
+  return status === "Critical" ? "Critical" : status === "Alert" || status === "Warning" ? "Alert" : "Normal";
 }
 
 /* ------------------------------------------------------------------ */
@@ -57,7 +58,10 @@ export interface OvGroup {
 
 export interface OvFinding {
   id: string;
+  /** Plain-language headline when the rule has one, else its name. */
   name: string;
+  /** Engineering rule name (tooltips), when it differs from `name`. */
+  engName?: string;
   severity: Severity;
   /** Rule priority (P1–P4) for rule findings; AI priority otherwise. */
   priority: string | null;
@@ -146,7 +150,7 @@ export function liveOperatingRows(frame: SimFrame, catByTag: Map<string, { name:
       const sig = frame.signals[tag];
       if (!def || !sig) return null;
       const sp = setpoints[tag];
-      const setpoint = sp ? frame.drivers[sp] : null;
+      const setpoint = sp ? frame.drivers[sp] * (frame.defs.setpointShare?.[tag] ?? 1) : null;
       const lim = limitBounds(def.limit, setpoint, sig.model);
       const normal =
         def.limit?.kind === "setpoint" && setpoint
@@ -184,6 +188,7 @@ export function useOverviewDigest(machine: AssetMachine, sensorData?: KilnSimula
   const insights = useMachineInsights(machine);
   const racks = useMachineRackUnits(machine);
   const tz = useSiteTimeZone({ machineId: machine.id });
+  const priorities = useWorkOrderPriorities();
 
   const data = insights.data;
   const analysis = data?.analysis ?? null;
@@ -227,7 +232,12 @@ export function useOverviewDigest(machine: AssetMachine, sensorData?: KilnSimula
     }
     return {
       level: "Component",
-      rows: systems.map((p) => ({ id: p.id, name: p.name, parent: "", health: Math.round(p.health), status: toSeverity(p.status), tags: [] })),
+      // Parts not yet evaluated (null health / status) are left out rather than shown with a made-up score.
+      rows: systems.flatMap((p) =>
+        p.health === null || p.status === null
+          ? []
+          : [{ id: p.id, name: p.name, parent: "", health: Math.round(p.health), status: toSeverity(p.status), tags: [] }],
+      ),
     };
   }, [catalog.subassemblies, catalog.systems, catalog.sensors, systems]);
 
@@ -265,29 +275,37 @@ export function useOverviewDigest(machine: AssetMachine, sensorData?: KilnSimula
   /* ----------------------------------------------------- findings */
   const subName = useMemo(() => new Map((frame?.defs.subassemblies ?? []).map((s) => [s.id, s.name])), [frame?.defs]);
 
-  const findings = useMemo<{ source: "rule" | "AI" | "none"; active: OvFinding[]; pending: number }>(() => {
+  const findings = useMemo<{ source: "rule" | "AI" | "none"; active: OvFinding[]; service: OvFinding[]; pending: number }>(() => {
     if (frame) {
-      const active = frame.rules
+      // Priority order as stored (most urgent first); unknown or still loading sorts last.
+      const prioRank = (id: string) => {
+        const i = priorities ? priorities.findIndex((p) => p.id === id) : -1;
+        return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+      };
+      const mapRule = (r: RuleState): OvFinding => ({
+        id: r.id,
+        name: r.plainTitle || r.name,
+        engName: r.name,
+        severity: r.severity,
+        priority: r.priority,
+        where: r.subs.map((s) => subName.get(s) ?? s).join(", "),
+        cause: r.cause,
+        action: r.action,
+        confidence: r.confidence,
+        tags: r.tags,
+        timeToLimit: r.timeToLimit || null,
+        kind: "rule",
+      });
+      const confirmed = frame.rules
         .filter((r) => r.status === "ACTIVE")
-        .sort((a, b) => SEV_RANK[a.severity] - SEV_RANK[b.severity] || PRIO_RANK[a.priority] - PRIO_RANK[b.priority])
-        .map<OvFinding>((r) => ({
-          id: r.id,
-          name: r.name,
-          severity: r.severity,
-          priority: r.priority,
-          where: r.subs.map((s) => subName.get(s) ?? s).join(", "),
-          cause: r.cause,
-          action: r.action,
-          confidence: r.confidence,
-          tags: r.tags,
-          timeToLimit: r.timeToLimit || null,
-          kind: "rule",
-        }));
-      return { source: "rule", active, pending: frame.rules.filter((r) => r.status === "PENDING").length };
+        .sort((a, b) => SEV_RANK[a.severity] - SEV_RANK[b.severity] || prioRank(a.priority) - prioRank(b.priority));
+      const active = confirmed.filter((r) => isConditionRule(r)).map(mapRule);
+      const service = confirmed.filter((r) => !isConditionRule(r)).map(mapRule);
+      return { source: "rule", active, service, pending: frame.rules.filter((r) => r.status === "PENDING" && isConditionRule(r)).length };
     }
     if (analysis) {
       const active = analysis.faults
-        .filter((f) => f.id !== "nominal" && f.severity !== "Normal")
+        .filter((f) => f.id !== "nominal" && f.severity !== "Normal" && isConditionRule({ category: f.band }))
         .sort((a, b) => SEV_RANK[a.severity] - SEV_RANK[b.severity])
         .map<OvFinding>((f) => {
           const src = analysis.sources.find((s) => s.id === f.id);
@@ -306,10 +324,10 @@ export function useOverviewDigest(machine: AssetMachine, sensorData?: KilnSimula
             kind: "AI",
           };
         });
-      return { source: "AI", active, pending: 0 };
+      return { source: "AI", active, service: [], pending: 0 };
     }
-    return { source: "none", active: [], pending: 0 };
-  }, [frame, analysis, subName]);
+    return { source: "none", active: [], service: [], pending: 0 };
+  }, [frame, analysis, subName, priorities]);
 
   /* ------------------------------------------------------ outlook */
   const outlook = useMemo(() => {
@@ -335,16 +353,11 @@ export function useOverviewDigest(machine: AssetMachine, sensorData?: KilnSimula
     }
     const maxHorizon = horizons.length ? horizons[horizons.length - 1].hours : null;
     const first = rows.find((r) => r.status !== "Normal") ?? rows[0] ?? null;
-    // Same figure as Prognosis "Intervene within" (lower bound – estimate).
-    const intervene = first ? rangeText(first.band.lo, first.hours) : null;
-    // Row condition from the sub-assembly the machine's own condition is built from, never
-    // from the RUL hour threshold; capped at the machine condition so no row out-ranks the header.
-    const gov = first ? groups.rows.find((g) => g.id === first.id || g.name === first.name) ?? null : null;
-    const raw: Severity = gov ? gov.status : first ? first.status : "Normal";
-    const cap: Severity = base.worst;
-    const condition: Severity = SEV_RANK[raw] < SEV_RANK[cap] ? cap : raw;
+    // Same figure and severity as Prognosis "Intervene within" (lower bound – estimate).
+    const intervene = first?.band && first.hours !== null ? rangeText(first.band.lo, first.hours) : null;
+    const condition: Severity = first ? first.status : "Normal";
     return { rows, first, intervene, condition, crossing, maxHorizon };
-  }, [prognosis, analysis, groups, base.worst]);
+  }, [prognosis, analysis]);
 
   /* --------------------------------------------------- AI insight */
   const ai = useMemo(() => {

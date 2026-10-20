@@ -176,7 +176,7 @@ export function EdgeTree({ ix, gateways, discovered, plants, plantId, onPlantCha
             count: c.channels.length,
             own: sl.status === "disabled" || c.live === 0 ? null : c.tone,
             inner: null,
-            status: `Card${c.cardType ? ` ${c.cardType}` : ""}, ${c.isNew ? "detected, not configured, " : ""}${c.mapped} of ${c.channels.length} channels mapped`,
+            status: `Sensor card${c.cardType ? ` ${c.cardType}` : ""}, ${c.isNew ? "found, not set up yet, " : ""}${c.mapped} of ${c.channels.length} channels linked to a machine`,
             disabled: sl.status === "disabled" || c.config?.enabled === false,
             isNew: c.isNew,
           }),
@@ -211,7 +211,7 @@ export function EdgeTree({ ix, gateways, discovered, plants, plantId, onPlantCha
         count: kids.length,
         own: link.status === "disabled" ? null : LINK_TONE[link.status],
         inner: link.status === "disabled" ? null : gatewayTone(ix, gw),
-        status: `Gateway ${gw.code}, ${LINK_LABEL[link.status]}`,
+        status: `Data collector ${gw.code}, ${LINK_LABEL[link.status]}`,
         disabled: link.status === "disabled",
         isNew: false,
         kids,
@@ -227,7 +227,7 @@ export function EdgeTree({ ix, gateways, discovered, plants, plantId, onPlantCha
         kind: "network",
         depth: 0,
         parentId: null,
-        label: "Edge network",
+        label: "All data collectors",
         select: { type: "network" },
         icon: <IconNetwork size={13} />,
         count: gatewayRows.length,
@@ -266,13 +266,13 @@ export function EdgeTree({ ix, gateways, discovered, plants, plantId, onPlantCha
         kind: "group",
         depth: 0,
         parentId: null,
-        label: "Discovered",
+        label: "Found, not registered",
         select: null,
         icon: <IconPlus size={13} />,
         count: kids.length,
         own: null,
         inner: null,
-        status: "Gateways publishing that are not registered",
+        status: "Data collectors sending data that are not registered yet",
         disabled: false,
         isNew: false,
         kids,
@@ -382,16 +382,16 @@ export function EdgeTree({ ix, gateways, discovered, plants, plantId, onPlantCha
   const plantLabel = plantId === ALL_PLANTS ? "All plants" : plants.find((p) => p.id === plantId)?.label ?? "All plants";
 
   return (
-    <aside className="assets-industrial-sidebar ast-sidebar hx-sidebar dv-sidebar" aria-label="Device hierarchy" data-tree-open={treeOpen || undefined}>
+    <aside className="assets-industrial-sidebar ast-sidebar hx-sidebar dv-sidebar" aria-label="Device tree" data-tree-open={treeOpen || undefined}>
       <div className="ast-side-head" ref={headRef}>
         <div className="hx-side-title dv-side-title">
-          <span>Device hierarchy</span>
+          <span>Device tree</span>
           <span className="dv-side-tail">
             <span className="ast-num">{gateways.length === 1 ? "1 gateway" : `${gateways.length} gateways`}</span>
             <PillButton variant="secondary" className="dv-tree-toggle" aria-expanded={treeOpen} trailing={<IconChevron dir="down" />} onClick={() => setTreeOpen((v) => !v)}>
               {treeOpen ? "Hide tree" : "Show tree"}
             </PillButton>
-            <button type="button" className="ast-icon-btn dv-add-btn" aria-label="Connect gateway" title="Connect gateway" onClick={onAddGateway}>
+            <button type="button" className="ast-icon-btn dv-add-btn" aria-label="Connect a data collector" title="Connect a data collector (gateway)" onClick={onAddGateway}>
               <IconPlus size={14} />
             </button>
           </span>
@@ -418,7 +418,7 @@ export function EdgeTree({ ix, gateways, discovered, plants, plantId, onPlantCha
             ))}
           </div>
         )}
-        <SearchPill value={query} onChange={setQuery} placeholder="Filter gateways, sources, tags" label="Filter device hierarchy" />
+        <SearchPill value={query} onChange={setQuery} placeholder="Filter collectors, devices, sensors" label="Filter the device tree" />
       </div>
 
       {rows.length === 0 ? (
@@ -427,7 +427,7 @@ export function EdgeTree({ ix, gateways, discovered, plants, plantId, onPlantCha
           Nothing matches “{query.trim()}”.
         </div>
       ) : (
-        <div className="ast-tree hx-tree" role="tree" aria-label="Edge network hierarchy" onKeyDown={onKeyDown}>
+        <div className="ast-tree hx-tree" role="tree" aria-label="Device tree" onKeyDown={onKeyDown}>
           {rows.map((row) => {
             const isSelected = row.id === selectedKey;
             // Dot: the row's own non-good state. Ring: a worse state hidden in a collapsed parent.

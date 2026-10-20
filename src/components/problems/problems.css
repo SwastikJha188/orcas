@@ -1,0 +1,498 @@
+/* ==========================================================================
+   Problems workspace (src/components/problems/*). Prefix: prb-
+   Builds on assets-shell.css (ast-*) and page.css (pg-*). Semantic tokens only.
+   ========================================================================== */
+
+.prb-subtitle {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.prb-tabs {
+  align-self: flex-start;
+}
+
+/* ---------------------------------------------------------------- condition strip */
+.prb-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  border: 1px solid var(--card-border);
+  border-radius: var(--corner-card);
+  background: var(--card-bg);
+}
+.prb-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 14px;
+  border-left: 1px solid var(--separator);
+}
+.prb-cell:first-child {
+  border-left: none;
+}
+.prb-cell-pop {
+  padding: 0;
+}
+.prb-cell-btn {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: 8px 14px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.prb-cell-btn:hover:not(:disabled),
+.prb-cell-btn[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--text-muted) 8%, transparent);
+}
+.prb-cell-btn:disabled {
+  cursor: default;
+}
+.prb-cell-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.prb-cell-value {
+  font-size: var(--fs-base);
+  font-weight: 500;
+  color: var(--dx-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.prb-cell-value[data-tone] {
+  color: var(--tone);
+}
+.prb-caret {
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.prb-caret[data-open] {
+  transform: rotate(180deg);
+}
+
+/* Anchored panel under a strip cell. */
+.prb-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(380px, calc(100vw - 48px));
+  max-height: min(520px, calc(100vh - 220px));
+  padding: 12px 14px;
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-pop);
+  color: var(--page-fg);
+}
+.prb-pop-wide {
+  width: min(880px, calc(100vw - 48px));
+}
+.prb-pop-end {
+  left: auto;
+  right: 0;
+}
+.prb-pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.prb-pop-title {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--dx-ink);
+}
+.prb-pop-text {
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: 1.45;
+}
+.prb-pop-note {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.prb-pop-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.prb-pop-scroll {
+  min-height: 0;
+  overflow: auto;
+  margin: 0 -14px;
+}
+.prb-pop-empty {
+  margin: 0;
+  padding: 8px 14px;
+  font-size: var(--fs-md);
+  color: var(--text-muted);
+}
+
+.prb-mini-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+.prb-mini-table th {
+  position: sticky;
+  top: 0;
+  padding: 6px 14px;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--separator);
+  white-space: nowrap;
+}
+.prb-mini-table td {
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--separator);
+  vertical-align: middle;
+  line-height: 1.35;
+}
+.prb-mini-table tr:last-child td {
+  border-bottom: none;
+}
+.prb-wrap {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.prb-nowrap {
+  white-space: nowrap;
+}
+.prb-muted-cell {
+  color: var(--text-muted);
+  min-width: 160px;
+}
+
+/* Segmented filter (alarm filters, guide machines). */
+.prb-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-canvas);
+}
+.prb-seg button {
+  padding: 3px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.prb-seg button:hover {
+  color: var(--dx-ink);
+}
+.prb-seg button[aria-pressed="true"] {
+  background: var(--card-bg);
+  color: var(--dx-ink);
+  box-shadow: inset 0 0 0 1px var(--border-hover);
+}
+
+.prb-small-btn {
+  padding: 3px 10px;
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--dx-ink);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.prb-small-btn:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+}
+.prb-small-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.prb-link-btn {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--accent-primary);
+  font: inherit;
+  font-size: var(--fs-md);
+  text-align: left;
+  cursor: pointer;
+}
+.prb-link-btn:hover {
+  text-decoration: underline;
+}
+
+/* ---------------------------------------------------------------- tabs content */
+.prb-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.prb-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+.prb-intro {
+  margin: 0;
+  font-size: var(--fs-md);
+  color: var(--text-secondary);
+}
+.prb-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-md);
+  color: var(--text-secondary);
+}
+.prb-counts b {
+  color: var(--dx-ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.prb-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.prb-filters .ui-select {
+  min-width: 170px;
+  max-width: 280px;
+}
+.prb-empty {
+  margin: 0;
+  padding: 24px 0;
+  font-size: var(--fs-md);
+  color: var(--text-muted);
+}
+
+/* One column list of cards. */
+.prb-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+/* ---------------------------------------------------------------- case card */
+.prb-case,
+.prb-guide {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  padding: 14px 18px;
+}
+.prb-case-main,
+.prb-guide-main {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.prb-case-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.prb-machine-chip {
+  --tone: var(--text-muted);
+}
+.prb-case-title {
+  margin: 2px 0 0;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  color: var(--dx-ink);
+  line-height: 1.35;
+}
+.prb-title-btn {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.prb-title-btn:hover {
+  text-decoration: underline;
+}
+.prb-where {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+.prb-next {
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: 1.4;
+}
+.prb-next[data-empty] {
+  color: var(--text-muted);
+}
+.prb-next-label {
+  color: var(--text-muted);
+}
+.prb-case-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 200px;
+  text-align: right;
+}
+.prb-owner {
+  font-size: var(--fs-md);
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+.prb-side-line {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+.prb-checks {
+  color: var(--signal-blue);
+}
+.prb-open-btn {
+  margin-top: auto;
+}
+
+/* ---------------------------------------------------------------- guides */
+.prb-guide-symptom {
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: 1.45;
+  color: var(--page-fg);
+}
+.prb-guide-side {
+  display: flex;
+  align-items: flex-start;
+}
+.prb-disclose {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.prb-disclose:hover {
+  color: var(--dx-ink);
+}
+.prb-disclose svg {
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.prb-disclose[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+.prb-guide-cols {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--separator);
+}
+.prb-guide-col-title {
+  margin: 0 0 6px;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.prb-guide-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding-left: 16px;
+  font-size: var(--fs-md);
+  line-height: 1.4;
+}
+.prb-guide-none {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+/* ---------------------------------------------------------------- dialogs */
+.prb-dialog-note {
+  margin: 0 0 14px;
+  font-size: var(--fs-md);
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 1000px) {
+  .prb-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .prb-cell {
+    border-left: none;
+    border-top: 1px solid var(--separator);
+  }
+  .prb-cell:nth-child(-n + 2) {
+    border-top: none;
+  }
+  .prb-guide-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 700px) {
+  .prb-case,
+  .prb-guide {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .prb-case-side {
+    align-items: flex-start;
+    text-align: left;
+  }
+}
+
+/* Open alarms table: the "What" column carries the problem headline, so it gets the room. */
+.prb-pop-wide .ui-table th:nth-child(2),
+.prb-pop-wide .ui-table td:nth-child(2) {
+  min-width: 260px;
+}

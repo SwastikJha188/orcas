@@ -15,7 +15,7 @@ import { isPyroMachineId, isVpcMachineId } from "@/lib/live-defs";
    ========================================================================== */
 
 type Status = DetailedSensorInfo["status"];
-const SEVERITY: Record<Status, number> = { Normal: 0, Advisory: 1, Critical: 2 };
+const SEVERITY: Record<Status, number> = { Normal: 0, Alert: 1, Critical: 2 };
 const worst = (list: Status[]): Status =>
   list.reduce<Status>((w, s) => (SEVERITY[s] > SEVERITY[w] ? s : w), "Normal");
 
@@ -59,12 +59,12 @@ export function useMachineComponents(machineId: string, catalog: MachineCatalog,
       .map((sa) => {
         const spec = specs.get(sa.subassemblyId);
         const padMap = subAssemblyPadMap(machineId, sa.subassemblyId);
-        const tags = spec
-          ? spec.pins.map((p) => p.tag)
-          : sensors.filter((s) => subByTag.get(tagOf(s)) === sa.subassemblyId).map(tagOf);
+        // The sub-assembly's sensors are the catalog's; the drawing layout only places them.
+        const tags = sa.sensorTags?.length ? sa.sensorTags : sensors.filter((s) => subByTag.get(tagOf(s)) === sa.subassemblyId).map(tagOf);
+        const own = new Set(tags);
         // Callout cards replace the drawing's own in-SVG callouts.
         const pins: DiagramPin[] | null = spec
-          ? spec.pins.map((p) => {
+          ? spec.pins.filter((p) => own.has(p.tag)).map((p) => {
               const s = byTag.get(p.tag);
               const pin = { ...p, calloutX: undefined, calloutY: undefined };
               return s ? { ...pin, label: s.name, value: s.value, unit: s.unit, status: s.status } : pin;

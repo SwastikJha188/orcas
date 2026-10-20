@@ -1,74 +1,25 @@
 "use client";
 
 /**
- * ULTRON Copilot: launcher + right-side glass drawer.
- *
- * A mock assistant over the active plant's live machines: it speaks for the
- * plant's primary machine (KLN-01 / PYR-KLN-01) and answers questions that
- * name another machine of the plant from that machine. The "AI" is the deterministic
- * intent engine in `copilot-engine.ts`; this file owns the chat UI, the
- * thinking / streaming animation, evidence chips, sparklines and action
- * buttons. Mounted once in the top bar.
+ * AssetIQ chat pieces: the message renderers (thinking / streaming
+ * animation, evidence chips, sparklines, action buttons) the AssetIQ Ask sheet draws its thread with. Conversation state
+ * lives in `copilot-provider.tsx`; the "AI" is the deterministic intent
+ * engine in `copilot-engine.ts`.
  */
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { createPortal } from "react-dom";
-import { useKilnFleet, useKilnSimulation, usePrimaryMachineId } from "@/providers/kiln-simulation-context";
-import { useIndustrialData } from "@/providers/industrial-data-context";
+import { memo, useEffect, useMemo, useState } from "react";
 import { ACTION } from "@/components/ui/status";
-import { activeRules, ask, pendingRules, proactiveInsight, suggestions, type ActionKind, type ActionSpec, type CopilotAnswer, type EvidenceChip, type Focus, type PlantMachine, type Spark } from "./copilot-engine";
+import type { ActionKind, ActionSpec, EvidenceChip, Spark } from "./copilot-engine";
+import { useCopilot, type Msg } from "./copilot-provider";
+import { displayName } from "@/lib/display-name";
 import "./copilot.css";
 
-/* ------------------------------------------------------------------ */
-/* Types & helpers                                                     */
-/* ------------------------------------------------------------------ */
-
-interface Msg {
-  id: string;
-  role: "user" | "assistant" | "note";
-  text: string;
-  answer?: CopilotAnswer;
-  fresh?: boolean;
-  proactive?: boolean;
-  clock?: string;
-}
-
-type SimWithActions = {
-  performAction?: (ruleId: string, action: "acknowledge" | "mitigate" | "repair") => void;
-};
-
-const STORE_KEY = "ultron-copilot-v1";
-/** One conversation per plant: each plant is a separate workspace (KLN-01 keeps the original key). */
-const storeKey = (machineId: string) => (machineId === "KLN-01" ? STORE_KEY : `${STORE_KEY}:${machineId}`);
-let uid = 0;
-const nextId = () => `m${Date.now().toString(36)}${(uid++).toString(36)}`;
-
 const reducedMotion = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-
-function loadStore(key: string): { messages: Msg[]; focus: Focus } | null {
-  try {
-    const raw = window.sessionStorage.getItem(key);
-    if (!raw) return null;
-    const p = JSON.parse(raw) as { messages: Msg[]; focus: Focus };
-    return { messages: p.messages.map((m) => ({ ...m, fresh: false })), focus: p.focus ?? null };
-  } catch {
-    return null;
-  }
-}
-function saveStore(key: string, messages: Msg[], focus: Focus) {
-  try {
-    window.sessionStorage.setItem(key, JSON.stringify({ messages: messages.slice(-60).map((m) => ({ ...m, fresh: false })), focus }));
-  } catch {
-    /* storage unavailable: conversation stays in memory */
-  }
-}
-
-const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), summary, [href], [tabindex]:not([tabindex="-1"])';
 
 /* ------------------------------------------------------------------ */
 /* Icons                                                               */
 /* ------------------------------------------------------------------ */
 
-function SparkIcon({ size = 16 }: { size?: number }) {
+export function SparkIcon({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9L12 3.5Z" />
@@ -76,21 +27,21 @@ function SparkIcon({ size = 16 }: { size?: number }) {
     </svg>
   );
 }
-function CloseIcon() {
+export function CloseIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
       <path d="M6 6l12 12M18 6L6 18" />
     </svg>
   );
 }
-function SendIcon() {
+export function SendIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M12 19V5M6 11l6-6 6 6" />
     </svg>
   );
 }
-function CheckIcon() {
+export function CheckIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M5 12.5l4.5 4.5L19 7.5" />
@@ -152,14 +103,14 @@ const fmtZ = (z: number) => `${z >= 0 ? "+" : "−"}${Math.abs(z).toFixed(1)}σ`
 
 function Chip({ c }: { c: EvidenceChip }) {
   return (
-    <span className={`cp-chip cp-chip-${c.status.toLowerCase()}`} title={c.name}>
+    <span className={`cp-chip cp-chip-${c.status.toLowerCase()}`} title={`${c.tag} · ${c.name}`}>
       <i className="cp-chip-dot" aria-hidden="true" />
-      <span className="cp-chip-tag">{c.tag}</span>
+      <span className="cp-chip-tag">{displayName(c.name)}</span>
       <span className="cp-chip-val">
         {c.value}
         {c.unit ? ` ${c.unit}` : ""}
       </span>
-      {c.z !== null && <span className="cp-chip-z">{fmtZ(c.z)}</span>}
+      {c.z !== null && <span className="cp-chip-z" title="How far this reading is from its expected value, in standard deviations (σ)">{fmtZ(c.z)}</span>}
     </span>
   );
 }
@@ -197,10 +148,9 @@ function EvidenceSpark({ s }: { s: Spark }) {
         <circle cx={x(s.values.length - 1, s.values.length)} cy={y(last)} r="3" className="cp-spark-dot" />
       </svg>
       <figcaption>
-        <span className="cp-spark-tag">{s.tag}</span>
-        <span>{s.label}</span>
+        <span className="cp-spark-tag" title={s.tag}>{displayName(s.label)}</span>
         <span className="cp-spark-key">
-          <i className="cp-key-line" /> actual <i className="cp-key-dash" /> model
+          <i className="cp-key-line" /> measured <i className="cp-key-dash" /> expected
         </span>
       </figcaption>
     </figure>
@@ -211,9 +161,9 @@ function EvidenceSpark({ s }: { s: Spark }) {
 /* Messages                                                            */
 /* ------------------------------------------------------------------ */
 
-const ACTION_DONE: Record<ActionKind, string> = { mitigate: "Mitigation sent", repair: "Repair scheduled", workorder: "Work order created", diagnosis: "Opened" };
+const ACTION_DONE: Record<ActionKind, string> = { mitigate: "Short-term fix sent", repair: "Repair scheduled", workorder: "Work order created", diagnosis: "Opened" };
 
-const AssistantMessage = memo(function AssistantMessage({
+export const AssistantMessage = memo(function AssistantMessage({
   msg,
   doneActions,
   onDone,
@@ -263,9 +213,15 @@ const AssistantMessage = memo(function AssistantMessage({
         <SparkIcon size={13} />
       </span>
       <div className="cp-body">
-        {msg.proactive && <span className="cp-badge">Proactive insight</span>}
+        {msg.proactive && (
+          <span className={`cp-meta ${msg.severity ? `cp-meta-${msg.severity.toLowerCase()}` : ""}`}>
+            <i className="cp-meta-dot" aria-hidden="true" />
+            {msg.severity && msg.severity !== "Alert" ? msg.severity : "Alert"}
+            {msg.clock && <span className="cp-meta-clock">{msg.clock}</span>}
+          </span>
+        )}
         {phase === "thinking" && (
-          <ol className="cp-think" aria-label="Reasoning">
+          <ol className="cp-think" aria-label="Steps being checked">
             {a.steps.slice(0, Math.min(step + 1, a.steps.length)).map((s, i) => (
               <li key={i} className={i < step ? "done" : "active"}>
                 <span className="cp-step-ic">{i < step ? <CheckIcon /> : <i className="cp-spin" />}</span>
@@ -278,7 +234,7 @@ const AssistantMessage = memo(function AssistantMessage({
           <>
             {a.steps.length > 0 && !msg.proactive && (
               <details className="cp-reasoning">
-                <summary>Reasoned over {a.steps.length} steps</summary>
+                <summary>How this answer was worked out ({a.steps.length} steps)</summary>
                 <ol>
                   {a.steps.map((s, i) => (
                     <li key={i}>{s}</li>
@@ -294,15 +250,15 @@ const AssistantMessage = memo(function AssistantMessage({
               <div className="cp-extras">
                 {a.spark && <EvidenceSpark s={a.spark} />}
                 {a.evidence.length > 0 && (
-                  <div className="cp-evidence" aria-label="Evidence">
+                  <div className="cp-evidence" aria-label="Readings behind this answer">
                     {a.evidence.map((c) => (
                       <Chip key={c.tag} c={c} />
                     ))}
                   </div>
                 )}
                 {a.confidence !== null && (
-                  <div className="cp-conf" aria-label={`Confidence ${a.confidence} percent`}>
-                    <span>Confidence</span>
+                  <div className="cp-conf" aria-label={`How sure: ${a.confidence} percent`}>
+                    <span>How sure</span>
                     <span className="cp-conf-bar">
                       <i style={{ inlineSize: `${a.confidence}%` }} />
                     </span>
@@ -344,363 +300,10 @@ const AssistantMessage = memo(function AssistantMessage({
   );
 });
 
-const UserMessage = memo(function UserMessage({ msg }: { msg: Msg }) {
+export const UserMessage = memo(function UserMessage({ msg }: { msg: Msg }) {
   return (
     <div className="cp-msg cp-msg-user">
       <div className="cp-user-bubble">{msg.text}</div>
     </div>
   );
 });
-
-/* ------------------------------------------------------------------ */
-/* Drawer                                                              */
-/* ------------------------------------------------------------------ */
-
-interface DrawerProps {
-  messages: Msg[];
-  chips: string[];
-  doneActions: Record<string, boolean>;
-  machineId: string;
-  overall: number;
-  condition: string;
-  signalCount: number;
-  ruleCount: number;
-  onSend: (q: string) => void;
-  onClear: () => void;
-  onClose: () => void;
-  onDone: (id: string) => void;
-  onAction: (msgId: string, a: ActionSpec) => void;
-}
-
-function Drawer(p: DrawerProps) {
-  const root = useRef<HTMLDivElement>(null);
-  const list = useRef<HTMLDivElement>(null);
-  const inner = useRef<HTMLDivElement>(null);
-  const input = useRef<HTMLInputElement>(null);
-  const stick = useRef(true);
-  const [draft, setDraft] = useState("");
-  const [entered, setEntered] = useState(false);
-
-  useEffect(() => {
-    const r = requestAnimationFrame(() => setEntered(true));
-    input.current?.focus();
-    return () => cancelAnimationFrame(r);
-  }, []);
-
-  useLayoutEffect(() => {
-    const el = list.current;
-    const content = inner.current;
-    if (!el || !content) return;
-    const toEnd = () => {
-      if (stick.current) el.scrollTop = el.scrollHeight;
-    };
-    toEnd();
-    const ro = new ResizeObserver(toEnd);
-    ro.observe(content);
-    return () => ro.disconnect();
-  }, []);
-
-  const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "Escape") {
-      e.stopPropagation();
-      p.onClose();
-      return;
-    }
-    if (e.key !== "Tab" || !root.current) return;
-    const nodes = Array.from(root.current.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((n) => n.offsetParent !== null);
-    if (!nodes.length) return;
-    const first = nodes[0];
-    const last = nodes[nodes.length - 1];
-    const act = document.activeElement;
-    if (e.shiftKey && (act === first || !root.current.contains(act))) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && (act === last || !root.current.contains(act))) {
-      e.preventDefault();
-      first.focus();
-    }
-  };
-
-  const submit = () => {
-    const q = draft.trim();
-    if (!q) return;
-    stick.current = true;
-    setDraft("");
-    p.onSend(q);
-  };
-
-  return (
-    <div className="cp-layer">
-      <div className={`cp-scrim ${entered ? "in" : ""}`} onClick={p.onClose} aria-hidden="true" />
-      <div ref={root} className={`cp-drawer ${entered ? "in" : ""}`} role="dialog" aria-modal="true" aria-labelledby="cp-title" onKeyDown={onKey}>
-        <header className="cp-head">
-          <span className="cp-avatar cp-avatar-lg" aria-hidden="true">
-            <SparkIcon size={15} />
-          </span>
-          <div className="cp-head-text">
-            <h2 id="cp-title">ULTRON Copilot</h2>
-            <p>
-              {p.machineId} · health {p.overall}% · {p.condition.toLowerCase()}
-            </p>
-          </div>
-          {p.messages.length > 0 && (
-            <button type="button" className="cp-btn" onClick={p.onClear}>
-              New chat
-            </button>
-          )}
-          <button type="button" className="cp-icon-btn" onClick={p.onClose} aria-label="Close Copilot">
-            <CloseIcon />
-          </button>
-        </header>
-
-        <div
-          ref={list}
-          className="cp-scroll"
-          role="log"
-          aria-live="polite"
-          aria-relevant="additions"
-          onScroll={(e) => {
-            const el = e.currentTarget;
-            stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
-          }}
-        >
-          <div ref={inner} className="cp-thread">
-            {p.messages.length === 0 && (
-              <div className="cp-intro">
-                <span className="cp-avatar cp-avatar-xl" aria-hidden="true">
-                  <SparkIcon size={20} />
-                </span>
-                <h3>Ask about {p.machineId}</h3>
-                <p>
-                  I read the live plant: {p.signalCount} signals, the reference model and the {p.ruleCount}-rule library. Answers are computed from the current state, not canned.
-                </p>
-              </div>
-            )}
-            {p.messages.map((m) =>
-              m.role === "user" ? (
-                <UserMessage key={m.id} msg={m} />
-              ) : m.role === "note" ? (
-                <div key={m.id} className="cp-note">
-                  <CheckIcon /> {m.text}
-                  {m.clock && <span>{m.clock}</span>}
-                </div>
-              ) : (
-                <AssistantMessage key={m.id} msg={m} doneActions={p.doneActions} onDone={p.onDone} onAction={p.onAction} />
-              ),
-            )}
-          </div>
-        </div>
-
-        <footer className="cp-foot">
-          <div className="cp-suggest" aria-label="Suggested questions">
-            {p.chips.map((c) => (
-              <button
-                key={c}
-                type="button"
-                className="cp-btn cp-btn-sm"
-                onClick={() => {
-                  stick.current = true;
-                  p.onSend(c);
-                }}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-          <form
-            className="cp-composer"
-            onSubmit={(e) => {
-              e.preventDefault();
-              submit();
-            }}
-          >
-            <input ref={input} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Ask about the plant, a sensor or a rule" aria-label="Message to ULTRON Copilot" maxLength={400} autoComplete="off" />
-            <button type="submit" className="cp-send" disabled={!draft.trim()} aria-label="Send">
-              <SendIcon />
-            </button>
-          </form>
-        </footer>
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Launcher (mounted in the top bar)                                   */
-/* ------------------------------------------------------------------ */
-
-export function CopilotLauncher({ onOpenDiagnosis }: { onOpenDiagnosis?: () => void }) {
-  const primaryId = usePrimaryMachineId();
-  const sim = useKilnSimulation();
-  const frame = sim?.machineId === primaryId ? sim.frame : null;
-  const frameRef = useRef(frame);
-  frameRef.current = frame;
-  const primaryRef = useRef(primaryId);
-  primaryRef.current = primaryId;
-  // Every live machine of the active plant, named from the machine records.
-  const fleet = useKilnFleet();
-  const fleetRef = useRef(fleet);
-  fleetRef.current = fleet;
-  const { machines } = useIndustrialData();
-  const plantRef = useRef<PlantMachine[]>([]);
-  plantRef.current = Object.entries(fleet).map(([id, s]) => ({ id, name: machines.find((m) => m.id === id)?.name ?? id, frame: s.frame }));
-
-  const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<Msg[]>([]);
-  const [focus, setFocus] = useState<Focus>(null);
-  const [doneActions, setDoneActions] = useState<Record<string, boolean>>({});
-  const [nudges, setNudges] = useState<string[]>([]);
-  const seen = useRef<Set<string>>(new Set());
-  const focusRef = useRef<Focus>(null);
-  focusRef.current = focus;
-  const openRef = useRef(open);
-  openRef.current = open;
-  const btn = useRef<HTMLButtonElement>(null);
-  const hydrated = useRef(false);
-
-  // Restore the plant's conversation after mount and on a plant switch (sessionStorage is client-only).
-  useEffect(() => {
-    const s = loadStore(storeKey(primaryId));
-    setMessages(s?.messages ?? []);
-    setFocus(s?.focus ?? null);
-    setDoneActions({});
-    setNudges([]);
-    seen.current = new Set();
-    hydrated.current = true;
-  }, [primaryId]);
-  useEffect(() => {
-    if (hydrated.current) saveStore(storeKey(primaryRef.current), messages, focus);
-  }, [messages, focus]);
-
-  const pushInsight = useCallback((ruleId: string) => {
-    const f = frameRef.current;
-    const rule = f?.rules.find((r) => r.id === ruleId);
-    // A finding that has cleared since it was queued is no longer news.
-    if (!f || !rule || rule.status !== "ACTIVE") return;
-    const answer = proactiveInsight(rule, { frame: f, focus: null, machineId: primaryRef.current });
-    setMessages((m) => [...m, { id: nextId(), role: "assistant", text: answer.text, answer, fresh: true, proactive: true }]);
-    setFocus(answer.focus);
-  }, []);
-
-  // Proactive nudge: a rule that newly becomes ACTIVE.
-  const activeKey = frame ? activeRules(frame).map((r) => r.id).join(",") : "";
-  useEffect(() => {
-    if (!frame) return;
-    const act = activeRules(frame).map((r) => r.id);
-    const fresh = act.filter((id) => !seen.current.has(id));
-    // Keep the set in step so a rule that clears and returns nudges again.
-    seen.current = new Set(act);
-    // Queued nudges for rules that have since cleared are dropped (and their dot).
-    setNudges((n) => (n.every((id) => act.includes(id)) ? n : n.filter((id) => act.includes(id))));
-    if (!fresh.length) return;
-    if (openRef.current) fresh.forEach(pushInsight);
-    else setNudges((n) => Array.from(new Set([...n, ...fresh])));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeKey]);
-
-  const openDrawer = () => {
-    setOpen(true);
-    if (nudges.length) {
-      nudges.forEach(pushInsight);
-      setNudges([]);
-    }
-  };
-  const closeDrawer = useCallback(() => {
-    setOpen(false);
-    requestAnimationFrame(() => btn.current?.focus());
-  }, []);
-
-  const send = useCallback((q: string) => {
-    const f = frameRef.current;
-    if (!f) return;
-    const answer = ask(q, { frame: f, focus: focusRef.current, machineId: primaryRef.current, plant: plantRef.current });
-    setMessages((m) => [...m, { id: nextId(), role: "user", text: q }, { id: nextId(), role: "assistant", text: answer.text, answer, fresh: true }]);
-    setFocus(answer.focus);
-  }, []);
-
-  const onDone = useCallback((id: string) => {
-    setMessages((m) => m.map((x) => (x.id === id && x.fresh ? { ...x, fresh: false } : x)));
-  }, []);
-
-  const onAction = useCallback(
-    (msgId: string, a: ActionSpec) => {
-      const note = (text: string) => setMessages((m) => [...m, { id: nextId(), role: "note", text, clock: frameRef.current?.clock }]);
-      const mark = () => setDoneActions((d) => ({ ...d, [`${msgId}:${a.kind}`]: true }));
-      // Actions go to the machine the answer came from (the primary unless the question named another).
-      const target = a.machineId ?? primaryRef.current;
-      const s = (fleetRef.current[target] ?? null) as unknown as SimWithActions | null;
-      switch (a.kind) {
-        case "mitigate":
-          if (a.ruleId) s?.performAction?.(a.ruleId, "mitigate");
-          mark();
-          note(`Mitigation sent for ${a.ruleId}. Watching the evidence signals for recovery.`);
-          break;
-        case "repair":
-          if (a.ruleId) s?.performAction?.(a.ruleId, "repair");
-          mark();
-          note(`Repair scheduled for ${a.ruleId}.`);
-          break;
-        case "workorder":
-          if (a.ruleId) window.dispatchEvent(new CustomEvent("ultron:create-work-order", { detail: { ruleId: a.ruleId } }));
-          mark();
-          note(`Work order requested for ${a.ruleId}.`);
-          break;
-        case "diagnosis":
-          window.dispatchEvent(new CustomEvent("ultron:open-diagnosis", { detail: { machineId: target, ruleId: a.ruleId } }));
-          onOpenDiagnosis?.();
-          closeDrawer();
-          break;
-      }
-    },
-    [closeDrawer, onOpenDiagnosis],
-  );
-
-  const clear = useCallback(() => {
-    setMessages([]);
-    setFocus(null);
-    setDoneActions({});
-  }, []);
-
-  const pendKey = frame ? pendingRules(frame).map((r) => r.id).join(",") : "";
-  const chips = useMemo(() => (frameRef.current ? suggestions(frameRef.current, focus) : []), [activeKey, pendKey, focus]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (!sim || !frame) return null;
-  const critical = nudges.some((id) => frame.rules.find((r) => r.id === id)?.severity === "Critical");
-
-  return (
-    <>
-      <button
-        ref={btn}
-        type="button"
-        className={`cp-launcher ${open ? "open" : ""}`}
-        onClick={() => (open ? closeDrawer() : openDrawer())}
-        aria-label={nudges.length ? "Open ULTRON Copilot, new insight available" : "Open ULTRON Copilot"}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        title="ULTRON Copilot"
-      >
-        <SparkIcon />
-        {nudges.length > 0 && !open && <i className={`cp-dot ${critical ? "crit" : ""}`} aria-hidden="true" />}
-      </button>
-      {open &&
-        createPortal(
-          <Drawer
-            messages={messages}
-            chips={chips}
-            doneActions={doneActions}
-            machineId={primaryId}
-            overall={frame.overall}
-            condition={frame.condition}
-            signalCount={Object.keys(frame.signals).length}
-            ruleCount={frame.rules.length}
-            onSend={send}
-            onClear={clear}
-            onClose={closeDrawer}
-            onDone={onDone}
-            onAction={onAction}
-          />,
-          document.body,
-        )}
-    </>
-  );
-}

@@ -16,6 +16,6 @@ export interface MachineRackUnitsState {
  * from PostgreSQL. Live telemetry is overlaid on the client.
  */
 export function useMachineRackUnits(machine: AssetMachine): MachineRackUnitsState {
-  const { data, isLoading, error } = useApi<MachineRackInfo[]>(`/api/rack-units?machineId=${encodeURIComponent(machine.id)}`);
+  const { data, isLoading, error } = useApi<MachineRackInfo[]>(machine.id ? `/api/rack-units?machineId=${encodeURIComponent(machine.id)}` : null);
   return { racks: Array.isArray(data) ? data : [], isLoading, isError: error !== null, error };
 }

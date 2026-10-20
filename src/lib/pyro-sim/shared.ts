@@ -9,8 +9,11 @@ export const PROFILE_N = 149;
 /** Emissivity set-ups of the handheld IR thermometer and of the shell scanner (SW-KLN-03 correction). */
 export const HANDHELD_EMISSIVITY = 0.85;
 export const SCANNER_EMISSIVITY = 0.85;
-/** Cooler compartment under-grate pressures at the design point (mbar), compartments 1–6. */
-export const CLR_BASE = [78, 66, 55, 44, 37, 31];
+/**
+ * Cooler compartment under-grate pressures at the design point (mbar), compartments 1–6. Compartments 2, 3, 5 and 6 sit
+ * at the OSW-PE-SNL-PYR-01 Rev. 01 nominal mid-points (500–650, 400–550, 250–350, 150–250 mmWG).
+ */
+export const CLR_BASE = [78, 56.4, 46.6, 44, 29.4, 19.6];
 /** Signed channels: shown with a sign and spanning both sides of zero. */
 export const SIGNED = new Set(["POS-KLN-01", "PRS-KLN-01", "PRS-KLN-03", "CAL-KLN-06"]);
 

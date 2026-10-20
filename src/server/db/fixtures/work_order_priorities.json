@@ -1,0 +1,1 @@
+[["P1","Immediate",240,"Within 4 h",1,false,false],["P2","High",1440,"Within 24 h",2,false,true],["P3","Medium",10080,"Within 7 days",3,true,false],["P4","Low",null,"Next planned outage",4,false,false]]

@@ -1,162 +1,25 @@
-/* Responsive layer — machine Diagnosis, Health, Trends. See foundation.css for tiers and the :root prefix rule.
+/* Responsive layer — machine Diagnosis, Trends. See foundation.css for tiers and the :root prefix rule.
 
    The shared frame (header, KPI strip, section index, section padding, frame
    gap) belongs to machine-diagnostics.css. This file only re-arranges the
-   content inside the Diagnosis (pg-diag), Health (pg-health) and Trends
-   (pg-trends) sections. Diagnosis alarms / evidence and the Trends signals,
+   content inside the Diagnosis (pg-diag) and Trends (pg-trends) sections. Diagnosis alarms / evidence and the Trends signals,
    compare and excursions sections are tile grids that reflow on their own;
    only the remaining tables need rules here.
 
    Tables
-     phone   Health indicator/driver and Trends event/state tables turn every
-             row into a stacked two-line row (CSS grid on the <tr>); the Health
-             breakdown keeps its table layout but drops to the 3 columns that
-             matter. No table scrolls sideways on a phone.
+     phone   Trends event/state tables turn every row into a stacked
+             two-line row (CSS grid on the <tr>). No table scrolls sideways
+             on a phone.
      tablet  low-priority columns drop out.
    Layout
-     wide    short sections pair up side by side (Health breakdown | trend
-             + drivers, Trends signal | compare, excursions | states).
+     wide    short sections pair up side by side (Trends signal | compare,
+             excursions | states).
 
    Column indices below are the <th> order of each table (see the TSX). */
 
 /* ---- Phone: the evidence card head's pipe list wraps with a row gap. */
 @media (max-width: 599px) {
   :root .pg-diag .pg-diag-card-head .pg-diag-pipe { row-gap: 4px; }
-}
-
-/* =====================================================================
-   HEALTH
-   ===================================================================== */
-
-/* Section-head pill groups (system filters) never widen the page: the group
-   takes its own line and scrolls sideways inside it. */
-:root .pg-health .pg-health-card-right { min-width: 0; max-width: 100%; }
-
-/* ---- Tablet: breakdown drops Δ; indicators drop Model and Warn / alarm. */
-@media (min-width: 600px) and (max-width: 1023px) {
-  :root .pg-health #hl-breakdown .pg-health-table:has(> thead th:nth-child(8)) :is(th, td):nth-child(3),
-  :root .pg-health #hl-indicators .pg-health-table:has(> thead th:nth-child(8)) :is(th, td):is(:nth-child(4), :nth-child(7)),
-  :root .pg-health #hl-drivers .pg-health-table :is(th, td):nth-child(2) {
-    display: none;
-  }
-
-  :root .pg-health .pg-health-table :is(th, td) { padding-left: 8px; padding-right: 8px; }
-  :root .pg-health .pg-health-signal { max-width: 160px; }
-  :root .pg-health #hl-breakdown .pg-health-table td:first-child { white-space: normal; }
-  :root .pg-health #hl-breakdown .pg-health-id { display: block; margin-left: 0; font-size: var(--fs-xs); }
-  :root .pg-health #hl-breakdown .pg-health-score-cell .pg-health-bar { width: 44px; }
-}
-
-/* ---- Phone */
-@media (max-width: 599px) {
-  :root .pg-health .pg-health-flush { margin: 0 -8px -8px; }
-  :root .pg-health .pg-health-card-head { flex-wrap: wrap; row-gap: 8px; }
-
-  /* Breakdown: Asset | Health | Status — the three columns that read at a glance.
-     (Machine / system rows use colspans, so only first, second and last are safe.) */
-  :root .pg-health #hl-breakdown .pg-health-table :is(th, td):not(:first-child):not(:nth-child(2)):not(:last-child) {
-    display: none;
-  }
-  :root .pg-health #hl-breakdown .pg-health-table :is(th, td) { padding: 10px 8px; }
-  :root .pg-health #hl-breakdown .pg-health-table td:first-child { white-space: normal; }
-  :root .pg-health #hl-breakdown .pg-health-table :is(th, td):last-child { text-align: right; }
-  :root .pg-health #hl-breakdown .pg-health-id {
-    display: block;
-    margin-left: 0;
-    margin-top: 2px;
-    font-size: var(--fs-xs);
-    white-space: nowrap;
-  }
-  :root .pg-health #hl-breakdown .pg-health-score-cell .pg-health-bar { width: 44px; }
-
-  /* Indicators + drivers: stacked rows (grid on the <tr>). */
-  :root .pg-health :is(#hl-indicators, #hl-drivers) .pg-health-table,
-  :root .pg-health :is(#hl-indicators, #hl-drivers) .pg-health-table > tbody {
-    display: block;
-    width: 100%;
-  }
-  :root .pg-health :is(#hl-indicators, #hl-drivers) .pg-health-table > thead {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-  }
-  :root .pg-health :is(#hl-indicators, #hl-drivers) .pg-health-table > tbody > tr {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: baseline;
-    gap: 4px 12px;
-    padding: 10px 8px;
-    border-bottom: 1px solid var(--separator);
-  }
-  :root .pg-health :is(#hl-indicators, #hl-drivers) .pg-health-table > tbody > tr:last-child { border-bottom-color: transparent; }
-  :root .pg-health :is(#hl-indicators, #hl-drivers) .pg-health-table > tbody > tr:is(:hover, :focus-within) { border-radius: var(--corner-row); background: var(--row-hover-bg); border-bottom-color: transparent; }
-  :root .pg-health :is(#hl-indicators, #hl-drivers) .ast-table .pg-health-table > tbody > tr > td {
-    display: block;
-    min-width: 0;
-    max-width: none;
-    padding: 0;
-    border: 0;
-    border-radius: 0;
-    background: none;
-  }
-  :root .pg-health :is(#hl-indicators, #hl-drivers) .pg-health-table > tbody > tr > td:only-child { grid-column: 1 / -1; }
-
-  /* Indicators: tag | value / signal name | lost (or status). */
-  :root .pg-health #hl-indicators .pg-health-table > tbody > tr > td:nth-child(1) { grid-area: 1 / 1; color: var(--dx-ink); font-weight: 500; }
-  :root .pg-health #hl-indicators .pg-health-table > tbody > tr > td:nth-child(3) { grid-area: 1 / 2; }
-  :root .pg-health #hl-indicators .pg-health-table > tbody > tr > td:nth-child(2) {
-    grid-area: 2 / 1;
-    font-size: var(--fs-sm);
-    color: var(--text-muted);
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  :root .pg-health #hl-indicators .pg-health-table > tbody > tr > td:last-child:not(:nth-child(-n+3)) { grid-area: 2 / 2; font-size: var(--fs-sm); }
-  :root .pg-health #hl-indicators .pg-health-table > tbody > tr > td:not(:nth-child(-n+3)):not(:last-child) { display: none; }
-
-  :root .pg-health #hl-indicators .pg-health-table:has(> thead th:nth-child(8)) > tbody > tr > td:last-child:not(:only-child)::before,
-  :root .pg-health #hl-drivers .pg-health-table > tbody > tr > td:nth-child(5)::before {
-    content: "Lost";
-    margin-right: 6px;
-    font-size: var(--fs-xs);
-    font-weight: 400;
-    color: var(--text-muted);
-  }
-
-  /* Drivers: source | lost / evidence. */
-  :root .pg-health #hl-drivers .pg-health-table > tbody > tr > td:nth-child(1) { grid-area: 1 / 1; }
-  :root .pg-health #hl-drivers .pg-health-table > tbody > tr > td:nth-child(5) { grid-area: 1 / 2; }
-  :root .pg-health #hl-drivers .pg-health-table > tbody > tr > td:nth-child(4) {
-    grid-area: 2 / 1 / 3 / 3;
-    font-size: var(--fs-sm);
-    white-space: normal;
-    line-height: 1.4;
-  }
-  :root .pg-health #hl-drivers .pg-health-table > tbody > tr > td:is(:nth-child(2), :nth-child(3)) { display: none; }
-
-  :root .pg-health .pg-health-dq { flex-wrap: wrap; row-gap: 6px; }
-}
-
-/* ---- Wide: breakdown beside the trend and the deduction drivers; the
-   indicator register keeps the full width below. */
-@media (min-width: 1920px) {
-  :root .ast-root.pg-frame.pg-health {
-    display: grid;
-    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
-    /* header, KPIs, index, breakdown + trend, drivers (flexible: absorbs the
-       breakdown's extra height so no gap opens under the trend), indicators */
-    grid-template-rows: auto auto auto auto 1fr auto;
-    grid-auto-flow: row dense;
-    align-items: start;
-  }
-  :root .ast-root.pg-frame.pg-health > * { grid-column: 1 / -1; }
-  :root .ast-root.pg-frame.pg-health > #hl-breakdown { grid-column: 1; grid-row: span 2; }
-  :root .ast-root.pg-frame.pg-health > #hl-trend { grid-column: 2; }
-  :root .ast-root.pg-frame.pg-health > #hl-drivers { grid-column: 2; }
-  :root .pg-health #hl-breakdown .pg-health-table :is(th, td) { padding-left: 12px; padding-right: 12px; }
 }
 
 /* =====================================================================
@@ -195,7 +58,6 @@
     gap: 2px;
   }
   :root .pg-trends .pg-trends-sig svg { display: none; }
-  :root .pg-trends .pg-trends-tagcol { min-width: 0; }
   :root .pg-trends .pg-trends-name { max-width: 200px; font-size: var(--fs-sm); }
 }
 

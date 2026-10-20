@@ -187,11 +187,6 @@
   :root .ops-center {
     grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
   }
-
-  /* Copilot drawer: a little wider on big screens. */
-  :root .cp-drawer {
-    inline-size: min(500px, calc(100vw - 16px));
-  }
 }
 
 /* ==========================================================================
@@ -303,7 +298,7 @@
   }
   :root .ph-twin-label-head {
     font-size: var(--fs-3xs);
-    letter-spacing: 0.06em;
+    letter-spacing: 0;
   }
   :root .ph-twin-label-meta {
     font-size: var(--fs-2xs);
@@ -342,30 +337,7 @@
     width: auto;
   }
 
-  /* Copilot sheet contents: tighter thread, suggestion chips in one
-     scrolling row, 16px composer text so iOS does not zoom on focus. */
-  :root .cp-thread {
-    padding: 12px;
-    gap: 14px;
-  }
-  :root .cp-foot {
-    padding: 8px 12px calc(12px + env(safe-area-inset-bottom, 0px));
-  }
-  :root .cp-suggest {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    max-block-size: none;
-    scrollbar-width: none;
-  }
-  :root .cp-suggest::-webkit-scrollbar {
-    display: none;
-  }
-  :root .cp-suggest > * {
-    flex: none;
-  }
-  :root .cp-composer input {
-    font-size: var(--fs-xl);
-  }
+  /* AssetIQ answers: narrower confidence bar. */
   :root .cp-conf-bar {
     flex-basis: 64px;
   }

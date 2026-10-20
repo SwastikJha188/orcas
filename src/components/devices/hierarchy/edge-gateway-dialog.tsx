@@ -105,7 +105,7 @@ export function GatewayDialog({ open, ix, gateway, prefill, onClose, onSaved }: 
           }
         }
         if (failed.length > 0) {
-          setPartial({ id: saved.id, text: `Gateway registered. Not added: ${failed.join("; ")}` });
+          setPartial({ id: saved.id, text: `Data collector registered. Not added: ${failed.join("; ")}` });
           setBusy(false);
           return;
         }
@@ -143,7 +143,7 @@ export function GatewayDialog({ open, ix, gateway, prefill, onClose, onSaved }: 
   const nSources = gateway ? sourcesOf(ix, gateway.id).length : 0;
   const nPoints = gateway ? gatewayPoints(ix, gateway.id).length : 0;
   const question =
-    nSources === 0 ? "Delete this gateway?" : `Delete gateway and its ${plural(nSources, "source")}${nPoints ? `, ${plural(nPoints, "point")}` : ""}?`;
+    nSources === 0 ? "Delete this data collector?" : `Delete this data collector and its ${plural(nSources, "device")}${nPoints ? `, ${plural(nPoints, "reading point")}` : ""}?`;
 
   return (
     <Dialog
@@ -152,13 +152,13 @@ export function GatewayDialog({ open, ix, gateway, prefill, onClose, onSaved }: 
       busy={busy}
       onSubmit={submit}
       width={620}
-      title={editing ? "Edit gateway" : prefill?.code ? "Register gateway" : "Add gateway"}
+      title={editing ? "Edit data collector" : prefill?.code ? "Register data collector" : "Add data collector"}
       subtitle={
         editing
           ? `${gateway!.name} · ${gateway!.code}`
           : "Registers a gateway so ULTRON recognises its data. The gateway connects to the broker itself, with the settings below."
       }
-      footerStart={editing && !partial ? <DeleteConfirm label="Delete gateway" question={question} onDelete={doDelete} disabled={busy} /> : undefined}
+      footerStart={editing && !partial ? <DeleteConfirm label="Delete data collector" question={question} onDelete={doDelete} disabled={busy} /> : undefined}
       footer={
         partial ? (
           <PillButton type="submit" variant="primary">
@@ -170,7 +170,7 @@ export function GatewayDialog({ open, ix, gateway, prefill, onClose, onSaved }: 
               Cancel
             </PillButton>
             <PillButton type="submit" variant="primary" disabled={busy}>
-              {busy ? "Saving…" : editing ? "Save" : prefill?.code ? "Register" : "Add gateway"}
+              {busy ? "Saving…" : editing ? "Save" : prefill?.code ? "Register" : "Add data collector"}
             </PillButton>
           </>
         )
@@ -178,7 +178,7 @@ export function GatewayDialog({ open, ix, gateway, prefill, onClose, onSaved }: 
     >
       <FieldSection title="Identity">
         <FieldGrid>
-          <Field label="Gateway ID" required error={errors.code} hint="GATEWAY_ID on the gateway; also its broker username">
+          <Field label="Data collector ID" required error={errors.code} hint="GATEWAY_ID set on the data collector; also its user name on the message server">
             {(id, d) => <TextInput id={id} describedBy={d} value={code} onChange={setCode} mono placeholder="ULTRON-EDGE-01" autoFocus={!editing} disabled={busy} />}
           </Field>
           <Field label="Name" required error={errors.name}>
@@ -192,7 +192,7 @@ export function GatewayDialog({ open, ix, gateway, prefill, onClose, onSaved }: 
 
       <FieldSection title="Connection">
         <FieldGrid>
-          <Field label="Broker" hint={registry.brokers.length === 0 ? "Add a broker on the MQTT page first" : "The broker the gateway publishes to"}>
+          <Field label="Data connection (MQTT broker)" hint={registry.brokers.length === 0 ? "Add a data connection under Data connections first" : "The message server this data collector sends to"}>
             {(id, d) => (
               <Select
                 id={id}
@@ -200,11 +200,11 @@ export function GatewayDialog({ open, ix, gateway, prefill, onClose, onSaved }: 
                 value={brokerId}
                 onChange={setBrokerId}
                 disabled={busy}
-                options={[{ value: "", label: "Not assigned" }, ...registry.brokers.map((b) => ({ value: b.id, label: `${b.name}${b.enabled ? "" : " (disabled)"}` }))]}
+                options={[{ value: "", label: "Not linked" }, ...registry.brokers.map((b) => ({ value: b.id, label: `${b.name}${b.enabled ? "" : " (switched off)"}` }))]}
               />
             )}
           </Field>
-          <Field label="Data format" hint="How this gateway's topics and payloads are read">
+          <Field label="Message format" hint="How this data collector's channels and messages are read">
             {(id, d) => <Select id={id} describedBy={d} value={formatId} onChange={setFormatId} disabled={busy} options={formatOptions} />}
           </Field>
           <Field label="ULTRON listens on" wide>
@@ -217,7 +217,7 @@ export function GatewayDialog({ open, ix, gateway, prefill, onClose, onSaved }: 
         </FieldGrid>
       </FieldSection>
 
-      <FieldSection title="Gateway setup">
+      <FieldSection title="Settings for the data collector">
         <GatewaySetup code={code} ipAddress={ipAddress} broker={broker} brokerStatus={brokerStatus} format={format} rackIds={rackIds} />
       </FieldSection>
 
@@ -241,13 +241,13 @@ export function GatewayDialog({ open, ix, gateway, prefill, onClose, onSaved }: 
         </FieldGrid>
       </FieldSection>
 
-      <Toggle checked={enabled} onChange={setEnabled} disabled={busy} label="Enabled" description="A disabled gateway is kept but its messages are not shown as live" />
+      <Toggle checked={enabled} onChange={setEnabled} disabled={busy} label="Switched on" description="When off, the data collector is kept but its messages are not shown as live" />
       {!editing && racks.length > 0 && (
         <Toggle
           checked={withRacks}
           onChange={setWithRacks}
           disabled={busy || Boolean(partial)}
-          label={`Also register its ${plural(racks.length, "rack")} as sources`}
+          label={`Also register its ${plural(racks.length, "rack")} as devices`}
           description={`${racks.join(", ")} · kind DAQ rack, protocol Backplane`}
         />
       )}

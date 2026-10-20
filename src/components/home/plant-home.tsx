@@ -4,11 +4,12 @@ import dynamic from "next/dynamic";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PillButton, PillNav } from "@/components/ui";
 import { useApi } from "@/lib/api-cache";
+import { useHealthModels, type HealthBands } from "@/lib/reference-data";
 import { combinedTrack } from "@/lib/health-recorder";
 import { useIndustrialData } from "@/providers/industrial-data-context";
-import { PRIMARY_PYRO_ID, isLiveMachine, useKilnFleet, usePrimaryMachineId } from "@/providers/kiln-simulation-context";
+import { isLiveMachine, useKilnFleet, usePlantEngine } from "@/providers/kiln-simulation-context";
 import type { KilnSimulation } from "@/components/assets/kiln-seals-simulation";
-import { formatClock, formatDuration } from "@/lib/kiln-sim/engine";
+import { formatClock } from "@/lib/kiln-sim/engine";
 import type { DiagnosisRecord, HierarchyNode, OperatingEvent } from "@/components/assets/assets-data";
 import { IconChevron, IconClose, StatusTag, Ticks, healthTone, machineTone } from "@/components/assets/assets-shell-ui";
 import { Sparkline } from "@/components/ui/sparkline";
@@ -16,7 +17,6 @@ import { TypeIcon } from "@/components/assets/hierarchy/hierarchy-icons";
 import { toCondition } from "@/components/ui/status";
 import {
   type MachineLookup,
-  averageHealth,
   distribution,
   isFolder,
   machineCondition,
@@ -30,18 +30,26 @@ import { PlantTwin } from "./twin/plant-twin";
 import { MachineTwinHome } from "./twin/machine-twin-view";
 import { useCoveredInset, type Side } from "./twin/use-covered-inset";
 import { AlertsFeed, HealthTrendCard, PlantHealthGauge, conditionSummary, type HomeActivity, type HomeAlert } from "./home-widgets";
+import { OperatorConsole } from "./operator/operator-console";
+import { usePlantStatus } from "./operator/machine-nav";
 import "@/components/assets/assets-shell.css";
 import "./plant-home.css";
 import { homeActive } from "./home-active";
+import { liveFrameAlerts } from "./live-alerts";
+import { formatLocalTime } from "@/lib/time";
+import { useSiteTimeZone } from "@/providers/use-site-time-zone";
+
+/** A sub-assembly's name, for "where" in an alarm. */
 
 /* The pyro line's site overview replaces the generic plant twin for that plant only (three.js stays out of the first chunk). */
 const PyroSiteOverview = dynamic(() => import("./twin/pyro-site-overview").then((m) => m.PyroSiteOverview), {
   ssr: false,
-  loading: () => <div className="ph-twin-loading" role="status">Loading 3D twin…</div>,
+  loading: () => <div className="ph-twin-loading" role="status">Loading the 3D model of the plant…</div>,
 });
 
 /* ==========================================================================
-   Home — plant overview (ULTRON DashboardOverview, Home / Digital Twin view).
+   Home — the operator overview (Operator view, 3D twin, Layout). Its Assets
+   toggle opens the Assets workspace (asset directory and machine pages).
    3D twin view: the twin fills the page, with no header, and the plant health
    gauge, alerts feed and health-over-time float over it as HUD panels. Layout view: gauge
    and alerts in a sidebar beside the 2D plan and the trend. One plant at a time.
@@ -51,12 +59,12 @@ const CLEARED_HOLD_MS = 60_000;
 /** Live activity entries shown under the alerts, newest first across the kiln fleet. */
 const ACTIVITY_LIMIT = 24;
 const MAP_VIEW_KEY = "ultron.home.viewMode";
-export type MapView = "operator" | "twin" | "layout";
+export type MapView = "operator" | "twin" | "layout" | "assets";
 
 const VIEW_ITEMS = [
   { id: "operator", label: "Operator view" },
   { id: "twin", label: "3D twin" },
-  { id: "layout", label: "Layout" },
+  { id: "assets", label: "Assets" },
 ];
 
 const NO_INSET = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -93,7 +101,7 @@ export function PlantHome() {
   const { roots, lookup, isLoading: hierarchyLoading, loadError } = useHierarchyData();
   const stored = useStoredAlertSources();
   const fleet = useKilnFleet();
-  const isPyroLine = usePrimaryMachineId() === PRIMARY_PYRO_ID;
+  const isPyroLine = usePlantEngine() === "pyro";
 
   // The plant comes from the top bar's plant switcher.
   const plantId = selectedPlantId;
@@ -103,51 +111,85 @@ export function PlantHome() {
   const [view, setView] = useState<MapView>("operator");
   useEffect(() => {
     const v = readStored(MAP_VIEW_KEY);
-    if (v === "operator" || v === "twin" || v === "layout") setView(v);
+    if (v === "operator" || v === "twin") setView(v);
   }, []);
-  const chooseView = useCallback((v: MapView) => {
-    setView(v);
-    store(MAP_VIEW_KEY, v);
+  // Assets is its own workspace: the toggle opens it on the machine open here (or the directory).
+  const chooseView = useCallback(
+    (v: MapView) => {
+      if (v === "assets") {
+        setActiveTab("assets");
+        return;
+      }
+      setView(v);
+      store(MAP_VIEW_KEY, v);
+    },
+    [setActiveTab],
+  );
+  const toLayout = useCallback(() => setView("operator"), []);
+
+  // When any part of the app opens a machine (e.g. from Assets directory, Alerts, Copilot),
+  // switch Home to Operator view so the unified OperatorConsole opens the machine immediately.
+  useEffect(() => {
+    const onOpenOperatorMachine = () => {
+      setView("operator");
+      store(MAP_VIEW_KEY, "operator");
+    };
+    const onSetHomeView = (e: Event) => {
+      const custom = e as CustomEvent<MapView>;
+      if (custom.detail === "operator" || custom.detail === "twin") {
+        setView(custom.detail);
+        store(MAP_VIEW_KEY, custom.detail);
+      }
+    };
+    window.addEventListener("ultron:open-operator-machine", onOpenOperatorMachine);
+    window.addEventListener("ultron:set-home-view", onSetHomeView);
+    return () => {
+      window.removeEventListener("ultron:open-operator-machine", onOpenOperatorMachine);
+      window.removeEventListener("ultron:set-home-view", onSetHomeView);
+    };
   }, []);
-  const toLayout = useCallback(() => setView("layout"), []);
 
   const stageRef = useRef<HTMLDivElement>(null);
   const sideRef = useRef<HTMLElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const topRef = useRef<HTMLDivElement>(null);
   const hudPanels = useMemo<Array<[Side, React.RefObject<HTMLElement | null>]>>(
-    () => [["right", sideRef], ["bottom", bottomRef], ["top", topRef]],
+    () => [["right", sideRef], ["bottom", bottomRef]],
     [],
   );
   const plant = roots.find((p) => p.id === plantId) ?? roots[0];
+  const fallbackPlant = useMemo<HierarchyNode>(
+    () =>
+      plant ?? {
+        id: plantId ?? "",
+        name: "Plant",
+        type: "plant",
+        children: [],
+      },
+    [plant, plantId],
+  );
   // Measure only once the twin stage is actually mounted: on first load the page
   // renders a loading state (no stage), and a measurement taken then never re-ran,
   // so the camera framed the plant under the HUD panels.
   const covered = useCoveredInset(stageRef, hudPanels, view === "twin" && Boolean(plant) && !selectedMachine);
   const machines = useMemo(() => (plant ? subtreeMachines(plant) : []), [plant]);
   const dist = distribution(machines, lookup);
-  /* Pyro plant: the gauge shows the line-card number (pyro-site-overview `line`):
-     round(0.6 × worst + 0.4 × mean) of the machines' live scores, so one bad
-     machine shows. Kiln Home keeps the plain mean. */
-  const pyroScore = useMemo(() => {
-    if (!isPyroLine) return null;
-    const scores = machines.flatMap((m) => {
-      const f = m.machineId ? fleet[m.machineId]?.frame : null;
-      return f ? [Math.round(f.overall)] : [];
-    });
-    if (!scores.length) return null;
-    return Math.round(0.6 * Math.min(...scores) + (0.4 * scores.reduce((n, v) => n + v, 0)) / scores.length);
-  }, [isPyroLine, machines, fleet]);
-  const score = pyroScore ?? averageHealth(machines, lookup);
+  /* Plant health, shared with the Full line status bars (machine-nav): pyro line
+     round(0.6 × worst + 0.4 × mean) of the live scores, so one bad machine shows;
+     other plants the plain mean. */
+  const score = usePlantStatus(plant, lookup).score;
   /* The plant's live kilns, each with its own running engine. All engines
      share one clock, so the first one's frame dates the plant. */
-  const live = useMemo(
-    () =>
-      machines
-        .filter((m) => isLiveMachine(m.machineId) && fleet[m.machineId!])
-        .map((m) => ({ node: m, sim: fleet[m.machineId!] as KilnSimulation })),
-    [machines, fleet],
-  );
+  const live = useMemo(() => {
+    const seen = new Set<string>();
+    const out: Array<{ node: HierarchyNode; sim: KilnSimulation }> = [];
+    for (const m of machines) {
+      if (!m.machineId || !isLiveMachine(m.machineId) || !fleet[m.machineId]) continue;
+      if (seen.has(m.machineId)) continue;
+      seen.add(m.machineId);
+      out.push({ node: m, sim: fleet[m.machineId] as KilnSimulation });
+    }
+    return out;
+  }, [machines, fleet]);
   const frame = live[0]?.sim.frame ?? null;
   const hasLive = live.length > 0;
   const liveHistory = useMemo(
@@ -161,75 +203,54 @@ export function PlantHome() {
   const trackPlant = useCallback(
     (from: number) => {
       const liveNodes = new Set(live.map((l) => l.node));
-      const others = machines.filter((m) => !liveNodes.has(m)).reduce((n, m) => n + machineCondition(m, lookup).health, 0);
+      // Machines without a score are left out of the average (never counted as 0).
+      const scored = machines
+        .filter((m) => !liveNodes.has(m))
+        .map((m) => machineCondition(m, lookup).health)
+        .filter((h): h is number => h !== null);
+      const others = scored.reduce((n, h) => n + h, 0);
       const ids = live.map((l) => l.node.machineId!);
-      return combinedTrack(ids, from, (v) => (others + ids.reduce((n, id) => n + v[id], 0)) / machines.length);
+      return combinedTrack(ids, from, (v) => (others + ids.reduce((n, id) => n + v[id], 0)) / Math.max(1, scored.length + ids.length));
     },
     [live, machines, lookup],
   );
 
   /* Alerts: confirmed rules from the live engine; for machines without live
-     telemetry, the Advisory / Critical findings in diagnosis_records and the
-     Advisory / Critical entries in operating_events. Nothing is derived from
+     telemetry, the Alert / Critical findings in diagnosis_records and the
+     Alert / Critical entries in operating_events. Nothing is derived from
      a machine's status alone. */
+  const { timeZone: siteTimeZone } = useSiteTimeZone();
   const activeAlerts = useMemo<HomeAlert[]>(() => {
     const out: HomeAlert[] = [];
-    for (const { node, sim } of live) {
-      const f = sim.frame;
-      for (const r of f.rules) {
-        if (r.status !== "ACTIVE" || r.severity === "Normal") continue;
-        out.push({
-          id: `${node.machineId}:${r.id}`,
-          level: r.severity === "Critical" ? "danger" : "alert",
-          machine: node.name,
-          machineId: node.machineId!,
-          finding: r.name,
-          reading: r.evidence,
-          recommendation: `${r.action} Likely cause: ${r.cause}.`,
-          cause: r.cause,
-          consequence: r.consequence,
-          ruleLogic: `${r.id} — ${r.logic}`,
-          action: r.action,
-          age: r.since !== null ? `${formatDuration(f.t - r.since)} ago` : null,
-          raised: r.since !== null ? formatClock(r.since).clock : null,
-          t: r.since,
-        });
-      }
-      for (const sig of Object.values(f.signals)) {
-        if (sig.limitSeverity !== "Critical" && sig.limitSeverity !== "Advisory") continue;
-        const def = f.defs.signalByTag[sig.tag];
-        if (!def) continue;
-        const onset = f.t - Math.max(1, f.scenarioMinute);
-        out.push({
-          id: `${node.machineId}:sig:${sig.tag}`,
-          level: sig.limitSeverity === "Critical" ? "danger" : "alert",
-          machine: node.name,
-          machineId: node.machineId!,
-          finding: `${def.name} (${sig.tag}) — ${sig.limitSeverity === "Critical" ? "Alarm" : "Warning"} limit`,
-          reading: `${sig.display}${def.unit ? ` ${def.unit}` : ""}${sig.limitNote ? ` · ${sig.limitNote}` : ` · normal ${def.normalBand}`}`,
-          recommendation: `Check ${def.name} (${sig.tag}) against normal band (${def.normalBand}).`,
-          age: f.scenarioMinute > 0 ? `${formatDuration(f.scenarioMinute)} ago` : "live",
-          raised: formatClock(onset).clock,
-          t: onset,
-        });
-      }
-    }
+    const seenIds = new Set<string>();
+    const pushAlert = (alert: HomeAlert) => {
+      if (seenIds.has(alert.id)) return;
+      seenIds.add(alert.id);
+      out.push(alert);
+    };
+
+    for (const { node, sim } of live) for (const a of liveFrameAlerts(node, sim.frame)) pushAlert(a);
     const nameById = new Map<string, string>();
     for (const m of machines) {
-      if (m.machineId && !machineCondition(m, lookup).isLive) nameById.set(m.machineId, m.name);
+      if (m.machineId && !machineCondition(m, lookup).isLive) {
+        nameById.set(m.machineId, m.name.replace(/\s*\([A-Z0-9-]+\)\s*$/, ""));
+      }
     }
     for (const rec of stored.diagnosis) {
       const name = nameById.get(rec.machineId);
       if (!name) continue;
       for (const f of rec.findings) {
-        if (f.severity !== "Advisory" && f.severity !== "Critical") continue;
-        out.push({
+        if (f.severity !== "Alert" && f.severity !== "Critical") continue;
+        pushAlert({
           id: `${rec.machineId}:dx:${f.id}`,
           level: f.severity === "Critical" ? "danger" : "alert",
           machine: name,
           machineId: rec.machineId,
           finding: f.fault,
-          reading: `${f.location} · ${f.frequency} · ${f.probability} %`,
+          // Only the parts the record has: an empty field never shows as "null".
+          reading: [f.location, f.frequency, f.probability === null || f.probability === undefined ? null : `${f.probability} %`]
+            .filter((v) => v !== null && v !== undefined && String(v).trim() !== "" && String(v) !== "null")
+            .join(" · "),
           recommendation: f.recommendation,
           cause: f.fault,
           action: f.recommendation,
@@ -242,25 +263,26 @@ export function PlantHome() {
     }
     for (const evt of stored.events) {
       const name = nameById.get(evt.machineId);
-      if (!name || (evt.severity !== "Advisory" && evt.severity !== "Critical")) continue;
-      out.push({
+      if (!name || (evt.severity !== "Alert" && evt.severity !== "Critical")) continue;
+      pushAlert({
         id: `${evt.machineId}:evt:${evt.id}`,
         level: evt.severity === "Critical" ? "danger" : "alert",
         machine: name,
         machineId: evt.machineId,
         finding: evt.title,
-        reading: evt.type,
+        // The event's record type ("Telemetry Alert") is not a reading; its description says what happened.
+        reading: evt.description ?? "",
         recommendation: evt.description,
         cause: evt.title,
         action: evt.description,
-        age: evt.timestamp,
-        raised: evt.timestamp,
+        age: evt.timestamp ? formatLocalTime(evt.timestamp, { timeZone: siteTimeZone }) : null,
+        raised: evt.timestamp ? formatLocalTime(evt.timestamp, { timeZone: siteTimeZone }) : null,
         t: null,
         origin: `operating_events · ${evt.source}`,
       });
     }
     return out;
-  }, [live, machines, lookup, stored.diagnosis, stored.events]);
+  }, [live, machines, lookup, stored.diagnosis, stored.events, siteTimeZone]);
 
   /* Live activity: every live kiln's event stream merged, newest first (rules
      confirmed and cleared, limit alarms, crew actions, signal quality, state
@@ -281,21 +303,21 @@ export function PlantHome() {
           e.kind === "action" ? (e.title.startsWith("Plant healthy") || e.action?.kind === "complete" ? "good" : "info")
           : restored ? "good"
           : e.severity === "Critical" ? "bad"
-          : e.severity === "Advisory" ? "warn"
+          : e.severity === "Alert" ? "warn"
           : "idle";
         const tag =
           e.kind === "action" ? (e.action ? (e.action.auto ? "CREW" : "OPERATOR") : "PLANT")
-          : e.kind === "rule" || e.kind === "limit" ? (restored ? "CLEARED" : e.severity === "Critical" ? "CRITICAL" : "ADVISORY")
+          : e.kind === "rule" || e.kind === "limit" ? (restored ? "CLEARED" : e.severity === "Critical" ? "CRITICAL" : "ALERT")
           : e.kind === "quality" ? "SENSOR"
-          : "STATE";
+          : "MACHINE";
         return {
           id: `${base}:${n}`,
           clock: e.clock,
-          machine: node.machineId!,
+          machine: shortName(node.name),
           machineId: node.machineId!,
           tag,
           tone,
-          title: e.kind === "limit" ? `Limit · ${e.title}` : e.title,
+          title: e.kind === "limit" ? `Out of range · ${e.title}` : e.title,
           detail: e.detail,
         };
       });
@@ -324,17 +346,21 @@ export function PlantHome() {
     return () => clearInterval(timer);
   }, [cleared.length]);
 
-  const alerts = useMemo(
-    () => [...activeAlerts, ...cleared].sort((a, b) => (b.t ?? -Infinity) - (a.t ?? -Infinity)),
-    [activeAlerts, cleared],
-  );
+  const alerts = useMemo(() => {
+    const seen = new Set<string>();
+    const combined: HomeAlert[] = [];
+    for (const a of [...activeAlerts, ...cleared]) {
+      if (seen.has(a.id)) continue;
+      seen.add(a.id);
+      combined.push(a);
+    }
+    return combined.sort((a, b) => (b.t ?? -Infinity) - (a.t ?? -Infinity));
+  }, [activeAlerts, cleared]);
   const alertsByMachine = useMemo(() => {
     const map = new Map<string, number>();
     for (const a of activeAlerts) map.set(a.machineId, (map.get(a.machineId) ?? 0) + 1);
     return map;
   }, [activeAlerts]);
-
-  const plantSummary = conditionSummary(dist);
 
   const liveIds = useMemo(
     () =>
@@ -346,205 +372,148 @@ export function PlantHome() {
 
   const openDiagnosis = (machineId: string) => navigateToMachine(machineId, "diagnosis");
 
-  if (!plant && hierarchyLoading) {
-    return (
-      <div className="ph-root ast-root">
-        <div className="ast-card ast-empty ph-empty-workspace" role="status" aria-live="polite">
-          <strong>Loading plant…</strong>
-        </div>
-      </div>
-    );
-  }
-
-  if (!plant && loadError) {
-    return (
-      <div className="ph-root ast-root">
-        <div className="ast-card ast-empty ph-empty-workspace" role="alert">
-          <strong>Plant data unavailable. Retry.</strong>
-        </div>
-      </div>
-    );
-  }
-
-  if (!plant) {
-    return (
-      <div className="ph-root ast-root">
-        <div className="ast-card ast-empty ph-empty-workspace">
-          <strong>No plant configured.</strong>
-          <PillButton onClick={() => setActiveTab("configure")}>Open Configure</PillButton>
-        </div>
-      </div>
-    );
-  }
-
-  // A machine picked in the top bar's machine switcher replaces the plant with its
-  // 3D twin, in the same page: the HUD panels stay and show the machine's data.
-  if (selectedMachine) {
-    return (
-      <MachineTwinHome
-        machine={selectedMachine}
-        alerts={alerts.filter((a) => a.machineId === selectedMachine.id)}
-        activity={activity.filter((a) => a.machineId === selectedMachine.id)}
+  return (
+    <div className="ph-root ph-operator-canvas ast-root" aria-label="Plant overview">
+      <OperatorConsole
+        plant={fallbackPlant}
+        lookup={lookup}
+        score={score}
+        dist={dist}
+        alerts={alerts}
+        activity={activity}
         alertsLoading={stored.loading}
         alertsError={stored.error}
-        onOpenDiagnosis={openDiagnosis}
-        onBack={() => setSelectedMachineId(null)}
-        onOpen={(sub) => navigateToMachine(selectedMachine.id, sub)}
-        viewMode={view === "twin" ? "twin" : "operator"}
-        onChangeViewMode={(m) => chooseView(m)}
-      />
-    );
-  }
-
-  const head = (
-    <header className="ast-head ph-head">
-      <div className="ast-head-main">
-        <ol className="ast-crumbs" aria-label="Location">
-          <li>Home</li>
-          <li>Plant overview</li>
-        </ol>
-        <div className="ast-title-row">
-          <h1 className="ast-title">{shortName(plant.name)}</h1>
-          <StatusTag tone={plantSummary.tone} label={plantSummary.label} />
-          {hasLive && (
-            <span className="ph-live">
-              <i aria-hidden="true" />
-              Live
-            </span>
-          )}
-        </div>
-      </div>
-      <div className="pg-actions" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <PillNav items={VIEW_ITEMS} activeId={view} onChange={(id) => chooseView(id as MapView)} className="ph-head-nav" />
-      </div>
-    </header>
-  );
-
-  if (view === "twin") {
-    return (
-      <div className="ph-root ph-immersive ast-root" aria-label="Plant overview">
-        <div ref={stageRef} className="ph-stage">
-          {isPyroLine ? (
-            <PyroSiteOverview inset={covered} onUnsupported={toLayout} />
-          ) : (
-            <PlantTwin
-              plant={plant}
-              lookup={lookup}
-              alertsByMachine={alertsByMachine}
-              liveIds={liveIds}
-              onOpenMachine={(id) => navigateToMachine(id, "overview")}
-              onUnsupported={toLayout}
-              inset={covered}
-            />
-          )}
-        </div>
-        <div className="ph-hud">
-          <div ref={topRef} className="mt3-bar ph-top-bar">
-            <span className="mt3-title">
-              <span className="mt3-name">{shortName(plant.name)}</span>
-            </span>
-            <StatusTag tone={plantSummary.tone} label={plantSummary.label} />
-            <PillNav items={VIEW_ITEMS} activeId="twin" onChange={(id) => chooseView(id as MapView)} className="ph-head-nav" />
-          </div>
-          <aside ref={sideRef} className="ph-hud-side" aria-label="Plant condition">
-            <PlantHealthGauge score={score} dist={dist} />
-            <AlertsFeed
-              alerts={alerts}
-              activity={activity}
-              onOpen={openDiagnosis}
-              onNavigate={(mId, sub) => navigateToMachine(mId, sub)}
-              loading={stored.loading}
-              error={stored.error}
-            />
-          </aside>
-          <div ref={bottomRef} className="ph-hud-bottom ph-strip">
-            <HealthTrendCard track={trackPlant} />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (view === "operator") {
-    return (
-      <div className="ph-root ph-operator ast-root" aria-label="Plant overview — Operator view">
-        {head}
-
-        <div className="ph-operator-grid">
-          <div className="ph-operator-main">
-            <section className="ast-card ph-card ph-twin-card" aria-label="Digital twin">
-              <div className="ph-twin-card-stage">
-                {isPyroLine ? (
-                  <PyroSiteOverview inset={NO_INSET} onUnsupported={toLayout} />
-                ) : (
-                  <PlantTwin
-                    plant={plant}
-                    lookup={lookup}
-                    alertsByMachine={alertsByMachine}
-                    liveIds={liveIds}
-                    onOpenMachine={(id) => navigateToMachine(id, "overview")}
-                    onUnsupported={toLayout}
-                    inset={NO_INSET}
-                  />
-                )}
+        trackHealth={trackPlant}
+        view={view}
+        onChangeView={chooseView}
+        onNavigateToMachine={(mId, sub) => navigateToMachine(mId, sub ?? "overview")}
+        renderCustomStage={({ view: stageView, isFullLine, activeCatalogMachine: activeMachine }) => {
+          if (!plant && hierarchyLoading) {
+            return (
+              <div className="opc-module-stage">
+                <div className="ast-card ast-empty ph-empty-workspace" role="status" aria-live="polite">
+                  <strong>Loading plant…</strong>
+                </div>
               </div>
-            </section>
-            <div className="ph-strip ph-strip-compact">
-              <HealthTrendCard track={trackPlant} compact />
-            </div>
-          </div>
+            );
+          }
 
-          <aside className="ph-operator-side" aria-label="Plant condition">
-            <PlantHealthGauge score={score} dist={dist} compact />
-            <AlertsFeed
-              alerts={alerts}
-              activity={activity}
-              onOpen={openDiagnosis}
-              onNavigate={(mId, sub) => navigateToMachine(mId, sub)}
-              loading={stored.loading}
-              error={stored.error}
-              operatorMode
-            />
-          </aside>
-        </div>
+          if (!plant && loadError) {
+            return (
+              <div className="opc-module-stage">
+                <div className="ast-card ast-empty ph-empty-workspace" role="alert">
+                  <strong>Could not load the plant. Reload the page to try again.</strong>
+                </div>
+              </div>
+            );
+          }
 
-        {hasLive && <OpsCenter />}
-      </div>
-    );
-  }
+          if (!plant) {
+            return (
+              <div className="opc-module-stage">
+                <div className="ast-card ast-empty ph-empty-workspace">
+                  <strong>No plant has been set up yet.</strong>
+                  <PillButton onClick={() => setActiveTab("configure")}>Set up a plant</PillButton>
+                </div>
+              </div>
+            );
+          }
 
-  return (
-    <div className="ph-root ast-root" aria-label="Plant overview">
-      {head}
+          if (stageView === "twin") {
+            if (!isFullLine) {
+              return (
+                <div className="opc-module-stage" style={{ padding: 0, overflow: "hidden", position: "relative", display: "flex", flexDirection: "column" }}>
+                  <MachineTwinHome
+                    machine={activeMachine}
+                    alerts={alerts.filter((a) => a.machineId === activeMachine.id)}
+                    activity={activity.filter((a) => a.machineId === activeMachine.id)}
+                    alertsLoading={stored.loading}
+                    alertsError={stored.error}
+                    onOpenDiagnosis={openDiagnosis}
+                    onBack={() => setSelectedMachineId(null)}
+                    onOpen={(sub) => navigateToMachine(activeMachine.id, sub)}
+                    viewMode="twin"
+                    onChangeViewMode={(m) => chooseView(m)}
+                    hideTopBar
+                  />
+                </div>
+              );
+            }
 
-      <div className="ph-body">
-        <aside className="ph-side" aria-label="Plant condition">
-          <PlantHealthGauge score={score} dist={dist} />
-          <AlertsFeed
-            alerts={alerts}
-            activity={activity}
-            onOpen={openDiagnosis}
-            onNavigate={(mId, sub) => navigateToMachine(mId, sub)}
-            loading={stored.loading}
-            error={stored.error}
-          />
-        </aside>
-        <div className="ph-main">
-          <PlantMap
-            plant={plant}
-            lookup={lookup}
-            selected={selected}
-            onSelect={setSelected}
-            liveHistory={liveHistory}
-            onChangeView={chooseView}
-            onOpen={(id) => navigateToMachine(id, "overview")}
-          />
-          <div className="ph-strip">
-            <HealthTrendCard track={trackPlant} />
-          </div>
-          {hasLive && <OpsCenter />}
-        </div>
-      </div>
+            return (
+              <div className="ph-immersive" style={{ position: "relative", flex: 1, minHeight: 0, width: "100%", height: "100%", overflow: "hidden" }}>
+                <div ref={stageRef} className="ph-stage">
+                  {isPyroLine ? (
+                    <PyroSiteOverview inset={covered} onUnsupported={toLayout} />
+                  ) : (
+                    <PlantTwin
+                      plant={plant}
+                      lookup={lookup}
+                      alertsByMachine={alertsByMachine}
+                      liveIds={liveIds}
+                      onOpenMachine={(id) => navigateToMachine(id, "overview")}
+                      onUnsupported={toLayout}
+                      inset={covered}
+                    />
+                  )}
+                </div>
+                <div className="ph-hud">
+                  <aside ref={sideRef} className="ph-hud-side" aria-label="Plant condition">
+                    <PlantHealthGauge score={score} dist={dist} />
+                    <AlertsFeed
+                      alerts={alerts}
+                      activity={activity}
+                      onOpen={openDiagnosis}
+                      onNavigate={(mId, sub) => navigateToMachine(mId, sub)}
+                      loading={stored.loading}
+                      error={stored.error}
+                    />
+                  </aside>
+                  <div ref={bottomRef} className="ph-hud-bottom ph-strip">
+                    <HealthTrendCard track={trackPlant} />
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          if (stageView === "layout") {
+            return (
+              <div className="opc-module-stage" aria-label="Plant layout">
+                <div className="ph-body">
+                  <aside className="ph-side" aria-label="Plant condition">
+                    <PlantHealthGauge score={score} dist={dist} />
+                    <AlertsFeed
+                      alerts={alerts}
+                      activity={activity}
+                      onOpen={openDiagnosis}
+                      onNavigate={(mId, sub) => navigateToMachine(mId, sub)}
+                      loading={stored.loading}
+                      error={stored.error}
+                    />
+                  </aside>
+                  <div className="ph-main">
+                    <PlantMap
+                      plant={plant}
+                      lookup={lookup}
+                      selected={selected}
+                      onSelect={setSelected}
+                      liveHistory={liveHistory}
+                      onOpen={(id) => navigateToMachine(id, "overview")}
+                    />
+                    <div className="ph-strip">
+                      <HealthTrendCard track={trackPlant} />
+                    </div>
+                    {hasLive && <OpsCenter />}
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          return null;
+        }}
+      />
     </div>
   );
 }
@@ -557,7 +526,6 @@ function PlantMap({
   selected,
   onSelect,
   liveHistory,
-  onChangeView,
   onOpen,
 }: {
   plant: HierarchyNode;
@@ -566,12 +534,20 @@ function PlantMap({
   onSelect: (machineId: string | null) => void;
   /** Recent health per live machine id. */
   liveHistory: Record<string, number[]>;
-  onChangeView: (view: MapView) => void;
   onOpen: (machineId: string) => void;
 }) {
   const areas = (plant.children ?? []).filter(isFolder);
   const loose = (plant.children ?? []).filter((c) => c.type === "machine");
   const node = selected ? subtreeMachines(plant).find((m) => m.machineId === selected) : undefined;
+  // Each machine's health tone uses the bands of its own health model (from the database).
+  const { machines } = useIndustrialData();
+  const models = useHealthModels();
+  const bandsOf = (machineId: string): HealthBands | null => {
+    const model = models?.find((x) => x.id === machines.find((m) => m.id === machineId)?.healthModelId);
+    const advisory = model?.bands.find((b) => b.severity === "Alert")?.below;
+    const critical = model?.bands.find((b) => b.severity === "Critical")?.below;
+    return advisory != null && critical != null ? { advisory, critical } : null;
+  };
 
   useEffect(() => {
     if (!selected) return;
@@ -582,6 +558,7 @@ function PlantMap({
 
   const unit = (m: HierarchyNode) => {
     if (!m.machineId) return null;
+    const bands = bandsOf(m.machineId);
     const c = machineCondition(m, lookup);
     const tone = machineTone(c.status);
     const live = c.isLive ? liveHistory[m.machineId] : undefined;
@@ -592,7 +569,7 @@ function PlantMap({
         className="ph-unit"
         data-tone={tone}
         aria-pressed={selected === m.machineId}
-        aria-label={`${m.name}, ${toCondition(c.status)}, health ${c.health} of 100`}
+        aria-label={`${m.name}, ${toCondition(c.status)}, ${c.health === null ? "no health score yet" : `health ${c.health} of 100`}`}
         onClick={() => onSelect(selected === m.machineId ? null : m.machineId!)}
       >
         <span className="ph-unit-top">
@@ -605,15 +582,15 @@ function PlantMap({
         <span className="ph-unit-meta ast-num">
           <span>{toCondition(c.status)}</span>
           <span>
-            {c.health}
-            <span className="ast-unit">/100</span>
+            {c.health ?? "—"}
+            {c.health !== null && <span className="ast-unit">/100</span>}
           </span>
         </span>
         {live ? (
-          <Sparkline values={live} unit="/100" height={26} tone={healthTone(c.health)} digits={0} ariaLabel={`${m.name} health trend`} />
-        ) : (
-          <Ticks value={c.health} tone={healthTone(c.health)} ticks={24} />
-        )}
+          <Sparkline values={live} unit="/100" height={26} tone={c.health === null ? undefined : healthTone(c.health, bands)} digits={0} ariaLabel={`${m.name} health trend`} />
+        ) : c.health !== null ? (
+          <Ticks value={c.health} tone={healthTone(c.health, bands)} ticks={24} />
+        ) : null}
       </button>
     );
   };
@@ -622,7 +599,6 @@ function PlantMap({
     <section className="ast-card ph-card ph-map" aria-label="Plant map">
       <div className="ast-card-head ph-card-head">
         <h2 className="ast-card-title">Plant map</h2>
-        <PillNav items={VIEW_ITEMS} activeId="layout" onChange={(id) => onChangeView(id as MapView)} className="ph-head-nav" />
       </div>
       <div className="ph-map-body">
         <div className="ph-canvas mx-canvas" onClick={(e) => e.target === e.currentTarget && onSelect(null)}>
@@ -642,7 +618,7 @@ function PlantMap({
                   <span className="ph-zone-meta ast-num">
                     {count} {count === 1 ? "machine" : "machines"}
                   </span>
-                  {tone !== "good" && <span className="ph-zone-mark" aria-label="Advisory" />}
+                  {tone !== "good" && <span className="ph-zone-mark" aria-label="Needs attention" />}
                 </div>
                 {direct.length > 0 && <div className="ph-zone-units">{direct.map(unit)}</div>}
                 {groups.map((g) => (
@@ -675,16 +651,16 @@ function Inspector({
   const c = machineCondition(node, lookup);
   const m = c.machine;
   const rows: Array<[string, React.ReactNode]> = [
-    ["Health", <>{c.health}<span className="ast-unit">/100</span></>],
+    ["Health", c.health === null ? "—" : <>{c.health}<span className="ast-unit">/100</span></>],
     ["Area", m?.area ?? "—"],
-    ["Process cell", m?.processCell ?? "—"],
+    ["Production unit", m?.processCell || "—"],
     ["Type", m?.type ?? "—"],
-    ["Criticality", m?.criticality ?? "—"],
-    ["Signals", m?.signalsCount ?? "—"],
+    ["Importance", m?.criticality ?? "—"],
+    ["Sensors", m?.signalsCount ?? "—"],
     ["Power", m?.powerRating ?? "—"],
     ["Speed", m?.operatingSpeed ?? "—"],
     ["Work order", m?.activeWorkOrder ?? "None open"],
-    ["Telemetry", c.isLive ? "Live" : "Asset record"],
+    ["Readings", c.isLive ? "Live" : "Saved record only"],
   ];
   return (
     <aside className="ph-inspector" aria-label={`${node.name} details`}>

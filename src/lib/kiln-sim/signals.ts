@@ -9,7 +9,7 @@
  * server code can share it.
  */
 
-export type Severity = "Normal" | "Advisory" | "Critical";
+export type Severity = "Normal" | "Alert" | "Critical";
 
 export type SystemId = "DRV-KLN-01" | "SUP-KLN-01" | "SHL-KLN-01" | "PRC-KLN-01";
 
@@ -47,7 +47,7 @@ export type LimitDir = "hi" | "lo" | "both";
  */
 export interface LimitMeta {
   /**
-   * Rate-of-rise warning: Advisory when the reading (or its residual to the
+   * Rate-of-rise warning: Alert when the reading (or its residual to the
    * model, which removes ambient and load swings) rises faster than `perH`
    * engineering units per hour over `window` samples (default 30).
    */
@@ -256,10 +256,10 @@ export interface LimitResult {
   why: string | null;
 }
 
-const LIMIT_RANK: Record<Severity, number> = { Normal: 0, Advisory: 1, Critical: 2 };
+const LIMIT_RANK: Record<Severity, number> = { Normal: 0, Alert: 1, Critical: 2 };
 const NORMAL: LimitResult = { severity: "Normal", why: null };
 const worse = (a: LimitResult, b: LimitResult): LimitResult => (LIMIT_RANK[b.severity] > LIMIT_RANK[a.severity] ? b : a);
-const adv = (why: string): LimitResult => ({ severity: "Advisory", why });
+const adv = (why: string): LimitResult => ({ severity: "Alert", why });
 const crit = (why: string): LimitResult => ({ severity: "Critical", why });
 
 /** Compact number for limit texts (≤ 4 significant digits, no trailing zeros). */
@@ -413,7 +413,7 @@ export function limitSeverity(def: SignalDef | Pick<SignalDef, "limit" | "unit">
 
 export function stateSeverity(def: SignalDef, state: string): Severity {
   if (def.states?.alarm?.includes(state)) return "Critical";
-  if (def.states?.warn?.includes(state)) return "Advisory";
+  if (def.states?.warn?.includes(state)) return "Alert";
   return "Normal";
 }
 

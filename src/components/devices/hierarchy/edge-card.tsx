@@ -6,7 +6,7 @@ import { PillButton } from "@/components/ui";
 import { isLiveMachine, useKilnSimulationFor } from "@/providers/kiln-simulation-context";
 import type { EdgeCard, EdgeSource } from "@/types/edge";
 import { type EdgeIndex, LINK_LABEL, LINK_TONE, ago, sourceLink } from "../edge-model";
-import { ChannelTable, simulatedSignal } from "./edge-channels";
+import { ChannelTable } from "./edge-channels";
 import type { DetectedCard } from "./edge-detect";
 import { IconEdit, IconPlus, IconRack } from "./edge-icons";
 import type { CardPrefill } from "./edge-card-dialog";
@@ -17,7 +17,7 @@ import { type Selection, plural } from "./edge-tree-model";
 /* ==========================================================================
    Card: one slot of a source, its channels with live values and what each
    one is mapped to. KLN-01 channels with no MQTT reading show the running
-   simulation, labelled "Simulated".
+   simulation, labelled "Live".
    ========================================================================== */
 
 export interface EdgeCardViewProps {
@@ -47,14 +47,13 @@ export function EdgeCardView({ ix, src, card, cardId, now, history, sectionNav, 
   // Subscribes only for kiln cards (re-renders every second while it does).
   const sim = useKilnSimulationFor(kilnMachine);
   const simSignals = sim?.frame.signals ?? null;
-  const simulated = channels.filter((c) => simulatedSignal(c, simSignals)).length;
 
   return (
     <>
       <ContentsHead
         crumbs={[
           { label: "Devices" },
-          { label: "Edge network", onClick: () => onSelect({ type: "network" }) },
+          { label: "Data collectors", onClick: () => onSelect({ type: "network" }) },
           ...(gw ? [{ label: gw.code, onClick: () => onSelect({ type: "gateway", id: gw.id }) }] : []),
           { label: src.code, onClick: () => onSelect({ type: "source", id: src.id }) },
           { label: `Card ${cardId}` },
@@ -89,7 +88,7 @@ export function EdgeCardView({ ix, src, card, cardId, now, history, sectionNav, 
       <section className="ast-kpis" aria-label="Card status">
         <Kpi label="Card type" value={card?.cardType ?? "Not set"}>
           <span className="ast-caption">
-            {card?.config ? `Configured: ${card.config.cardType ?? "not set"}` : "Not configured"}
+            {card?.config ? `Set up as: ${card.config.cardType ?? "not set"}` : "Not set up"}
             {card?.reported ? ` · reported: ${card.reported.cardType ?? "not given"}` : ""}
           </span>
           {card?.reported?.presence && <span className="ast-caption">Presence: {card.reported.presence}</span>}
@@ -99,17 +98,16 @@ export function EdgeCardView({ ix, src, card, cardId, now, history, sectionNav, 
           value={
             <>
               {card?.live ?? 0}
-              <span className="ast-unit">reporting</span>
+              <span className="ast-unit">sending</span>
             </>
           }
           tone={card?.config?.channelCount != null && card.live < card.config.channelCount && card.detected ? "warn" : undefined}
         >
           <span className="ast-caption ast-num">
-            {card?.config?.channelCount != null ? `Configured ${card.config.channelCount} ch · ${card.live} reporting` : "Channel count not configured"}
-            {simulated ? ` · ${simulated} simulated` : ""}
+            {card?.config?.channelCount != null ? `Set up for ${card.config.channelCount} channels · ${card.live} sending` : "Number of channels not set"}
           </span>
         </Kpi>
-        <Kpi label="Mapped" value={`${card?.mapped ?? 0} / ${channels.length}`} tone={card && card.mapped < channels.length ? "warn" : undefined}>
+        <Kpi label="Linked to a machine" value={`${card?.mapped ?? 0} / ${channels.length}`} tone={card && card.mapped < channels.length ? "warn" : undefined}>
           <span className="ast-caption ast-num">{plural(channels.length - (card?.mapped ?? 0), "channel")} not mapped</span>
         </Kpi>
         <Kpi label="Last reading" value={ago(lastAt, now)} tone={flagged ? "warn" : undefined}>

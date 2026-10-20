@@ -9,6 +9,9 @@ import {
   type OpsWorkOrder,
   type WorkOrderStatus,
 } from "@/providers/kiln-ops-context";
+import { useIndustrialData } from "@/providers/industrial-data-context";
+import { defsFor } from "@/lib/live-defs";
+import { nameIds, namesOf } from "@/lib/display-name";
 import "./ops.css";
 
 const STATUS_LABEL: Record<WorkOrderStatus, string> = {
@@ -29,6 +32,15 @@ function when(iso: string) {
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+/** Machine name for display (the ID stays in tooltips). */
+function useMachineName(): (id: string) => string {
+  const { allMachines } = useIndustrialData();
+  return useMemo(() => {
+    const names = new Map(allMachines.map((m) => [m.id, m.name]));
+    return (id: string) => names.get(id) ?? id;
+  }, [allMachines]);
+}
+
 function alertTone(a: OpsAlert) {
   return a.status === "PENDING" ? "idle" : a.severity === "Critical" ? "bad" : "warn";
 }
@@ -36,13 +48,15 @@ function alertTone(a: OpsAlert) {
 /** Alerts inbox: live rule findings with Acknowledge / Create work order. */
 export function OpsAlertRows({ alerts, limit }: { alerts: OpsAlert[]; limit?: number }) {
   const { acknowledge, createWorkOrder, workOrders, machineId } = useKilnOps();
+  const machineName = useMachineName();
+  const defs = defsFor(machineId);
   const [open, setOpen] = useState<string | null>(null);
   const rows = limit ? alerts.slice(0, limit) : alerts;
   if (rows.length === 0) {
     return (
       <div className="ast-empty">
-        <strong>No active findings</strong>
-        {machineId} is running inside its reference envelope.
+        <strong>No problems found</strong>
+        {machineName(machineId)} is running within its normal range.
       </div>
     );
   }
@@ -51,42 +65,55 @@ export function OpsAlertRows({ alerts, limit }: { alerts: OpsAlert[]; limit?: nu
       {rows.map((a) => {
         const expanded = open === a.id;
         const wo = a.workOrderId !== null ? workOrders.find((w) => w.id === a.workOrderId) : null;
+        const rule = defs?.ruleById[a.ruleId];
         return (
           <li key={a.id} className="ops-row" data-tone={alertTone(a)} data-acked={a.acknowledged ? "" : undefined}>
             <button type="button" className="ops-row-main" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : a.id)}>
               <span className="ops-row-top">
-                <span className="ops-tag">{a.status === "PENDING" ? "PENDING" : a.severity === "Critical" ? "CRITICAL" : "ADVISORY"}</span>
-                <span className="ops-tag ops-tag-quiet">{a.priority}</span>
-                {a.acknowledged && <span className="ops-tag ops-tag-quiet">ACKNOWLEDGED</span>}
-                <span className="ops-row-time ast-num">{a.since !== null ? formatClock(a.since).clock : "confirming"}</span>
+                <span className="ops-tag">{a.status === "PENDING" ? "Checking" : a.severity === "Critical" ? "Critical" : "Alert"}</span>
+                <span className="ops-tag ops-tag-quiet" title="Priority 1 is the most urgent">Priority {a.priority.replace("P", "")}</span>
+                {a.acknowledged && <span className="ops-tag ops-tag-quiet">Seen</span>}
+                <span className="ops-row-time ast-num">{a.since !== null ? formatClock(a.since).clock : "still checking"}</span>
               </span>
-              <span className="ops-row-title">{a.name}</span>
-              <span className="ops-row-sub ast-num">{a.evidence}</span>
+              <span className="ops-row-title" title={`${a.name} (${a.ruleId})`}>
+                {rule?.plainTitle ?? a.name}
+              </span>
+              <span className="ops-row-sub ast-num" title={a.evidence}>
+                {nameIds(a.evidence, defs)}
+              </span>
             </button>
             {expanded && (
               <div className="ops-row-more">
+                {rule?.plainWhat ? (
+                  <p>
+                    <b>What is happening</b> {rule.plainWhat}
+                  </p>
+                ) : (
+                  <>
+                    <p>
+                      <b>Likely cause</b> {a.cause}
+                    </p>
+                    <p>
+                      <b>If nobody acts</b> {a.consequence}
+                    </p>
+                  </>
+                )}
                 <p>
-                  <b>Likely cause</b> {a.cause}
-                </p>
-                <p>
-                  <b>If ignored</b> {a.consequence}
-                </p>
-                <p>
-                  <b>Recommended</b> {a.action}
+                  <b>What to do</b> {rule?.plainTodo ?? a.action}
                 </p>
                 <span className="ast-caption ast-num">
-                  Confidence {Math.round(a.confidence * (a.confidence <= 1 ? 100 : 1))} % · time to limit {a.timeToLimit}
+                  How sure: {Math.round(a.confidence * (a.confidence <= 1 ? 100 : 1))} % · Time until it reaches its limit: {a.timeToLimit}
                 </span>
               </div>
             )}
             <div className="ops-row-actions">
               {!a.acknowledged && a.status === "ACTIVE" && (
                 <PillButton variant="secondary" onClick={() => void acknowledge(a.ruleId)}>
-                  Acknowledge
+                  Mark as seen
                 </PillButton>
               )}
               {wo ? (
-                <span className="ops-tag ops-tag-quiet">WO-{wo.id} · {STATUS_LABEL[wo.status]}</span>
+                <span className="ops-tag ops-tag-quiet">Work order {wo.id}: {STATUS_LABEL[wo.status]}</span>
               ) : (
                 a.status === "ACTIVE" && (
                   <PillButton variant="primary" onClick={() => void createWorkOrder(a.ruleId)}>
@@ -104,14 +131,14 @@ export function OpsAlertRows({ alerts, limit }: { alerts: OpsAlert[]; limit?: nu
 
 function Timeline({ wo }: { wo: OpsWorkOrder }) {
   const steps: Array<{ label: string; at: string }> = [
-    { label: wo.simTime !== null ? `Created from live finding at ${formatClock(wo.simTime).clock}` : "Created", at: when(wo.createdAt) },
+    { label: wo.simTime !== null ? `Created from a live problem at ${formatClock(wo.simTime).clock}` : "Created", at: when(wo.createdAt) },
   ];
   if (wo.status !== "open") {
-    steps.push({ label: wo.status === "cancelled" ? "Cancelled" : wo.actionKind === "mitigate" ? "Mitigation started" : "Repair started", at: when(wo.updatedAt) });
+    steps.push({ label: wo.status === "cancelled" ? "Cancelled" : wo.actionKind === "mitigate" ? "Short-term fix started" : "Repair started", at: when(wo.updatedAt) });
   }
   if (wo.status === "done") steps.push({ label: wo.actionKind === "repair" ? "Repair completed, plant recovering" : "Completed", at: when(wo.updatedAt) });
   return (
-    <ol className="ops-timeline" aria-label={`WO-${wo.id} timeline`}>
+    <ol className="ops-timeline" aria-label={`Work order ${wo.id} history`}>
       {steps.map((s, i) => (
         <li key={i}>
           <i aria-hidden="true" />
@@ -125,12 +152,13 @@ function Timeline({ wo }: { wo: OpsWorkOrder }) {
 
 export function OpsWorkOrderRows({ orders }: { orders: OpsWorkOrder[] }) {
   const { updateWorkOrder, machineId } = useKilnOps();
+  const machineName = useMachineName();
   const [open, setOpen] = useState<number | null>(null);
   if (orders.length === 0) {
     return (
       <div className="ast-empty">
         <strong>No work orders</strong>
-        Create one from a finding to start the recovery.
+        Create one from a problem in the list to start a repair.
       </div>
     );
   }
@@ -143,21 +171,23 @@ export function OpsWorkOrderRows({ orders }: { orders: OpsWorkOrder[] }) {
           <li key={w.id} className="ops-row" data-status={w.status}>
             <button type="button" className="ops-row-main" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : w.id)}>
               <span className="ops-row-top">
-                <span className="ops-tag">WO-{w.id}</span>
+                <span className="ops-tag" title="Work order number">No. {w.id}</span>
                 <span className="ops-tag ops-tag-status" data-status={w.status}>{STATUS_LABEL[w.status]}</span>
-                <span className="ops-tag ops-tag-quiet">{w.actionKind === "repair" ? "Repair" : "Mitigate"}</span>
-                <span className="ops-tag ops-tag-quiet">{w.priority}</span>
+                <span className="ops-tag ops-tag-quiet">{w.actionKind === "repair" ? "Repair" : "Short-term fix"}</span>
+                <span className="ops-tag ops-tag-quiet" title="Priority 1 is the most urgent">Priority {w.priority.replace("P", "")}</span>
               </span>
-              <span className="ops-row-title">{w.title}</span>
-              <span className="ops-row-sub">
-                {w.component ?? w.machineId ?? machineId}
+              <span className="ops-row-title" title={w.ruleId ?? undefined}>
+                {nameIds(w.title, defsFor(w.machineId ?? machineId))}
+              </span>
+              <span className="ops-row-sub" title={w.component ?? w.machineId ?? machineId}>
+                {w.component ? namesOf(w.component, defsFor(w.machineId ?? machineId)) : machineName(w.machineId ?? machineId)}
                 {w.dueLabel ? ` · due ${w.dueLabel.toLowerCase()}` : ""}
                 {w.assignee ? ` · ${w.assignee}` : ""}
               </span>
             </button>
             {expanded && (
               <div className="ops-row-more">
-                {w.notes && <p>{w.notes}</p>}
+                {w.notes && <p title={w.notes}>{nameIds(w.notes, defsFor(w.machineId))}</p>}
                 <Timeline wo={w} />
               </div>
             )}
@@ -165,7 +195,7 @@ export function OpsWorkOrderRows({ orders }: { orders: OpsWorkOrder[] }) {
               <div className="ops-row-actions">
                 {w.status === "open" && (
                   <PillButton variant="secondary" onClick={() => void updateWorkOrder(w.id, { status: "in_progress" })}>
-                    {w.actionKind === "mitigate" ? "Start mitigation" : "Start work"}
+                    {w.actionKind === "mitigate" ? "Start short-term fix" : "Start work"}
                   </PillButton>
                 )}
                 <PillButton variant="primary" onClick={() => void updateWorkOrder(w.id, { status: "done" })}>
@@ -195,12 +225,12 @@ export function OpsCenter() {
     [workOrders, filter],
   );
   return (
-    <section className="ops-center" aria-label="Operations">
+    <section className="ops-center" aria-label="Problems and work orders">
       <div className="ast-card ops-card">
         <div className="ast-card-head">
-          <h2 className="ast-card-title">Findings inbox</h2>
+          <h2 className="ast-card-title">Problems found</h2>
           <span className="ast-caption ast-num">
-            {alerts.length} open · {unread} unacknowledged
+            {alerts.length} open · {unread} not yet seen
           </span>
         </div>
         <OpsAlertRows alerts={alerts} />

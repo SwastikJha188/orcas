@@ -59,7 +59,7 @@ export function KpiStrip({ items, label, page = false }: { items: KpiItem[]; lab
                 k.bar ?? null
               )}
               {k.foot !== undefined && k.foot !== "" && (
-                <span className="pg-frame-kpi-foot ast-num" title={typeof k.foot === "string" ? k.foot : undefined}>
+                <span className="pg-frame-kpi-foot" title={typeof k.foot === "string" ? k.foot : undefined}>
                   {k.foot}
                 </span>
               )}

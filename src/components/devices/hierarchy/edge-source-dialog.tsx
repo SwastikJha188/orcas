@@ -90,8 +90,8 @@ export function SourceDialog({ open, ix, source, prefill, lockGateway, onClose, 
 
   const validate = (): boolean => {
     const e: Errors = {};
-    if (!gatewayId) e.gatewayId = "Pick the gateway that reads this source";
-    if (!code.trim()) e.code = "Source code is required";
+    if (!gatewayId) e.gatewayId = "Pick the data collector that reads this device";
+    if (!code.trim()) e.code = "Enter the device code";
     else if (!CODE_RULE.test(code.trim())) e.code = CODE_RULE_TEXT;
     if (!name.trim()) e.name = "Name is required";
     const poll = numberOrNull(pollIntervalMs);
@@ -141,7 +141,7 @@ export function SourceDialog({ open, ix, source, prefill, lockGateway, onClose, 
   };
 
   const nPoints = source ? pointsOf(ix, source.id).length : 0;
-  const question = nPoints === 0 ? "Delete this source?" : `Delete source and its ${plural(nPoints, "point")}?`;
+  const question = nPoints === 0 ? "Delete this device?" : `Delete this device and its ${plural(nPoints, "reading point")}?`;
 
   return (
     <Dialog
@@ -150,23 +150,23 @@ export function SourceDialog({ open, ix, source, prefill, lockGateway, onClose, 
       busy={busy}
       onSubmit={submit}
       width={620}
-      title={editing ? "Edit source" : prefill?.code ? "Register source" : "Add source"}
-      subtitle={editing ? `${source!.name} · ${source!.code}` : gateway ? `Read by ${gateway.name} · ${gateway.code}` : "A rack, PLC, SCADA, DCS or analyser behind a gateway"}
-      footerStart={editing ? <DeleteConfirm label="Delete source" question={question} onDelete={doDelete} disabled={busy} /> : undefined}
+      title={editing ? "Edit device" : prefill?.code ? "Register device" : "Add device"}
+      subtitle={editing ? `${source!.name} · ${source!.code}` : gateway ? `Read by ${gateway.name} · ${gateway.code}` : "A sensor rack, controller (PLC), SCADA, DCS or analyser read by a data collector"}
+      footerStart={editing ? <DeleteConfirm label="Delete device" question={question} onDelete={doDelete} disabled={busy} /> : undefined}
       footer={
         <>
           <PillButton variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </PillButton>
           <PillButton type="submit" variant="primary" disabled={busy}>
-            {busy ? "Saving…" : editing ? "Save" : "Add source"}
+            {busy ? "Saving…" : editing ? "Save" : "Add device"}
           </PillButton>
         </>
       }
     >
       <FieldSection title="Identity">
         <FieldGrid>
-          <Field label="Gateway" required error={errors.gatewayId} wide>
+          <Field label="Data collector" required error={errors.gatewayId} wide>
             {(id, d) => (
               <Select
                 id={id}
@@ -175,24 +175,24 @@ export function SourceDialog({ open, ix, source, prefill, lockGateway, onClose, 
                 onChange={setGatewayId}
                 disabled={busy || lockGateway}
                 options={[
-                  ...(gatewayId ? [] : [{ value: "", label: "Choose a gateway" }]),
+                  ...(gatewayId ? [] : [{ value: "", label: "Choose a data collector" }]),
                   ...sortGateways(registry.gateways).map((g) => ({ value: g.id, label: `${g.code} · ${g.name}` })),
                 ]}
               />
             )}
           </Field>
-          <Field label="Source code" required error={errors.code} hint="Code the gateway publishes this source under">
+          <Field label="Device code" required error={errors.code} hint="The code the data collector sends this device's data under">
             {(id, d) => <TextInput id={id} describedBy={d} value={code} onChange={setCode} mono placeholder="PLC-01" autoFocus={!editing && !prefill?.code} disabled={busy} />}
           </Field>
           <Field label="Name" required error={errors.name}>
             {(id, d) => <TextInput id={id} describedBy={d} value={name} onChange={setName} placeholder="Kiln drive PLC" disabled={busy} />}
           </Field>
-          <Field label="Kind">
+          <Field label="Type">
             {(id, d) => (
               <Select id={id} describedBy={d} value={kind} onChange={changeKind} disabled={busy} options={SOURCE_KINDS.map((k) => ({ value: k, label: SOURCE_KIND_LABEL[k] }))} />
             )}
           </Field>
-          <Field label="Protocol">
+          <Field label="How it talks (protocol)">
             {(id, d) => (
               <Select
                 id={id}
@@ -207,7 +207,7 @@ export function SourceDialog({ open, ix, source, prefill, lockGateway, onClose, 
               />
             )}
           </Field>
-          <Field label="Endpoint" wide>
+          <Field label="Network address" wide>
             {(id, d) => <TextInput id={id} describedBy={d} value={endpoint} onChange={setEndpoint} mono placeholder={ENDPOINT_HINT[protocol] ?? ENDPOINT_HINT.Other} disabled={busy} />}
           </Field>
         </FieldGrid>
@@ -215,7 +215,7 @@ export function SourceDialog({ open, ix, source, prefill, lockGateway, onClose, 
 
       <FieldSection title="Placement">
         <FieldGrid>
-          <Field label="Machine" hint="Primary machine; points can map to others">
+          <Field label="Machine" hint="The main machine it measures; single reading points can link to others">
             {(id, d) => <Select id={id} describedBy={d} value={machineId} onChange={setMachineId} disabled={busy} options={machineOptions(registry)} />}
           </Field>
           <Field label="Location">
@@ -224,7 +224,7 @@ export function SourceDialog({ open, ix, source, prefill, lockGateway, onClose, 
           <Field label="Model">
             {(id, d) => <TextInput id={id} describedBy={d} value={model} onChange={setModel} disabled={busy} />}
           </Field>
-          <Field label="Poll interval (ms)" error={errors.pollIntervalMs}>
+          <Field label="Read every (ms)" error={errors.pollIntervalMs}>
             {(id, d) => <NumberInput id={id} describedBy={d} value={pollIntervalMs} onChange={setPollIntervalMs} min={1} step={1} placeholder="1000" disabled={busy} />}
           </Field>
           <Field label="Notes" wide>
@@ -233,7 +233,7 @@ export function SourceDialog({ open, ix, source, prefill, lockGateway, onClose, 
         </FieldGrid>
       </FieldSection>
 
-      <Toggle checked={enabled} onChange={setEnabled} disabled={busy} label="Enabled" description="A disabled source keeps its points but shows no live state" />
+      <Toggle checked={enabled} onChange={setEnabled} disabled={busy} label="Switched on" description="When off, the device keeps its reading points but shows no live data" />
       {failure && <FormNote tone="bad">{failure}</FormNote>}
     </Dialog>
   );

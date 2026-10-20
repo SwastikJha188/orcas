@@ -61,7 +61,7 @@ export function evalCct(c: EvalContext): void {
         const dT = meanRes(tmp, 10);
         if (dT > 8 && iHmr > 4 && ratio(vib) < 1.4) {
           H(M, "R-HMR-01", {
-            severity: measured[tmp] >= 85 || dT > 16 ? "Critical" : "Advisory",
+            severity: measured[tmp] >= 85 || dT > 16 ? "Critical" : "Alert",
             evidence: `Rotor ${label} bearing +${dT.toFixed(1)} K above model with motor current ${fmtSigned(iHmr, 0)} A, vibration ×${ratio(vib).toFixed(2)} — heating before vibration (lubrication)`,
             tags: [tmp, "ELE-HMR-01", vib],
             subs: ["hmr-rotor"],
@@ -76,7 +76,7 @@ export function evalCct(c: EvalContext): void {
     if (good("SPD-HMR-01", "ELE-HMR-01") && meanRes("SPD-HMR-01", 3) < -8 && meanRes("ELE-HMR-01", 3) > 15) {
       const wdg = good("TMP-HMR-03") ? meanRes("TMP-HMR-03", 10) : null;
       H(M, "R-HMR-02", {
-        severity: measured["SPD-HMR-01"] <= 325 || measured["ELE-HMR-01"] >= 135 ? "Critical" : "Advisory",
+        severity: measured["SPD-HMR-01"] <= 325 || measured["ELE-HMR-01"] >= 135 ? "Critical" : "Alert",
         evidence: `Rotor ${measured["SPD-HMR-01"].toFixed(0)} rpm (${fmtSigned(meanRes("SPD-HMR-01", 3), 0)}) with current ${measured["ELE-HMR-01"].toFixed(0)} A (${fmtSigned(meanRes("ELE-HMR-01", 3), 0)}) · winding ${wdg === null ? "not valid" : `${fmtSigned(wdg, 0)} K vs model${wdg > 8 ? " (corroborates)" : ""}`}`,
         tags: ["SPD-HMR-01", "ELE-HMR-01", "TMP-HMR-03"],
         subs: ["hmr-rotor", "hmr-motor"],
@@ -96,7 +96,7 @@ export function evalCct(c: EvalContext): void {
           const vmax = Math.max(measured["VIB-HMR-01"], measured["VIB-HMR-02"]);
           const tag = measured["VIB-HMR-01"] >= measured["VIB-HMR-02"] ? "VIB-HMR-01" : "VIB-HMR-02";
           H(M, "R-HMR-03", {
-            severity: vmax >= 7.1 || Math.max(rDe, rNde) > 2.2 ? "Critical" : "Advisory",
+            severity: vmax >= 7.1 || Math.max(rDe, rNde) > 2.2 ? "Critical" : "Alert",
             evidence: `Rotor vibration stepped up +${jDe.toFixed(1)} mm/s DE and +${jNde.toFixed(1)} mm/s NDE (now ×${rDe.toFixed(2)} / ×${rNde.toFixed(2)} model) with bearings ${fmtSigned(heat, 1)} K — imbalance without bearing heating`,
             tags: ["VIB-HMR-01", "VIB-HMR-02"],
             subs: ["hmr-rotor"],
@@ -116,7 +116,7 @@ export function evalCct(c: EvalContext): void {
     /* ---- FP-43 R-CSL-01: drag / overload (current up, chain speed sagging) ---- */
     if (dragI > 8 && dragS < -0.12) {
       H(M, "R-CSL-01", {
-        severity: measured["ELE-CSL-01"] >= 95 || measured["SPD-CSL-01"] <= 5.6 ? "Critical" : "Advisory",
+        severity: measured["ELE-CSL-01"] >= 95 || measured["SPD-CSL-01"] <= 5.6 ? "Critical" : "Alert",
         evidence: `Motor ${fmtSigned(dragI, 0)} A above model, chain ${fmtSigned(dragS, 2)} rpm · drive vibration ×${vr.toFixed(2)}`,
         tags: ["ELE-CSL-01", "SPD-CSL-01"],
         subs: ["csl-conveyor"],
@@ -127,7 +127,7 @@ export function evalCct(c: EvalContext): void {
     /* ---- FP-43 R-CSL-04: head-drive degradation (vibration up; overload corroborates) ---- */
     if (vr > 1.4) {
       H(M, "R-CSL-04", {
-        severity: measured["VIB-CSL-01"] >= 4.5 || measured["ELE-CSL-01"] >= 95 ? "Critical" : "Advisory",
+        severity: measured["VIB-CSL-01"] >= 4.5 || measured["ELE-CSL-01"] >= 95 ? "Critical" : "Alert",
         evidence: `Head-drive vibration ×${vr.toFixed(2)} model (${measured["VIB-CSL-01"].toFixed(2)} mm/s) · motor ${fmtSigned(dragI, 0)} A vs model${dragI > 3 ? " (overload — corroborates)" : ""}`,
         tags: dragI > 3 ? ["VIB-CSL-01", "ELE-CSL-01"] : ["VIB-CSL-01"],
         subs: ["csl-conveyor"],
@@ -164,7 +164,7 @@ export function evalCct(c: EvalContext): void {
     if (blind || torn) {
       const lvl = good("LEV-CSL-01") ? slopePerHour(c, "LEV-CSL-01", 30) : null;
       H(M, "R-CSL-02", {
-        severity: blind ? (measured["PRS-CSL-01"] >= 18 ? "Critical" : "Advisory") : dp < -6 ? "Critical" : "Advisory",
+        severity: blind ? (measured["PRS-CSL-01"] >= 18 ? "Critical" : "Alert") : dp < -6 ? "Critical" : "Alert",
         evidence: `Baghouse ΔP ${measured["PRS-CSL-01"].toFixed(1)} mbar, ${fmtSigned(dp)} mbar ${blind ? "above" : "below"} the cleaning-cycle model · dust-fan current ${fmtSigned(fi)} A vs model (flow ${blind ? "falling — blinding" : "rising — air bypassing a torn bag"}) · silo level ${lvl === null ? "not valid" : `${fmtSigned(lvl, 1)} %/h${lvl > 0.5 ? " (filling: displaced air through the filter)" : ""}`}`,
         tags: ["PRS-CSL-01", "ELE-CSL-02"],
         subs: ["csl-silo"],
@@ -175,7 +175,7 @@ export function evalCct(c: EvalContext): void {
 
   if (good("LEV-CSL-01") && measured["LEV-CSL-01"] >= 88) {
     H(M, "R-CSL-03", {
-      severity: measured["LEV-CSL-01"] >= 94 ? "Critical" : "Advisory",
+      severity: measured["LEV-CSL-01"] >= 94 ? "Critical" : "Alert",
       evidence: `Process indication: clinker silo ${measured["LEV-CSL-01"].toFixed(1)} %`,
       tags: ["LEV-CSL-01"],
       lead: { tag: "LEV-CSL-01", target: 94 },
@@ -185,7 +185,7 @@ export function evalCct(c: EvalContext): void {
   /* ---- SV-HMR-01 / SV-CSL-01: D5 Tables 5.7.6 and 5.8.6 sensor verification ---- */
   const verify = (id: "SV-HMR-01" | "SV-CSL-01", checks: Array<[string, string]>) => {
     const kept = checks.filter(([tag]) => !patterned(c, tag));
-    if (kept.length) H(M, id, { severity: "Advisory", evidence: kept.map(([, n]) => n).join(" · "), tags: kept.map(([t]) => t), subs: subsOf(kept.map(([t]) => t)) });
+    if (kept.length) H(M, id, { severity: "Alert", evidence: kept.map(([, n]) => n).join(" · "), tags: kept.map(([t]) => t), subs: subsOf(kept.map(([t]) => t)) });
   };
   // "≈ 0 when stopped" is screened line-wide by the data-quality stage (R-DQ-02 physical neighbours).
 

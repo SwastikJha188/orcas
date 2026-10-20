@@ -18,6 +18,7 @@
  */
 import type { PyroSignalDef } from "./signals";
 import { PYRO_SPEC } from "./spec";
+import { PYRO_RANGE_BY_SIGNAL, PYRO_RANGES_DOC, rangeInUnit } from "./ranges";
 
 export type SensorClass =
   | "iepe"
@@ -118,14 +119,20 @@ const TAG_RANGE: Record<string, { range: [number, number]; note: string; provisi
   "GAS-PHC-02": { range: [0, 20000], note: "CO 0–20,000 ppm (D5 Table 6.6)" },
   "GAS-KLN-02": { range: [0, 20000], note: "CO 0–20,000 ppm (D5 Table 6.6)" },
   "GAS-KLN-03": { range: [0, 2000], note: "NOx 0–2,000 ppm (D5 Table 6.6)" },
+  "GAS-PHC-03": { range: [0, 25], note: "O₂ 0–25 % (calciner outlet extractive analyser, as D5 Table 6.6)" },
+  "GAS-PHC-04": { range: [0, 20000], note: "CO 0–20,000 ppm (calciner outlet extractive analyser, as D5 Table 6.6)" },
+  "GAS-BGH-01": { range: [0, 100], note: "0–100 mg/Nm³ (existing stack CEMS, read-only; demo span)", provisional: true },
   // Species pending (D5 Table 13.1 row 5): CO scale by default; CO₂ would be 0–5 / 0–20 vol%.
   "GAS-BRN-01": { range: [0, 20000], note: "CO 0–20,000 ppm (D5 Table 6.6; species pending, CO₂ would be 0–5 / 0–20 vol%)" },
-  "FLO-KFS-01": { range: [0, 500], note: "0–500 t/h (D5 Table 6.9)" },
+  "FLO-KFS-01": { range: [0, 300], note: "0–300 t/h per meter (SFM A; two meters carry the 0–500 t/h kiln feed)", provisional: true },
+  "FLO-KFS-02": { range: [0, 300], note: "0–300 t/h per meter (SFM B; two meters carry the 0–500 t/h kiln feed)", provisional: true },
   "FLO-BRN-01": { range: [0, 25], note: "0–25 t/h (D5 Table 6.9)" },
   "POS-KLN-01": { range: [-50, 50], note: "LVDT ±50 mm (D5 Table 6.11)" },
   // Kiln drive torque in % of rated: the drive can report overload above 100 %, so the 105 % alarm is reachable.
   "ELE-KLN-01": { range: [0, 150], note: "0–150 % of rated torque (per drive, D5 Table 6.12; demo scaling)", provisional: true },
-  "WGT-KFS-01": { range: [0, 125], note: "0–125 t, bin capacity (D5 Table 6.8; demo capacity)", provisional: true },
+  ...Object.fromEntries(
+    ["WGT-KFS-01", "WGT-KFS-02", "WGT-KFS-03"].map((tg) => [tg, { range: [0, 50] as [number, number], note: "0–50 t per load cell (three cells carry the 0–125 t bin; demo capacity)", provisional: true }]),
+  ),
   "STS-KLN-08": { range: [0, 100], note: "Coverage 0–100 % (scanner status)" },
   "CAL-KLN-03": { range: [0, 600], note: "0–600 °C (D5 Table 6.14)" },
 };
@@ -158,6 +165,12 @@ export interface RangeInfo {
 /** Calibrated range of a signal: D5 per tag / per class, else a provisional per-tag scaling from the nominal value. */
 export function rangeInfoOf(def: PyroSignalDef): RangeInfo | null {
   if (def.type !== "analog") return null;
+  // OSW-PE-SNL-PYR-01 Rev. 01 design range (the transmitter range to specify or verify) wins over D5 and the demo scaling.
+  const row = PYRO_RANGE_BY_SIGNAL[def.tag];
+  const u = row ? rangeInUnit(row, def.base) : null;
+  if (row && u && u.designLo !== null && u.designHi !== null && u.designHi > u.designLo) {
+    return { range: [u.designLo, u.designHi], note: `${row.design} ${row.docUnit} (${PYRO_RANGES_DOC}${u.basis ? `; ${u.basis}` : ""})`, provisional: false };
+  }
   const tagR = TAG_RANGE[def.tag];
   if (tagR) return { range: tagR.range, note: tagR.note, provisional: !!tagR.provisional };
   const cls = sensorClassOf(def);
@@ -184,7 +197,7 @@ export function rangeInfoOf(def: PyroSignalDef): RangeInfo | null {
 }
 
 /** Positive-nominal pressures that can legitimately read below zero. */
-const BIPOLAR = new Set(["PRS-KFS-02"]);
+const BIPOLAR = new Set(["PRS-KFS-02", "PRS-KFS-06"]);
 
 /** Absolute values the signal's limit rule can raise at (near the design point for relative kinds). */
 export function limitReach(def: PyroSignalDef): number[] {

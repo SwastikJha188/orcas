@@ -26,7 +26,7 @@ function BandLimitBar({ s, v, band }: { s: DxSensor; v: number; band: TwoSided }
   const d0 = lo - pad;
   const d1 = hi + pad;
   const x = (n: number) => pctX(n, d0, d1);
-  const dot = s.severity === "Critical" ? "var(--status-danger)" : s.severity === "Advisory" ? "var(--status-warning)" : "var(--dx-ink-2)";
+  const dot = s.severity === "Critical" ? "var(--status-danger)" : s.severity === "Alert" ? "var(--status-warning)" : "var(--dx-ink-2)";
   const warn = twoSidedText(band.warnLo, band.warnHi);
   const alarm = twoSidedText(band.alarmLo, band.alarmHi);
   const ticks: Array<[number | undefined, string]> = [
@@ -58,7 +58,7 @@ function ModelLimitBar({ s, band }: { s: DxSensor; band: TwoSided | null }) {
   const d0 = lo < 0 ? lo - pad : 0;
   const d1 = hi + pad;
   const x = (n: number) => pctX(n, d0, d1);
-  const dot = s.severity === "Critical" ? "var(--status-danger)" : s.severity === "Advisory" ? "var(--status-warning)" : "var(--dx-ink-2)";
+  const dot = s.severity === "Critical" ? "var(--status-danger)" : s.severity === "Alert" ? "var(--status-warning)" : "var(--dx-ink-2)";
   return (
     <svg className="dxo-limit-bar" width="100%" height="14" role="img" aria-label={`${fmt(v)} ${s.unit}; warning ${w}; alarm ${a} ${s.unit}`}>
       <rect x="0" y="6" width="100%" height="2" rx="1" fill="var(--dx-track)" />
@@ -155,7 +155,7 @@ export function EvidenceCards({
       header: "Current reading",
       width: "130px",
       render: (s) => {
-        const tone = s.severity === "Critical" ? "bad" : s.severity === "Advisory" ? "warn" : undefined;
+        const tone = s.severity === "Critical" ? "bad" : s.severity === "Alert" ? "warn" : undefined;
         return (
           <span className="ast-num" style={{ fontWeight: 600, color: tone === "bad" ? "var(--status-danger)" : tone === "warn" ? "var(--status-warning)" : undefined }}>
             {s.value !== null ? fmt(s.value) : s.display}
@@ -218,7 +218,7 @@ export function EvidenceCards({
       width: "120px",
       render: (s) => {
         const vTone = VALIDITY_TONE[s.validity];
-        const sTone = s.severity === "Critical" ? "bad" : s.severity === "Advisory" ? "warn" : "good";
+        const sTone = s.severity === "Critical" ? "bad" : s.severity === "Alert" ? "warn" : "good";
         if (s.validity !== "valid") {
           return <StatusTag tone={vTone} label={VALIDITY_LABEL[s.validity]} />;
         }

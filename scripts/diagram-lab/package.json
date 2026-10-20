@@ -1,0 +1,7 @@
+{
+  "name": "diagram-lab",
+  "private": true,
+  "type": "module",
+  "description": "Renders machine-kit 2D sheets and 3D kit models to PNG for checking (see .claude/skills/machine-diagram-2d and -3d).",
+  "dependencies": { "esbuild": "0.25.10" }
+}

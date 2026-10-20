@@ -1,157 +1,129 @@
 /**
  * Sheet H-2 — CSL-01 · Clinker transport — Deep-pan conveyor.
- * Composed as PDF page 36: the inclined deep-pan conveyor from the tail shaft
- * (feed chute from the crusher, screw take-up) up to the head, on three
- * trestle columns with a walkway rail; the head drive (motor on a
- * shaft-mounted reducer, belt guard, torque arm) and the head discharge chute
- * to the clinker silo.
+ * Drawn as the "DEEP-PAN CONVEYOR" panel of the machine-group images (page 14,
+ * panel box 574, 91.5 – 1080, 540.5): the inclined pan conveyor from the tail
+ * shaft (fed from the crusher) up to the head drum on its three support
+ * columns, and the head drive (motor over the reducer) discharging to the
+ * clinker silo.
  */
 import React from "react";
-import { Bolt, GearWheel, GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
-import { Lumps } from "../../sheets/sc-parts";
+import { Bolt, GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
 import type { LineSheetArt } from "../types";
-import { Column, DriveMotor, Flow, PanConveyor, Pier } from "./parts-h";
+import { Column } from "./parts-h";
+import { FlowArrow, TefcMotor } from "./parts-h2";
 
-const W = 824;
-const H = 704;
+const W = 506;
+const H = 449;
 
-const GROUND = 660.5;
-const TAIL: [number, number] = [105.5, 629];
-const HEAD: [number, number] = [690.5, 164];
-const D = 32;
-const SLOPE = (HEAD[1] - TAIL[1]) / (HEAD[0] - TAIL[0]);
-const LEN = Math.hypot(HEAD[0] - TAIL[0], HEAD[1] - TAIL[1]);
+const GROUND = 413;
+const TAIL: [number, number] = [71, 394.5];
+const HEAD: [number, number] = [416.5, 118.5];
 const ANG = (Math.atan2(HEAD[1] - TAIL[1], HEAD[0] - TAIL[0]) * 180) / Math.PI;
-const HALF = D / 2 / Math.cos((ANG * Math.PI) / 180);
-const beltY = (x: number) => TAIL[1] + (x - TAIL[0]) * SLOPE;
-const GB = { x: 720, y: 120, w: 84, h: 69 };
+const LEN = Math.hypot(HEAD[0] - TAIL[0], HEAD[1] - TAIL[1]);
 
-/** Walkway handrail along the incline (rotated frame). */
-function InclineRail() {
-  const posts: number[] = [];
-  for (let s = 130; s < LEN - 60; s += 34) posts.push(s);
-  const y0 = -D / 2 - 3;
+/** Conveyor casing from tail to head with the clinker-laden pans (gold dashes) along the strand. */
+function Conveyor() {
+  const d = 26;
+  const dashes = Math.floor((LEN - 30) / 22);
   return (
     <g transform={`translate(${TAIL[0]} ${TAIL[1]}) rotate(${ANG})`} aria-hidden="true">
-      {posts.map((s) => (
-        <line key={s} x1={s} x2={s} y1={y0} y2={y0 - 16} stroke={MX.edge} strokeWidth={1} />
+      <rect x={-8} y={-d / 2} width={LEN + 8} height={d} rx={d / 2} {...PAINT.body} />
+      <line x1={10} x2={LEN - 12} y1={-d / 2 + 3.5} y2={-d / 2 + 3.5} {...PAINT.hair} />
+      <line x1={10} x2={LEN - 12} y1={d / 2 - 3.5} y2={d / 2 - 3.5} stroke={MX.fine} strokeWidth={0.8} strokeDasharray="4 3" />
+      {Array.from({ length: dashes }).map((_, i) => (
+        <rect key={i} x={20 + i * 22} y={-2.4} width={11} height={4.8} rx={1.6} fill={MX.material} />
       ))}
-      <line x1={posts[0]} x2={posts[posts.length - 1]} y1={y0 - 16} y2={y0 - 16} stroke={MX.edge} strokeWidth={1.4} />
-      <line x1={posts[0]} x2={posts[posts.length - 1]} y1={y0 - 8} y2={y0 - 8} stroke={MX.fine} strokeWidth={1} />
+    </g>
+  );
+}
+
+function Drums() {
+  return (
+    <g aria-hidden="true">
+      {/* tail shaft */}
+      <circle cx={TAIL[0]} cy={TAIL[1]} r={13.5} {...PAINT.raised} />
+      <circle cx={TAIL[0]} cy={TAIL[1]} r={10} {...PAINT.hair} />
+      {/* head drum and its shaft into the reducer */}
+      <rect x={HEAD[0]} y={HEAD[1] - 2.5} width={19} height={5} rx={1} {...PAINT.shaft} />
+      <circle cx={HEAD[0]} cy={HEAD[1]} r={15} {...PAINT.cylinder} />
+      <circle cx={HEAD[0]} cy={HEAD[1]} r={4} {...PAINT.shaft} />
+    </g>
+  );
+}
+
+function HeadDrive() {
+  return (
+    <g aria-hidden="true">
+      {/* reducer */}
+      <rect x={435} y={94} width={49} height={40} rx={4} {...PAINT.body} />
+      <rect x={438} y={97} width={43} height={34} rx={3} {...PAINT.hair} />
+      {[
+        [438.5, 97.5],
+        [480.5, 97.5],
+        [438.5, 130.5],
+        [480.5, 130.5],
+      ].map(([bx, by]) => (
+        <Bolt key={`${bx}-${by}`} x={bx} y={by} r={1.2} />
+      ))}
+      <circle cx={448} cy={116} r={6.25} fill="none" stroke={MX.edge} strokeWidth={1} />
+      <circle cx={448} cy={116} r={2} {...PAINT.shaft} />
+      <circle cx={465} cy={110.5} r={12.5} fill="none" stroke={MX.edge} strokeWidth={1} />
+      <circle cx={465} cy={110.5} r={4.5} {...PAINT.shaft} />
+      {/* motor stool and motor */}
+      <rect x={443} y={89} width={4} height={5} {...PAINT.raised} />
+      <rect x={470} y={89} width={4} height={5} {...PAINT.raised} />
+      <TefcMotor x={412.5} y={53.75} w={67.5} h={31.25} cowl={12.5} tb={[432.5, 27, 8]} fins={4} win={[434.5, 66, 15.5, 8]} />
+      <rect x={480} y={67.5} width={7.5} height={4} rx={1} {...PAINT.shaft} />
     </g>
   );
 }
 
 function Art() {
-  const cols = [248, 420.5, 585.5];
-  const under = (x: number) => beltY(x) + HALF;
   return (
     <g>
-      <GroundLine x1={22} x2={804} y={GROUND} />
-
-      {/* ---------------- trestle columns and bracing ---------------- */}
-      {[0, 1].map((i) => {
-        const a = cols[i] + 4;
-        const b = cols[i + 1] - 4;
-        const top = under(cols[i]) + 16;
-        return (
-          <g key={i}>
-            <line x1={a} y1={top} x2={b} y2={GROUND - 30} stroke={MX.fine} strokeWidth={2} />
-            <line x1={a} y1={GROUND - 30} x2={b} y2={top} stroke={MX.fine} strokeWidth={2} />
-          </g>
-        );
-      })}
-      <line x1={cols[0] + 4} x2={cols[2] - 4} y1={GROUND - 30} y2={GROUND - 30} stroke={MX.fine} strokeWidth={2} />
-      {cols.map((cx) => (
-        <g key={cx}>
-          <Column x={cx} y1={under(cx) - 6} y2={GROUND} w={9} />
-          <rect x={cx - 12} y={under(cx) - 8} width={24} height={7} rx={1.5} {...PAINT.raised} transform={`rotate(${ANG} ${cx} ${under(cx) - 4})`} />
-        </g>
+      <GroundLine x1={22.5} x2={484} y={GROUND} />
+      {/* support columns under the casing */}
+      {[
+        [155.5, 336],
+        [257.5, 254],
+        [355, 176],
+      ].map(([x, top]) => (
+        <Column key={x} x={x} y1={top} y2={GROUND} w={5} />
       ))}
+      <Conveyor />
+      <Drums />
+      <HeadDrive />
 
-      {/* ---------------- tail: frame and screw take-up ---------------- */}
-      <Pier x={70} y={GROUND - 9} w={74} h={9} />
-      <path d={`M ${TAIL[0] - 14} ${GROUND - 9} L ${TAIL[0] - 8} ${TAIL[1] + 12} H ${TAIL[0] + 26} L ${TAIL[0] + 34} ${GROUND - 9} Z`} {...PAINT.body} />
-      <rect x={TAIL[0] - 50} y={TAIL[1] - 3} width={30} height={6} rx={1.5} {...PAINT.shaft} />
-      <rect x={TAIL[0] - 56} y={TAIL[1] - 8} width={8} height={16} rx={1.5} {...PAINT.raised} />
-      <rect x={TAIL[0] - 54} y={TAIL[1] + 8} width={4} height={GROUND - 9 - TAIL[1] - 8} {...PAINT.body} />
-      {[-44, -38, -32, -26].map((s) => (
-        <line key={s} x1={TAIL[0] + s} x2={TAIL[0] + s + 2} y1={TAIL[1] - 3} y2={TAIL[1] + 3} stroke={MX.edge} strokeWidth={0.8} />
-      ))}
+      {/* discharge from the head to the clinker silo */}
+      <FlowArrow x1={430} y1={137.5} x2={470} y2={170} w={1.6} s={7} />
 
-      {/* ---------------- feed chute from the crusher ---------------- */}
-      <path d={`M 140 500 H 183 L 180 ${beltY(180)} L 146 ${beltY(146)} Z`} {...PAINT.body} />
-      <path d={`M 147 506 H 176 L 174 ${beltY(174) - HALF - 4} L 152 ${beltY(152) - HALF - 4} Z`} {...PAINT.recess} />
-      <rect x={136} y={495} width={51} height={7} rx={2} {...PAINT.raised} />
-      {[142, 161.5, 181].map((bx) => (
-        <Bolt key={bx} x={bx} y={498.5} r={1.3} />
-      ))}
-      <Lumps pts={[[158, 518], [168, 532], [156, 546], [166, 558]]} r={3} />
-      {/* ---------------- conveyor ---------------- */}
-      <PanConveyor x1={TAIL[0]} y1={TAIL[1]} x2={HEAD[0]} y2={HEAD[1]} d={D} sprocket={22} doors={[0.3, 0.55, 0.8]} />
-      <InclineRail />
-      <MachineLabel x={56} y={591.6} anchor="start" size={8.2}>TAIL SHAFT</MachineLabel>
-      <MachineLabel x={289} y={328.7} anchor="start" size={9}>DEEP-PAN CONVEYOR</MachineLabel>
-
-      <Flow x1={161.5} y1={466} x2={161.5} y2={490} />
-      <MachineLabel x={75.5} y={674.1} anchor="start" size={8.2}>FROM CRUSHER (H-1)</MachineLabel>
-
-      {/* ---------------- head casing and discharge chute ---------------- */}
-      <path d="M 668 192 H 714 L 708 232 H 676 Z" {...PAINT.body} />
-      <path d="M 675 196 H 707 L 703 228 H 681 Z" {...PAINT.recess} />
-      <rect x={672} y={230} width={40} height={6} rx={1.5} {...PAINT.raised} />
-      <Lumps pts={[[688, 204], [696, 216], [686, 224]]} r={2.8} />
-      <Flow x1={692} y1={240} x2={692} y2={256} />
-      <MachineLabel x={668.5} y={269.1} anchor="start" size={8.2}>TO CLINKER SILO (H-3)</MachineLabel>
-      <rect x={660} y={132} width={58} height={64} rx={9} {...PAINT.body} />
-      <rect x={665} y={137} width={48} height={54} rx={6} {...PAINT.hair} />
-      <circle cx={HEAD[0]} cy={HEAD[1]} r={22} {...PAINT.recess} />
-      <GearWheel cx={HEAD[0]} cy={HEAD[1]} r={15} teeth={11} hub={6} />
-      <Bolt x={667} y={139} r={1.5} />
-      <Bolt x={711} y={139} r={1.5} />
-      <Bolt x={667} y={189} r={1.5} />
-      <Bolt x={711} y={189} r={1.5} />
-      <rect x={714} y={HEAD[1] - 5} width={10} height={10} rx={1.5} {...PAINT.shaft} />
-
-      {/* ---------------- head drive ---------------- */}
-      {/* shaft-mounted reducer */}
-      <rect x={GB.x} y={GB.y} width={GB.w} height={GB.h} rx={7} {...PAINT.body} />
-      <rect x={GB.x + 5} y={GB.y + 5} width={GB.w - 10} height={GB.h - 10} rx={4} {...PAINT.hair} />
-      <line x1={GB.x + 2} x2={GB.x + GB.w - 2} y1={GB.y + 44} y2={GB.y + 44} stroke={MX.edge} strokeWidth={1.1} />
-      <circle cx={772} cy={149} r={20.5} {...PAINT.raised} />
-      <circle cx={772} cy={149} r={14} {...PAINT.hair} />
-      <circle cx={772} cy={149} r={6} {...PAINT.shaft} />
-      <circle cx={743} cy={HEAD[1]} r={12} {...PAINT.raised} />
-      <circle cx={743} cy={HEAD[1]} r={5} {...PAINT.shaft} />
-      {[GB.x + 6, GB.x + GB.w - 6].map((bx) => [GB.y + 6, GB.y + GB.h - 6].map((by) => <Bolt key={`${bx}-${by}`} x={bx} y={by} r={1.6} />))}
-      {/* torque arm to the head casing */}
-      <rect x={712} y={GB.y + GB.h - 5} width={24} height={6} rx={2} {...PAINT.body} />
-      <Bolt x={716} y={GB.y + GB.h - 2} r={1.2} />
-      {/* motor base and motor */}
-      <rect x={690} y={113} width={100} height={7} rx={1.5} {...PAINT.raised} />
-      <DriveMotor x={682.5} y={52.5} w={113.5} h={55} footY={113} shaft={8} />
-      {/* V-belt guard: motor pulley down to the reducer input */}
-      <rect x={805} y={66} width={14} height={98} rx={7} {...PAINT.body} />
-      {[86, 104, 122, 140].map((gy) => (
-        <line key={gy} x1={809} x2={815} y1={gy} y2={gy} {...PAINT.hair} />
-      ))}
-      <MachineLabel x={717.5} y={209.1} anchor="start" size={8.2}>HEAD DRIVE</MachineLabel>
+      <MachineLabel x={452.5} y={148} size={6.5}>HEAD DRIVE</MachineLabel>
+      <MachineLabel x={451.5} y={183.5} size={6.5}>TO CLINKER SILO</MachineLabel>
+      <MachineLabel x={217.5} y={219} size={6.5}>DEEP-PAN CONVEYOR</MachineLabel>
+      <MachineLabel x={71} y={374.5} size={6.5}>TAIL SHAFT</MachineLabel>
+      <MachineLabel x={78.5} y={423} size={6.5}>FROM CRUSHER</MachineLabel>
     </g>
   );
 }
 
-/** Pad centre per point (sheet units), as on PDF page 36. */
+/**
+ * Pad centre per point (sheet units = page units − panel corner), as in the
+ * panel; the winding pad sits 3 units above its printed centre so its plate
+ * row clears the head-drive vibration row.
+ */
 const pads: LineSheetArt["pads"] = {
-  "SPD-CSL-01": [105.5, 629],
-  "VIB-CSL-01": [761.5, 131],
-  "ELE-CSL-01": [728, 47],
+  "ELE-CSL-01": [439.2, 50],
+  "TMP-CSL-02": [459.2, 73.5],
+  "VIB-CSL-01": [459.2, 96.3],
+  "SPD-CSL-01": [71, 394.5],
 };
 
-/** Tag chip centre per point, as on PDF page 36. */
-const chips: NonNullable<LineSheetArt["chips"]> = {
-  "SPD-CSL-01": [183.5, 606.5],
-  "VIB-CSL-01": [683, 20],
-  "ELE-CSL-01": [604.5, 84.5],
+/** Plate side / stand-off slot per point: head-drive plates run left over the motor, the chain speed along the strand. */
+const callouts: LineSheetArt["callouts"] = {
+  "ELE-CSL-01": [430, 27.7, "end"],
+  "TMP-CSL-02": [440, 73.5, "end"],
+  "VIB-CSL-01": [440, 96.3, "end"],
+  "SPD-CSL-01": [86, 394.5, "start"],
 };
 
-export const sheet: LineSheetArt = { id: "H-2", ready: true, width: W, height: H, Art, pads, chips };
+export const sheet: LineSheetArt = { id: "H-2", ready: true, width: W, height: H, Art, pads, callouts };

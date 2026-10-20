@@ -242,6 +242,10 @@
   outline-offset: 2px;
 }
 
+.pso-tool:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
 .pso-hint {
   position: absolute;
   z-index: 4;
@@ -345,7 +349,7 @@
 }
 
 .pso-score-v {
-  font-size: 32px;
+  font-size: var(--fs-8xl);
   font-weight: 600;
   line-height: 1;
   color: var(--dx-ink);

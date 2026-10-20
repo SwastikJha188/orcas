@@ -5,7 +5,7 @@ import { PYRO_RULES_BY_MACHINE } from "./rules";
 
 /** Operating point per machine, in process order. */
 const OPERATING: Record<string, string[]> = {
-  "PYR-FED-01": ["LEV-FSL-01", "PRS-FSL-01", "ELE-FSL-01", "FLO-KFS-01", "LEV-KFS-01", "WGT-KFS-01", "POS-KFS-01", "PRS-KFS-01", "SPD-KFS-01", "ELE-KFS-01"],
+  "PYR-FED-01": ["LEV-FSL-01", "PRS-FSL-01", "ELE-FSL-01", "FLO-KFS-01", "FLO-KFS-02", "WGT-KFS-01", "WGT-KFS-02", "WGT-KFS-03", "PRS-KFS-01", "SPD-KFS-01", "ELE-KFS-01"],
   "PYR-PHC-01": ["TMP-PHC-01", "PRS-PHC-01", "TMP-PHC-06", "TMP-PHC-08", "TMP-PHC-07", "GAS-PHC-01", "GAS-PHC-02", "SPD-PHC-01", "ELE-PHC-01"],
   "PYR-KLN-01": ["SPD-KLN-01", "ELE-KLN-01", "TMP-KLN-14", "TMP-KLN-13", "GAS-KLN-01", "GAS-KLN-02", "GAS-KLN-03", "PRS-KLN-01", "PRS-KLN-03", "CAL-KLN-03", "POS-KLN-01"],
   "PYR-BRN-01": ["FLO-BRN-01", "CAL-BRN-01", "PRS-BRN-03", "PRS-BRN-01", "PRS-BRN-02", "TMP-BRN-02", "LEV-BRN-01", "PRS-BRN-04"],
@@ -38,9 +38,11 @@ function build(machineId: string): PlantDefs {
     operatingTags: OPERATING[machineId] ?? [],
     speedTag: SPEED[machineId] ?? null,
     setpoints: {
-      ...(tags.has("FLO-KFS-01") ? { "FLO-KFS-01": "feedSp" as const } : {}),
+      ...(tags.has("FLO-KFS-01") ? { "FLO-KFS-01": "feedSp" as const, "FLO-KFS-02": "feedSp" as const } : {}),
       ...(tags.has("FLO-BRN-01") ? { "FLO-BRN-01": "fuelSp" as const } : {}),
     },
+    // Solid-flow meters A and B each carry half of the kiln-feed set-point.
+    ...(tags.has("FLO-KFS-01") ? { setpointShare: { "FLO-KFS-01": 0.5, "FLO-KFS-02": 0.5 } } : {}),
     driverTags: {
       feed: tags.has("FLO-KFS-01") ? "FLO-KFS-01" : null,
       fuel: tags.has("FLO-BRN-01") ? "FLO-BRN-01" : null,

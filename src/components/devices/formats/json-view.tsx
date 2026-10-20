@@ -13,7 +13,7 @@ const ARRAY_PREVIEW = 25;
 
 export function JsonView({ value, onPick, pickLabel }: { value: unknown; onPick?: (path: JsonPath) => void; pickLabel?: string }) {
   return (
-    <pre className="fmt-json" aria-label="Payload">
+    <pre className="fmt-json" aria-label="Message content">
       <Node value={value} path={[]} indent={0} onPick={onPick} pickLabel={pickLabel} />
     </pre>
   );

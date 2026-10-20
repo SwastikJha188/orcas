@@ -33,7 +33,7 @@ interface MachineSensor {
   unit: string;
 }
 
-type Errors = Partial<Record<"machineId" | "tag" | "name" | "alertLimit" | "dangerLimit", string>>;
+type Errors = Partial<Record<"machineId" | "tag" | "name" | "alertLimit" | "dangerLimit" | "subassemblyId", string>>;
 
 /** Tag-safe text: "Bearing temp DE" → "BEARING-TEMP-DE". */
 const toTag = (s: string) =>
@@ -43,24 +43,30 @@ const toTag = (s: string) =>
     .replace(/[^A-Z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-/** The machine's existing signal tags, for the tag picker. */
-function useMachineSensors(machineId: string): { sensors: MachineSensor[]; failed: boolean } {
-  const [state, setState] = useState<{ id: string; sensors: MachineSensor[]; failed: boolean }>({ id: "", sensors: [], failed: false });
+interface MachineComponent {
+  id: string;
+  name: string;
+}
+
+/** The machine's existing signal tags (for the tag picker) and its components (for a new sensor). */
+function useMachineSensors(machineId: string): { sensors: MachineSensor[]; components: MachineComponent[]; failed: boolean } {
+  const [state, setState] = useState<{ id: string; sensors: MachineSensor[]; components: MachineComponent[]; failed: boolean }>({ id: "", sensors: [], components: [], failed: false });
   useEffect(() => {
     if (!machineId) return;
     const ctrl = new AbortController();
     fetch(`/api/catalog?machineId=${encodeURIComponent(machineId)}`, { signal: ctrl.signal, cache: "no-store" })
       .then((r) => r.json())
-      .then((body: { data?: { sensors?: MachineSensor[] } }) => {
+      .then((body: { data?: { sensors?: MachineSensor[]; subassemblies?: MachineComponent[] } }) => {
         const list = (body.data?.sensors ?? []).map((s) => ({ tag: s.tag, name: s.name, unit: s.unit }));
-        setState({ id: machineId, sensors: list, failed: !body.data });
+        const components = (body.data?.subassemblies ?? []).map((c) => ({ id: c.id, name: c.name }));
+        setState({ id: machineId, sensors: list, components, failed: !body.data });
       })
       .catch((err: Error) => {
-        if (err.name !== "AbortError") setState({ id: machineId, sensors: [], failed: true });
+        if (err.name !== "AbortError") setState({ id: machineId, sensors: [], components: [], failed: true });
       });
     return () => ctrl.abort();
   }, [machineId]);
-  return state.id === machineId ? state : { sensors: [], failed: false };
+  return state.id === machineId ? state : { sensors: [], components: [], failed: false };
 }
 
 export interface MapDialogProps {
@@ -92,8 +98,10 @@ export function MapDialog({ open, ix, target, onClose }: MapDialogProps) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [result, setResult] = useState<EdgeMapResult | null>(null);
-  const { sensors, failed } = useMachineSensors(machineId);
+  const { sensors, components, failed } = useMachineSensors(machineId);
   const existing = sensors.find((s) => s.tag === tag.trim());
+  const [subassemblyId, setSubassemblyId] = useState("");
+  const needsComponent = Boolean(machineId) && !existing && components.length > 1;
 
   const pickTag = (v: string) => {
     setTag(v);
@@ -108,10 +116,11 @@ export function MapDialog({ open, ix, target, onClose }: MapDialogProps) {
   const validate = (): boolean => {
     const e: Errors = {};
     if (!machineId) e.machineId = "Pick the machine this channel measures";
-    if (!tag.trim()) e.tag = "Tag is required";
-    if (!name.trim()) e.name = "Name is required";
+    if (!tag.trim()) e.tag = "Enter the sensor tag";
+    if (!name.trim()) e.name = "Enter a name";
     if (Number.isNaN(numberOrNull(alertLimit))) e.alertLimit = "Must be a number";
     if (Number.isNaN(numberOrNull(dangerLimit))) e.dangerLimit = "Must be a number";
+    if (needsComponent && !subassemblyId) e.subassemblyId = "Pick the component the new sensor sits on";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -137,6 +146,7 @@ export function MapDialog({ open, ix, target, onClose }: MapDialogProps) {
         alertLimit: numberOrNull(alertLimit),
         dangerLimit: numberOrNull(dangerLimit),
         ...(source ? {} : { sourceKind: kind }),
+        ...(needsComponent ? { subassemblyId } : {}),
       });
       setResult(res);
     } catch (err) {
@@ -173,9 +183,9 @@ export function MapDialog({ open, ix, target, onClose }: MapDialogProps) {
       busy={busy}
       onSubmit={submit}
       width={600}
-      title={p ? "Edit mapping" : "Map channel"}
+      title={p ? "Change machine link" : "Link channel to a machine"}
       subtitle={path}
-      footerStart={p && !result ? <DeleteConfirm label="Unmap" question={`Remove point ${p.tag}? The machine keeps its sensor.`} onDelete={unmap} disabled={busy} /> : undefined}
+      footerStart={p && !result ? <DeleteConfirm label="Remove link" question={`Remove reading point ${p.tag}? The machine keeps its sensor.`} onDelete={unmap} disabled={busy} /> : undefined}
       footer={
         result ? (
           <>
@@ -198,7 +208,7 @@ export function MapDialog({ open, ix, target, onClose }: MapDialogProps) {
               Cancel
             </PillButton>
             <PillButton type="submit" variant="primary" disabled={busy || !gw}>
-              {busy ? "Mapping…" : p ? "Save mapping" : "Map"}
+              {busy ? "Linking…" : p ? "Save link" : "Link"}
             </PillButton>
           </>
         )
@@ -215,13 +225,13 @@ export function MapDialog({ open, ix, target, onClose }: MapDialogProps) {
         {m?.cardType && <span className="ast-caption">Card type: {m.cardType}</span>}
       </div>
 
-      <FieldSection title="Machine signal">
+      <FieldSection title="Machine sensor">
         <FieldGrid>
           <Field label="Machine" required error={errors.machineId}>
             {(id, d) => <Select id={id} describedBy={d} value={machineId} onChange={setMachineId} disabled={busy || Boolean(result)} options={machineOptions(ix.registry).map((o) => (o.value ? o : { ...o, label: "Choose a machine" }))} />}
           </Field>
           <Field
-            label="Tag"
+            label="Sensor tag"
             required
             error={errors.tag}
             hint={
@@ -230,8 +240,8 @@ export function MapDialog({ open, ix, target, onClose }: MapDialogProps) {
                 : failed
                   ? "Could not load the machine's tags; a typed tag still works"
                   : existing
-                    ? `Links the existing sensor ${existing.tag}`
-                    : `New tag; it is added to the machine's ${sensors.length} sensors`
+                    ? `Links to the existing sensor ${existing.tag}`
+                    : `New sensor; it is added to the machine's ${sensors.length} sensors`
             }
           >
             {(id, d) => (
@@ -259,6 +269,20 @@ export function MapDialog({ open, ix, target, onClose }: MapDialogProps) {
               </>
             )}
           </Field>
+          {needsComponent && (
+            <Field label="Part of the machine" required error={errors.subassemblyId} hint="Where on the machine the new sensor measures">
+              {(id, d) => (
+                <Select
+                  id={id}
+                  describedBy={d}
+                  value={subassemblyId}
+                  onChange={setSubassemblyId}
+                  disabled={busy || Boolean(result)}
+                  options={[{ value: "", label: "Choose a part" }, ...components.map((c) => ({ value: c.id, label: c.name }))]}
+                />
+              )}
+            </Field>
+          )}
           <Field label="Name" required error={errors.name}>
             {(id, d) => <TextInput id={id} describedBy={d} value={name} onChange={setName} disabled={busy || Boolean(result)} />}
           </Field>
@@ -272,7 +296,7 @@ export function MapDialog({ open, ix, target, onClose }: MapDialogProps) {
             {(id, d) => <NumberInput id={id} describedBy={d} value={dangerLimit} onChange={setDangerLimit} step="any" disabled={busy || Boolean(result)} />}
           </Field>
           {!source && (
-            <Field label="Rack kind" hint={`${target.rack} is not registered yet; it is added as this kind`} wide>
+            <Field label="Device type" hint={`${target.rack} is not registered yet; it is added as this type`} wide>
               {(id, d) => (
                 <Select
                   id={id}

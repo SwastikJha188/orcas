@@ -3,11 +3,13 @@
 // broker settings from here; nothing about the plant network lives in .env.
 
 import { randomUUID } from "node:crypto";
-import type { PoolClient } from "pg";
-import pool, { initDatabase, query } from "@/server/db";
+import pool, { query } from "@/server/db";
+import { ensureMigrations } from "@/server/db/migrate";
 import { ULTRON_FORMAT, ULTRON_FORMAT_ID, checkFormat } from "@/lib/edge-format";
 import { isValidFilter } from "@/server/mqtt/topics";
 import { ensureDatabaseSeeded } from "@/server/services/industrial-service";
+import { latestReadings } from "@/server/monitoring/readings";
+import { dataQualityNow, measurementSeverityNow } from "@/server/monitoring/condition";
 import { buildCabinet, type CabinetRow, type MachineRackInfo } from "@/components/assets/rack-data";
 import {
   SOURCE_KINDS,
@@ -76,27 +78,18 @@ export interface RuntimeBrokerConfig {
 // so a module variable re-ran the whole schema on the first hit of every route.
 const globalForEdge = globalThis as typeof globalThis & { __orcasEdgeReady?: Promise<void> | null; __orcasEdgeSync?: Promise<void> };
 
-/** Creates the edge tables on first use and seeds them from the plant data once. */
+/**
+ * Waits for the schema migrations, then makes sure the built-in data format
+ * and the card rows implied by the points exist. The registry's contents come
+ * from the database (seeded from the reference fixture), never from code.
+ */
 export function ensureEdgeRegistry(): Promise<void> {
   globalForEdge.__orcasEdgeReady ??= (async () => {
-    const before = await query<{ t: string | null }>("SELECT to_regclass('public.edge_gateways')::text AS t");
-    const existed = before.rows[0]?.t !== null;
-    if (!existed) {
-      const init = await initDatabase();
-      if (!init.success) throw new Error(`edge schema: ${init.message}`);
-      await ensureBuiltInFormats();
-      await backfillCards();
-      await seedEdgeRegistry();
-      return;
-    }
-    // Tables exist: bring the schema up to date in the background, so no read
-    // waits for DDL (or for another server's locks) on a cold start.
+    await ensureMigrations();
     globalForEdge.__orcasEdgeSync = (async () => {
-      const init = await initDatabase();
-      if (!init.success) return;
       await ensureBuiltInFormats();
       await backfillCards();
-    })().catch((err) => console.error("[edge] background schema sync failed:", (err as Error).message));
+    })().catch((err) => console.error("[edge] background registry sync failed:", (err as Error).message));
   })().catch((err) => {
     globalForEdge.__orcasEdgeReady = null;
     throw err;
@@ -297,11 +290,11 @@ export async function getEdgeRegistry(): Promise<EdgeRegistry> {
   const [formats, brokers, gateways, sources, cards, points, sites, machines] = await Promise.all([
     query("SELECT * FROM edge_formats ORDER BY built_in DESC, name"),
     query("SELECT * FROM edge_brokers ORDER BY sort_order, created_at, name"),
-    query("SELECT * FROM edge_gateways ORDER BY sort_order, name"),
+    query("SELECT * FROM v_edge_gateways ORDER BY sort_order, name"),
     query("SELECT * FROM edge_sources ORDER BY sort_order, name"),
     query("SELECT * FROM edge_cards ORDER BY source_id, sort_order, length(code), code"),
     // Natural order: card "2" before "10".
-    query("SELECT * FROM edge_points ORDER BY source_id, length(slot), slot, length(channel), channel, tag"),
+    query("SELECT * FROM v_edge_points ORDER BY source_id, length(slot), slot, length(channel), channel, tag"),
     query("SELECT id, name, type, parent_id FROM hierarchy_nodes WHERE type <> 'machine' ORDER BY sort_order, name"),
     query("SELECT id, name FROM machines ORDER BY id"),
   ]);
@@ -348,7 +341,7 @@ export interface RuntimeGatewayConfig {
 export async function getRuntimeGateways(): Promise<RuntimeGatewayConfig[]> {
   await ensureEdgeRegistry();
   const [gateways, formats] = await Promise.all([
-    query("SELECT id, code, broker_id, format_id, topics FROM edge_gateways WHERE enabled = TRUE AND broker_id IS NOT NULL ORDER BY sort_order, name"),
+    query("SELECT id, code, broker_id, format_id, topics FROM v_edge_gateways WHERE enabled = TRUE AND broker_id IS NOT NULL ORDER BY sort_order, name"),
     query("SELECT * FROM edge_formats"),
   ]);
   const byId = new Map(formats.rows.map((r) => [String(r.id), toFormat(r)]));
@@ -532,6 +525,7 @@ function gatewayColumns(body: Record<string, unknown>, partial: boolean): Column
     name: r.text("name", { required: true }),
     broker_id: r.text("brokerId", { max: 64 }),
     format_id: r.text("formatId", { max: 64 }),
+    // Stored as rows of edge_gateway_topics (see writeExtras).
     topics: r.topicFilters("topics"),
     site_node_id: r.text("siteNodeId", { max: 64 }),
     location: r.text("location"),
@@ -542,7 +536,6 @@ function gatewayColumns(body: Record<string, unknown>, partial: boolean): Column
     notes: r.text("notes", { max: 2000 }),
   };
   r.done();
-  if (c.topics !== undefined) c.topics = JSON.stringify(c.topics);
   return c;
 }
 
@@ -595,6 +588,7 @@ function pointColumns(body: Record<string, unknown>, partial: boolean): Columns 
     sample_rate: r.text("sampleRate", { max: 128 }),
     alert_limit: r.num("alertLimit"),
     danger_limit: r.num("dangerLimit"),
+    // Resolved to measurement_id (see writeExtras); the point stores only the measurement.
     machine_id: r.text("machineId", { max: 64 }),
     signal_tag: r.text("signalTag", { max: 128 }),
     enabled: r.bool("enabled"),
@@ -645,14 +639,14 @@ function formatColumns(body: Record<string, unknown>, partial: boolean): Columns
 
 const KINDS: Record<
   EdgeKind,
-  { table: string; prefix: string; columns: (b: Record<string, unknown>, partial: boolean) => Columns; map: (r: Row) => unknown; label: string; timestamps: boolean }
+  { table: string; view?: string; prefix: string; columns: (b: Record<string, unknown>, partial: boolean) => Columns; map: (r: Row) => unknown; label: string; timestamps: boolean }
 > = {
   formats: { table: "edge_formats", prefix: "fmt", columns: formatColumns, map: toFormat, label: "Format", timestamps: true },
   brokers: { table: "edge_brokers", prefix: "brk", columns: brokerColumns, map: toBroker, label: "Broker", timestamps: true },
-  gateways: { table: "edge_gateways", prefix: "gw", columns: gatewayColumns, map: toGateway, label: "Gateway", timestamps: true },
+  gateways: { table: "edge_gateways", view: "v_edge_gateways", prefix: "gw", columns: gatewayColumns, map: toGateway, label: "Gateway", timestamps: true },
   sources: { table: "edge_sources", prefix: "src", columns: sourceColumns, map: toSource, label: "Source", timestamps: true },
   cards: { table: "edge_cards", prefix: "card", columns: cardColumns, map: toCard, label: "Card", timestamps: false },
-  points: { table: "edge_points", prefix: "pt", columns: pointColumns, map: toPoint, label: "Point", timestamps: false },
+  points: { table: "edge_points", view: "v_edge_points", prefix: "pt", columns: pointColumns, map: toPoint, label: "Point", timestamps: false },
 };
 
 export function isEdgeKind(kind: string): kind is EdgeKind {
@@ -682,18 +676,61 @@ function defined(cols: Columns): [string, unknown][] {
 }
 
 // ---------------------------------------------------------------- writes
+/** Columns that are not stored on the row itself: a gateway's topics, a point's machine + tag. */
+type Extras = { topics?: unknown; machineId?: string | null; signalTag?: string | null };
+
+function splitExtras(kind: EdgeKind, entries: [string, unknown][]): { entries: [string, unknown][]; extras: Extras } {
+  const extras: Extras = {};
+  const kept = entries.filter(([k, v]) => {
+    if (kind === "gateways" && k === "topics") return void (extras.topics = v), false;
+    if (kind === "points" && k === "machine_id") return void (extras.machineId = v as string | null), false;
+    if (kind === "points" && k === "signal_tag") return void (extras.signalTag = v as string | null), false;
+    return true;
+  });
+  return { entries: kept, extras };
+}
+
+/** Writes the extras to their own tables: topics rows, or the point's measurement link. */
+async function writeExtras(kind: EdgeKind, id: string, extras: Extras, db: { query: typeof query } = { query }): Promise<void> {
+  if (kind === "gateways" && extras.topics !== undefined) {
+    const filters = Array.isArray(extras.topics) ? (extras.topics as string[]) : [];
+    await db.query("DELETE FROM edge_gateway_topics WHERE gateway_id = $1", [id]);
+    for (const [i, f] of filters.entries()) await db.query("INSERT INTO edge_gateway_topics (gateway_id, filter, sort_order) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING", [id, f, i]);
+  }
+  if (kind === "points" && (extras.machineId !== undefined || extras.signalTag !== undefined)) {
+    let measurementId: string | null = null;
+    if (extras.machineId) {
+      const point = (await db.query<{ tag: string }>("SELECT tag FROM edge_points WHERE id = $1", [id])).rows[0];
+      const tag = extras.signalTag ?? point?.tag;
+      const m = (await db.query<{ measurement_id: string }>("SELECT measurement_id FROM v_measurement_context WHERE machine_id = $1 AND tag = $2", [extras.machineId, tag])).rows[0];
+      if (!m) throw new EdgeError("VALIDATION", `${extras.machineId} has no measurement ${tag}; map the channel to create one.`, 400);
+      measurementId = m.measurement_id;
+    }
+    await db.query("UPDATE edge_points SET measurement_id = $2 WHERE id = $1", [id, measurementId]);
+  }
+}
+
+async function readBack<K extends EdgeKind>(kind: K, id: string): Promise<EdgeEntityByKind[K]> {
+  const spec = KINDS[kind];
+  const res = await query(`SELECT * FROM ${spec.view ?? spec.table} WHERE id = $1`, [id]);
+  if (!res.rows[0]) throw new EdgeError("NOT_FOUND", `${spec.label} ${id} not found.`, 404);
+  return spec.map(res.rows[0]) as EdgeEntityByKind[K];
+}
+
 export async function createEdgeEntity<K extends EdgeKind>(kind: K, body: Record<string, unknown>): Promise<EdgeEntityByKind[K]> {
   await ensureEdgeRegistry();
   const spec = KINDS[kind];
-  const entries = defined(spec.columns(body, false));
+  const { entries, extras } = splitExtras(kind, defined(spec.columns(body, false)));
   const id = `${spec.prefix}-${randomUUID().slice(0, 8)}`;
   const names = ["id", ...entries.map(([k]) => k)];
   const values = [id, ...entries.map(([, v]) => v)];
-  const sql = `INSERT INTO ${spec.table} (${names.join(", ")}) VALUES (${names.map((_, i) => `$${i + 1}`).join(", ")}) RETURNING *`;
+  const sql = `INSERT INTO ${spec.table} (${names.join(", ")}) VALUES (${names.map((_, i) => `$${i + 1}`).join(", ")})`;
   try {
-    const res = await query(sql, values);
-    return spec.map(res.rows[0]) as EdgeEntityByKind[K];
+    await query(sql, values);
+    await writeExtras(kind, id, extras);
+    return await readBack(kind, id);
   } catch (err) {
+    if (err instanceof EdgeError) throw err;
     translate(err, kind);
   }
 }
@@ -706,14 +743,17 @@ export async function updateEdgeEntity<K extends EdgeKind>(kind: K, id: string, 
   await ensureEdgeRegistry();
   guardBuiltIn(kind, id);
   const spec = KINDS[kind];
-  const entries = defined(spec.columns(body, true));
+  const { entries, extras } = splitExtras(kind, defined(spec.columns(body, true)));
   if (spec.timestamps) entries.push(["updated_at", new Date()]);
-  if (entries.length === 0) throw new EdgeError("VALIDATION", "Nothing to update.", 400);
-  const sets = entries.map(([k], i) => `${k} = $${i + 2}`).join(", ");
+  if (entries.length === 0 && Object.keys(extras).length === 0) throw new EdgeError("VALIDATION", "Nothing to update.", 400);
   try {
-    const res = await query(`UPDATE ${spec.table} SET ${sets} WHERE id = $1 RETURNING *`, [id, ...entries.map(([, v]) => v)]);
-    if (!res.rows[0]) throw new EdgeError("NOT_FOUND", `${spec.label} ${id} not found.`, 404);
-    return spec.map(res.rows[0]) as EdgeEntityByKind[K];
+    if (entries.length) {
+      const sets = entries.map(([k], i) => `${k} = $${i + 2}`).join(", ");
+      const res = await query(`UPDATE ${spec.table} SET ${sets} WHERE id = $1`, [id, ...entries.map(([, v]) => v)]);
+      if (!res.rowCount) throw new EdgeError("NOT_FOUND", `${spec.label} ${id} not found.`, 404);
+    }
+    await writeExtras(kind, id, extras);
+    return await readBack(kind, id);
   } catch (err) {
     if (err instanceof EdgeError) throw err;
     translate(err, kind);
@@ -750,6 +790,7 @@ export async function mapEdgeChannel(body: Record<string, unknown>): Promise<Edg
     alertLimit: r.num("alertLimit"),
     dangerLimit: r.num("dangerLimit"),
     sourceKind: r.oneOf("sourceKind", SOURCE_KINDS),
+    subassemblyId: r.text("subassemblyId", { max: 64 }),
   } as Partial<Record<keyof EdgeMapInput, unknown>>;
   r.done();
   const v = input as unknown as EdgeMapInput;
@@ -780,77 +821,92 @@ export async function mapEdgeChannel(body: Record<string, unknown>): Promise<Edg
       [`card-${randomUUID().slice(0, 8)}`, src.id, v.card],
     );
     const existing = (await client.query("SELECT * FROM edge_points WHERE source_id = $1 AND slot = $2 AND channel = $3", [src.id, v.card, v.channel])).rows[0];
-    const cols = [v.tag, v.name, v.unit, v.alertLimit, v.dangerLimit, v.machineId, v.tag];
+    const cols = [v.tag, v.name, v.unit, v.alertLimit, v.dangerLimit];
     const point = existing
       ? (
           await client.query(
-            `UPDATE edge_points SET tag = $2, name = $3, unit = $4, alert_limit = $5, danger_limit = $6, machine_id = $7, signal_tag = $8, enabled = TRUE
+            `UPDATE edge_points SET tag = $2, name = $3, unit = $4, alert_limit = $5, danger_limit = $6, enabled = TRUE
              WHERE id = $1 RETURNING *`,
             [existing.id, ...cols],
           )
         ).rows[0]
       : (
           await client.query(
-            `INSERT INTO edge_points (id, source_id, slot, channel, tag, name, unit, alert_limit, danger_limit, machine_id, signal_tag, data_type, enabled)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'float', TRUE) RETURNING *`,
+            `INSERT INTO edge_points (id, source_id, slot, channel, tag, name, unit, alert_limit, danger_limit, data_type, enabled)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'float', TRUE) RETURNING *`,
             [`pt-${randomUUID().slice(0, 8)}`, src.id, v.card, v.channel, ...cols],
           )
         ).rows[0];
 
-    // The machine's sensor list. An existing tag is linked as it is; a new one
-    // is added with the acquisition path filled in and marked as edge-mapped.
-    const known = (await client.query("SELECT id FROM mapped_signals WHERE machine_id = $1 AND tag = $2", [v.machineId, v.tag])).rows[0];
+    // The machine's measurement. An existing tag is linked as it is; a new one
+    // is created on the chosen component, with its unit, its limit and the
+    // acquisition path of this channel.
+    const known = (
+      await client.query<{ measurement_id: string }>("SELECT measurement_id FROM v_measurement_context WHERE machine_id = $1 AND tag = $2", [v.machineId, v.tag])
+    ).rows[0];
+    let measurementId = known?.measurement_id ?? null;
     let signalCreated = false;
-    if (!known) {
-      const fmtLimit = (n: number | null) => (n === null ? null : String(n));
-      const sensorDefId = `sdef-${v.tag.toLowerCase().replace(/[^a-z0-9_-]/g, "-")}`;
+    if (!measurementId) {
+      const subs = (
+        await client.query<{ id: string }>(
+          "SELECT sa.id FROM machine_subassemblies sa JOIN machine_systems sy ON sy.id = sa.machine_system_ref_id WHERE sy.machine_id = $1",
+          [v.machineId],
+        )
+      ).rows.map((x) => x.id);
+      const subId = v.subassemblyId ?? (subs.length === 1 ? subs[0] : null);
+      if (!subId) throw new EdgeError("VALIDATION", subs.length ? "Choose the component this new sensor sits on." : `${v.machineId} has no components yet; add one before mapping new sensors.`, 400);
+      if (!subs.includes(subId)) throw new EdgeError("VALIDATION", `Component ${subId} is not part of ${v.machineId}.`, 400);
+      const unit = v.unit?.trim() || null;
+      let unitId: string | null = null;
+      let quantity = "state";
+      if (unit) {
+        unitId = (await client.query<{ id: string }>("SELECT id FROM units WHERE symbol = $1", [unit])).rows[0]?.id ?? null;
+        if (!unitId) {
+          unitId = `u-${randomUUID().slice(0, 8)}`;
+          await client.query("INSERT INTO units (id, symbol, name) VALUES ($1, $2, $2)", [unitId, unit]);
+        }
+        // The quantity most measurements with this unit describe; a new unit is an unclassified ratio until edited.
+        quantity =
+          (await client.query<{ quantity_id: string }>("SELECT quantity_id FROM measurements WHERE unit_id = $1 GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1", [unitId])).rows[0]
+            ?.quantity_id ?? "ratio";
+      }
+      const pointId = (
+        await client.query<{ id: number }>(
+          `INSERT INTO measurement_points (subassembly_id, code, location) VALUES ($1, $2, $3)
+           ON CONFLICT (subassembly_id, code) DO UPDATE SET code = EXCLUDED.code RETURNING id`,
+          [subId, v.tag, `${gw.code} › ${v.rack} › card ${v.card} · ch ${v.channel}`],
+        )
+      ).rows[0].id;
+      measurementId = `${v.machineId}-${v.tag}`;
       await client.query(
-        `INSERT INTO sensor_definitions (
-           id, name, instrument, sensor_type, unit, sample_rate, source,
-           warning_threshold, alarm_threshold, warning_val, alarm_val
-         )
-         VALUES ($1, $2, $3, $4, $5, $6, 'Edge', $7, $8, $9, $10)
-         ON CONFLICT (id) DO UPDATE SET
-           name = EXCLUDED.name,
-           unit = EXCLUDED.unit,
-           warning_threshold = COALESCE(EXCLUDED.warning_threshold, sensor_definitions.warning_threshold),
-           alarm_threshold = COALESCE(EXCLUDED.alarm_threshold, sensor_definitions.alarm_threshold),
-           warning_val = COALESCE(EXCLUDED.warning_val, sensor_definitions.warning_val),
-           alarm_val = COALESCE(EXCLUDED.alarm_val, sensor_definitions.alarm_val)`,
-        [
-          sensorDefId,
-          v.name,
-          "Edge-mapped channel",
-          "MQTT",
-          v.unit ?? "",
-          "As published",
-          fmtLimit(v.alertLimit),
-          fmtLimit(v.dangerLimit),
-          v.alertLimit,
-          v.dangerLimit,
-        ],
+        `INSERT INTO measurements (id, point_id, tag, name, quantity_id, unit_id, statistic_id, origin_id, value_kind, decimals, acquisition_text)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'online', $8, 2, 'As published by the gateway')`,
+        [measurementId, pointId, v.tag, v.name, quantity, unitId, unit ? "instantaneous" : "state", unit ? "analog" : "state"],
       );
+      await client.query("INSERT INTO measurement_acquisition (measurement_id, rack, card, address) VALUES ($1, $2, $3, $4)", [
+        measurementId,
+        `${gw.code} › ${v.rack}`,
+        `Card ${v.card} · Ch ${v.channel}`,
+        `${gw.code}/${v.rack}/${v.card}/${v.channel}`,
+      ]);
+      if (v.alertLimit !== null && v.dangerLimit !== null) {
+        await client.query(
+          "INSERT INTO measurement_limits (measurement_id, kind_id, warn_value, alarm_value, source) VALUES ($1, 'hi', $2, $3, 'Entered when the channel was mapped')",
+          [measurementId, v.alertLimit, v.dangerLimit],
+        );
+      }
       await client.query(
-        `INSERT INTO mapped_signals (
-           id, machine_id, sensor_def_id, tag, edge_rack, card_slot, modbus_address,
-           current_value, quality, status
-         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, '—', 'Awaiting data', 'Normal')`,
-        [
-          `sig-${randomUUID().slice(0, 8)}`,
-          v.machineId,
-          sensorDefId,
-          v.tag,
-          `${gw.code} › ${v.rack}`,
-          `Card ${v.card} · Ch ${v.channel}`,
-          `${gw.code}/${v.rack}/${v.card}/${v.channel}`,
-        ],
+        `INSERT INTO machine_events (machine_id, event_type_id, occurred_at, measurement_id, title, description, source)
+         VALUES ($1, 'measurement_change', NOW(), $2, $3, $4, 'Edge mapping')`,
+        [v.machineId, measurementId, `New measurement ${v.tag}`, `Mapped from ${gw.code} › ${v.rack} › card ${v.card} · ch ${v.channel}`],
       );
       signalCreated = true;
     }
+    await client.query("UPDATE edge_points SET measurement_id = $2 WHERE id = $1", [point.id, measurementId]);
+    const mapped = (await client.query("SELECT * FROM v_edge_points WHERE id = $1", [point.id])).rows[0];
 
     await client.query("COMMIT");
-    return { source: toSource(src), point: toPoint(point), sourceCreated, signalCreated };
+    return { source: toSource(src), point: toPoint(mapped), sourceCreated, signalCreated };
   } catch (err) {
     await client.query("ROLLBACK").catch(() => undefined);
     if (err instanceof EdgeError) throw err;
@@ -865,9 +921,9 @@ export async function getMachinePointRows(machineId: string) {
   await ensureEdgeRegistry();
   const res = await query(
     `SELECT p.*, row_to_json(s.*) AS source_row, row_to_json(g.*) AS gateway_row, row_to_json(c.*) AS card_row, b.name AS broker_name
-       FROM edge_points p
+       FROM v_edge_points p
        JOIN edge_sources s ON s.id = p.source_id
-       JOIN edge_gateways g ON g.id = s.gateway_id
+       JOIN v_edge_gateways g ON g.id = s.gateway_id
        LEFT JOIN edge_cards c ON c.source_id = p.source_id AND c.code = p.slot
        LEFT JOIN edge_brokers b ON b.id = g.broker_id
       WHERE p.machine_id = $1 OR (p.machine_id IS NULL AND s.machine_id = $1)
@@ -897,17 +953,24 @@ export async function getMachineCabinet(machineId: string): Promise<MachineRackI
             s.id AS source_id, s.code AS source_code, s.name AS source_name, s.kind, s.protocol, s.sort_order,
             g.code AS gateway_code, g.name AS gateway_name, g.sort_order AS gateway_order,
             c.card_type, c.model AS card_model, c.notes AS card_notes, c.channel_count,
-            sd.instrument, sd.sensor_type, m.current_value, m.quality, m.status, sd.normal_threshold, sd.component
-       FROM edge_points p
+            p.measurement_id, it.name AS instrument, ms.sensor_type, ms.normal_text AS normal_threshold, mc.subassembly_name AS component
+       FROM v_edge_points p
        JOIN edge_sources s ON s.id = p.source_id
        JOIN edge_gateways g ON g.id = s.gateway_id
        LEFT JOIN edge_cards c ON c.source_id = p.source_id AND c.code = p.slot
-       LEFT JOIN mapped_signals m ON m.machine_id = $1 AND m.tag = COALESCE(p.signal_tag, p.tag)
-       LEFT JOIN sensor_definitions sd ON sd.id = m.sensor_def_id
+       LEFT JOIN measurements ms ON ms.id = p.measurement_id
+       LEFT JOIN v_measurement_context mc ON mc.measurement_id = p.measurement_id
+       LEFT JOIN instrument_types it ON it.id = ms.instrument_type_id
       WHERE p.machine_id = $1 OR (p.machine_id IS NULL AND s.machine_id = $1)`,
     [machineId],
   );
   if (res.rows.length === 0) return null;
+  const ids = res.rows.map((r) => r.measurement_id).filter(Boolean) as string[];
+  const [latest, severity, quality] = await Promise.all([
+    latestReadings({ measurementIds: ids }),
+    measurementSeverityNow([machineId]),
+    dataQualityNow([machineId], 1),
+  ]);
   const sourceOrder = [...new Map(res.rows.map((r) => [String(r.source_id), r])).values()].sort(
     (a, b) => Number(a.gateway_order) - Number(b.gateway_order) || Number(a.sort_order) - Number(b.sort_order) || String(a.source_code).localeCompare(String(b.source_code)),
   );
@@ -938,13 +1001,16 @@ export async function getMachineCabinet(machineId: string): Promise<MachineRackI
       sensorTypeText: text(r.sensor_type),
       sampleRate: text(r.sample_rate),
       address: text(r.address),
-      quality: text(r.quality),
+      quality: r.measurement_id && quality.get(String(r.measurement_id)) ? `${quality.get(String(r.measurement_id))!.usablePct}% Good` : "No data",
       component: text(r.component),
       normalRange: text(r.normal_threshold),
       alertLimit: numOrNull(r.alert_limit),
       dangerLimit: numOrNull(r.danger_limit),
-      currentValue: text(r.current_value),
-      status: text(r.status) || "Normal",
+      currentValue: (() => {
+        const l = r.measurement_id ? latest.get(String(r.measurement_id)) : undefined;
+        return !l ? "No data" : (l.state ?? (l.value === null ? "—" : String(l.value)));
+      })(),
+      status: (r.measurement_id && severity.get(String(r.measurement_id))) || "Normal",
     };
   });
   return buildCabinet(rows, "edge-registry");
@@ -1089,18 +1155,16 @@ export async function commissionGateway(body: Record<string, unknown>): Promise<
     await client.query("BEGIN");
     let gwRow: Row;
     if (gatewayIdIn) {
-      const found = (await client.query("SELECT * FROM edge_gateways WHERE id = $1", [gatewayIdIn])).rows[0];
+      const found = (await client.query("SELECT * FROM v_edge_gateways WHERE id = $1", [gatewayIdIn])).rows[0];
       if (!found) throw new EdgeError("NOT_FOUND", `Gateway ${gatewayIdIn} not found.`, 404);
       gwRow = found;
     } else {
-      const entries = defined(gwCols!);
+      const { entries, extras } = splitExtras("gateways", defined(gwCols!));
       const names = ["id", ...entries.map(([k]) => k)];
-      gwRow = (
-        await client.query(
-          `INSERT INTO edge_gateways (${names.join(", ")}) VALUES (${names.map((_, i) => `$${i + 1}`).join(", ")}) RETURNING *`,
-          [`gw-${randomUUID().slice(0, 8)}`, ...entries.map(([, v]) => v)],
-        )
-      ).rows[0];
+      const newId = `gw-${randomUUID().slice(0, 8)}`;
+      await client.query(`INSERT INTO edge_gateways (${names.join(", ")}) VALUES (${names.map((_, i) => `$${i + 1}`).join(", ")})`, [newId, ...entries.map(([, v]) => v)]);
+      await writeExtras("gateways", newId, extras, client as unknown as { query: typeof query });
+      gwRow = (await client.query("SELECT * FROM v_edge_gateways WHERE id = $1", [newId])).rows[0];
     }
 
     for (const [order, { cols, cards }] of sources.entries()) {
@@ -1170,278 +1234,5 @@ export async function brokerConfigForTest(body: Record<string, unknown>, id: str
 // Built from the plant data already in the database, so the registry starts
 // as the network that feeds the existing machines. Nothing here is invented:
 // sources and points come from the mapped signals' acquisition cards.
-
-interface SignalRow {
-  machine_id: string;
-  tag: string;
-  name: string;
-  card_slot: string;
-  modbus_address: string | null;
-  unit: string | null;
-  sample_rate: string | null;
-  warning_val: string | null;
-  alarm_val: string | null;
-  source: string | null;
-}
-
-const CARD_KIND: { test: RegExp; kind: SourceKind; code: string; name: string; protocol: string; model: string | null }[] = [
-  { test: /^DAQ-/, kind: "rack", code: "DAQ-R1", name: "Condition monitoring DAQ rack", protocol: "Backplane", model: "ULTRON 19\" Eurocard DAQ chassis" },
-  { test: /^PLC-/, kind: "plc", code: "PLC-01", name: "Kiln drive & auxiliaries PLC", protocol: "OPC UA", model: null },
-  { test: /^DCS-/, kind: "dcs", code: "DCS-01", name: "Pyro line DCS", protocol: "OPC UA", model: null },
-  { test: /^SCANNER-/, kind: "analyzer", code: "SCAN-01", name: "Kiln shell scanner network", protocol: "Modbus TCP", model: null },
-];
-
-function limit(value: string | null, other: string | null): number | null {
-  if (value === null) return null;
-  const n = Number(value);
-  return n === 0 && Number(other ?? 0) === 0 ? null : n;
-}
-
-/** Machines whose acquisition network is seeded into the registry. */
-const SEEDED_MACHINES = ["KLN-01"];
-
-function slotOf(card: string): number {
-  const m = /slot\s*0*(\d+)/i.exec(card);
-  return m ? Number(m[1]) : 1;
-}
-
-/** "PLC-RTD-01 (Slot 04)" → "PLC-RTD-01": the acquisition card (module family) a signal is wired to. */
-function moduleOf(card: string): string {
-  return card.replace(/\s*\(.*\)\s*$/, "").trim() || card;
-}
-
-/** Readable card type by the family's function segment ("PLC-RTD-01" → RTD). */
-const CARD_TYPE: [RegExp, string][] = [
-  [/^SCANNER-/, "Scanner network"],
-  [/-IEPE-/, "IEPE vibration"],
-  [/-RTD-/, "RTD temperature"],
-  [/-HART-/, "4–20 mA HART"],
-  [/-DI-/, "Digital inputs"],
-  [/-VFD-/, "VFD data"],
-  [/-TC-/, "Thermocouple"],
-  [/-LVDT-/, "LVDT"],
-  [/-FLOW-/, "Flow"],
-  [/-GAS-/, "Gas analyser"],
-  [/-PYRO-/, "Pyrometer"],
-];
-
-function cardTypeOf(family: string): string | null {
-  return CARD_TYPE.find(([re]) => re.test(family))?.[1] ?? null;
-}
-
-/**
- * The card layout of one source: one card per module family, in documented
- * slot order. The card code is its chassis position (1…n): the ULTRON contract
- * carries slots as numbers, so the family id ("PLC-RTD-01") is the card model
- * and the documented slot ("Slot 04") its note. Channels are numbered 1…n in
- * tag order.
- */
-function layoutCards<T extends { card_slot: string; tag: string }>(signals: T[]) {
-  const families = new Map<string, T[]>();
-  for (const s of signals) {
-    const fam = moduleOf(s.card_slot);
-    families.set(fam, [...(families.get(fam) ?? []), s]);
-  }
-  return [...families.entries()]
-    .sort(([a, as], [b, bs]) => slotOf(as[0].card_slot) - slotOf(bs[0].card_slot) || (a < b ? -1 : a > b ? 1 : 0))
-    .map(([family, list], i) => ({
-      code: String(i + 1),
-      family,
-      slotLabel: `Slot ${String(slotOf(list[0].card_slot)).padStart(2, "0")}`,
-      channels: [...list].sort((a, b) => (a.tag < b.tag ? -1 : a.tag > b.tag ? 1 : 0)),
-    }));
-}
-
-async function insert(client: PoolClient, table: string, row: Columns) {
-  const entries = Object.entries(row);
-  await client.query(
-    `INSERT INTO ${table} (${entries.map(([k]) => k).join(", ")}) VALUES (${entries.map((_, i) => `$${i + 1}`).join(", ")})`,
-    entries.map(([, v]) => v),
-  );
-}
-
-/** Rebuilds the registry from the plant data. Called on first use and by a full reseed. */
-export async function seedEdgeRegistry(): Promise<{ brokers: number; gateways: number; sources: number; points: number }> {
-  const client = await pool.connect();
-  const counts = { brokers: 0, gateways: 0, sources: 0, points: 0 };
-  try {
-    await client.query("BEGIN");
-    await client.query("DELETE FROM edge_points; DELETE FROM edge_sources; DELETE FROM edge_gateways; DELETE FROM edge_brokers;");
-
-    // Brokers. A broker formerly set in .env is carried over once, enabled.
-    const envHost = (process.env.MQTT_HOST ?? "").trim();
-    const brokers: Columns[] = [];
-    if (envHost) {
-      const tls = !["0", "false", "no", "off"].includes((process.env.MQTT_USE_TLS ?? "true").trim().toLowerCase());
-      brokers.push({
-        id: "brk-plant",
-        name: "Plant broker",
-        host: envHost,
-        port: Number(process.env.MQTT_PORT) || (tls ? 8883 : 1883),
-        tls,
-        protocol_version: process.env.MQTT_PROTOCOL_VERSION === "4" ? 4 : process.env.MQTT_PROTOCOL_VERSION === "5" ? 5 : null,
-        username: process.env.MQTT_USERNAME || null,
-        password: process.env.MQTT_PASSWORD || null,
-        enabled: true,
-        notes: "Imported from the former MQTT_* environment settings.",
-        sort_order: 0,
-      });
-    }
-    const localIsEnv = envHost === "127.0.0.1" || envHost === "localhost";
-    if (!localIsEnv) {
-      brokers.push({
-        id: "brk-local",
-        name: "Local development broker",
-        host: "127.0.0.1",
-        port: 1883,
-        tls: false,
-        protocol_version: null,
-        // Off until someone runs `npm run mqtt:broker`; enabling it is one switch.
-        enabled: false,
-        notes: "npm run mqtt:broker, then npm run mqtt:sim to publish the registry's gateways.",
-        sort_order: 1,
-      });
-    }
-    for (const b of brokers) await insert(client, "edge_brokers", b);
-    counts.brokers = brokers.length;
-    const defaultBroker = String(brokers[0].id);
-
-    // Where each machine sits: its area (or plant) node.
-    const nodes = (await client.query("SELECT id, name, type, parent_id, machine_id FROM hierarchy_nodes")).rows as Row[];
-    const byId = new Map(nodes.map((n) => [String(n.id), n]));
-    const areaOf = (machineId: string): Row | null => {
-      let n = nodes.find((x) => x.type === "machine" && x.machine_id === machineId) ?? null;
-      while (n && n.type !== "area" && n.parent_id) n = byId.get(String(n.parent_id)) ?? null;
-      return n && n.type !== "machine" ? n : null;
-    };
-
-    const racks = (await client.query("SELECT id, machine_id, name, cabinet_location, ip_address, firmware FROM rack_chassis")).rows as Row[];
-    const signals = (
-      await client.query<SignalRow>(
-        `SELECT m.machine_id, m.tag, sd.name, m.card_slot, m.modbus_address, sd.unit, sd.sample_rate,
-                sd.warning_val::text AS warning_val, sd.alarm_val::text AS alarm_val, sd.source
-           FROM mapped_signals m
-           JOIN sensor_definitions sd ON sd.id = m.sensor_def_id
-          WHERE sd.source IS DISTINCT FROM 'Calculated' AND m.machine_id = ANY($1)
-          ORDER BY m.machine_id, m.tag`,
-        // Only the machines with live acquisition: the KLN-01 demonstration.
-        // Other machines' gateways are added by connecting them (Devices › Hierarchy).
-        [SEEDED_MACHINES],
-      )
-    ).rows;
-
-    // One gateway per area. An area that already has an acquisition cabinet on
-    // record (rack_chassis) takes its identity, address and firmware.
-    const gatewayByArea = new Map<string, string>();
-    let gwOrder = 0;
-    const gatewayFor = async (machineId: string): Promise<string> => {
-      const area = areaOf(machineId);
-      const areaId = area ? String(area.id) : "unassigned";
-      const existing = gatewayByArea.get(areaId);
-      if (existing) return existing;
-      const machinesHere = new Set(nodes.filter((n) => n.type === "machine" && areaOf(String(n.machine_id))?.id === area?.id).map((n) => String(n.machine_id)));
-      const cabinet = racks.find((r) => machinesHere.has(String(r.machine_id)));
-      const id = `gw-${areaId.replace(/^area-/, "")}`;
-      await insert(client, "edge_gateways", {
-        id,
-        code: cabinet ? String(cabinet.id) : `ULTRON-EDGE-${areaId.replace(/^area-/, "").toUpperCase()}`,
-        name: cabinet ? String(cabinet.name) : `${area ? String(area.name) : "Unassigned"} edge gateway`,
-        broker_id: defaultBroker,
-        site_node_id: area ? String(area.id) : null,
-        location: cabinet ? String(cabinet.cabinet_location) : null,
-        ip_address: cabinet ? String(cabinet.ip_address) : null,
-        model: null,
-        firmware: cabinet ? String(cabinet.firmware) : null,
-        enabled: true,
-        sort_order: gwOrder++,
-      });
-      counts.gateways += 1;
-      gatewayByArea.set(areaId, id);
-      return id;
-    };
-
-    // Sources: KLN-01's cards name their family (DAQ / PLC / DCS / scanner);
-    // other machines carry their cards in their own DAQ rack. Inside a source,
-    // one card per module family, its channels the family's signals.
-    const bySource = new Map<string, { machineId: string; code: string; family: (typeof CARD_KIND)[number] | undefined; signals: SignalRow[] }>();
-    for (const s of signals) {
-      const family = CARD_KIND.find((c) => c.test.test(s.card_slot));
-      const code = family ? family.code : `${s.machine_id}-R1`;
-      const key = `${s.machine_id}\u0000${code}`;
-      const entry = bySource.get(key) ?? { machineId: s.machine_id, code, family, signals: [] };
-      entry.signals.push(s);
-      bySource.set(key, entry);
-    }
-    const sourceIds = new Map<string, string>();
-    const sourcesInOrder = [...bySource.values()].sort((a, b) => a.machineId.localeCompare(b.machineId) || a.code.localeCompare(b.code));
-    for (const { machineId, code, family, signals: list } of sourcesInOrder) {
-      const gatewayId = await gatewayFor(machineId);
-      const key = `${gatewayId}\u0000${code}`;
-      let sourceId = sourceIds.get(key);
-      if (!sourceId) {
-        sourceId = `src-${randomUUID().slice(0, 8)}`;
-        await insert(client, "edge_sources", {
-          id: sourceId,
-          gateway_id: gatewayId,
-          code,
-          name: family ? family.name : `${machineId} DAQ rack`,
-          kind: family?.kind ?? "rack",
-          protocol: family?.protocol ?? "Backplane",
-          endpoint: null,
-          location: null,
-          machine_id: machineId,
-          model: family ? family.model : "ULTRON 19\" Eurocard DAQ chassis",
-          enabled: true,
-          sort_order: sourceIds.size,
-        });
-        sourceIds.set(key, sourceId);
-        counts.sources += 1;
-      }
-      for (const card of layoutCards(list)) {
-        await insert(client, "edge_cards", {
-          id: `card-${randomUUID().slice(0, 8)}`,
-          source_id: sourceId,
-          code: card.code,
-          card_type: cardTypeOf(card.family),
-          channel_count: card.channels.length,
-          model: card.family,
-          notes: card.slotLabel,
-          enabled: true,
-          sort_order: Number(card.code),
-        });
-        for (const [i, s] of card.channels.entries()) {
-          await insert(client, "edge_points", {
-            id: `pt-${randomUUID().slice(0, 8)}`,
-            source_id: sourceId,
-            tag: s.tag,
-            name: s.name,
-            slot: card.code,
-            channel: String(i + 1),
-            address: s.modbus_address,
-            unit: s.unit,
-            data_type: "float",
-            sample_rate: s.sample_rate,
-            // 0 / 0 in the signal catalogue means "no limit set", not a limit at zero.
-            alert_limit: limit(s.warning_val, s.alarm_val),
-            danger_limit: limit(s.alarm_val, s.warning_val),
-            machine_id: s.machine_id,
-            signal_tag: s.tag,
-            enabled: true,
-          });
-          counts.points += 1;
-        }
-      }
-    }
-
-    await backfillCards(client as unknown as { query: typeof query });
-    await client.query("COMMIT");
-    return counts;
-  } catch (err) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    throw err;
-  } finally {
-    client.release();
-  }
-}
 
 export type { EdgeBrokerInput, EdgeGatewayInput, EdgeSourceInput, EdgePointInput };

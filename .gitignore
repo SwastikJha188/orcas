@@ -9,3 +9,9 @@ out/
 .DS_Store
 .claude/settings.local.json
 .vercel
+
+# graphify knowledge graph (rebuilt locally)
+graphify-out/
+
+# onboarding processor work folders (uploads, extracts, drawings; results live in the DB)
+onboarding-work/

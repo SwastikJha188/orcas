@@ -203,7 +203,7 @@ export function HierarchyTree({ roots, lookup, plantId, onPlantChange, selectedI
     <aside className="assets-industrial-sidebar ast-sidebar hx-sidebar" aria-label="Asset hierarchy">
       <div className="ast-side-head" ref={headRef}>
         <div className="hx-side-title">
-          <span>Asset hierarchy</span>
+          <span>Plant equipment</span>
           <span className="ast-num">
             {roots.length} {roots.length === 1 ? "plant" : "plants"}
           </span>
@@ -239,14 +239,14 @@ export function HierarchyTree({ roots, lookup, plantId, onPlantChange, selectedI
         <SearchPill
           value={query}
           onChange={setQuery}
-          placeholder="Filter areas, groups, machines"
-          label="Filter asset hierarchy"
+          placeholder="Search areas, sections and machines"
+          label="Search the plant's equipment"
         />
       </div>
 
       {!plant ? (
         <div className="ast-tree-empty hx-tree-empty">
-          <strong>No plants configured</strong>
+          <strong>No plant set up yet</strong>
         </div>
       ) : rows.length === 0 ? (
         <div className="ast-tree-empty hx-tree-empty">
@@ -254,7 +254,7 @@ export function HierarchyTree({ roots, lookup, plantId, onPlantChange, selectedI
           Nothing matches “{query.trim()}”.
         </div>
       ) : (
-        <div className="ast-tree hx-tree" role="tree" aria-label={`${nodeLabel(plant)} hierarchy`} onKeyDown={onKeyDown}>
+        <div className="ast-tree hx-tree" role="tree" aria-label={`${nodeLabel(plant)} equipment`} onKeyDown={onKeyDown}>
           {rows.map((row) => {
             const { node } = row;
             const selected = node.id === selectedId;
@@ -277,7 +277,7 @@ export function HierarchyTree({ roots, lookup, plantId, onPlantChange, selectedI
                 aria-level={row.depth + 1}
                 aria-expanded={row.expandable ? row.expanded : undefined}
                 aria-selected={selected}
-                aria-label={`${label}${own ? `, ${own.status}, health ${own.health} %` : ""}${mark === "ring" ? `, contains ${tone === "bad" ? "critical" : tone === "warn" ? "advisory" : "standby"} machines` : ""}`}
+                aria-label={`${label}${own ? `, ${own.status}, ${own.health === null ? "no health score yet" : `health ${own.health} %`}` : ""}${mark === "ring" ? `, contains machines that are ${tone === "bad" ? "Critical" : tone === "warn" ? "on Alert" : "on standby"}` : ""}`}
                 tabIndex={node.id === activeFocus ? 0 : -1}
                 className="ast-tree-row hx-row"
                 data-depth={row.depth}

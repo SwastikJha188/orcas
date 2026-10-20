@@ -4,90 +4,63 @@
  */
 import pool from "@/server/db";
 import { HEALTH_STEP_MS } from "@/lib/health-recorder";
+import { ensureMigrations } from "@/server/db/migrate";
+import { setting } from "@/server/monitoring/settings";
 
-/** Health samples older than this are pruned. */
-export const SAMPLE_KEEP_MS = 24 * 60 * 60_000;
-
-const g = globalThis as typeof globalThis & { __ultronPlantTables?: Promise<void> };
-
-/** Creates the plant tables once per process. */
+/** The plant tables are created by the schema migrations (001, 005, 007); this waits for them. */
 export function ensurePlantTables(): Promise<void> {
-  g.__ultronPlantTables ??= pool
-    .query(
-      `CREATE TABLE IF NOT EXISTS plant_health_samples (
-         machine_id VARCHAR(64) NOT NULL,
-         t TIMESTAMPTZ NOT NULL,
-         health REAL NOT NULL,
-         PRIMARY KEY (machine_id, t)
-       );
-       CREATE INDEX IF NOT EXISTS idx_plant_health_samples_t ON plant_health_samples(t);
-       CREATE TABLE IF NOT EXISTS plant_state (
-         id VARCHAR(32) PRIMARY KEY,
-         wall_ms BIGINT NOT NULL,
-         body BYTEA NOT NULL,
-         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-       );
-       CREATE TABLE IF NOT EXISTS plant_runner_lease (
-         id VARCHAR(32) PRIMARY KEY,
-         holder VARCHAR(128) NOT NULL,
-         expires_at TIMESTAMPTZ NOT NULL
-       );`,
-    )
-    .then(() => undefined)
-    .catch((err) => {
-      g.__ultronPlantTables = undefined;
-      throw err;
-    });
-  return g.__ultronPlantTables;
+  return ensureMigrations().then(() => undefined);
 }
 
-/** Takes or renews the runner lease for `holder`; true while it holds it. */
-export async function holdLease(holder: string, ttlMs: number): Promise<boolean> {
+/**
+ * Takes or renews the runner lease for `holder`; true while it holds it. A
+ * runner of a newer `version` takes the lease from an older one at once.
+ */
+export async function holdLease(holder: string, ttlMs: number, version: number): Promise<boolean> {
   const res = await pool.query(
-    `INSERT INTO plant_runner_lease (id, holder, expires_at) VALUES ('plant', $1, NOW() + ($2 || ' milliseconds')::interval)
-     ON CONFLICT (id) DO UPDATE SET holder = EXCLUDED.holder, expires_at = EXCLUDED.expires_at
-     WHERE plant_runner_lease.holder = EXCLUDED.holder OR plant_runner_lease.expires_at < NOW()
+    `INSERT INTO plant_runner_lease (id, holder, expires_at, version) VALUES ('plant', $1, NOW() + ($2 || ' milliseconds')::interval, $3)
+     ON CONFLICT (id) DO UPDATE SET holder = EXCLUDED.holder, expires_at = EXCLUDED.expires_at, version = EXCLUDED.version
+     WHERE plant_runner_lease.holder = EXCLUDED.holder OR plant_runner_lease.expires_at < NOW() OR plant_runner_lease.version < EXCLUDED.version
      RETURNING holder`,
-    [holder, String(ttlMs)],
+    [holder, String(ttlMs), version],
   );
   return res.rowCount === 1;
 }
 
-export type HealthRow = { machineId: string; t: number; health: number };
-
-/** Upserts completed health buckets. */
-export async function writeHealth(rows: HealthRow[]): Promise<void> {
-  for (let i = 0; i < rows.length; i += 2000) {
-    const chunk = rows.slice(i, i + 2000);
-    await pool.query(
-      `INSERT INTO plant_health_samples (machine_id, t, health)
-       SELECT * FROM unnest($1::varchar[], $2::timestamptz[], $3::real[])
-       ON CONFLICT (machine_id, t) DO UPDATE SET health = EXCLUDED.health`,
-      [chunk.map((r) => r.machineId), chunk.map((r) => new Date(r.t).toISOString()), chunk.map((r) => r.health)],
-    );
-  }
+/** Frees the lease `holder` holds, so a standing-by server can take it at once. */
+export async function releaseLease(holder: string): Promise<void> {
+  await pool.query(`UPDATE plant_runner_lease SET expires_at = NOW() - INTERVAL '1 second' WHERE id = 'plant' AND holder = $1`, [holder]);
 }
 
-export async function pruneHealth(): Promise<void> {
-  await pool.query("DELETE FROM plant_health_samples WHERE t < NOW() - ($1 || ' milliseconds')::interval", [String(SAMPLE_KEEP_MS)]);
-}
-
-/** Each machine's buckets from `from` (epoch ms): `v[i]` is the bucket at `t0 + i · step`, null where none was recorded. */
+/**
+ * The Machine Health Index the server evaluation stored (machine_health_scores)
+ * since `from` (epoch ms), on the page recorder's bucket grid: `v[i]` is the
+ * bucket at `t0 + i · step`. A score holds until the next evaluation; a gap
+ * longer than two evaluation periods stays null (no evaluation ran).
+ */
 export async function readHealth(from: number): Promise<{ step: number; series: Record<string, { t0: number; v: Array<number | null> }> }> {
-  const res = await pool.query<{ machine_id: string; ms: string; health: number }>(
-    `SELECT machine_id, (EXTRACT(EPOCH FROM t) * 1000)::bigint AS ms, health
-       FROM plant_health_samples WHERE t >= $1 ORDER BY machine_id, t`,
+  const periodMs = (await setting("evaluation.period_s")) * 1000;
+  const res = await pool.query<{ machine_id: string; ms: string; score: number }>(
+    `SELECT machine_id, (EXTRACT(EPOCH FROM scored_at) * 1000)::bigint AS ms, score
+       FROM machine_health_scores WHERE scored_at >= $1 ORDER BY machine_id, scored_at`,
     [new Date(from).toISOString()],
   );
+  const step = HEALTH_STEP_MS;
   const series: Record<string, { t0: number; v: Array<number | null> }> = {};
+  const last: Record<string, { t: number; score: number }> = {};
   for (const r of res.rows) {
-    const t = Number(r.ms);
+    const t = Math.floor(Number(r.ms) / step) * step;
     const s = (series[r.machine_id] ??= { t0: t, v: [] });
-    const i = (t - s.t0) / HEALTH_STEP_MS;
-    while (s.v.length < i) s.v.push(null);
-    s.v[i] = Math.round(r.health * 10) / 10;
+    const prev = last[r.machine_id];
+    const i = (t - s.t0) / step;
+    while (s.v.length < i) {
+      const bucketT = s.t0 + s.v.length * step;
+      s.v.push(prev && bucketT - prev.t <= 2 * periodMs ? prev.score : null);
+    }
+    s.v[i] = Math.round(Number(r.score) * 10) / 10;
+    last[r.machine_id] = { t, score: s.v[i]! };
   }
-  return { step: HEALTH_STEP_MS, series };
+  return { step, series };
 }
 
 /** Saves the plant: `body` is the gzipped `/api/plant/state` response, taken at `wallMs`. */

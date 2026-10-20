@@ -2,6 +2,13 @@
 
 import React from "react";
 import type { CabinetChannel, CabinetModule, SensorTypeCode } from "./rack-data";
+import { displayName } from "@/lib/display-name";
+
+/** Label strip text: from the connector (y + 125) to the strip foot (h − 24), about 5.6 px a character. */
+function stripLabel(text: string, h: number): string {
+  const max = Math.max(4, Math.floor((h - 24 - 125) / 5.6));
+  return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
+}
 
 /* ------------------------------------------------------------------
    Module model helpers — shared by the chassis elevation, the module
@@ -38,7 +45,7 @@ export function channelState(ch: CabinetChannel): SlotState {
 
 /** Process state of the measured value (alarm limits), independent of the hardware. */
 export function processState(ch: CabinetChannel): SlotState {
-  return ch.status === "Critical" ? "bad" : ch.status === "Advisory" ? "warn" : "ok";
+  return ch.status === "Critical" ? "bad" : ch.status === "Alert" ? "warn" : "ok";
 }
 
 export function worstState(states: SlotState[]): SlotState {
@@ -51,8 +58,8 @@ export function moduleState(m: CabinetModule | undefined): SlotState {
   return m ? worstState(m.channels.map(channelState)) : "empty";
 }
 
-export function stateSeverity(s: SlotState): "Normal" | "Advisory" | "Critical" {
-  return s === "bad" ? "Critical" : s === "warn" ? "Advisory" : "Normal";
+export function stateSeverity(s: SlotState): "Normal" | "Alert" | "Critical" {
+  return s === "bad" ? "Critical" : s === "warn" ? "Alert" : "Normal";
 }
 
 /** "25.6 kS/s waveform…" → "25.6 kS/s"; "10 s (PLC / DCS…)" → "10 s"; unconfigured → "—". */
@@ -155,7 +162,7 @@ export function EurocardModule({ module: m, position, x, y, w, h, isSelected, se
   const pos = String(position).padStart(2, "0");
   const ch0 = m?.channels[0];
   const label = m
-    ? `Slot ${pos}, ${ch0 ? `${ch0.tag}, ` : ""}card ${m.code}${m.model ? ` ${m.model}` : ""} channel ${ch0?.channel ?? "—"} of ${m.cardCapacity}, ${stateSeverity(state)}`
+    ? `Slot ${pos}, ${ch0 ? `${displayName(ch0.parameter || ch0.tag)} (${ch0.tag}), ` : ""}card ${m.code}${m.model ? ` ${m.model}` : ""} input ${ch0?.channel ?? "—"} of ${m.cardCapacity}, ${stateSeverity(state)}`
     : `Slot ${pos}, spare`;
 
 
@@ -210,10 +217,11 @@ export function EurocardModule({ module: m, position, x, y, w, h, isSelected, se
               <circle className="rack-mod-pin" cx={cx} cy={y + 110} r={3} style={{ fill: STATE_COLOR[channelState(ch0)] }} />
             </g>
           )}
-          {/* Tag on the module label strip, read bottom-up */}
+          {/* Sensor name on the module label strip, read bottom-up (clipped; the tag is in the tooltip) */}
           {ch0 && (
             <text className="rack-mod-tag" transform={`translate(${cx + 4} ${y + h - 24}) rotate(-90)`}>
-              {ch0.tag}
+              <title>{`${ch0.tag} · ${ch0.parameter}`}</title>
+              {stripLabel(displayName(ch0.parameter || ch0.tag), h)}
             </text>
           )}
         </>

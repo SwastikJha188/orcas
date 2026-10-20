@@ -1,171 +1,322 @@
 /* ==========================================================================
-   ULTRON · Configure (data foundation). Prefix: pg-cfg-
-   Builds on assets-shell.css (ast-*) and ui/page.css (pg-*). Tokens only.
+   ULTRON · Configure. Prefixes: cfg- (layout, steps, settings, photos) and
+   pg-cfg- (shared bits of the section bodies). Builds on assets-shell.css
+   (ast-*) and ui/page.css (pg-*). Tokens only.
    ========================================================================== */
 
-.pg-cfg-root {
+/* ---------------------------------------------------------------- layout: section bar over the section */
+/* The Operator view's bar (opc-topbar, opc-pill-group) on top; only the section below scrolls. */
+.cfg-shell {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  inline-size: 100%;
+  min-inline-size: 0;
+  block-size: 100%;
+  min-block-size: 0;
+  background: var(--workspace-bg);
 }
 
-.pg-cfg-context {
-  margin: 4px 0 0;
-  font-size: var(--fs-md);
-  color: var(--text-muted);
+.cfg-topbar {
+  flex-wrap: nowrap;
 }
 
-.pg-cfg-kpi-sub {
+.cfg-topbar .opc-stage-tabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.cfg-topbar .opc-pill-group {
+  flex-wrap: nowrap;
+}
+
+.cfg-topbar .opc-topbar-right {
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.cfg-subbar .opc-stage-tabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.cfg-subbar .opc-pill-group {
+  flex-wrap: nowrap;
+}
+
+.cfg-subbar .opc-stage-toggles {
+  min-width: 0;
+}
+
+/* Pills keep their size; a row that does not fit scrolls sideways instead of squeezing them. */
+:is(.cfg-topbar, .cfg-subbar) .opc-pill-group {
+  max-width: none;
+  flex-shrink: 0;
+}
+
+:is(.cfg-topbar, .cfg-subbar) .opc-pill-btn {
+  flex-shrink: 0;
+}
+
+/* Actions sit at the bar's control height, like the Operator view's zoom group. */
+.cfg-subbar .btn-pill {
+  block-size: 28px;
+  padding: 0 12px;
   font-size: var(--fs-sm);
-  color: var(--text-muted);
-  overflow-wrap: anywhere;
 }
 
-/* ---------------------------------------------------------------- record chart */
-.pg-cfg-bars {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.pg-cfg-bar {
-  display: grid;
-  grid-template-columns: minmax(120px, 200px) minmax(0, 1fr) 96px;
-  align-items: center;
-  gap: 12px;
-  font-size: var(--fs-md);
-}
-
-.pg-cfg-bar-name {
-  color: var(--page-fg);
+/* The last save or error, one line beside the actions. */
+.cfg-bar-note {
+  max-inline-size: 360px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.pg-cfg-bar-track {
-  position: relative;
-  height: 10px;
-  border-radius: var(--corner-pill);
-  background: var(--dx-track);
-  overflow: hidden;
+.cfg-root {
+  flex: 1 1 0;
+  min-block-size: 0;
 }
 
-.pg-cfg-bar-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  border-radius: var(--corner-pill);
-  background: var(--text-muted);
+.cfg-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
 }
 
-.pg-cfg-bar[data-tone="warn"] .pg-cfg-bar-fill {
-  background: var(--tone);
-}
-
-.pg-cfg-bar-value {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
+/* ---------------------------------------------------------------- inline cell editors */
+/* Reads as the cell's text; a quiet border on hover, the focus ring while editing. */
+.cfg-inline {
+  inline-size: 100%;
+  min-inline-size: 0;
+  block-size: 30px;
+  margin-inline-start: -8px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--corner-sm);
+  background: transparent;
   color: var(--dx-ink);
+  font: inherit;
+  font-size: var(--fs-md);
+  text-overflow: ellipsis;
 }
 
-.pg-cfg-bar[data-tone="warn"] .pg-cfg-bar-value {
-  color: var(--tone);
+.cfg-inline[data-strong] {
+  font-weight: 500;
 }
 
-.pg-cfg-scale {
-  margin: 12px 0 0;
+.cfg-inline[data-sub] {
+  block-size: 24px;
   font-size: var(--fs-sm);
   color: var(--text-muted);
 }
 
-/* ---------------------------------------------------------------- checks */
-.pg-cfg-checks {
+.cfg-cell-clip {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cfg-inline::placeholder {
+  color: var(--text-muted);
+}
+
+.cfg-inline:hover:not(:disabled) {
+  border-color: var(--border-hover);
+}
+
+.cfg-inline:focus,
+.cfg-inline:focus-visible {
+  outline: none;
+  border-color: var(--accent-primary);
+  background: var(--bg-canvas);
+}
+
+.cfg-inline:disabled {
+  cursor: default;
+  -webkit-text-fill-color: currentColor;
+}
+
+.cfg-inline[data-state="saving"],
+.cfg-inline-select[data-state="saving"] .cfg-inline {
+  color: var(--text-muted);
+}
+
+.cfg-inline[data-state="error"],
+.cfg-inline-select[data-state="error"] .cfg-inline {
+  border-color: var(--status-danger);
+}
+
+.cfg-inline[data-state="error"]::placeholder {
+  color: var(--status-danger);
+}
+
+.cfg-inline-select {
+  position: relative;
+  display: flex;
+  min-inline-size: 0;
+}
+
+.cfg-inline-select .cfg-inline {
+  appearance: none;
+  padding-inline-end: 24px;
+  cursor: pointer;
+}
+
+.cfg-inline-select .cfg-inline:disabled {
+  cursor: default;
+}
+
+.cfg-inline-select svg {
+  position: absolute;
+  inset-inline-end: 8px;
+  inset-block-start: 50%;
+  translate: 0 -50%;
+  color: var(--text-muted);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cfg-inline-select:hover svg,
+.cfg-inline-select:focus-within svg {
+  opacity: 1;
+}
+
+.cfg-inline-select:has(.cfg-inline:disabled) svg {
+  display: none;
+}
+
+/* An unset value that needs choosing (a plant without a time zone). */
+.cfg-inline-select[data-warn] .cfg-inline {
+  color: var(--status-warning);
+}
+
+.cfg-cell-grow {
+  flex: 1;
+}
+
+.cfg-inline-sub {
+  padding-inline-start: 1px;
+}
+
+/* Column widths come from the headers, not from the inputs' default size. */
+.cfg-edit-table .ui-table {
+  table-layout: fixed;
+}
+
+/* The fixed columns plus room for the name: narrower windows scroll the table sideways
+   instead of squeezing the name column to nothing. */
+.cfg-edit-table {
+  overflow-x: auto;
+}
+
+.cfg-plants-table .ui-table {
+  min-width: 1180px;
+}
+
+.cfg-machines-table .ui-table {
+  min-width: 860px;
+}
+
+.cfg-users-table .ui-table {
+  min-width: 1240px;
+}
+
+.cfg-edit-table .ui-table td {
+  padding-block: 6px;
+}
+
+.cfg-edit-table .pg-cfg-lead {
+  display: flex;
+  inline-size: 100%;
+}
+
+.cfg-open {
+  margin-inline-start: auto;
+}
+
+.cfg-row-actions {
+  display: inline-flex;
+  justify-content: flex-end;
+  inline-size: 100%;
+}
+
+/* ---------------------------------------------------------------- monitoring settings */
+.cfg-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cfg-set-group-title {
+  margin: 0;
+  padding: 10px 16px 6px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.cfg-set-list {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.pg-cfg-check {
+.cfg-set-row {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) 150px 170px;
   align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
+  gap: 6px 16px;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--separator);
   font-size: var(--fs-md);
 }
 
-.pg-cfg-check:last-child {
+.cfg-set-list .cfg-set-row:last-child {
   border-bottom: 0;
 }
 
-.pg-cfg-check-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.pg-cfg-check-title {
+.cfg-set-label {
   color: var(--dx-ink);
+  line-height: 1.4;
 }
 
-.pg-cfg-check-detail {
-  color: var(--text-muted);
-  font-size: var(--fs-sm);
-  overflow-wrap: anywhere;
-}
-
-/* Time zone picker inside the plant table (row click still opens the plant). */
-.pg-cfg-tz {
+.cfg-set-value {
   display: inline-flex;
-  max-width: 240px;
+  align-items: center;
+  gap: 8px;
 }
 
-/* ---------------------------------------------------------------- database */
-.pg-cfg-db-facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 32px;
-  margin: 0 0 12px;
-  font-size: var(--fs-md);
-}
-
-.pg-cfg-db-facts dt {
-  color: var(--text-muted);
-  font-size: var(--fs-sm);
-}
-
-.pg-cfg-db-facts dd {
-  margin: 2px 0 0;
-  font-family: var(--font-mono);
+.cfg-set-value .ui-input {
+  width: 100px;
+  text-align: end;
   font-variant-numeric: tabular-nums;
-  color: var(--dx-ink);
 }
 
-.pg-cfg-db-facts dd[data-tone="warn"],
-.pg-cfg-db-facts dd[data-tone="bad"] {
+.cfg-set-unit {
+  min-inline-size: 1ch;
+  color: var(--text-muted);
+}
+
+.cfg-set-when {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.cfg-set-when[data-tone="bad"] {
   color: var(--tone);
 }
 
-/* ---------------------------------------------------------------- reset */
-.pg-cfg-reset {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+/* ---------------------------------------------------------------- section bodies */
+.pg-cfg-context {
+  margin: 4px 0 0;
   font-size: var(--fs-md);
-}
-
-/* ---------------------------------------------------------------- tables */
-.pg-cfg-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  color: var(--text-muted);
 }
 
 .pg-cfg-lead {
@@ -175,34 +326,197 @@
   min-width: 0;
 }
 
-.pg-cfg-dialog-list {
-  margin: 8px 0 0;
-  padding-left: 18px;
-  font-size: var(--fs-md);
-  color: var(--page-fg);
-  line-height: 1.5;
+/* Narrow: the section pills scroll sideways; the actions keep their place. */
+@media (max-width: 900px) {
+  .cfg-bar-note {
+    display: none;
+  }
 }
 
-.pg-cfg-dialog-text {
+
+/* ---------------------------------------------------------------- photos (photo-picker.tsx) */
+.cfg-photos {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cfg-photos-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.cfg-thumb {
+  position: relative;
+  display: block;
+  width: 64px;
+  height: 48px;
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--mx-canvas);
+}
+
+.cfg-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Drawing state: a corner dot (waiting / drawn / could not be drawn); none while only picked. */
+.cfg-thumb i {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--status-warning);
+  box-shadow: 0 0 0 1px var(--card-bg);
+}
+
+.cfg-thumb[data-state="processed"] i {
+  background: var(--status-success);
+}
+
+.cfg-thumb[data-state="failed"] i {
+  background: var(--status-danger);
+}
+
+.cfg-thumb-x {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cfg-photo-add {
+  height: 48px;
+  padding: 0 14px;
+  border: 1px dashed var(--separator);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.cfg-photo-add:hover:not(:disabled) {
+  border-color: var(--text-muted);
+}
+
+.ui-form-note .cfg-photo-add {
+  height: 24px;
+  margin-left: 6px;
+  border-style: solid;
+}
+
+.cfg-photos-hint {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+/* Drawing in progress, and the preview of the drawing made from a photo (drawing-preview.tsx). */
+.cfg-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--signal-blue);
+  vertical-align: 1px;
+  animation: cfg-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes cfg-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cfg-dot {
+    animation: none;
+  }
+}
+
+.cfg-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 10px;
+}
+
+.cfg-preview-pane {
   margin: 0;
-  font-size: var(--fs-base);
-  color: var(--page-fg);
-  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-@media (max-width: 1100px) {
-  .pg-cfg-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.cfg-preview-pane figcaption {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
 }
 
-@media (max-width: 700px) {
-  .pg-cfg-bar {
-    grid-template-columns: minmax(0, 1fr) 80px;
-  }
+.cfg-preview-box {
+  position: relative;
+  height: 240px;
+  padding: 6px;
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-sm);
+  background: var(--mx-canvas);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
 
-  .pg-cfg-bar-track {
-    grid-column: 1 / -1;
-    grid-row: 2;
-  }
+.cfg-preview-box > * {
+  width: 100%;
+  height: 100%;
+}
+
+.cfg-preview-3d {
+  padding: 0;
+}
+
+.cfg-preview-empty {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  width: auto !important;
+  height: auto !important;
+}
+
+.cfg-redraw {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.cfg-redraw .ui-input {
+  flex: 1;
+}
+
+.cfg-redraw .cfg-photo-add {
+  height: 34px;
+  border-style: solid;
+}
+
+/* A form's error beside its buttons, so it shows after scrolling down to save. */
+.cfg-foot-err {
+  font-size: var(--fs-sm);
+  color: var(--status-danger);
 }

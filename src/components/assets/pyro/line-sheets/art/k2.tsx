@@ -1,46 +1,42 @@
 /**
  * Sheet K-2 — KLN-01 · Rotary kiln — Gear train: motor, gearbox, pinion and girth gear.
  *
- * Composition of PDF page 15, left to right on their concrete piers: the VFD
- * main motor (NDE encoder, fan cowl, finned frame, terminal box, winding RTD
- * box), coupling, the main gearbox, the output coupling and the pinion shaft
- * between its two bearings, meshing with the girth gear on the kiln shell.
+ * Drawn as the "GEAR TRAIN: MOTOR, GEARBOX, PINION AND GIRTH GEAR" panel of
+ * the machine-group images (page 8, panel box 48.5, 105.5 – 811.5, 777): the
+ * VFD main motor with its drive-health box, the flexible coupling, the main
+ * gearbox, the output coupling and the pinion shaft between its two bearing
+ * blocks, meshing with the girth gear on the kiln shell; each on its pier.
  */
 import React from "react";
-import { Bolt, GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
-import { EncoderCap } from "../../sheets/sa-parts";
-import { GearEdge, Pillow, Shell, ShaftCoupling, SideMotor, ToothedDrum } from "../../sheets/sb-parts";
+import { GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
 import type { LineSheetArt } from "../types";
-import { Bedplate, GearboxSide, Pier } from "./parts-ka";
+import { Bedplate, Pier } from "./parts-ka";
+import { BearingBlock, GearboxFace, GroovedCoupling, ShaftRun, TefcSide } from "./parts-k3";
 
-const W = 824;
-const H = 704;
-const GROUND = 585;
+const W = 763;
+const H = 671.5;
+const GROUND = 553;
+const LABEL_Y = 572.5;
 
 function MainMotor() {
   return (
     <g>
-      <Pier x={45} y={410} w={218} h={GROUND - 410} bolts={3} />
-      <Bedplate x={31} y={400} w={247} />
-      {/* feet */}
-      <rect x={100} y={388} width={152} height={12} rx={2} {...PAINT.body} />
-      <Bolt x={110} y={394} r={1.5} />
-      <Bolt x={242} y={394} r={1.5} />
-      {/* NDE speed encoder on the shaft extension */}
-      <rect x={42} y={334} width={8} height={8} {...PAINT.shaft} />
-      <EncoderCap x={28} cy={338} w={16} h={34} />
-      <SideMotor x={88} y={285} w={168} h={106} />
-      {/* winding RTD terminal box */}
-      <rect x={144} y={325} width={64} height={28} rx={3} {...PAINT.raised} />
-      <rect x={149} y={330} width={54} height={18} rx={2} {...PAINT.recess} />
-      {/* power cable gland on the terminal box */}
-      <rect x={193} y={270} width={9} height={8} rx={1.5} {...PAINT.shaft} />
-      {/* lifting eyes */}
-      <circle cx={110} cy={281} r={4} fill="none" stroke={MX.edge} strokeWidth={1.6} />
-      <circle cx={232} cy={281} r={4} fill="none" stroke={MX.edge} strokeWidth={1.6} />
-      {/* shaft and input coupling */}
-      <rect x={276} y={332} width={42} height={12} rx={2} {...PAINT.shaft} />
-      <ShaftCoupling x={286} y={324} w={28} h={28} />
+      <Pier x={51} y={395.5} w={195.5} h={GROUND - 395.5} bolts={3} />
+      <Bedplate x={37} y={385.5} w={223} h={10} bolts={5} />
+      <TefcSide
+        body={[82.5, 283, 171.5, 95]}
+        cowl={[50, 292.5, 38, 75.5]}
+        tb={[134, 261, 68.5, 22]}
+        win={[139, 318.5, 58.5, 25]}
+        feet={[100, 375.5, 136.5, 10]}
+        fins={[297, 306.5, 316, 325.5, 335, 344.5, 354, 363.5]}
+      />
+      {/* DE shaft stub and the flexible coupling to the gearbox */}
+      <ShaftRun x1={252} x2={296} cy={330.5} d={12} />
+      <GroovedCoupling x={265} y={319.5} w={27.5} h={22.5} />
+      {/* main-drive health / cooling-fan status box (drive panel flags) */}
+      <rect x={63.5} y={238} width={41.5} height={20} rx={3} {...PAINT.raised} />
+      <rect x={70} y={242} width={28.5} height={12} rx={2} {...PAINT.recess} />
     </g>
   );
 }
@@ -48,10 +44,10 @@ function MainMotor() {
 function MainGearbox() {
   return (
     <g>
-      <Pier x={316} y={410} w={164} h={GROUND - 410} bolts={2} />
-      <Bedplate x={308} y={400} w={180} />
-      <rect x={326} y={388} width={144} height={12} rx={2} {...PAINT.body} />
-      <GearboxSide x={316} y={248} w={164} h={142} ig={[44, 78, 26]} og={[102, 60, 43]} />
+      <Pier x={295} y={395.5} w={147.5} h={GROUND - 395.5} bolts={2} />
+      <Bedplate x={287} y={385.5} w={162} h={10} bolts={4} />
+      <rect x={302} y={377} width={133} height={8.5} rx={1.5} {...PAINT.raised} />
+      <GearboxFace box={[294, 249.5, 148.5, 127.5]} cover={[309, 427.5, 8.5]} small={[334, 319.5, 23.5, 7.5]} big={[385.5, 302.5, 39, 12]} />
     </g>
   );
 }
@@ -59,24 +55,29 @@ function MainGearbox() {
 function PinionAndGirth() {
   return (
     <g>
-      {/* kiln shell and girth gear on its spring plates (edge-on) */}
-      <Shell x={541} y={76} w={290} h={164} seam={36} />
-      {[90, 120, 196, 226].map((y) => (
-        <rect key={y} x={622} y={y} width={47} height={6} rx={1.5} {...PAINT.raised} />
-      ))}
-      <rect x={627} y={70} width={37} height={176} rx={3} {...PAINT.body} />
-      <GearEdge x={631} y={50} w={29} h={216} n={36} />
-      {/* output shaft and coupling */}
-      <rect x={480} y={297} width={76} height={13} rx={2} {...PAINT.shaft} />
-      <ShaftCoupling x={502} y={291} w={29} h={25} />
-      {/* pinion between its bearings */}
-      <Pier x={556} y={348} w={180} h={GROUND - 348} bolts={3} />
-      <Bedplate x={548} y={338} w={195} />
-      <rect x={596} y={296} width={154} height={15} rx={2} {...PAINT.shaft} />
-      <rect x={744} y={299} width={8} height={9} rx={1.5} {...PAINT.raised} />
-      <ToothedDrum x={615} y={277} w={60} h={52} n={11} />
-      <Pillow x={556} y={270} w={44} h={68} />
-      <Pillow x={691} y={270} w={44} h={68} />
+      {/* kiln shell and the girth gear on it (edge-on, teeth as ridges) */}
+      <rect x={496.5} y={94} width={256.5} height={148.5} rx={7} {...PAINT.cylinder} />
+      <rect x={577.5} y={71} width={27} height={195} rx={4} {...PAINT.cylinderV} />
+      {Array.from({ length: 44 }).map((_, i) => {
+        const ty = 76 + i * 4.3;
+        return <line key={i} x1={580} x2={602} y1={ty} y2={ty} stroke={MX.edge} strokeWidth={0.7} opacity={0.75} />;
+      })}
+
+      {/* pinion pier and bedplate */}
+      <Pier x={510} y={340} w={162} h={GROUND - 340} bolts={3} />
+      <Bedplate x={503} y={330.5} w={176} h={9.5} bolts={4} />
+      {/* gearbox output shaft, coupling, pinion shaft through both bearings */}
+      <ShaftRun x1={442.5} x2={512} cy={299.5} d={10} />
+      <GroovedCoupling x={461.5} y={288} w={27.5} h={22.5} />
+      <ShaftRun x1={548} x2={685.5} cy={299.25} d={12.5} />
+      {/* pinion */}
+      <rect x={564} y={274.5} width={54} height={48} rx={4} {...PAINT.shaft} strokeWidth={MX.w} />
+      {Array.from({ length: 9 }).map((_, i) => {
+        const lx = 568 + i * 5.75;
+        return <line key={i} x1={lx} x2={lx} y1={277} y2={320} stroke={MX.edge} strokeWidth={0.8} opacity={0.8} />;
+      })}
+      <BearingBlock x={510.5} y={270.5} w={40} h={61.5} split={299.5} />
+      <BearingBlock x={631.5} y={269.5} w={40} h={61} split={299.5} />
     </g>
   );
 }
@@ -84,51 +85,61 @@ function PinionAndGirth() {
 function Art() {
   return (
     <g>
-      <GroundLine x1={22} x2={803} y={GROUND} />
+      <GroundLine x1={30.5} x2={733.5} y={GROUND} />
       <PinionAndGirth />
       <MainGearbox />
       <MainMotor />
 
-      <MachineLabel x={644.5} y={21.2} size={9}>GIRTH GEAR</MachineLabel>
-      <MachineLabel x={749.5} y={66.2} size={9}>KILN SHELL</MachineLabel>
-      <MachineLabel x={296} y={366} size={6.2}>COUPLING</MachineLabel>
-      <MachineLabel x={516} y={284} size={7.5}>COUPLING</MachineLabel>
-      <MachineLabel x={756} y={284} anchor="start" size={8.2}>PINION</MachineLabel>
-      <MachineLabel x={149.5} y={606.2} size={9}>MAIN MOTOR (VFD)</MachineLabel>
-      <MachineLabel x={397} y={606.2} size={9}>MAIN GEARBOX</MachineLabel>
-      <MachineLabel x={645} y={606.2} size={9}>PINION SHAFT, BEARINGS AND PINION</MachineLabel>
+      <MachineLabel x={590.5} y={46.7} size={8.2}>GIRTH GEAR</MachineLabel>
+      <MachineLabel x={685.5} y={87.2} size={8.2}>KILN SHELL</MachineLabel>
+      <MachineLabel x={278.5} y={317} size={7.2}>COUPLING</MachineLabel>
+      <MachineLabel x={475} y={283} size={7.2}>COUPLING</MachineLabel>
+      <MachineLabel x={689} y={321} anchor="start" size={7.8}>PINION</MachineLabel>
+      <MachineLabel x={145.5} y={LABEL_Y} size={8.6}>MAIN MOTOR (VFD)</MachineLabel>
+      <MachineLabel x={367.5} y={LABEL_Y} size={8.6}>MAIN GEARBOX</MachineLabel>
+      <MachineLabel x={590.5} y={LABEL_Y} size={8.6}>PINION SHAFT, BEARINGS AND PINION</MachineLabel>
     </g>
   );
 }
 
-/** Pad centre per point (sheet units), as on PDF page 15. */
+/**
+ * Pad centre per point (sheet units = page units − panel corner), at the
+ * panel's pads. Nudged so the plates of the crowded motor fit side by side:
+ * drive-health box 3 up, NDE bearing 2.5 up, winding RTD to the right half of
+ * the stator-sensor window.
+ */
 const pads: LineSheetArt["pads"] = {
-  "TMP-KLN-20": [68, 315.5],
-  "SPD-KLN-01": [38.5, 338],
-  "TMP-KLN-21": [173, 339.5],
-  "ELE-KLN-01": [176, 268],
-  "VIB-KLN-01": [259, 303.5],
-  "TMP-KLN-19": [259, 371],
-  "VIB-KLN-02": [330.5, 263],
-  "TMP-KLN-22": [330.5, 375.5],
-  "VIB-KLN-03": [465.5, 263],
-  "TMP-KLN-23": [465.5, 375.5],
-  "VIB-KLN-04": [578, 288.5],
+  "STS-KLN-12": [84.5, 248],
+  "ELE-KLN-01": [168, 267.5],
+  "VIB-KLN-01": [243.3, 299.5],
+  "TMP-KLN-20": [71, 307.5],
+  "SPD-KLN-01": [44.5, 330.3],
+  "TMP-KLN-21": [184.5, 331.5],
+  "TMP-KLN-19": [243, 360],
+  "VIB-KLN-02": [307.3, 262.7],
+  "VIB-KLN-03": [428.7, 262.7],
+  "TMP-KLN-22": [307, 364],
+  "TMP-KLN-23": [428.5, 364],
+  "VIB-KLN-04": [530, 285.7],
 };
 
-/** Tag chip centre per point, as on PDF page 15. */
-const chips: NonNullable<LineSheetArt["chips"]> = {
-  "TMP-KLN-20": [108.5, 188],
-  "SPD-KLN-01": [79.5, 420.5],
-  "TMP-KLN-21": [221, 459.5],
-  "ELE-KLN-01": [224, 156],
-  "VIB-KLN-01": [322.5, 221],
-  "TMP-KLN-19": [307.5, 465.5],
-  "VIB-KLN-02": [393.5, 158],
-  "TMP-KLN-22": [401, 485],
-  "VIB-KLN-03": [394.5, 120.5],
-  "TMP-KLN-23": [543.5, 515],
-  "VIB-KLN-04": [618.5, 176],
+/**
+ * Plate side per point; the gearbox input-side pair (VIB-KLN-02 above,
+ * TMP-KLN-22 below) stands off over / under the gearbox, as in the panel.
+ */
+const callouts: LineSheetArt["callouts"] = {
+  "STS-KLN-12": [95, 248, "start"],
+  "ELE-KLN-01": [178, 267.5, "start"],
+  "VIB-KLN-02": [307.3, 226, "middle"],
+  "VIB-KLN-03": [438, 262.7, "start"],
+  "VIB-KLN-04": [540, 285.7, "start"],
+  "VIB-KLN-01": [253, 299.5, "start"],
+  "TMP-KLN-20": [81, 307.5, "start"],
+  "SPD-KLN-01": [55, 330.3, "start"],
+  "TMP-KLN-21": [194, 331.5, "start"],
+  "TMP-KLN-19": [233, 360, "end"],
+  "TMP-KLN-22": [307, 420, "middle"],
+  "TMP-KLN-23": [438, 364, "start"],
 };
 
-export const sheet: LineSheetArt = { id: "K-2", ready: true, width: W, height: H, Art, pads, chips };
+export const sheet: LineSheetArt = { id: "K-2", ready: true, width: W, height: H, Art, pads, callouts };

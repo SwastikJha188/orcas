@@ -18,9 +18,11 @@
 
 /* ---- TV: scale the whole UI so type stays readable from a distance ---- */
 :root { --ui-zoom: 1; }
-@media (min-width: 2560px) { :root { --ui-zoom: 1.25; } }
-@media (min-width: 3200px) { :root { --ui-zoom: 1.6; } }
-@media (min-width: 3840px) { :root { --ui-zoom: 1.9; } }
+/* Each tier needs the height too, so an ultrawide (3440 × 1440) zooms only as much as its height allows
+   and keeps about 1,150 px of layout height. */
+@media (min-width: 2560px) and (min-height: 1300px) { :root { --ui-zoom: 1.25; } }
+@media (min-width: 3200px) and (min-height: 1700px) { :root { --ui-zoom: 1.6; } }
+@media (min-width: 3840px) and (min-height: 2000px) { :root { --ui-zoom: 1.9; } }
 
 :root body { zoom: var(--ui-zoom); }
 
@@ -39,17 +41,26 @@
 /* Rail labels exist for the phone tab bar only. */
 :root .rail-label { display: none; }
 
-/* Touch screens: no hover, bigger hit areas on the controls people tap most. */
+/* Touch screens: no hover, 44x44px minimum hit areas on interactive controls. */
 @media (hover: none) and (pointer: coarse) {
-  :root .nav-pill { min-block-size: 36px; }
-  :root .btn-pill { min-block-size: 38px; }
-  :root .theme-toggle,
-  :root .cp-launcher { inline-size: 38px; block-size: 38px; }
-  :root .ctx-trigger { block-size: 36px; }
+  :root .nav-pill,
+  :root .btn-pill,
+  :root .opc-pill-btn,
+  :root .opc-step-btn,
+  :root .ctx-trigger {
+    min-block-size: 44px;
+    min-inline-size: 44px;
+  }
+  :root .navbar-gw-status { min-block-size: 44px; }
+  :root .theme-toggle {
+    inline-size: 44px;
+    block-size: 44px;
+    min-inline-size: 44px;
+    min-block-size: 44px;
+  }
 }
 
 /* Long pill rows scroll sideways instead of wrapping into a ragged block. */
-:root .machine-tabs-bar,
 :root .nav-pill-group:not(.nav-pill-wrap) {
   max-inline-size: 100%;
   flex-shrink: 0;
@@ -58,7 +69,6 @@
   -webkit-overflow-scrolling: touch;
 }
 :root .nav-pill-group:not(.nav-pill-wrap)::-webkit-scrollbar { display: none; }
-:root .machine-tabs-bar::-webkit-scrollbar { display: none; }
 
 /* Long option labels truncate cleanly instead of being cut under the chevron. */
 :root .ui-select select {
@@ -91,7 +101,7 @@
     gap: 8px;
     padding: env(safe-area-inset-top, 0px) 6px 0 14px;
   }
-  :root .brand-logo { height: 15px; }
+  :root .brand-logo { height: 17px; }
   :root .brand-btn { flex: none; }
   :root .cp-topbar-actions { min-width: 0; gap: 0; }
 
@@ -118,15 +128,6 @@
     width: auto !important;
     max-block-size: min(70dvh, 520px);
   }
-
-  /* Copilot drawer: full-width sheet. */
-  :root .cp-drawer {
-    inset: env(safe-area-inset-top, 0px) 0 0 0;
-    inline-size: 100%;
-    border-radius: var(--corner-shell) var(--corner-shell) 0 0;
-    transform: translateY(24px);
-  }
-  :root .cp-drawer.in { transform: none; }
 
   /* Rail → bottom tab bar with labels. */
   :root .nav-rail {
