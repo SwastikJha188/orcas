@@ -1,14 +1,21 @@
 import type { NextConfig } from "next";
 
-/** The ULTRON backend (backend/), which serves every /api route. */
-const API_URL = process.env.ULTRON_API_URL || "http://localhost:4000";
+/**
+ * The ULTRON backend (backend/), which serves every /api route. On Vercel with
+ * no ULTRON_API_URL it runs inside this deploy (src/app/api/[...path]/route.ts);
+ * otherwise /api is forwarded to the standalone server.
+ */
+const API_URL = process.env.ULTRON_API_URL || (process.env.VERCEL ? "" : "http://localhost:4000");
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
-  // The browser keeps calling /api on this origin (same cookies); Next forwards it.
+  // The browser keeps calling /api on this origin (same cookies); Next forwards
+  // it before the in-process route would answer.
   async rewrites() {
-    return [{ source: "/api/:path*", destination: `${API_URL}/api/:path*` }];
+    return { beforeFiles: API_URL ? [{ source: "/api/:path*", destination: `${API_URL}/api/:path*` }] : [], afterFiles: [], fallback: [] };
   },
+  // Server-only packages the in-process backend uses; loaded from node_modules, not bundled.
+  serverExternalPackages: ["pg", "mqtt", "nodemailer"],
   distDir: process.env.NEXT_DIST_DIR || ".next",
   // Dev only: compiled routes nobody has opened for a minute are dropped, so a
   // long-running dev server does not keep every page it ever built in memory.
