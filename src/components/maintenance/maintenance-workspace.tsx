@@ -44,8 +44,8 @@ import "./pms.css";
      Machines      one machine's drawing, part by part
 
    Problems works on every plant; the planned sections need the plant's
-   maintenance documents (/api/maintenance/pms/line). Only the page last
-   opened is stored in the browser.
+   maintenance documents (/api/maintenance/pms/line). It opens on
+   Preventive, unless another page asked for a section.
    ========================================================================== */
 
 const FULL_LINE = "full-line";
@@ -65,14 +65,16 @@ const PAGE_HEAD: Record<PmsPage, { title: string; context: string }> = {
   machine: { title: "Machines", context: "One machine's drawing: pick a part to see its problems, readings, checks and jobs." },
 };
 
+/** Maintenance opens on Preventive, unless another page asked for one (`requestMaintenancePage`, taken once). */
 function storedPage(): PmsPage {
   try {
     const v = localStorage.getItem(MAINT_PAGE_KEY);
+    localStorage.removeItem(MAINT_PAGE_KEY);
     if (v && PMS_PAGES.some((p) => p.id === v)) return v as PmsPage;
   } catch {
     /* storage unavailable */
   }
-  return "overview";
+  return "preventive";
 }
 
 export function MaintenanceWorkspace() {
@@ -93,11 +95,6 @@ export function MaintenanceWorkspace() {
     if (focus?.startsWith("m:")) setMachineId(focus.slice(2));
     setPage(p);
     setVisit((v) => v + 1);
-    try {
-      localStorage.setItem(MAINT_PAGE_KEY, p);
-    } catch {
-      /* storage unavailable */
-    }
     bodyRef.current?.scrollTo({ top: 0 });
   }, []);
 
@@ -105,6 +102,12 @@ export function MaintenanceWorkspace() {
   useEffect(() => {
     const onPage = (e: Event) => {
       const p = (e as CustomEvent<PmsPage>).detail;
+      // Taken here, so the next visit opens on Preventive again.
+      try {
+        localStorage.removeItem(MAINT_PAGE_KEY);
+      } catch {
+        /* storage unavailable */
+      }
       if (PMS_PAGES.some((x) => x.id === p)) nav(p);
     };
     const takeCase = () => {
