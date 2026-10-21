@@ -478,13 +478,13 @@ export function AskTab() {
                       {m.clock && <span>{m.clock}</span>}
                     </div>
                   ) : (
-                    <AssistantMessage key={m.id} msg={m} doneActions={cp.doneActions} onAction={cp.onAction} />
+                    <AssistantMessage key={m.id} msg={m} doneActions={cp.doneActions} onAction={cp.onAction} animate={m.id === cp.freshId} />
                   ),
                 )}
                 {cp.thinking && (
                   <div className="aqk-thinking" role="status">
-                    <i aria-hidden="true" />
-                    Reading the plant&apos;s data…
+                    <span className="aqk-thinking-label">Reading the plant&apos;s data…</span>
+                    <span className="aqk-thinking-scan" aria-hidden="true" />
                   </div>
                 )}
               </div>

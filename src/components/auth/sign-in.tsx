@@ -1,15 +1,14 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { Field, FieldGrid, PillButton, Select, TextArea, TextInput } from "@/components/ui";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { Field, FieldGrid, Select, TextArea, TextInput } from "@/components/ui";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import "./sign-in.css";
 
 const LAYERS = [
   { name: "Diagnosis", what: "What is happening now" },
   { name: "Prognosis", what: "What happens next" },
-  { name: "Advanced prognosis", what: "What single signals miss" },
+  { name: "Analysis", what: "Why it is happening" },
 ];
 
 const INDUSTRIES = [
@@ -25,9 +24,9 @@ const INDUSTRIES = [
 ];
 
 /**
- * Signed-out landing: section 1 is the sign-in over the plant video, section 2
- * the "Request a demo" form for visitors without an account. Every account
- * (kiln-seal plant, pyro line) has its own login and sees only its own plant.
+ * Signed-out landing, always dark: section 1 is the sign-in over the plant
+ * video, section 2 the "Request a demo" form for visitors without an account.
+ * Every account has its own login and sees only its own plants.
  */
 export function SignInScreen() {
   return (
@@ -60,13 +59,12 @@ function LoopVideo({ src, poster, className }: { src: string; poster: string; cl
   return <video ref={ref} className={className} src={src} poster={poster} muted loop playsInline preload="metadata" aria-hidden="true" />;
 }
 
-function OswarLogo({ onMedia }: { onMedia?: boolean }) {
+/** The page is always dark, so both marks use their light ink. */
+function OswarLogo() {
   return (
-    <span className="auth-oswar" data-on-media={onMedia || undefined}>
+    <span className="auth-oswar">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/login/oswarteck-light.png" alt="OSWAR/teck" className="auth-oswar-light-ink" />
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/login/oswarteck-dark.png" alt="OSWAR/teck" className="auth-oswar-dark-ink" />
+      <img src="/login/oswarteck-light.png" alt="OSWAR/teck" />
     </span>
   );
 }
@@ -75,10 +73,20 @@ function UltronWordmark() {
   return (
     <div className="auth-brand">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/brand/wordmark-dark.png" alt="ULTRON" className="brand-logo-dark" />
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/brand/wordmark-light.png" alt="ULTRON" className="brand-logo-light" />
+      <img src="/brand/wordmark-dark.png" alt="ULTRON" />
     </div>
+  );
+}
+
+/** Square call to action: label left, arrow right; the label changes while it works. */
+function Cta({ busy, busyLabel, children, onClick, type = "submit", quiet }: { busy?: boolean; busyLabel?: string; children: React.ReactNode; onClick?: () => void; type?: "submit" | "button"; quiet?: boolean }) {
+  return (
+    <button type={type} className="auth-cta" data-quiet={quiet || undefined} data-busy={busy || undefined} aria-busy={busy || undefined} disabled={busy} onClick={onClick}>
+      <span>{busy && busyLabel ? busyLabel : children}</span>
+      <span className="auth-cta-arrow" aria-hidden="true">
+        →
+      </span>
+    </button>
   );
 }
 
@@ -109,17 +117,16 @@ function SignInSection() {
         <LoopVideo className="auth-video" src="/login/steel-hall.mp4" poster="/login/steel-hall-poster.jpg" />
         <div className="auth-scrim" />
         <header className="auth-topbar">
-          <OswarLogo onMedia />
+          <OswarLogo />
           <a className="auth-toplink" href="#request-demo">
-            Request a demo
+            Request a demo <span aria-hidden="true">→</span>
           </a>
         </header>
         <div className="auth-pitch">
-          <p className="auth-eyebrow">ULTRON · Predictive maintenance</p>
+          <p className="auth-eyebrow">ULTRON / Predictive maintenance</p>
           <p className="auth-headline">
-            Predict failure.
-            <br />
-            Before it happens.
+            <span>Predict failure.</span>
+            <span>Before it happens.</span>
           </p>
           <ol className="auth-layers">
             {LAYERS.map((l, i) => (
@@ -136,7 +143,7 @@ function SignInSection() {
       <div className="auth-panel">
         <div className="auth-panel-top">
           <UltronWordmark />
-          <ThemeToggle />
+          <span className="auth-panel-tag">Plant access</span>
         </div>
         <div className="auth-panel-body">
           <div>
@@ -186,13 +193,13 @@ function SignInSection() {
                 {error}
               </p>
             )}
-            <PillButton type="submit" variant="primary" loading={busy}>
-              {busy ? "Signing in…" : "Sign in"}
-            </PillButton>
+            <Cta busy={busy} busyLabel="Signing in…">
+              Sign in
+            </Cta>
           </form>
         </div>
         <p className="auth-foot">
-          No account yet? <a href="#request-demo">Request a demo</a>
+          No account yet? <a href="#request-demo">Request a demo →</a>
         </p>
       </div>
     </section>
@@ -241,6 +248,12 @@ function DemoSection() {
 
   return (
     <section id="request-demo" className="auth-demo" aria-labelledby="demo-title">
+      <div className="auth-demo-head">
+        <p className="auth-eyebrow">02 / Request a demo</p>
+        <h2 id="demo-title" className="auth-demo-title">
+          See ULTRON on a machine like yours.
+        </h2>
+      </div>
       <div className="auth-demo-media">
         <figure className="auth-tile">
           <LoopVideo className="auth-tile-media" src="/login/machine-detail.mp4" poster="/login/machine-detail-poster.jpg" />
@@ -258,21 +271,16 @@ function DemoSection() {
       </div>
 
       <div className="auth-demo-form">
-        <div>
-          <h2 id="demo-title" className="auth-title">
-            Request a demo
-          </h2>
-          <p className="auth-sub">See ULTRON on a machine like yours. We reply within one business day.</p>
-        </div>
+        <p className="auth-sub">Tell us what you run. We reply within one business day.</p>
         {sentTo ? (
           <div className="auth-sent" role="status">
             <p className="auth-sent-title">Request sent</p>
             <p className="auth-sub">
               We will write to <strong>{sentTo}</strong> within one business day.
             </p>
-            <PillButton type="button" variant="secondary" onClick={() => setSentTo(null)}>
+            <Cta type="button" quiet onClick={() => setSentTo(null)}>
               Send another request
-            </PillButton>
+            </Cta>
           </div>
         ) : (
           <form className="auth-form" onSubmit={submit} noValidate>
@@ -308,9 +316,9 @@ function DemoSection() {
                 {failed}
               </p>
             )}
-            <PillButton type="submit" variant="primary" loading={busy}>
-              {busy ? "Sending…" : "Request demo"}
-            </PillButton>
+            <Cta busy={busy} busyLabel="Sending…">
+              Request demo
+            </Cta>
           </form>
         )}
       </div>
@@ -321,7 +329,7 @@ function DemoSection() {
 /** While the saved session is checked: the wordmark and one quiet line, never a blank page. */
 export function AuthChecking() {
   return (
-    <main className="auth-screen" aria-busy="true">
+    <main className="auth-page auth-screen" aria-busy="true">
       <div className="auth-checking" role="status">
         <UltronWordmark />
         <p className="auth-sub">Checking your sign-in…</p>

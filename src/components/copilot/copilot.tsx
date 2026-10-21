@@ -4,10 +4,11 @@
  * AssetIQ chat pieces: the message renderers (answer text, evidence chips,
  * sparklines, action buttons) the AssetIQ Ask sheet draws its thread with.
  * Conversation state lives in `copilot-provider.tsx`; answers come from the
- * deterministic intent engine in `copilot-engine.ts` and are shown in full
- * the moment they are computed.
+ * deterministic intent engine in `copilot-engine.ts`. A fresh answer plays a
+ * short reveal once (its working steps tick off, the text writes itself in,
+ * then the readings and actions); history and reduced motion show it whole.
  */
-import { memo } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { ACTION } from "@/components/ui/status";
 import type { ActionKind, ActionSpec, EvidenceChip, Spark } from "./copilot-engine";
 import type { Msg } from "./copilot-provider";
@@ -69,6 +70,23 @@ function RichText({ text }: { text: string }) {
                 </li>
               ))}
             </ul>
+          );
+        }
+        // A lead-in line followed by bullets ("After that:" + list).
+        if (lines.length > 1 && !lines[0].startsWith("• ") && lines.slice(1).every((l) => l.startsWith("• "))) {
+          return (
+            <div key={i}>
+              <p>
+                <Inline text={lines[0]} />
+              </p>
+              <ul className="cp-list">
+                {lines.slice(1).map((l, j) => (
+                  <li key={j}>
+                    <Inline text={l.slice(2)} />
+                  </li>
+                ))}
+              </ul>
+            </div>
           );
         }
         if (lines.length === 1 && lines[0].startsWith("• ")) {
@@ -154,18 +172,68 @@ function EvidenceSpark({ s }: { s: Spark }) {
 
 const ACTION_DONE: Record<ActionKind, string> = { mitigate: "Short-term fix sent", repair: "Repair scheduled", workorder: "Work order created", diagnosis: "Opened" };
 
+/** Answers that have played their reveal (so a remount or thread switch shows them whole). */
+const PLAYED = new Set<string>();
+/** One working step, then the whole text in at most TEXT_MS. */
+const STEP_MS = 300;
+const TEXT_MS = 1400;
+const MAX_STEPS = 4;
+
+/** Closes a bold run cut in half, so a half-written answer never shows raw asterisks. */
+const balanced = (t: string) => ((t.match(/\*\*/g)?.length ?? 0) % 2 ? `${t}**` : t);
+
+/** Where a fresh answer's reveal stands: steps ticked, text written so far, and whether it is done. */
+function useReveal(id: string, animate: boolean, steps: string[], text: string) {
+  const [run] = useState(
+    () => animate && !PLAYED.has(id) && typeof window !== "undefined" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+  const shownSteps = useMemo(() => steps.slice(0, MAX_STEPS), [steps]);
+  const words = useMemo(() => text.split(/(\s+)/), [text]);
+  const [t, setT] = useState(run ? 0 : Infinity);
+  useEffect(() => {
+    if (!run) return;
+    PLAYED.add(id);
+    const total = shownSteps.length * STEP_MS + TEXT_MS;
+    const start = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const e = now - start;
+      setT(e >= total ? Infinity : e);
+      if (e < total) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [run, id, shownSteps.length]);
+  const stepsEnd = shownSteps.length * STEP_MS;
+  const step = Math.min(shownSteps.length, Math.floor(t / STEP_MS));
+  const count = t === Infinity ? words.length : t < stepsEnd ? 0 : Math.ceil(((t - stepsEnd) / TEXT_MS) * words.length);
+  return {
+    played: run,
+    steps: shownSteps,
+    step,
+    inSteps: run && t < stepsEnd,
+    text: count >= words.length ? text : balanced(words.slice(0, count).join("")),
+    writing: run && t >= stepsEnd && t !== Infinity,
+    done: t === Infinity,
+  };
+}
+
 export const AssistantMessage = memo(function AssistantMessage({
   msg,
   doneActions,
   onAction,
+  animate = false,
 }: {
   msg: Msg;
   doneActions: Record<string, boolean>;
   onAction: (msgId: string, a: ActionSpec) => void;
+  /** Play the reveal (only the answer just given). */
+  animate?: boolean;
 }) {
   const a = msg.answer!;
+  const r = useReveal(msg.id, animate && !msg.proactive, a.steps, a.text);
   return (
-    <div className="cp-msg cp-msg-ai">
+    <div className="cp-msg cp-msg-ai" data-revealed={r.played || undefined}>
       <div className="cp-body">
         {msg.proactive && (
           <span className={`cp-meta ${msg.severity ? `cp-meta-${msg.severity.toLowerCase()}` : ""}`}>
@@ -174,9 +242,24 @@ export const AssistantMessage = memo(function AssistantMessage({
             {msg.clock && <span className="cp-meta-clock">{msg.clock}</span>}
           </span>
         )}
-        <div className="cp-text">
-          <RichText text={a.text} />
-        </div>
+        {r.inSteps && r.steps.length > 0 && (
+          <ol className="cp-steps" aria-hidden="true">
+            {r.steps.map((s, i) => (
+              <li key={i} data-state={i < r.step ? "done" : i === r.step ? "active" : "todo"}>
+                <span className="cp-step-mark">{i < r.step ? <CheckIcon /> : null}</span>
+                {s}
+              </li>
+            ))}
+          </ol>
+        )}
+        {/* A played answer reaches screen readers once, whole; the writing-in is visual only. */}
+        {r.played && <span className="sr-only">{a.text}</span>}
+        {!r.inSteps && (
+          <div className="cp-text" data-writing={r.writing || undefined} aria-hidden={r.played || undefined}>
+            <RichText text={r.text} />
+          </div>
+        )}
+        {r.done && (
         <div className="cp-extras">
           {a.spark && <EvidenceSpark s={a.spark} />}
           {a.evidence.length > 0 && (
@@ -213,6 +296,7 @@ export const AssistantMessage = memo(function AssistantMessage({
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   );

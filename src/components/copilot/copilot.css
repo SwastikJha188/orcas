@@ -55,6 +55,9 @@
 .cp-text { font-size: var(--fs-base); line-height: 1.55; color: var(--page-fg); max-width: 68ch; overflow-wrap: anywhere; }
 .cp-text p { margin: 0 0 8px; }
 .cp-text p:last-child { margin-block-end: 0; }
+.cp-text > div { margin: 0 0 8px; }
+.cp-text > div:last-child { margin-block-end: 0; }
+.cp-text > div > p { margin: 0 0 4px; }
 .cp-text strong { font-weight: 600; color: var(--dx-ink); }
 .cp-list { margin: 0 0 8px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
 .cp-list li { position: relative; padding-inline-start: 12px; }
@@ -105,3 +108,81 @@
 .cp-note { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); background: var(--bg-canvas); color: var(--text-muted); font-size: var(--fs-sm); align-self: flex-start; }
 .cp-note svg { color: var(--status-success); flex: none; }
 .cp-note span { margin-inline-start: 8px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ---- Fresh answer reveal (copilot.tsx useReveal) ------------------------ */
+.cp-steps {
+  list-style: none;
+  margin: 0 0 4px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.02em;
+}
+.cp-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  animation: cp-in 220ms var(--ease-out) both;
+}
+.cp-steps li[data-state="todo"] { opacity: 0.4; }
+.cp-steps li[data-state="active"] { color: var(--dx-ink); }
+.cp-step-mark {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 14px;
+  block-size: 14px;
+  flex: none;
+  border: 1px solid var(--input-border);
+  border-radius: 50%;
+  color: var(--status-success);
+}
+.cp-steps li[data-state="done"] .cp-step-mark { border-color: color-mix(in srgb, var(--status-success) 55%, transparent); }
+.cp-steps li[data-state="active"] .cp-step-mark {
+  border-color: var(--dx-ink);
+  border-right-color: transparent;
+  animation: cp-spin 700ms linear infinite;
+}
+.cp-steps .cp-step-mark svg { inline-size: 9px; block-size: 9px; }
+
+/* The last written word carries a caret while the text writes itself in. */
+.cp-text[data-writing] > p:last-child::after,
+.cp-text[data-writing] > ul:last-child > li:last-child::after,
+.cp-text[data-writing] > div:last-child > ul > li:last-child::after {
+  content: "";
+  display: inline-block;
+  inline-size: 7px;
+  block-size: 1.05em;
+  margin-inline-start: 2px;
+  vertical-align: text-bottom;
+  background: var(--dx-ink);
+  animation: cp-caret 900ms steps(1) infinite;
+}
+
+/* Readings, trend and actions arrive after the text, one after another. */
+.cp-msg-ai[data-revealed] .cp-extras > * { animation: cp-in 320ms var(--ease-out) both; }
+.cp-msg-ai[data-revealed] .cp-extras > *:nth-child(2) { animation-delay: 90ms; }
+.cp-msg-ai[data-revealed] .cp-extras > *:nth-child(3) { animation-delay: 180ms; }
+.cp-msg-ai[data-revealed] .cp-chip { animation: cp-in 260ms var(--ease-out) both; }
+.cp-msg-ai[data-revealed] .cp-chip:nth-child(2) { animation-delay: 60ms; }
+.cp-msg-ai[data-revealed] .cp-chip:nth-child(3) { animation-delay: 120ms; }
+.cp-msg-ai[data-revealed] .cp-chip:nth-child(4) { animation-delay: 180ms; }
+.cp-msg-ai[data-revealed] .cp-chip:nth-child(n + 5) { animation-delay: 240ms; }
+
+@keyframes cp-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes cp-spin { to { transform: rotate(360deg); } }
+@keyframes cp-caret { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .cp-steps li,
+  .cp-msg-ai[data-revealed] .cp-extras > *,
+  .cp-msg-ai[data-revealed] .cp-chip,
+  .cp-steps li[data-state="active"] .cp-step-mark { animation: none; }
+  .cp-text[data-writing] > p:last-child::after,
+  .cp-text[data-writing] > ul:last-child > li:last-child::after,
+  .cp-text[data-writing] > div:last-child > ul > li:last-child::after { display: none; }
+}

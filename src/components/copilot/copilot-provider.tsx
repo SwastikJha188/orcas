@@ -55,6 +55,8 @@ const LEGACY_KEY = "ultron-copilot-v1";
 const storeKey = (machineId: string) => `${STORE_KEY}:${machineId}`;
 const MAX_THREADS = 40;
 const MAX_MESSAGES = 60;
+/** Pause before an instant (engine) answer appears, so the question lands first. */
+const THINK_MS = 420;
 /** Waiting insights shown at once: the newest few, not a backlog. */
 const MAX_DELIVERED = 3;
 /** How long a deleted conversation can be brought back. */
@@ -156,6 +158,8 @@ export interface CopilotState {
   questions: string[];
   /** True while an answer is being worked out. */
   thinking: boolean;
+  /** The answer just given to a question asked here; it plays its reveal once (history never animates). */
+  freshId: string | null;
   onAction: (msgId: string, a: ActionSpec) => void;
   newChat: () => void;
   selectChat: (id: string) => void;
@@ -201,6 +205,7 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
     allNames: Object.fromEntries(machines.map((m) => [m.id, m.name])),
   };
   const [thinking, setThinking] = useState(false);
+  const [freshId, setFreshId] = useState<string | null>(null);
   // Alarms come from the database: the plant's open findings and the primary machine's events.
   const openUrl = selectedPlantId ? `/api/findings?plantId=${encodeURIComponent(selectedPlantId)}&status=open&limit=500` : null;
   const plantFindings = useApi<FindingDto[]>(openUrl, { refreshMs: DISPLAY_MS }).data;
@@ -332,7 +337,11 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
         setThinking(true);
         void answerPrefixed(pq, prefixedRef.current)
           // These answers are written with names already (no tag or machine codes to swap).
-          .then((answer) => append([{ id: nextId(), role: "assistant", text: answer.text, answer }], answer.focus, tid))
+          .then((answer) => {
+            const id = nextId();
+            setFreshId(id);
+            append([{ id, role: "assistant", text: answer.text, answer }], answer.focus, tid);
+          })
           .catch(() => append([{ id: nextId(), role: "note", text: "That answer could not be worked out just now. Try again in a moment." }], undefined, tid))
           .finally(() => setThinking(false));
         return;
@@ -357,7 +366,18 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
         raw = ask(q, { frame: f, focus: focusRef.current, machineId: primaryRef.current, plant: plantRef.current, record: recordRef.current });
       }
       const answer = namedAnswer(raw, defsOf(raw.machineId, f), machineNamesRef.current);
-      append([{ id: nextId(), role: "user", text: label ?? q }, { id: nextId(), role: "assistant", text: answer.text, answer }], answer.focus);
+      // The answer is ready at once; a short working beat keeps question and answer readable as two steps.
+      const tid = append([{ id: nextId(), role: "user", text: label ?? q }]);
+      const id = nextId();
+      setThinking(true);
+      setFreshId(id);
+      window.setTimeout(
+        () => {
+          append([{ id, role: "assistant", text: answer.text, answer }], answer.focus, tid);
+          setThinking(false);
+        },
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : THINK_MS,
+      );
     },
     [append, recordOf],
   );
@@ -516,6 +536,7 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
       send,
       questions,
       thinking,
+      freshId,
       onAction,
       newChat,
       selectChat,
@@ -523,7 +544,7 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
       deleted,
       undoDelete,
     }),
-    [sim, frame, header, scopes, scopeId, setScope, threads, activeId, messages, chips, chipLabel, doneActions, nudges.length, nudgeCritical, showNudges, viewing, setViewing, send, questions, thinking, onAction, newChat, selectChat, deleteChat, deleted, undoDelete],
+    [sim, frame, header, scopes, scopeId, setScope, threads, activeId, messages, chips, chipLabel, doneActions, nudges.length, nudgeCritical, showNudges, viewing, setViewing, send, questions, thinking, freshId, onAction, newChat, selectChat, deleteChat, deleted, undoDelete],
   );
 
   return <CopilotContext.Provider value={value}>{children}</CopilotContext.Provider>;

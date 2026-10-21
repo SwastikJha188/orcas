@@ -400,20 +400,39 @@
   .aqk-questions { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* While an answer is worked out. */
+/* While an answer is worked out: the label, and a thin bar scanning under it. */
 .aqk-thinking {
   display: inline-flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
+  inline-size: min(280px, 100%);
   color: var(--text-muted);
-  font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.02em;
+  animation: aqk-fade 200ms var(--ease-out) both;
 }
-.aqk-thinking i {
-  inline-size: 6px;
-  block-size: 6px;
-  border-radius: 50%;
-  background: var(--signal-blue);
-  animation: aqk-pulse 1s ease-in-out infinite;
+.aqk-thinking-scan {
+  position: relative;
+  block-size: 2px;
+  overflow: hidden;
+  background: var(--separator);
 }
-@keyframes aqk-pulse { 50% { opacity: 0.3; } }
-@media (prefers-reduced-motion: reduce) { .aqk-thinking i { animation: none; } }
+.aqk-thinking-scan::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inline-size: 36%;
+  background: linear-gradient(90deg, transparent, var(--dx-ink), transparent);
+  animation: aqk-scan 1100ms cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@keyframes aqk-scan {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(280%); }
+}
+@keyframes aqk-fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .aqk-thinking,
+  .aqk-thinking-scan::after { animation: none; }
+  .aqk-thinking-scan::after { inline-size: 100%; opacity: 0.4; }
+}
