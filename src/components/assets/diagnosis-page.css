@@ -11,13 +11,6 @@
   padding-bottom: 32px;
 }
 
-.pg-diag-pipe > span + span::before {
-  content: "·";
-  margin: 0 8px;
-  color: var(--text-muted);
-  opacity: 0.6;
-}
-
 /* ------------------------------ Header ---------------------------------- */
 
 .pg-diag-scope {
@@ -70,12 +63,6 @@
   gap: 8px 16px;
 }
 
-.pg-diag-pipe {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
 .pg-diag-missing {
   margin: 0 0 8px;
   padding: 0 16px;
@@ -89,11 +76,6 @@
 
 .pg-diag-val:is([data-tone="warn"], [data-tone="bad"]) {
   color: var(--tone);
-}
-
-.pg-diag-unit {
-  font-size: var(--fs-sm);
-  color: var(--text-muted);
 }
 
 .pg-diag-inline-link {
@@ -113,6 +95,7 @@
 }
 
 .btn-pill.pg-diag-sm {
+  min-height: 32px;
   padding: 4px 12px;
   font-size: var(--fs-sm);
   gap: 4px;
@@ -127,70 +110,8 @@
   white-space: nowrap;
 }
 
-.pg-diag-samples {
-  display: inline-flex;
-  gap: 2px;
-}
-
-.pg-diag-samples i {
-  width: 8px;
-  height: 4px;
-  background: var(--dx-track);
-}
-
-.pg-diag-samples i.is-on {
-  background: var(--dx-ink-2);
-}
-
 .pg-diag .pg-diag-missing {
   padding: 0;
-}
-
-/* Shelving (inside an alarm card) */
-.pg-diag-shelve {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 16px;
-  padding: 8px 0;
-}
-
-.pg-diag-select select {
-  appearance: none;
-  -webkit-appearance: none;
-  padding: 6px 14px;
-  border: 1px solid var(--card-border);
-  border-radius: var(--corner-pill);
-  background: var(--pill-active-bg);
-  color: var(--dx-ink);
-  font-family: var(--font-ui);
-  font-size: var(--fs-sm);
-  cursor: pointer;
-}
-
-/* Residual sparkline */
-.pg-diag-spark {
-  display: block;
-  width: 96px;
-  height: 22px;
-  overflow: visible;
-}
-
-.pg-diag-spark-band {
-  fill: var(--dx-track);
-  opacity: 0.6;
-}
-
-.pg-diag-spark-lim {
-  stroke: var(--separator);
-  stroke-width: 1;
-}
-
-.pg-diag-spark-line {
-  fill: none;
-  stroke: var(--dx-ink-2);
-  stroke-width: 1.5;
-  vector-effect: non-scaling-stroke;
 }
 
 .pg-diag .pg-analysis-why {
@@ -212,76 +133,9 @@
   margin-bottom: -4px;
 }
 
-.pg-diag-fgroups {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.pg-diag-fgroup {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.pg-diag-fgroup > .ui-tiles-head {
-  margin: 4px 4px -4px;
-}
-
-.pg-diag-fgroup > .pg-diag-missing,
-.pg-diag-tiles + .ui-tiles-head {
-  margin-top: 4px;
-}
-
-/* Name line: wraps (names matter more than a uniform card height). */
-.pg-diag-tile .ui-tile-sub {
-  white-space: normal;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-
 .pg-diag-tile-name {
   color: var(--dx-ink);
   font-weight: 500;
-}
-
-.pg-diag-tile-meta {
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.pg-diag-tile .ui-tile-actions .pg-diag-inline-link,
-.pg-diag-tile .pg-diag-f-links {
-  font-size: var(--fs-sm);
-}
-
-.pg-diag-tile .ui-tile-facts {
-  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
-}
-
-.pg-diag-tile .ui-tile-foot {
-  flex-wrap: wrap;
-  row-gap: 8px;
-}
-
-.pg-diag-tile .ui-tile-foot-text {
-  white-space: normal;
-  line-height: 1.4;
-}
-
-.pg-diag-tile .pg-diag-progress {
-  font-size: inherit;
-}
-
-.pg-diag-tile .pg-diag-shelve {
-  gap: 8px;
-  padding: 8px 0 0;
-  border-top: 1px solid var(--separator);
 }
 
 /* Evidence: icon badge in the title, full-width limit bar and residual. */
@@ -302,16 +156,6 @@
   display: block;
 }
 
-.pg-diag-ev-bar .dxo-limit-bar {
-  width: 100%;
-  height: 16px;
-}
-
-.pg-diag-evtile .pg-diag-spark {
-  width: 100%;
-  height: 24px;
-}
-
 /* The residual spark stretches with the card; keep its strokes hairline. */
 .pg-diag-evtile .pg-diag-spark :is(path, line) {
   vector-effect: non-scaling-stroke;
@@ -320,113 +164,6 @@
 .pg-diag-evtile .ui-tile-actions {
   gap: 0;
   margin-right: -6px;
-}
-
-/* ------------------------------------------------ finding cards */
-.pg-diag-f-do {
-  display: grid;
-  grid-template-columns: 52px minmax(0, 1fr);
-  gap: 4px 10px;
-  margin: 0;
-  font-size: var(--fs-sm);
-  line-height: 1.45;
-}
-
-.pg-diag-f-do dt {
-  color: var(--text-muted);
-}
-
-.pg-diag-f-do dd {
-  margin: 0;
-  color: var(--dx-ink);
-  overflow-wrap: anywhere;
-}
-
-.pg-diag-f-note {
-  margin: 0;
-  font-size: var(--fs-sm);
-  line-height: 1.45;
-  color: var(--page-fg);
-}
-
-/* Inputs: one compact line per signal — tag / name · observed · expected · deviation (σ under). */
-.pg-diag-in {
-  --in-cols: minmax(0, 1fr) 72px 48px 78px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-top: 8px;
-  border-top: 1px solid var(--separator);
-}
-
-.pg-diag-in-head {
-  display: grid;
-  grid-template-columns: var(--in-cols);
-  column-gap: 8px;
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
-}
-
-.pg-diag-in-head > span + span {
-  text-align: right;
-}
-
-.pg-diag-in-list {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.pg-diag-in-list > li {
-  display: grid;
-  grid-template-columns: var(--in-cols);
-  column-gap: 8px;
-  align-items: start;
-  padding: 4px 0;
-  font-size: var(--fs-sm);
-}
-
-.pg-diag-in-list > li + li {
-  border-top: 1px solid var(--separator);
-}
-
-.pg-diag-in-list > li.is-quiet {
-  color: var(--text-muted);
-}
-
-.pg-diag-in-sig {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.pg-diag-in-tag {
-  color: var(--dx-ink);
-  overflow-wrap: anywhere;
-}
-
-li.is-quiet .pg-diag-in-tag {
-  color: var(--dx-ink-2);
-}
-
-.pg-diag-in-sub {
-  display: block;
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.pg-diag-in-num {
-  text-align: right;
-  white-space: nowrap;
-}
-
-.pg-diag-in-num .pg-diag-unit {
-  font-size: var(--fs-xs);
 }
 
 .pg-diag-f-rule .pg-analysis-why {
@@ -440,7 +177,7 @@ li.is-quiet .pg-diag-in-tag {
 .pg-diag-f-dl {
   display: grid;
   grid-template-columns: 104px minmax(0, 1fr);
-  gap: 6px 12px;
+  gap: 8px 12px;
   margin: 0;
   font-size: var(--fs-sm);
   line-height: 1.45;
@@ -461,22 +198,7 @@ li.is-quiet .pg-diag-in-tag {
   padding-left: 16px;
 }
 
-.pg-diag-f-links {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-}
-
 @media (max-width: 599px) {
-  .pg-diag-in {
-    --in-cols: minmax(0, 1fr) 72px 78px;
-  }
-
-  /* Phone: expected value drops; observed and deviation stay. */
-  .pg-diag-in-list > li > :nth-child(3),
-  .pg-diag-in-head > :nth-child(3) {
-    display: none;
-  }
 
   .pg-diag-f-dl {
     grid-template-columns: minmax(0, 1fr);
@@ -488,7 +210,6 @@ li.is-quiet .pg-diag-in-tag {
    Red only on rows in alarm (beyond alarm limit or evidence for a raised
    fault); everything else stays monochrome.
    ====================================================================== */
-
 
 .pg-dx-filters {
   display: inline-flex;
@@ -602,10 +323,30 @@ li.is-quiet .pg-diag-in-tag {
 
 .pg-dx-fault-actions {
   display: inline-flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 6px;
-  margin-top: 4px;
+  gap: var(--space-2);
+}
+
+/* Trailing row actions (one group per fault that needs one): revealed on row hover or
+   keyboard focus, per the table style; always shown on touch. */
+.pg-dx-row-actions {
+  display: grid;
+  justify-items: end;
+  gap: var(--space-2);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.pg-dx-table tbody tr:hover .pg-dx-row-actions,
+.pg-dx-table tbody tr:focus-within .pg-dx-row-actions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .pg-dx-row-actions {
+    opacity: 1;
+  }
 }
 
 .pg-dx-links {
@@ -620,7 +361,7 @@ li.is-quiet .pg-diag-in-tag {
 }
 
 /* Long headers wrap instead of widening the table. */
-.pg-dx-table th:is([data-col="chance"], [data-col="since"], [data-col="limit"]) {
+.pg-dx-table th:is([data-col="since"], [data-col="limit"]) {
   white-space: normal;
 }
 
@@ -629,6 +370,11 @@ li.is-quiet .pg-diag-in-tag {
 }
 
 /* Sub-assembly health: number + 0–100 bar with 60 / 85 ticks, grey unless below 85. */
+/* Parts table: the health column takes the spare room, at least 240px (minmax(240px, 1fr)). */
+.pg-dx-subs :is(th, td)[data-col="health"] {
+  min-width: 240px;
+}
+
 .pg-dx-health {
   display: flex;
   align-items: center;

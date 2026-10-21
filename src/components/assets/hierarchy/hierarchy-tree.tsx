@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { HierarchyNode } from "../assets-data";
 import { IconChevron, SearchPill, machineTone } from "../assets-shell-ui";
 import { TypeIcon } from "./hierarchy-icons";
+import { useMenuFocus } from "../use-menu-focus";
 import {
   type MachineLookup,
   filterVisible,
@@ -68,6 +69,7 @@ export function HierarchyTree({ roots, lookup, plantId, onPlantChange, selectedI
   );
   const [focusId, setFocusId] = useState<string | null>(null);
   const headRef = useRef<HTMLDivElement | null>(null);
+  const plantMenu = useMenuFocus(menuOpen, () => setMenuOpen(false));
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
   const typeahead = useRef({ buffer: "", at: 0 });
 
@@ -209,6 +211,7 @@ export function HierarchyTree({ roots, lookup, plantId, onPlantChange, selectedI
           </span>
         </div>
         <button
+          ref={plantMenu.triggerRef}
           type="button"
           className="ast-plant-btn"
           aria-haspopup="menu"
@@ -219,16 +222,17 @@ export function HierarchyTree({ roots, lookup, plantId, onPlantChange, selectedI
           <IconChevron dir="down" />
         </button>
         {menuOpen && (
-          <div className="ast-menu" role="menu" aria-label="Select plant">
+          <div className="ast-menu" role="menu" aria-label="Select plant" ref={plantMenu.menuRef} onKeyDown={plantMenu.onMenuKeyDown}>
             {roots.map((p) => (
               <button
                 key={p.id}
                 type="button"
                 role="menuitemradio"
+                tabIndex={-1}
                 aria-checked={p.id === plant?.id}
                 onClick={() => {
+                  plantMenu.closeToTrigger();
                   onPlantChange(p.id);
-                  setMenuOpen(false);
                 }}
               >
                 {nodeLabel(p)}

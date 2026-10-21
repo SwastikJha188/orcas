@@ -1,13 +1,15 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
+import { revalidateApi, useApi } from "@/lib/api-cache";
+import type { MachineVerdictsDto } from "@backend/services/verdict-service";
 import { PillButton, Table, type Column } from "@/components/ui";
 import type { AssetsSubPage } from "../assets-view";
 import { DIAGNOSIS_SECTION_KEY } from "../diagnosis-view";
 import { Chevron, Section, openActions, priorityRank } from "./an-ui";
 import { useWorkOrderPriorities } from "@/lib/reference-data";
 import { SECTION_IDS, liveRules, machineFaults, type SectionProps } from "./an-derive";
-import { isConditionRule } from "@/lib/plant-defs";
+import { isConditionRule } from "@shared/lib/plant-defs";
 
 export function openDiagnosisAt(section: string, go: (sub: AssetsSubPage) => void): void {
   try {
@@ -18,46 +20,63 @@ export function openDiagnosisAt(section: string, go: (sub: AssetsSubPage) => voi
   go("diagnosis");
 }
 
-export type FeedbackLabel = "confirm" | "false-alarm" | "new-normal";
-export const FEEDBACK: { id: FeedbackLabel; label: string }[] = [
-  { id: "confirm", label: "Real problem" },
-  { id: "false-alarm", label: "False alarm" },
-  { id: "new-normal", label: "Accept as normal" },
-];
+/** An answer id from verdict_kinds (e.g. "confirm", "false-alarm", "new-normal"). */
+export type FeedbackLabel = string;
 
 export interface FeedbackStore {
-  labels: Record<string, { label: FeedbackLabel; at: string }>;
+  /** The answer words, from the database (verdict_kinds). */
+  kinds: { id: string; name: string }[];
+  /** Current answer by rule code, with who gave it and when. */
+  labels: Record<string, { label: FeedbackLabel; at: string; by: string | null }>;
   set: (finding: string, label: FeedbackLabel | null) => void;
+  /** Rule code whose answer is being saved. */
+  busy: string | null;
+  error: string | null;
 }
 
+/**
+ * "Is this problem real?" answers for one machine, stored for everyone (/api/machines/:id/verdicts).
+ * A click shows at once; if the save fails the answer goes back and the error is shown.
+ */
 export function useFeedbackLabels(machineId: string): FeedbackStore {
-  const key = `ultron.analysis.labels.${machineId}`;
-  const [labels, setLabels] = useState<FeedbackStore["labels"]>({});
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(key);
-      setLabels(raw ? JSON.parse(raw) : {});
-    } catch {
-      setLabels({});
+  const url = `/api/machines/${encodeURIComponent(machineId)}/verdicts`;
+  const { data } = useApi<MachineVerdictsDto>(url);
+  const [pending, setPending] = useState<Record<string, FeedbackLabel | null>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const labels = useMemo(() => {
+    const out: FeedbackStore["labels"] = {};
+    for (const [code, v] of Object.entries(data?.byRule ?? {})) out[code] = { label: v.kind, at: v.at, by: v.by };
+    for (const [code, label] of Object.entries(pending)) {
+      if (label === null) delete out[code];
+      else out[code] = { label, at: new Date().toISOString(), by: null };
     }
-  }, [key]);
+    return out;
+  }, [data, pending]);
   const set = useCallback(
-    (finding: string, label: FeedbackLabel | null) => {
-      setLabels((prev) => {
-        const next = { ...prev };
-        if (label === null) delete next[finding];
-        else next[finding] = { label, at: new Date().toISOString() };
-        try {
-          localStorage.setItem(key, JSON.stringify(next));
-        } catch {
-          /* storage unavailable */
-        }
-        return next;
-      });
+    async (finding: string, label: FeedbackLabel | null) => {
+      setPending((p) => ({ ...p, [finding]: label }));
+      setBusy(finding);
+      setError(null);
+      try {
+        const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ruleCode: finding, kind: label }) });
+        const json = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+        if (!res.ok) throw new Error(json?.error?.message ?? "Could not save the answer. Try again.");
+        await revalidateApi(url);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not save the answer. Try again.");
+      } finally {
+        setPending((p) => {
+          const next = { ...p };
+          delete next[finding];
+          return next;
+        });
+        setBusy(null);
+      }
     },
-    [key],
+    [url],
   );
-  return { labels, set };
+  return { kinds: data?.kinds ?? [], labels, set: (f, l) => void set(f, l), busy, error };
 }
 
 /** Feedback — operator verification table per open finding. */
@@ -83,9 +102,9 @@ export function AnActions({ insights, frame, go, feedback }: SectionProps & { fe
         const cur = feedback.labels[f.id]?.label ?? null;
         return (
           <span className="pg-analysis-feedback" role="group" aria-label={`Is ${f.name} a real problem?`}>
-            {FEEDBACK.map((b) => (
-              <PillButton key={b.id} variant="secondary" pressed={cur === b.id} onClick={() => feedback.set(f.id, cur === b.id ? null : b.id)}>
-                {b.label}
+            {feedback.kinds.map((b) => (
+              <PillButton key={b.id} variant="secondary" pressed={cur === b.id} loading={feedback.busy === f.id && cur === b.id} onClick={() => feedback.set(f.id, cur === b.id ? null : b.id)}>
+                {b.name}
               </PillButton>
             ))}
           </span>

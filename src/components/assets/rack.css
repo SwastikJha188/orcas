@@ -22,7 +22,7 @@
 .pg-rack-item {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -55,7 +55,7 @@
   display: inline-flex;
   align-items: center;
   height: 24px;
-  padding: 0 10px;
+  padding: 0 8px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   background: var(--bg-surface);
@@ -81,7 +81,7 @@
 .pg-rack-inputs {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 12px;
+  gap: 8px 12px;
 }
 
 /* ---------------------------------------------------------------- tables */
@@ -112,12 +112,12 @@
 }
 
 .pg-table-card .pg-rack-card-head {
-  padding: 10px 16px 0;
+  padding: 8px 16px 0;
 }
 
 .pg-rack-foot {
   margin: 0;
-  padding: 8px 16px 10px;
+  padding: 8px 16px 8px;
   border-top: 1px solid var(--separator);
 }
 
@@ -173,7 +173,7 @@
 .pg-rack-legend span {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .pg-rack-legend i {
@@ -219,7 +219,7 @@
 .pg-rack-dl {
   display: grid;
   grid-template-columns: 88px minmax(0, 1fr);
-  gap: 6px 12px;
+  gap: 8px 12px;
   margin: 0;
   font-size: var(--fs-md);
 }
@@ -256,7 +256,7 @@
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 6px 8px;
+  padding: 4px 8px;
   border: 0;
   border-radius: var(--corner-row);
   background: transparent;
@@ -286,7 +286,7 @@
 .pg-rack-chlist-tag {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;

@@ -56,7 +56,7 @@
 
 .thm-flag {
   margin-left: 8px;
-  padding: 1px 7px;
+  padding: 1px 8px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
   background: var(--bg-canvas);
@@ -72,8 +72,8 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-left: 6px;
-  padding: 3px 10px;
+  margin-left: 8px;
+  padding: 4px 8px;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -102,7 +102,7 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 6px 16px;
+  gap: 8px 16px;
 }
 
 /* ---------------------------------------------------------------- KPIs */
@@ -140,7 +140,7 @@
 }
 
 .thm-est {
-  margin-left: 3px;
+  margin-left: 4px;
   font-size: var(--fs-xs);
   font-weight: 400;
   color: var(--text-muted);
@@ -352,7 +352,7 @@
 .thm-snap {
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
+  gap: 8px;
 }
 
 /* Handheld comparison point (MAN-KLN-01) on the map: hollow marker, status colour only when it disagrees. */
@@ -404,7 +404,7 @@
   flex-direction: column;
   gap: 2px;
   min-width: 170px;
-  padding: 8px 10px;
+  padding: 8px 8px;
   border: 1px solid var(--separator);
   border-radius: var(--corner-sm);
   background: var(--card-bg);
@@ -449,7 +449,7 @@
 .thm-legend {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
+  gap: 4px 16px;
   font-size: var(--fs-sm);
   color: var(--text-muted);
 }
@@ -457,7 +457,7 @@
 .thm-legend > span {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .thm-key {
@@ -665,7 +665,7 @@
 :where(.thm-root) :where(.pg-analysis-index-list .nav-pill) {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   text-decoration: none;
 }
 
@@ -677,7 +677,7 @@
 :where(.thm-root) :where(.pg-analysis-ai) {
   display: inline-flex;
   align-items: center;
-  padding: 1px 7px;
+  padding: 1px 8px;
   border-radius: var(--corner-pill);
   background: var(--hover-faint);
   color: var(--text-muted);
@@ -699,7 +699,7 @@
 :where(.thm-root) :where(.pg-analysis-verdict) {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 :where(.thm-root) :where(.pg-analysis-verdict-top) {
@@ -725,7 +725,7 @@
 :where(.thm-root) :where(.pg-analysis-fact-label) {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: var(--fs-sm);
   color: var(--text-muted);
 }
@@ -745,14 +745,14 @@
 :where(.thm-root) :where(.pg-analysis-evidence-chips) {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 
 :where(.thm-root) :where(.pg-analysis-ev) {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
+  gap: 8px;
+  padding: 4px 8px;
   border: 0;
   border-radius: var(--corner-pill);
   background: var(--hover-faint);
@@ -773,7 +773,7 @@
 :where(.thm-root) :where(.pg-analysis-why summary) {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: var(--fs-sm);
   color: var(--text-muted);
   cursor: pointer;
@@ -789,7 +789,7 @@
 }
 
 :where(.thm-root) :where(.pg-analysis-why-body) {
-  padding: 6px 0 0 18px;
+  padding: 4px 0 0 18px;
   font-size: var(--fs-sm);
   line-height: 1.5;
   color: var(--dx-ink-2);
@@ -803,7 +803,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border: 1px dashed var(--separator);
   border-radius: var(--corner-sm);
   font-size: var(--fs-sm);
@@ -813,7 +813,7 @@
 :where(.thm-root) :where(.pg-analysis-pointer) {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .thm-scanner-trend {

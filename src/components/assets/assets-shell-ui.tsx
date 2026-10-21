@@ -7,7 +7,7 @@ import React from "react";
    sensor mapping). Token-only colour via data-tone → --tone (assets-shell.css).
    ========================================================================== */
 
-import type { Tone } from "@/components/ui/status";
+import { conditionTone, toCondition, type Tone } from "@/components/ui/status";
 import { useHealthBands, type HealthBands } from "@/lib/reference-data";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { usePrimaryMachineId } from "@/providers/kiln-simulation-context";
@@ -20,11 +20,9 @@ export function severityTone(status: string): Tone {
   return "good";
 }
 
+/** Same scale as the word beside it (toCondition): "No data" or an unknown status is idle, never green. */
 export function machineTone(status: string): Tone {
-  if (status === "Alert") return "warn";
-  if (status === "Critical") return "bad";
-  if (status === "Standby" || status === "Maintenance") return "idle";
-  return "good";
+  return conditionTone(toCondition(status));
 }
 
 /** Tone of a health score under its model's bands (`useMachineHealthBands`); idle while the bands load. */

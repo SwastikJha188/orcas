@@ -15,9 +15,9 @@
  * highlight there, not a finding threshold.
  */
 
-import type { RuleState } from "@/lib/kiln-sim/engine";
-import type { Severity } from "@/lib/kiln-sim/signals";
-import type { MeasurementDto } from "@/types/monitoring";
+import type { RuleState } from "@shared/lib/kiln-sim/engine";
+import type { Severity } from "@shared/lib/kiln-sim/signals";
+import type { MeasurementDto } from "@shared/types/monitoring";
 import {
   SHELL_ALERT,
   SHELL_CELL_AREA,
@@ -30,7 +30,7 @@ import {
   shellZoneAt,
   type ShellMap,
   type ShellZoneStats,
-} from "@/lib/kiln-sim/shell-map";
+} from "@shared/lib/kiln-sim/shell-map";
 import type { Tone } from "./assets-shell-ui";
 
 /** R-SHL-01 residual threshold: a cell this far above the section model is part of a hot spot. */

@@ -1,17 +1,25 @@
 "use client";
 
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useCopilot, type ChatThread, type CopilotHeader, type CopilotState, type ScopeOption } from "@/components/copilot/copilot-provider";
-import { AssistantMessage, CheckIcon, CloseIcon, SendIcon, SparkIcon, UserMessage } from "@/components/copilot/copilot";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCopilot, type ChatThread, type CopilotHeader, type CopilotState } from "@/components/copilot/copilot-provider";
+import { AssistantMessage, CheckIcon, CloseIcon, SendIcon, UserMessage } from "@/components/copilot/copilot";
+import { useIndustrialData } from "@/providers/industrial-data-context";
 import { zonedParts } from "@/lib/time";
 import "./assetiq-ask.css";
 
 /* ==========================================================================
    AssetIQ · Ask — the conversation with the engine. Conversations on the
-   left (one list per plant); an empty conversation opens on the composer,
-   a running one reads top to bottom with the composer docked below it.
-   Answers are computed from the live frame and the database, not canned.
+   left (one list per plant; a drawer on narrow screens); an empty
+   conversation opens on the composer, a running one reads top to bottom with
+   the composer docked below it. What the answers speak for is the machine
+   picked in the top bar. Answers are computed from the live frame and the
+   database, not canned, and shown as soon as they are computed.
    ========================================================================== */
+
+/** How long to wait for the first live frame before saying it has not come. */
+const WAIT_MS = 15_000;
+/** Narrow screens: the conversation list becomes a drawer (matches the CSS breakpoint). */
+const NARROW = "(max-width: 760px)";
 
 function PlusIcon() {
   return (
@@ -21,10 +29,10 @@ function PlusIcon() {
   );
 }
 
-function ChevronIcon() {
+function ListIcon() {
   return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M6 9l6 6 6-6" />
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+      <path d="M4 7h16M4 12h16M4 17h10" />
     </svg>
   );
 }
@@ -51,31 +59,15 @@ function groupThreads(threads: ChatThread[], now: number): Array<{ label: string
 
 /* ---------------------------------------------------------------- composer */
 
-/** What the answers speak for: the full line or one live machine. */
-function ScopeSelect({ scopes, scope, onScope }: { scopes: ScopeOption[]; scope: string | null; onScope: (id: string | null) => void }) {
-  return (
-    <label className="aqk-scope">
-      <span className="aqk-scope-key">Ask</span>
-      <select value={scope ?? ""} onChange={(e) => onScope(e.target.value || null)} aria-label="Which machine the answer is about">
-        {scopes.map((o) => (
-          <option key={o.id ?? ""} value={o.id ?? ""}>
-            {o.name}
-          </option>
-        ))}
-      </select>
-      <ChevronIcon />
-    </label>
-  );
-}
-
 function Composer({
   onSend,
-  scope,
+  placeholder,
   autoFocusKey,
   large,
 }: {
   onSend: (q: string) => void;
-  scope: React.ReactNode;
+  /** Names what the answer will be about (the machine picked in the top bar). */
+  placeholder: string;
   /** Changing it moves focus to the composer (a new or switched conversation). */
   autoFocusKey: string;
   large?: boolean;
@@ -121,13 +113,17 @@ function Composer({
             submit();
           }
         }}
-        placeholder="Ask a question about the plant, a machine or a reading"
+        placeholder={placeholder}
         aria-label="Message to AssetIQ"
         maxLength={400}
         autoComplete="off"
       />
       <div className="aqk-composer-bar">
-        {scope}
+        {draft.length > 320 && (
+          <span className="aqk-count ast-num" title="Characters used of the 400 allowed">
+            {draft.length}/400
+          </span>
+        )}
         <button type="submit" className="aqk-send" disabled={!draft.trim()} aria-label="Send">
           <SendIcon />
         </button>
@@ -172,17 +168,98 @@ function Suggestions({ cp, onPick, wrap }: { cp: CopilotState; onPick: () => voi
   );
 }
 
+/** The account's own questions on the empty page: all of them, two columns, one tap each. */
+function QuestionList({ cp, onPick }: { cp: CopilotState; onPick: () => void }) {
+  if (!cp.questions.length) return null;
+  return (
+    <div className="aqk-questions" aria-label="Your questions">
+      {cp.questions.map((q) => (
+        <button
+          key={q}
+          type="button"
+          className="aqk-question"
+          onClick={() => {
+            onPick();
+            cp.send(q, cp.chipLabel(q));
+          }}
+        >
+          {cp.chipLabel(q)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /* ---------------------------------------------------------------- history */
 
-function History({ cp }: { cp: CopilotState }) {
+/**
+ * The plant's conversations. On narrow screens it is a drawer (`drawer` true while open):
+ * a modal dialog that keeps focus inside, closes on Esc or the scrim, and closes after a pick.
+ */
+function History({ cp, drawer, onClose }: { cp: CopilotState; drawer: boolean; onClose: () => void }) {
   // Grouped against the day the list was drawn; a conversation re-sorts only when it changes.
   const groups = useMemo(() => groupThreads(cp.threads, Date.now()), [cp.threads]);
+  const ref = useRef<HTMLElement>(null);
+  const undoRef = useRef<HTMLButtonElement>(null);
+  const deletedId = cp.deleted?.id ?? null;
+
+  // The delete button leaves with its row: keep the keyboard on the list by moving to Undo.
+  useEffect(() => {
+    if (!deletedId) return;
+    const lost = !document.activeElement || document.activeElement === document.body;
+    if (lost) undoRef.current?.focus();
+  }, [deletedId]);
+
+  useEffect(() => {
+    if (drawer) ref.current?.querySelector<HTMLElement>("button")?.focus();
+  }, [drawer]);
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
+    if (!drawer) return;
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onClose();
+      return;
+    }
+    if (e.key !== "Tab") return;
+    // Keep Tab inside the open drawer.
+    const items = Array.from(ref.current?.querySelectorAll<HTMLElement>("button:not(:disabled)") ?? []);
+    if (!items.length) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+  const pick = (run: () => void) => () => {
+    run();
+    if (drawer) onClose();
+  };
+
   return (
-    <aside className="aqk-side" aria-label="Conversations">
-      <button type="button" className="aqk-new" onClick={cp.newChat} aria-pressed={cp.activeId === null}>
-        <PlusIcon />
-        New chat
-      </button>
+    <aside
+      ref={ref}
+      className={`aqk-side ${drawer ? "is-open" : ""}`}
+      aria-label="Conversations"
+      role={drawer ? "dialog" : undefined}
+      aria-modal={drawer || undefined}
+      onKeyDown={onKeyDown}
+    >
+      <div className="aqk-side-head">
+        <button type="button" className="aqk-new" onClick={pick(cp.newChat)} aria-pressed={cp.activeId === null}>
+          <PlusIcon />
+          New chat
+        </button>
+        {drawer && (
+          <button type="button" className="aqk-side-close" onClick={onClose} aria-label="Close conversations">
+            <CloseIcon />
+          </button>
+        )}
+      </div>
       <nav className="aqk-side-scroll">
         {groups.map((g) => (
           <section key={g.label} className="aqk-group">
@@ -192,7 +269,7 @@ function History({ cp }: { cp: CopilotState }) {
                 const active = t.id === cp.activeId;
                 return (
                   <li key={t.id} className={active ? "is-active" : undefined}>
-                    <button type="button" className="aqk-hist" aria-current={active ? "true" : undefined} onClick={() => cp.selectChat(t.id)} title={t.title}>
+                    <button type="button" className="aqk-hist" aria-current={active ? "true" : undefined} onClick={pick(() => cp.selectChat(t.id))} title={t.title}>
                       {t.title || "Conversation"}
                     </button>
                     <button type="button" className="aqk-hist-del" onClick={() => cp.deleteChat(t.id)} aria-label={`Delete conversation: ${t.title}`} title="Delete this conversation">
@@ -205,6 +282,16 @@ function History({ cp }: { cp: CopilotState }) {
           </section>
         ))}
       </nav>
+      <div className="aqk-undo" role="status">
+        {cp.deleted && (
+          <>
+            <span>Conversation deleted</span>
+            <button ref={undoRef} type="button" className="aqk-undo-btn" onClick={cp.undoDelete}>
+              Undo
+            </button>
+          </>
+        )}
+      </div>
     </aside>
   );
 }
@@ -214,7 +301,7 @@ function History({ cp }: { cp: CopilotState }) {
 const conditionClass = (c: string) => (c === "Critical" ? "is-crit" : c === "Alert" ? "is-warn" : "");
 
 /** The scope's numbers under the title: health and condition for a machine, the line's size for the full line. */
-function ScopeFacts({ h }: { h: CopilotHeader }) {
+function ScopeFacts({ h, onOpen }: { h: CopilotHeader; onOpen?: () => void }) {
   return (
     <p className="aqk-context">
       <span>{h.label}</span>
@@ -244,12 +331,20 @@ function ScopeFacts({ h }: { h: CopilotHeader }) {
           <b className="aqk-num">{h.ruleCount}</b> automatic checks
         </span>
       )}
+      {h.machineId && onOpen && (
+        <span>
+          <button type="button" className="aqk-open" onClick={onOpen}>
+            Open in Assets
+          </button>
+        </span>
+      )}
     </p>
   );
 }
 
 export function AskTab() {
   const cp = useCopilot();
+  const { navigateToMachine } = useIndustrialData();
   const setViewing = cp?.setViewing;
   useEffect(() => {
     if (!setViewing) return;
@@ -281,23 +376,52 @@ export function AskTab() {
     return () => ro.disconnect();
   }, [empty, cp?.activeId]);
 
-  if (!cp?.ready || !cp.header) {
+  // The first live frame normally arrives within a second or two; past WAIT_MS, say it has not come.
+  const waiting = !cp?.ready || !cp.header;
+  const [late, setLate] = useState(false);
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setTimeout(() => setLate(true), WAIT_MS);
+    return () => {
+      clearTimeout(t);
+      setLate(false);
+    };
+  }, [waiting]);
+
+  // Narrow screens: the conversation list opens as a drawer from the "Conversations" button.
+  const [drawer, setDrawer] = useState(false);
+  const drawerBtn = useRef<HTMLButtonElement>(null);
+  const closeDrawer = useCallback(() => {
+    setDrawer(false);
+    drawerBtn.current?.focus();
+  }, []);
+  useEffect(() => {
+    if (!drawer) return;
+    // Widening past the breakpoint shows the list in place; the drawer is no longer needed.
+    const mq = window.matchMedia(NARROW);
+    const onChange = () => {
+      if (!mq.matches) setDrawer(false);
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [drawer]);
+
+  if (!cp || waiting) {
     return (
       <div className="aqk-root">
         <div className="aqk-main">
           <div className="aqk-hero">
-            <span className="aqk-mark" aria-hidden="true">
-              <SparkIcon size={26} />
-            </span>
             <h1 className="aqk-hero-title">AssetIQ</h1>
-            <p className="aqk-context">Waiting for live data from the plant…</p>
+            <p className="aqk-context" role="status">
+              {late ? "Live data has not arrived yet. Questions can be asked as soon as the plant's readings load." : "Waiting for live data from the plant…"}
+            </p>
           </div>
         </div>
       </div>
     );
   }
 
-  const h = cp.header;
+  const h = cp.header!;
   const send = (q: string) => {
     stick.current = true;
     cp.send(q);
@@ -305,22 +429,27 @@ export function AskTab() {
   const pick = () => {
     stick.current = true;
   };
-  const scope = <ScopeSelect scopes={cp.scopes} scope={cp.scope} onScope={cp.setScope} />;
+  const placeholder = h.machineId ? `Ask a question about ${h.label} or one of its readings` : "Ask a question about the plant, a machine or a reading";
+  const openInAssets = h.machineId ? () => navigateToMachine(h.machineId!, "diagnosis") : undefined;
 
   return (
     <div className="aqk-root">
-      <History cp={cp} />
+      <History cp={cp} drawer={drawer} onClose={closeDrawer} />
+      {drawer && <div className="aqk-scrim" aria-hidden="true" onClick={closeDrawer} />}
 
       <section className="aqk-main" aria-label="Conversation">
+        <div className="aqk-mobile-bar">
+          <button ref={drawerBtn} type="button" className="aqk-convs" aria-haspopup="dialog" aria-expanded={drawer} onClick={() => setDrawer(true)}>
+            <ListIcon />
+            Conversations
+          </button>
+        </div>
         {empty ? (
           <div className="aqk-hero">
-            <span className="aqk-mark" aria-hidden="true">
-              <SparkIcon size={26} />
-            </span>
             <h1 className="aqk-hero-title">What do you want to know?</h1>
-            <ScopeFacts h={h} />
-            <Composer onSend={send} scope={scope} autoFocusKey={`new:${h.machineId ?? "line"}`} large />
-            <Suggestions cp={cp} onPick={pick} wrap />
+            <ScopeFacts h={h} onOpen={openInAssets} />
+            <Composer onSend={send} placeholder={placeholder} autoFocusKey={`new:${h.machineId ?? "line"}`} large />
+            {cp.questions.length ? <QuestionList cp={cp} onPick={pick} /> : <Suggestions cp={cp} onPick={pick} wrap />}
           </div>
         ) : (
           <>
@@ -331,7 +460,7 @@ export function AskTab() {
               aria-live="polite"
               aria-relevant="additions"
               onScroll={(e) => {
-                // Streaming grows the thread faster than scroll events arrive, so distance from the
+                // A new answer can grow the thread faster than scroll events arrive, so distance from the
                 // bottom alone would unstick it; the reader scrolling up is what does.
                 const el = e.currentTarget;
                 if (el.scrollHeight - el.scrollTop - el.clientHeight < 48) stick.current = true;
@@ -349,14 +478,20 @@ export function AskTab() {
                       {m.clock && <span>{m.clock}</span>}
                     </div>
                   ) : (
-                    <AssistantMessage key={m.id} msg={m} doneActions={cp.doneActions} onDone={cp.onDone} onAction={cp.onAction} />
+                    <AssistantMessage key={m.id} msg={m} doneActions={cp.doneActions} onAction={cp.onAction} />
                   ),
+                )}
+                {cp.thinking && (
+                  <div className="aqk-thinking" role="status">
+                    <i aria-hidden="true" />
+                    Reading the plant's data…
+                  </div>
                 )}
               </div>
             </div>
             <div className="aqk-dock">
               <Suggestions cp={cp} onPick={pick} />
-              <Composer onSend={send} scope={scope} autoFocusKey={`thread:${cp.activeId}`} />
+              <Composer onSend={send} placeholder={placeholder} autoFocusKey={`thread:${cp.activeId}`} />
             </div>
           </>
         )}

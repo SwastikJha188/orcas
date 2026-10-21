@@ -104,7 +104,7 @@ export function useStageLayout(
   const sheetH = art?.height ?? 774;
   const metrics = useMemo(() => stageMetrics(pxPerUnit, sheetW, tags.length), [pxPerUnit, sheetW, tags.length]);
   // Where the drawing is busy: plates on crowded equipment move into free space instead.
-  const busy = useArtBusyMap(art && tags.length ? `art:v2:${art.id}` : null, art?.Art, sheetW, sheetH);
+  const busy = useArtBusyMap(art && tags.length ? `art:v3:${art.id}` : null, art?.Art, sheetW, sheetH);
   // The drawing box grown to the canvas shape (centred), less a margin: the space the canvas shows anyway.
   const space = useMemo<[number, number, number, number]>(() => {
     const [x, y, w, h] = artBox;
@@ -135,6 +135,7 @@ export function useStageLayout(
       frame: [0, 0, sheetW, sheetH],
       busy: busy?.density,
       cover: busy?.cover,
+      text: busy?.text,
       space,
     });
   }, [art, tags, artBox, metrics, width, sheetW, sheetH, busy, space]);

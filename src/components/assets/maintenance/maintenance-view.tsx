@@ -15,7 +15,7 @@ import {
   type LiveValidity,
   type TaskState,
   type TaskStateKey,
-} from "@/lib/maintenance";
+} from "@shared/lib/maintenance";
 import { useKilnSimulationFor } from "@/providers/kiln-simulation-context";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
@@ -28,7 +28,7 @@ import type {
   MaintenanceRecord,
   MaintenanceVocabulary,
   RemovedChecklistItem,
-} from "@/types/maintenance";
+} from "@shared/types/maintenance";
 import { Chevron, Empty, KpiStrip, PageHeader, Section } from "../analysis/an-ui";
 import { SearchPill } from "../assets-shell-ui";
 import { SENSORS_FOCUS_KEY } from "../machine-sensor-mapping-view";
@@ -733,6 +733,9 @@ const Checkpoint = React.memo(function Checkpoint({
   const [pending, setPending] = useState<"Defect" | "Hold" | null>(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  // The button that started the save: it shows the spinner and keeps focus; the others wait disabled.
+  const [acting, setActing] = useState<string | null>(null);
+  const act = (key: string) => ({ loading: acting === key, disabled: busy && acting !== key });
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [message, setMessage] = useState<{ tone: "good" | "bad" | "warn"; text: string } | null>(null);
 
@@ -742,11 +745,13 @@ const Checkpoint = React.memo(function Checkpoint({
   useEffect(() => setOptimistic(null), [state.last?.id, state.key]);
   const checked = optimistic ?? ticked;
 
-  const run = async (work: () => Promise<Outcome>, quietOnSuccess = false) => {
+  const run = async (work: () => Promise<Outcome>, quietOnSuccess = false, key: string | null = null) => {
     setBusy(true);
+    setActing(key);
     setMessage(null);
     const out = await work();
     setBusy(false);
+    setActing(null);
     if (out.tone === "bad") setOptimistic(null);
     if (out.tone === "bad" || !quietOnSuccess) setMessage(out);
     return out;
@@ -758,12 +763,12 @@ const Checkpoint = React.memo(function Checkpoint({
     else if (state.last && (state.last.result === "Pass" || state.last.result === "NA")) void run(() => onUndo(state.last!), true);
   };
 
-  const submit = async (result: InspectionResult) => {
+  const submit = async (result: InspectionResult, key: string | null = null) => {
     if ((result === "Defect" || result === "Hold") && !note.trim()) {
       setMessage({ tone: "warn", text: "Describe what you found first." });
       return;
     }
-    const out = await run(() => onRecord(task, result, note));
+    const out = await run(() => onRecord(task, result, note), false, key);
     if (out.tone === "good") {
       setNote("");
       setPending(null);
@@ -776,7 +781,7 @@ const Checkpoint = React.memo(function Checkpoint({
       setMessage(null);
       return;
     }
-    void submit(result);
+    void submit(result, result);
   };
 
   const when = state.last ? formatLocalTime(state.last.recordedAt, { date: true, seconds: false, timeZone }) : null;
@@ -824,7 +829,8 @@ const Checkpoint = React.memo(function Checkpoint({
         </button>
         <div className="mt-cp-side">
           {flag && <StatusTag tone={tone === "idle" ? "warn" : tone} label={flag} title={state.liveNote ?? undefined} />}
-          <button type="button" className="mt-cp-more" aria-label={expanded ? "Hide details" : "Details"} aria-expanded={expanded} onClick={onToggle}>
+          {/* Same toggle as the row button: a mouse target only, so keyboard and screen readers meet it once. */}
+          <button type="button" className="mt-cp-more" tabIndex={-1} aria-hidden="true" onClick={onToggle}>
             <Chevron className={`mt-cp-chevron ${expanded ? "is-open" : ""}`} />
           </button>
         </div>
@@ -858,7 +864,7 @@ const Checkpoint = React.memo(function Checkpoint({
             <span className="mt-step-label">{isLive ? "Shift review" : "Something wrong?"}</span>
             <div className="mt-report-actions">
               {isLive && (
-                <PillButton variant="secondary" disabled={busy} onClick={() => void submit("Pass")}>
+                <PillButton variant="secondary" {...act("review")} onClick={() => void submit("Pass", "review")}>
                   Reviewed, OK
                 </PillButton>
               )}
@@ -869,7 +875,7 @@ const Checkpoint = React.memo(function Checkpoint({
                   className="mt-report-btn"
                   data-result={o.result}
                   pressed={pending === o.result || state.open === o.result}
-                  disabled={busy}
+                  {...act(o.result)}
                   title={o.title}
                   onClick={() => choose(o.result)}
                 >
@@ -877,10 +883,10 @@ const Checkpoint = React.memo(function Checkpoint({
                 </PillButton>
               ))}
             </div>
-            {pending && <NoteForm result={pending} note={note} setNote={setNote} busy={busy} taskId={task.id} onSubmit={() => void submit(pending)} onCancel={() => setPending(null)} />}
+            {pending && <NoteForm result={pending} note={note} setNote={setNote} busy={busy} saving={acting === "note"} onSubmit={() => void submit(pending, "note")} onCancel={() => setPending(null)} />}
             {state.open && !pending && (
               <div>
-                <PillButton variant="secondary" disabled={busy} onClick={() => void submit("Pass")}>
+                <PillButton variant="secondary" {...act("fixed")} onClick={() => void submit("Pass", "fixed")}>
                   Fixed, passes now
                 </PillButton>
               </div>
@@ -895,7 +901,7 @@ const Checkpoint = React.memo(function Checkpoint({
                 {records.slice(0, 6).map((h) => (
                   <li key={h.id}>
                     <StatusTag tone={STATE_TONE[h.result]} label={h.result === "NA" ? "Not applicable" : h.result === "Hold" ? "Follow-up" : h.result} />
-                    <span className="ast-caption ast-num">
+                    <span className="ast-caption">
                       {formatLocalTime(h.recordedAt, { date: true, seconds: false, timeZone })}
                       {h.inspector ? ` · ${h.inspector}` : ""}
                       {h.workOrderId ? ` · WO #${h.workOrderId}` : ""}
@@ -956,7 +962,7 @@ const Checkpoint = React.memo(function Checkpoint({
             {confirmRemove ? (
               <div className="mt-confirm" role="group" aria-label="Confirm removal">
                 <span>Remove from the {machineCode} checklist? Its results stay on record and you can restore it.</span>
-                <PillButton variant="danger" disabled={busy} onClick={() => void run(() => onRemove(task), true)}>
+                <PillButton variant="danger" {...act("remove")} onClick={() => void run(() => onRemove(task), true, "remove")}>
                   Remove item
                 </PillButton>
                 <PillButton variant="secondary" disabled={busy} onClick={() => setConfirmRemove(false)}>
@@ -980,7 +986,7 @@ function NoteForm({
   note,
   setNote,
   busy,
-  taskId,
+  saving,
   onSubmit,
   onCancel,
 }: {
@@ -988,15 +994,18 @@ function NoteForm({
   note: string;
   setNote: (v: string) => void;
   busy: boolean;
-  taskId: string;
+  /** This form's save is on its way (spinner on the save button). */
+  saving: boolean;
   onSubmit: () => void;
   onCancel: () => void;
 }) {
   return (
     <div className="mt-note">
-      <TextArea id={`mt-note-${taskId}`} value={note} onChange={setNote} rows={2} placeholder="What did you find? Where, and how much." />
+      <Field label="What did you find?">
+        {(id, d) => <TextArea id={id} describedBy={d} value={note} onChange={setNote} rows={2} placeholder="Where, and how much." />}
+      </Field>
       <div className="mt-note-actions">
-        <PillButton variant={result === "Defect" ? "danger" : "primary"} disabled={busy} onClick={onSubmit}>
+        <PillButton variant={result === "Defect" ? "danger" : "primary"} loading={saving} disabled={busy && !saving} onClick={onSubmit}>
           {result === "Defect" ? "Record defect · open work order" : "Record follow-up"}
         </PillButton>
         <PillButton variant="secondary" disabled={busy} onClick={onCancel}>

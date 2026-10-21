@@ -1,8 +1,8 @@
-import type { EdgeFormat, EdgeRegistry, FormatFields, TimestampFormat } from "@/types/edge";
-import { ULTRON_FORMAT_ID } from "@/lib/edge-format";
+import type { EdgeFormat, EdgeRegistry, FormatFields, TimestampFormat } from "@shared/types/edge";
+import { ULTRON_FORMAT_ID } from "@shared/lib/edge-format";
 
 /* ==========================================================================
-   Devices › Data formats: draft shape, presets (starting layouts, not data)
+   Devices › Message formats: draft shape, presets (starting layouts, not data)
    and field labels. Pure, no React.
    ========================================================================== */
 
@@ -32,8 +32,8 @@ export const EMPTY_FIELDS: FormatFields = {
 };
 
 export const FIELD_META: Record<keyof FormatFields, { label: string; hint: string }> = {
-  rack: { label: "Device", hint: "Device ID: rack, controller (PLC) or SCADA node" },
-  rackName: { label: "Device name", hint: "Its display name; a name containing “PLC” or “SCADA” sets the device type" },
+  rack: { label: "Rack", hint: "ID of the rack, controller (PLC) or SCADA system" },
+  rackName: { label: "Rack name", hint: "Its display name; a name containing “PLC” or “SCADA” sets the rack type" },
   card: { label: "Card", hint: "Card slot or module ID" },
   channel: { label: "Channel", hint: "Channel or tag ID on the card" },
   value: { label: "Value", hint: "The reading itself; empty = the whole record" },
@@ -41,9 +41,9 @@ export const FIELD_META: Record<keyof FormatFields, { label: string; hint: strin
   name: { label: "Name", hint: "Sensor or tag description" },
   cardType: { label: "Card type", hint: "Module model or what it measures" },
   quality: { label: "Quality", hint: "true, good, or OPC quality 192 and above count as valid" },
-  timestamp: { label: "Time", hint: "When the device took the reading" },
-  alert: { label: "Warning limit", hint: "First limit (warning)" },
-  danger: { label: "Alarm limit", hint: "Second limit (alarm)" },
+  timestamp: { label: "Time", hint: "When the rack took the reading" },
+  alert: { label: "Alert limit", hint: "First limit (Alert)" },
+  danger: { label: "Critical limit", hint: "Second limit (Critical)" },
 };
 
 export const TIMESTAMP_OPTIONS: { value: TimestampFormat; label: string }[] = [
@@ -124,7 +124,7 @@ export const PRESETS: Preset[] = [
   },
   {
     id: "nested",
-    label: "Devices › cards › channels",
+    label: "Racks › cards › channels",
     hint: "racks[*].cards[*].channels[*]",
     draft: {
       ...base,

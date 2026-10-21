@@ -10,7 +10,7 @@ import { useApi } from "@/lib/api-cache";
 import { formatLocalTime } from "@/lib/time";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
-import { PillButton, PillNav, Select, type PillNavItem, type SelectOption } from "@/components/ui";
+import { PillButton, PillNav, Select, Table, type Column, type PillNavItem, type SelectOption } from "@/components/ui";
 import { SearchPill, StatusTag, type Tone } from "@/components/assets/assets-shell-ui";
 import { OPEN_CASE_EVENT, STAGE_TONE, VOCABULARY_URL, casesUrl, takeCaseToOpen, type CaseList, type CaseSummary, type CaseVocabulary } from "./cases-api";
 import { CaseView } from "./case-view";
@@ -29,45 +29,38 @@ const PRIORITY_TONE: Record<string, Tone> = { urgent: "bad", priority: "warn", r
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-function CaseCard({ c, timeZone, onOpen }: { c: CaseSummary; timeZone: string | undefined; onOpen: () => void }) {
-  return (
-    <article className="ast-card prb-case">
-      <div className="prb-case-main">
-        <div className="prb-case-tags">
-          <StatusTag tone={PRIORITY_TONE[c.priority] ?? "idle"} label={c.priority === "unassigned" ? "How soon: not set" : `How soon: ${c.priorityWord}`} />
-          <StatusTag tone={STAGE_TONE[c.stage] ?? "idle"} label={c.stageWord} />
-        </div>
-        <h3 className="prb-case-title">
-          <button type="button" className="prb-title-btn" onClick={onOpen}>
-            {c.title}
-          </button>
-        </h3>
-        <span className="prb-where">
-          {c.machineName} · {c.partName ?? "Whole machine"}
+/** The case list: one divider-list row per case; the whole row opens it (one tab stop per row). */
+function caseColumns(timeZone: string | undefined): Column<CaseSummary>[] {
+  return [
+    {
+      key: "priority",
+      header: "How soon",
+      render: (c) => <StatusTag tone={PRIORITY_TONE[c.priority] ?? "idle"} label={c.priority === "unassigned" ? "Not set" : c.priorityWord} />,
+    },
+    {
+      key: "title",
+      header: "Problem",
+      render: (c) => (
+        <span className="ast-cell-stack">
+          <span className="prb-wrap">{c.title}</span>
+          {c.openChecks > 0 && <span className="ast-cell-sub">{plural(c.openChecks, "check waiting", "checks waiting")}</span>}
         </span>
-        <p className="prb-next" data-empty={c.nextAction ? undefined : true}>
-          {c.nextAction ? (
-            <>
-              <span className="prb-next-label">Next step:</span> {c.nextAction}
-            </>
-          ) : (
-            "No next step written yet"
-          )}
-        </p>
-      </div>
-      <div className="prb-case-side">
-        <span className="prb-owner">{c.ownerName ?? <span className="ast-muted">No owner</span>}</span>
-        <span className="prb-side-line">
-          Updated {formatLocalTime(c.updatedAt, { date: true, seconds: false, timeZone })}
-          {c.updatedBy ? ` by ${c.updatedBy}` : ""}
+      ),
+    },
+    { key: "where", header: "Machine · part", render: (c) => `${c.machineName} · ${c.partName ?? "Whole machine"}` },
+    { key: "stage", header: "Stage", render: (c) => <StatusTag tone={STAGE_TONE[c.stage] ?? "idle"} label={c.stageWord} /> },
+    { key: "owner", header: "Looked after by", render: (c) => c.ownerName ?? <span className="ast-muted">No owner</span> },
+    {
+      key: "updated",
+      header: "Updated",
+      render: (c) => (
+        <span className="ast-cell-stack">
+          <span className="prb-nowrap">{formatLocalTime(c.updatedAt, { date: true, seconds: false, timeZone })}</span>
+          {c.updatedBy && <span className="ast-cell-sub">by {c.updatedBy}</span>}
         </span>
-        {c.openChecks > 0 && <span className="prb-side-line prb-checks">{plural(c.openChecks, "check waiting", "checks waiting")}</span>}
-        <PillButton variant="secondary" className="prb-open-btn" onClick={onOpen}>
-          Open →
-        </PillButton>
-      </div>
-    </article>
-  );
+      ),
+    },
+  ];
 }
 
 function CasesTab({ plantId, onOpen }: { plantId: string | null; onOpen: (id: number) => void }) {
@@ -130,8 +123,8 @@ function CasesTab({ plantId, onOpen }: { plantId: string | null; onOpen: (id: nu
         )}
         <div className="prb-filters">
           <SearchPill value={search} onChange={setSearch} placeholder="Search machine, problem or owner" label="Search cases" />
-          <Select id="prb-filter-machine" value={machine} onChange={setMachine} options={machineOptions} />
-          <Select id="prb-filter-stage" value={stage} onChange={setStage} options={stageOptions} />
+          <Select id="prb-filter-machine" ariaLabel="Machine" value={machine} onChange={setMachine} options={machineOptions} />
+          <Select id="prb-filter-stage" ariaLabel="Stage" value={stage} onChange={setStage} options={stageOptions} />
         </div>
       </div>
 
@@ -146,11 +139,11 @@ function CasesTab({ plantId, onOpen }: { plantId: string | null; onOpen: (id: nu
       )}
       {data && cases.length > 0 && shown.length === 0 && <p className="prb-empty">No cases match these filters.</p>}
 
-      <div className="prb-list">
-        {shown.map((c) => (
-          <CaseCard key={c.id} c={c} timeZone={timeZone} onOpen={() => onOpen(c.id)} />
-        ))}
-      </div>
+      {shown.length > 0 && (
+        <section className="ast-card pg-table-card" aria-label="Cases">
+          <Table columns={caseColumns(timeZone)} data={shown} keyExtractor={(c) => String(c.id)} onRowClick={(c) => onOpen(c.id)} />
+        </section>
+      )}
     </div>
   );
 }

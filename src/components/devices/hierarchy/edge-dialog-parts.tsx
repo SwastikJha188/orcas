@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { PillButton } from "@/components/ui";
-import type { EdgeRegistry } from "@/types/edge";
+import React, { useId } from "react";
+import { IconChevron } from "@/components/assets/assets-shell-ui";
+import type { EdgeRegistry } from "@shared/types/edge";
 
 /* ==========================================================================
-   Shared by the gateway / source / point dialogs: two-step delete, field
-   parsing and the select options every dialog offers.
+   Shared by the gateway / source / point dialogs: field parsing, the select
+   options every dialog offers and the "more settings" disclosure.
+   (Deletes confirm with the shared ConfirmAction from @/components/ui.)
    ========================================================================== */
 
 /** Same rule as the server: codes are MQTT topic segments. */
@@ -32,32 +33,5 @@ export function machineOptions(registry: EdgeRegistry) {
   ];
 }
 
-/**
- * Delete with a confirm step: the first click asks ("Delete gateway and its
- * 4 sources?"), the second deletes. The question lapses after 5 s.
- */
-export function DeleteConfirm({ label, question, onDelete, disabled }: { label: string; question: string; onDelete: () => void; disabled?: boolean }) {
-  const [armed, setArmed] = useState(false);
-  useEffect(() => {
-    if (!armed) return;
-    const t = window.setTimeout(() => setArmed(false), 5000);
-    return () => window.clearTimeout(t);
-  }, [armed]);
-  return (
-    <PillButton
-      variant="secondary"
-      className="dv-danger"
-      data-armed={armed || undefined}
-      disabled={disabled}
-      aria-live="polite"
-      onClick={() => {
-        if (armed) {
-          setArmed(false);
-          onDelete();
-        } else setArmed(true);
-      }}
-    >
-      {armed ? question : label}
-    </PillButton>
-  );
-}
+/** Moved to the shared ui kit; re-exported for the Devices dialogs. */
+export { MoreFields } from "@/components/ui/more-fields";

@@ -31,9 +31,9 @@ import {
   type SimFrame,
   type StoryPhase,
   type StoryProfile,
-} from "@/lib/kiln-sim/engine";
-import { KILN_SCENARIOS, scenarioById, type KilnScenario } from "@/lib/kiln-sim/scenarios";
-import { KILN_FLEET } from "@/lib/kiln-sim/fleet";
+} from "@shared/lib/kiln-sim/engine";
+import { KILN_SCENARIOS, scenarioById, type KilnScenario } from "@shared/lib/kiln-sim/scenarios";
+import { KILN_FLEET } from "@shared/lib/kiln-sim/fleet";
 import {
   LIVE_SIM_SETTINGS,
   clearEvent as lineClearEvent,
@@ -51,15 +51,15 @@ import {
   type LineSimSettings,
   type LineState,
   type SignalFaultSpec,
-} from "@/lib/pyro-sim/engine";
-import { PYRO_FLEET } from "@/lib/pyro-sim/fleet";
-import { recordFrames } from "@/lib/condition-report";
-import { flushHealth, mergeHealth, HEALTH_KEEP_MS } from "@/lib/health-recorder";
-import { applyEngineConfig, engineConfigAppliedAt, fetchEngineConfig } from "@/lib/engine-config";
-import { applySimCommand, finishFleet, loadFleet, syncFleetConfig, type FleetEngines, type SimCommand } from "@/lib/fleet-boot";
+} from "@shared/lib/pyro-sim/engine";
+import { PYRO_FLEET } from "@shared/lib/pyro-sim/fleet";
+import { recordFrames } from "@shared/lib/condition-report";
+import { flushHealth, mergeHealth, HEALTH_KEEP_MS } from "@shared/lib/health-recorder";
+import { applyEngineConfig, engineConfigAppliedAt, fetchEngineConfig } from "@shared/lib/engine-config";
+import { applySimCommand, finishFleet, loadFleet, syncFleetConfig, type FleetEngines, type SimCommand } from "@shared/lib/fleet-boot";
 import type { FleetBootRequest, FleetBootResult } from "@/lib/fleet-boot.worker";
-import { PYRO_SCENARIOS, pyroScenario } from "@/lib/pyro-sim/scenarios";
-import { PYRO_MACHINE_IDS } from "@/lib/pyro-sim/signals";
+import { PYRO_SCENARIOS, pyroScenario } from "@shared/lib/pyro-sim/scenarios";
+import { PYRO_MACHINE_IDS } from "@shared/lib/pyro-sim/signals";
 import {
   performVpcAction,
   setVpcAutopilot,
@@ -67,12 +67,12 @@ import {
   setVpcScenario,
   stepVpcSim,
   VPC_MACHINE_ID,
-} from "@/lib/vpc-sim/engine";
-import { VPC_FLEET } from "@/lib/vpc-sim/defs";
-import { VPC_SCENARIOS, vpcScenario } from "@/lib/vpc-sim/scenarios";
-import { VPC_MACHINE_IDS } from "@/lib/vpc-sim/signals";
+} from "@shared/lib/vpc-sim/engine";
+import { VPC_FLEET } from "@shared/lib/vpc-sim/defs";
+import { VPC_SCENARIOS, vpcScenario } from "@shared/lib/vpc-sim/scenarios";
+import { VPC_MACHINE_IDS } from "@shared/lib/vpc-sim/signals";
 
-export { KILN_FLEET, KILN_FLEET_IDS } from "@/lib/kiln-sim/fleet";
+export { KILN_FLEET, KILN_FLEET_IDS } from "@shared/lib/kiln-sim/fleet";
 import type { EvaluatedRule, KilnSealsHealthScores, KilnSealsSensorData, SealTimeSeriesPoint } from "./kiln-seals-types";
 
 /** Simulated minutes advanced per real second. */
@@ -213,7 +213,7 @@ const isVpc = (id: string) => VPC_MACHINE_IDS.has(id);
 
 // The engines are built once per page, and React may discard a first render
 // (a lazy tab suspending, StrictMode), so they live here rather than in a ref.
-// The page resumes the server's always-on plant (src/server/plant), caught up
+// The page resumes the server's always-on plant (backend/src/plant), caught up
 // to now, or pre-rolls its own when none is running; either takes most of a
 // second, so a worker does it and the page never freezes. The last minute is
 // stepped here so the frames are this page's own. Until they arrive the fleet

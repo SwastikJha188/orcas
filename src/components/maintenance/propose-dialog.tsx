@@ -35,15 +35,27 @@ export function ProposeDialog({
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
+  // What the form opened with, so a stray click does not throw away typed input.
+  const [init, setInit] = useState({ machine: "", title: "", component: "", priority: "", notes: "" });
   useEffect(() => {
     if (!open) return;
-    setMachine(finding?.machineId ?? defaultMachine ?? machineIds[0] ?? "");
-    setTitle(finding ? finding.action : "");
-    setComponent(finding ? finding.subs.join(", ") : "");
-    setPriority(finding ? finding.priority : fallback);
+    const first = {
+      machine: finding?.machineId ?? defaultMachine ?? machineIds[0] ?? "",
+      title: finding ? finding.action : "",
+      component: finding ? finding.subs.join(", ") : "",
+      priority: finding ? finding.priority : "",
+      notes: finding ? `${finding.name}. Evidence: ${finding.evidence}. Likely cause: ${finding.cause}.` : "",
+    };
+    setInit(first);
+    setMachine(first.machine);
+    setTitle(first.title);
+    setComponent(first.component);
+    setPriority(first.priority || fallback);
     setMode("");
-    setNotes(finding ? `${finding.name}. Evidence: ${finding.evidence}. Likely cause: ${finding.cause}.` : "");
+    setNotes(first.notes);
     setErr(null);
+    setTried(false);
     // Only when opened: the live finding re-renders every tick.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, finding?.ruleId]);
@@ -51,15 +63,13 @@ export function ProposeDialog({
   useEffect(() => {
     if (open && !priority && fallback) setPriority(fallback);
   }, [open, priority, fallback]);
+  const need = (v: string, msg: string) => (tried && !v.trim() ? msg : null);
+  const dirty =
+    machine !== init.machine || title !== init.title || component !== init.component || notes !== init.notes || mode !== "" || priority !== (init.priority || fallback);
   const submit = async () => {
-    if (!priority) {
-      setErr("Choose a priority");
-      return;
-    }
-    if (!title.trim()) {
-      setErr("Describe the work requested");
-      return;
-    }
+    setTried(true);
+    if (!title.trim() || !priority) return;
+    setErr(null);
     setBusy(true);
     const out = await onPropose({
       machineId: finding?.machineId ?? machine,
@@ -82,6 +92,7 @@ export function ProposeDialog({
       title={finding ? "Ask for a repair" : "New work request"}
       subtitle={finding ? `${machineName(finding.machineId)} · ${finding.plainTitle || finding.name}` : "An engineer reviews it before it is planned"}
       busy={busy}
+      dirty={dirty}
       onSubmit={() => void submit()}
       width={600}
       footer={
@@ -101,13 +112,13 @@ export function ProposeDialog({
             {(fid, d) => <Select id={fid} describedBy={d} value={machine} onChange={setMachine} options={machineIds.map((m) => ({ value: m, label: machineName(m) }))} />}
           </Field>
         )}
-        <Field label="Suggested work" wide required>
+        <Field label="Suggested work" wide required error={need(title, "Describe the work requested")}>
           {(fid, d) => <TextInput id={fid} describedBy={d} value={title} onChange={setTitle} placeholder="Inspect gear coupling condition" />}
         </Field>
         <Field label="Part of the machine">
           {(fid, d) => <TextInput id={fid} describedBy={d} value={component} onChange={setComponent} />}
         </Field>
-        <Field label="Suggested priority" hint="An engineer checks it against site rules">
+        <Field label="Suggested priority" hint="An engineer checks it against site rules" required error={need(priority, "Choose a priority")}>
           {(fid, d) => <Select id={fid} describedBy={d} value={priority} onChange={setPriority} options={priorityOptions(priorities, priority)} />}
         </Field>
         <Field label="How the work is done">
@@ -117,7 +128,11 @@ export function ProposeDialog({
           {(fid, d) => <TextArea id={fid} describedBy={d} value={notes} onChange={setNotes} rows={3} />}
         </Field>
       </FieldGrid>
-      {err && <p className="ui-form-note" data-tone="bad">{err}</p>}
+      {err && (
+        <p className="ui-form-note" data-tone="bad" role="alert">
+          {err}
+        </p>
+      )}
     </Dialog>
   );
 }

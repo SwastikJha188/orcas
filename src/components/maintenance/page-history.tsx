@@ -2,12 +2,12 @@
 
 import React, { useMemo, useState } from "react";
 import { PillButton, PillNav, type Tone } from "@/components/ui";
-import { latestByTask } from "@/lib/maintenance";
-import { STAGE_LABEL, planGenerates, planHours } from "@/lib/pms";
+import { latestByTask } from "@shared/lib/maintenance";
+import { STAGE_LABEL, planGenerates, planHours, planKey } from "@shared/lib/pms";
 import { useKilnSimulationFor } from "@/providers/kiln-simulation-context";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { formatLocalTime } from "@/lib/time";
-import type { WoStage } from "@/types/pms";
+import type { WoStage } from "@shared/types/pms";
 import { Empty, KpiStrip, Section } from "@/components/assets/analysis/an-ui";
 import type { PmsModel } from "./pms-model";
 import { machineCode, machineName, useDefaultMachine, woRef } from "./pms-model";
@@ -19,7 +19,8 @@ import { StateWord } from "./pms-ui";
    work-order changes and plan decisions across the line, the effectiveness
    figures that have honest denominators, and machine condition around the
    work (PMS interface p.11, report §10, §13). Repair cost and running hours
-   are not recorded yet, so they are not shown.
+   are not recorded yet, so they are not shown. Second view of the Work orders
+   tab; the machine comes from the workspace's machine tabs.
    ========================================================================== */
 
 type Filter = "all" | "wo" | "inspection" | "plan";
@@ -30,6 +31,8 @@ interface Entry {
   at: number;
   kind: Exclude<Filter, "all">;
   title: string;
+  /** Tooltip on the title (the checklist task code). */
+  hint?: string;
   detail: string | null;
   actor: string | null;
   tone?: Tone;
@@ -38,36 +41,29 @@ interface Entry {
 const RESULT_WORD: Record<string, string> = { Pass: "Passed", NA: "Not applicable", Hold: "Needs follow-up", Defect: "Fault found" };
 
 export function PageHistory({ pms }: { pms: PmsModel }) {
-  const { data: line, dues } = pms;
-  const [machine, setMachine] = useState("all");
-  const defaultMachine = useDefaultMachine(line?.machineIds);
-  const machineId = machine === "all" ? (defaultMachine ?? "") : machine;
+  // Already narrowed to the machine picked in the workspace tabs (every machine on Full line).
+  const { data, dues } = pms;
+  const defaultMachine = useDefaultMachine(data?.machineIds);
+  const machineId = defaultMachine ?? "";
+  const manyMachines = (data?.machineIds.length ?? 0) > 1;
   const tz = useSiteTimeZone({ machineId });
   const [filter, setFilter] = useState<Filter>("all");
-  // The page's machine filter narrows every figure below.
-  const data = useMemo(() => {
-    if (!line || machine === "all") return line;
-    return {
-      ...line,
-      plans: line.plans.filter((p) => p.machineId === machine),
-      workOrders: line.workOrders.filter((w) => w.machineId === machine),
-      records: line.records.filter((r) => r.machineId === machine),
-      events: line.events.filter((e) => e.machineId === machine),
-    };
-  }, [line, machine]);
   const [limit, setLimit] = useState(40);
   const when = (t: number | string) => formatLocalTime(t, { date: true, seconds: false, timeZone: tz.timeZone });
 
   const entries = useMemo<Entry[]>(() => {
     if (!data) return [];
     const out: Entry[] = [];
+    // Task names from the plans; the code stays in the tooltip.
+    const taskName = new Map(data.plans.flatMap((p) => p.tasks.map((t) => [`${p.machineId}|${t.id}`, t.component] as const)));
     for (const r of data.records)
       out.push({
         key: `r${r.id}`,
         machineId: r.machineId,
         at: Date.parse(r.recordedAt),
         kind: "inspection",
-        title: `${r.taskId} · ${RESULT_WORD[r.result] ?? r.result}`,
+        title: `${taskName.get(`${r.machineId}|${r.taskId}`) ?? r.taskId} · ${RESULT_WORD[r.result] ?? r.result}`,
+        hint: r.taskId,
         detail: [r.note, r.workOrderId ? `created ${woRef(r.workOrderId)}` : null].filter(Boolean).join(" · ") || null,
         actor: r.inspector,
         tone: r.result === "Defect" ? "bad" : r.result === "Hold" ? "warn" : undefined,
@@ -115,7 +111,7 @@ export function PageHistory({ pms }: { pms: PmsModel }) {
     if (!data) return k;
     for (const p of data.plans) {
       if (!planGenerates(p) || planHours(p) === null) continue;
-      const d = dues.get(p.id);
+      const d = dues.get(planKey(p));
       if (!d) continue;
       k.timed += d.tasksDone + d.tasksDue;
       k.current += d.tasksDone;
@@ -144,7 +140,6 @@ export function PageHistory({ pms }: { pms: PmsModel }) {
   return (
     <div className="ast-root pg-frame pm-page" style={{ "--pm-side": "360px" } as React.CSSProperties}>
       <div className="ast-toolbar pm-toolbar">
-        <PillNav ariaLabel="Machine" items={[{ id: "all", label: "All machines" }, ...(line?.machineIds ?? []).map((id) => ({ id, label: machineName(id) }))]} activeId={machine} onChange={setMachine} />
         {entries[0] && <span className="ast-caption">{entries.length} records · latest {when(entries[0].at)}</span>}
       </div>
       {!data ? (
@@ -184,8 +179,8 @@ export function PageHistory({ pms }: { pms: PmsModel }) {
                           <span className="pm-tl-dot" aria-hidden="true" />
                           <span className="pm-tl-time">{when(e.at)}</span>
                           <span className="pm-tl-body">
-                            <span className="pm-tl-title">
-                              {machine === "all" && <span className="pm-muted">{machineName(e.machineId)} · </span>}
+                            <span className="pm-tl-title" title={e.hint}>
+                              {manyMachines && <span className="pm-muted">{machineName(e.machineId)} · </span>}
                               {e.title}
                             </span>
                             {e.detail && <span className="ast-caption pm-tl-detail">{e.detail}</span>}
@@ -267,7 +262,7 @@ function ConditionTrend({ machineId, pms }: { machineId: string; pms: PmsModel }
               <g key={m.id}>
                 <line x1={m.x} x2={m.x} y1={pad.t} y2={H - pad.b} className="pm-trend-marker" />
                 <text x={m.x + 3} y={pad.t + 8} className="pm-trend-label">
-                  #{String(m.id).padStart(4, "0")}
+                  {woRef(m.id)}
                 </text>
               </g>
             ))}

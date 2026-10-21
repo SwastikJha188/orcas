@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { naturalCompare, parseMessage, topicMatchesFilter } from "@/lib/edge-format";
+import { naturalCompare, parseMessage, topicMatchesFilter } from "@shared/lib/edge-format";
 import { useEdge } from "@/providers/edge-context";
-import type { EdgeFormat } from "@/types/edge";
-import type { LinkState } from "@/types/mqtt";
+import type { EdgeFormat } from "@shared/types/edge";
+import type { LinkState } from "@shared/types/mqtt";
 import { type EdgeIndex, sep } from "../edge-model";
 
 /* ==========================================================================

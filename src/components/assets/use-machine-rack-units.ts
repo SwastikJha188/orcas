@@ -2,7 +2,7 @@
 
 import { useApi } from "@/lib/api-cache";
 import type { AssetMachine } from "./assets-data";
-import type { MachineRackInfo } from "./rack-data";
+import type { MachineRackInfo } from "@shared/lib/rack-data";
 
 export interface MachineRackUnitsState {
   racks: MachineRackInfo[];

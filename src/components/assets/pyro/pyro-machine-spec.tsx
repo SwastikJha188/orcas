@@ -2,9 +2,9 @@
 
 import React from "react";
 import { Table, type Column } from "@/components/ui";
-import { PYRO_MACHINE_BY_ID, PYRO_SIGNALS } from "@/lib/pyro-sim/signals";
-import { PYRO_SPEC } from "@/lib/pyro-sim/spec";
-import { VPC_MACHINE_BY_ID, VPC_SIGNALS, VPC_SPEC } from "@/lib/vpc-sim/signals";
+import { PYRO_MACHINE_BY_ID, PYRO_SIGNALS } from "@shared/lib/pyro-sim/signals";
+import { PYRO_SPEC } from "@shared/lib/pyro-sim/spec";
+import { VPC_MACHINE_BY_ID, VPC_SIGNALS, VPC_SPEC } from "@shared/lib/vpc-sim/signals";
 import { plainWords } from "@/lib/plain-words";
 
 export function PyroMachineSpec({ machineId }: { machineId: string; t?: number }) {
@@ -35,7 +35,7 @@ export function PyroMachineSpec({ machineId }: { machineId: string; t?: number }
       <div className="ast-card-head">
         <h2 className="ast-card-title" title={m.code}>
           {m.name}
-          <span className="ast-caption ast-num">
+          <span className="ast-caption">
             {online.length} live sensors: {req} must have, {online.length - req} nice to have · drawings {m.diagrams.join(", ")}
           </span>
         </h2>

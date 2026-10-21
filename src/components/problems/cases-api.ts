@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Client side of problem cases (src/server/services/case-service.ts,
+ * Client side of problem cases (backend/src/services/case-service.ts,
  * /api/cases/...): types, URLs and the calls the Problems pages make. Every
  * write returns the updated case (or a small result) and refreshes the cached
  * reads, so pages using `useApi` show the change at once.
@@ -14,10 +14,10 @@ import type {
   ConditionStrip,
   Guide,
   ManualAlarm,
-} from "@/server/services/case-service";
+} from "@backend/services/case-service";
 
 export type { CaseDetail, CaseRequest, CaseSummary, ConditionStrip, Guide, ManualAlarm };
-export type { CaseCause, CaseCheck, CaseReading, CaseStage, CasePriority, RunningMode, Assessment, CheckKind, CheckResult, WorkType } from "@/server/services/case-service";
+export type { CaseCause, CaseCheck, CaseReading, CaseStage, CasePriority, RunningMode, Assessment, CheckKind, CheckResult, WorkType } from "@backend/services/case-service";
 
 export interface CaseList {
   cases: CaseSummary[];
@@ -164,21 +164,22 @@ export const casesApi = {
 /* Opening a case from another page                                    */
 /* ------------------------------------------------------------------ */
 
-/** sessionStorage key: the case the Problems page opens on its next mount. */
+/** sessionStorage key: the case Maintenance › Problems opens on its next mount. */
 export const OPEN_CASE_KEY = "ultron.problems.open-case";
 
-/** Opens a case on the Problems page (pass the context's `setActiveTab`). */
-export function openCase(id: number, setActiveTab: (tab: "problems") => void): void {
+/** Opens a case in Maintenance › Problems (pass the context's `setActiveTab`). */
+export function openCase(id: number, setActiveTab: (tab: "maintenance") => void): void {
   try {
     sessionStorage.setItem(OPEN_CASE_KEY, String(id));
+    localStorage.setItem("ultron.maint.page", "problems");
   } catch {
     /* storage unavailable: the Problems list still shows it */
   }
   window.dispatchEvent(new CustomEvent(OPEN_CASE_EVENT, { detail: { id } }));
-  setActiveTab("problems");
+  setActiveTab("maintenance");
 }
 
-/** Fired by `openCase` so an already mounted Problems page switches to the case. */
+/** Fired by `openCase` so an already mounted Maintenance workspace switches to the case. */
 export const OPEN_CASE_EVENT = "ultron:open-case";
 
 /** Reads (and clears) the case to open. */

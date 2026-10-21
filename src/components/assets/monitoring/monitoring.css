@@ -42,7 +42,7 @@
 .mon-facts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 24px;
+  gap: 12px 24px;
   margin: 0;
 }
 
@@ -73,7 +73,7 @@
 
 .mon-label {
   color: var(--text-muted);
-  margin-right: 6px;
+  margin-right: 8px;
 }
 
 .mon-head {

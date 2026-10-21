@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
-import type { MachineAcquisition } from "@/types/edge";
+import type { MachineAcquisition } from "@shared/types/edge";
 
 /* ==========================================================================
    A machine's acquisition chain (gateway → source → card → channel) with the

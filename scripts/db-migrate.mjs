@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Applies pending SQL migrations (src/server/db/migrations) from the command
- * line, exactly as the server does on boot (src/server/db/migrate.ts).
+ * Applies pending SQL migrations (backend/src/db/migrations) from the command
+ * line, exactly as the server does on boot (backend/src/db/migrate.ts).
  *
  *   node --env-file=.env.local scripts/db-migrate.mjs          apply pending
  *   node --env-file=.env.local scripts/db-migrate.mjs --status list applied / pending
@@ -17,11 +17,18 @@ if (!url) {
 }
 const local = /@(localhost|127\.0\.0\.1)[:/]/.test(url);
 const client = new pg.Client({ connectionString: url, ssl: local ? undefined : { rejectUnauthorized: false } });
-const dir = path.join(process.cwd(), "src/server/db/migrations");
+const dir = path.join(process.cwd(), "backend/src/db/migrations");
 const files = fs.readdirSync(dir).filter((f) => /^\d{3,}_[\w-]+\.sql$/.test(f)).sort();
 
 await client.connect();
 try {
+  // An empty database is built by the backend (migrations with reference checks off, then the
+  // fixture; backend/src/db/migrate.ts). Applying the migrations alone would leave it half-built.
+  if (!process.argv.includes("--status") && (await client.query("SELECT to_regclass('public.machines') IS NULL AS empty")).rows[0].empty) {
+    console.error("This database is empty. Start the backend (npm run dev:api) or POST /api/db/init: it builds the schema and loads the reference fixture.");
+    process.exitCode = 1;
+    process.exit();
+  }
   await client.query(`CREATE TABLE IF NOT EXISTS ultron_migrations (
     version VARCHAR(16) PRIMARY KEY, name VARCHAR(255) NOT NULL, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
   await client.query(

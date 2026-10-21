@@ -450,21 +450,18 @@
 .opc-zoom-btn:active {
   transform: scale(0.97);
 }
-/* Problem messages on the drawing: label + Hide / Show / Bring back (alert-popups.tsx). */
+/* Problem messages on the drawing: one Show / Hide messages toggle, plus Bring back (alert-popups.tsx). */
 .alp-toggle .opc-zoom-btn {
-  padding: 0 9px;
+  padding: 0 var(--space-3);
+  white-space: nowrap;
+}
+.alp-toggle .opc-zoom-btn + .opc-zoom-btn {
   border-left: 1px solid var(--card-border);
 }
-
-.alp-toggle-label {
+.alp-toggle-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 0 8px 0 9px;
-  color: var(--text-muted);
-  font-size: var(--fs-xs);
-  font-weight: 500;
-  white-space: nowrap;
+  gap: var(--space-1);
 }
 
 .opc-zoom-pct {
@@ -2516,4 +2513,86 @@
 }
 .opc-fullscreen-exit:hover {
   color: var(--dx-ink);
+}
+
+/* What the marks on a machine sheet mean (SheetKey): a quiet key in the sheet's bottom-left corner. */
+.opc-sheet-key {
+  position: absolute;
+  inset-inline-start: var(--space-3);
+  inset-block-end: var(--space-2);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--corner-sm);
+  background: color-mix(in srgb, var(--card-bg) 88%, transparent);
+  font-size: var(--fs-2xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.opc-sheet-key > span { display: inline-flex; align-items: center; gap: var(--space-1); }
+.opc-sheet-key svg { inline-size: 12px; block-size: 12px; flex: none; }
+.opc-sheet-key-sep { inline-size: 1px; block-size: 12px; background: var(--separator); }
+@media (max-width: 700px) {
+  .opc-sheet-key { display: none; }
+}
+
+/* Drawing controls (messages toggle, zoom, full screen): pinned to the drawing's bottom-right corner,
+   opposite the key, so they never move when the page, machine or window width changes (Jakob: map controls). */
+.opc-canvas-controls {
+  position: absolute;
+  inset-inline-end: var(--space-3);
+  inset-block-end: var(--space-2);
+  z-index: 4;
+}
+
+/* Navbar 2's right end: the key and the drawing controls, off the drawing. Navbar 2 stays one line: when
+   the row runs short the part pills scroll sideways (the stepper and the active pill keep the place). */
+.opc-subbar {
+  flex-wrap: nowrap;
+  container-type: inline-size;
+}
+.opc-subbar > .opc-stage-tabs {
+  /* Pills, stepper and tools are siblings in the row. */
+  display: contents;
+}
+.opc-subbar .opc-pill-group {
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.opc-subbar .opc-pill-group::-webkit-scrollbar {
+  display: none;
+}
+.opc-subbar-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-inline-start: auto;
+  flex-shrink: 0;
+}
+.opc-subbar-tools .opc-sheet-key,
+.opc-subbar-tools .opc-canvas-controls {
+  position: static;
+}
+.opc-subbar-tools .opc-sheet-key {
+  gap: var(--space-2);
+  padding: 0;
+  background: none;
+}
+/* A short bar gives the parts the room: first the messages button drops its words (icon and count stay),
+   then the key steps out (the colours also read on the drawing and in the Alarms panel). */
+@container (max-width: 1700px) {
+  .opc-subbar-tools .alp-toggle-label {
+    display: none;
+  }
+}
+@container (max-width: 1400px) {
+  .opc-subbar-tools .opc-sheet-key {
+    display: none;
+  }
 }

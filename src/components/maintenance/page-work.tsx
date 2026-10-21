@@ -2,11 +2,11 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { PillButton, PillNav, rowActivate } from "@/components/ui";
-import { PAUSED, READINESS_KEYS, STAGE_LABEL, TERMINAL, isOpenStage, readinessBlockers, stepOf } from "@/lib/pms";
+import { PAUSED, READINESS_KEYS, STAGE_LABEL, TERMINAL, isOpenStage, readinessBlockers, stepOf } from "@shared/lib/pms";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
-import type { WoStage } from "@/types/pms";
+import type { WoStage } from "@shared/types/pms";
 import { Empty, KpiStrip, Section } from "@/components/assets/analysis/an-ui";
-import type { MaintenanceTypeId } from "@/types/maintenance-types";
+import type { MaintenanceTypeId } from "@shared/types/maintenance-types";
 import type { Outcome, PmsModel } from "./pms-model";
 import { machineName, priorityTone, stageTone, woRef } from "./pms-model";
 import { Loading } from "./page-overview";
@@ -17,7 +17,9 @@ import { ItemCell, PM_ICON, StateWord, usePmsFocus } from "./pms-ui";
 /* ==========================================================================
    Maintenance › Work orders: requests and work orders across the line (task,
    priority, owner, target date, readiness, stage), by maintenance type. The
-   checklists themselves are worked in Preventive.
+   checklists themselves are worked in Preventive. The machine comes from the
+   workspace's machine tabs (the model is already narrowed to it); History &
+   performance is this tab's second view.
    (PMS interface p.07–09, report §5 and §8.)
    ========================================================================== */
 
@@ -39,12 +41,13 @@ export function PageWork({ pms }: { pms: PmsModel }) {
   const { data, openWos, findings } = pms;
   const focus = usePmsFocus(["w:"]);
   const [type, setType] = useState<TypeFilter>("all");
-  const [machine, setMachine] = useState("all");
   const [filter, setFilter] = useState<StageFilter>("open");
   const [selId, setSelId] = useState<number | null>(focus ? Number(focus.slice(2)) : null);
   const [proposing, setProposing] = useState(false);
   const [notice, setNotice] = useState<Outcome | null>(null);
-  const tz = useSiteTimeZone({ machineId: machine === "all" ? data?.machineIds[0] : machine });
+  const tz = useSiteTimeZone({ machineId: data?.machineIds[0] });
+  // One machine picked in the workspace tabs: new requests default to it.
+  const onlyMachine = data?.machineIds.length === 1 ? data.machineIds[0] : null;
 
   // A focused work order may sit outside the default filter.
   useEffect(() => {
@@ -52,11 +55,10 @@ export function PageWork({ pms }: { pms: PmsModel }) {
     const w = data.workOrders.find((x) => x.id === Number(focus.slice(2)));
     if (w && !isOpenStage(w.stage)) setFilter("closed");
   }, [focus, data]);
-  useEffect(() => setNotice(null), [selId]);
 
   const wos = useMemo(
-    () => (data?.workOrders ?? []).filter((w) => FILTER_STAGES[filter](w.stage) && (machine === "all" || w.machineId === machine) && (type === "all" || w.maintenanceType === type)),
-    [data, filter, machine, type],
+    () => (data?.workOrders ?? []).filter((w) => FILTER_STAGES[filter](w.stage) && (type === "all" || w.maintenanceType === type)),
+    [data, filter, type],
   );
 
   const counts = useMemo(() => {
@@ -78,6 +80,11 @@ export function PageWork({ pms }: { pms: PmsModel }) {
 
   const wo = wos.find((w) => w.id === selId) ?? wos[0] ?? null;
   const unraised = findings.filter((f) => f.status === "ACTIVE" && !f.workOrderId).length;
+  // A new pick drops the last outcome note; a just-created work order keeps its "sent" note.
+  const pick = (id: number) => {
+    setSelId(id);
+    setNotice(null);
+  };
 
   return (
     <div className="ast-root pg-frame pm-page" style={{ "--pm-side": "460px" } as React.CSSProperties}>
@@ -93,7 +100,6 @@ export function PageWork({ pms }: { pms: PmsModel }) {
           activeId={type}
           onChange={(id) => setType(id as TypeFilter)}
         />
-        <PillNav ariaLabel="Machine" items={[{ id: "all", label: "All machines" }, ...data.machineIds.map((id) => ({ id, label: machineName(id) }))]} activeId={machine} onChange={setMachine} />
         <PillButton variant="secondary" icon={PM_ICON.wo} onClick={() => setProposing(true)}>
           New request
         </PillButton>
@@ -151,7 +157,7 @@ export function PageWork({ pms }: { pms: PmsModel }) {
                       const blocked = READINESS_KEYS.some((k) => w.readiness[k].state === "blocked");
                       const t = priorityTone(w.priority);
                       return (
-                        <tr key={w.id} className={`is-clickable ${wo?.id === w.id ? "active" : ""}`} {...rowActivate(() => setSelId(w.id))}>
+                        <tr key={w.id} className={`is-clickable ${wo?.id === w.id ? "active" : ""}`} {...rowActivate(() => pick(w.id), wo?.id === w.id)}>
                           <td className="pm-pri ast-num" data-tone={t === "idle" ? undefined : t}>
                             {w.priority}
                           </td>
@@ -163,7 +169,7 @@ export function PageWork({ pms }: { pms: PmsModel }) {
                           <td>
                             <StateWord label={STAGE_LABEL[w.stage]} tone={stageTone(w.stage)} />
                           </td>
-                          <td className="ast-num">
+                          <td>
                             {TERMINAL.includes(w.stage) || stepOf(w) >= 4 ? (
                               <span className="pm-muted">—</span>
                             ) : (
@@ -193,12 +199,14 @@ export function PageWork({ pms }: { pms: PmsModel }) {
         open={proposing}
         finding={null}
         machineIds={data.machineIds}
-        defaultMachine={machine === "all" ? null : machine}
+        defaultMachine={onlyMachine}
         onClose={() => setProposing(false)}
         onPropose={async (input) => {
           const out = await pms.propose(input);
           if (out.tone === "good" && out.id) {
+            // A hand-made request has no maintenance type: show all types so it stays in view.
             setFilter("open");
+            setType("all");
             setSelId(out.id);
           }
           setNotice(out);

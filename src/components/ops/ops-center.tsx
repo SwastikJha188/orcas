@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import { PillButton, PillNav } from "@/components/ui";
-import { formatClock } from "@/lib/kiln-sim/engine";
+import { formatClock } from "@shared/lib/kiln-sim/engine";
 import {
   useKilnOps,
   type OpsAlert,
@@ -12,6 +12,8 @@ import {
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { defsFor } from "@/lib/live-defs";
 import { nameIds, namesOf } from "@/lib/display-name";
+import { ACTION, ALARM_STATE } from "@/components/ui/status";
+import { woRef } from "@/components/maintenance/pms-model";
 import "./ops.css";
 
 const STATUS_LABEL: Record<WorkOrderStatus, string> = {
@@ -72,7 +74,7 @@ export function OpsAlertRows({ alerts, limit }: { alerts: OpsAlert[]; limit?: nu
               <span className="ops-row-top">
                 <span className="ops-tag">{a.status === "PENDING" ? "Checking" : a.severity === "Critical" ? "Critical" : "Alert"}</span>
                 <span className="ops-tag ops-tag-quiet" title="Priority 1 is the most urgent">Priority {a.priority.replace("P", "")}</span>
-                {a.acknowledged && <span className="ops-tag ops-tag-quiet">Seen</span>}
+                {a.acknowledged && <span className="ops-tag ops-tag-quiet">{ALARM_STATE.acknowledged}</span>}
                 <span className="ops-row-time ast-num">{a.since !== null ? formatClock(a.since).clock : "still checking"}</span>
               </span>
               <span className="ops-row-title" title={`${a.name} (${a.ruleId})`}>
@@ -101,7 +103,7 @@ export function OpsAlertRows({ alerts, limit }: { alerts: OpsAlert[]; limit?: nu
                 <p>
                   <b>What to do</b> {rule?.plainTodo ?? a.action}
                 </p>
-                <span className="ast-caption ast-num">
+                <span className="ast-caption">
                   How sure: {Math.round(a.confidence * (a.confidence <= 1 ? 100 : 1))} % · Time until it reaches its limit: {a.timeToLimit}
                 </span>
               </div>
@@ -109,15 +111,17 @@ export function OpsAlertRows({ alerts, limit }: { alerts: OpsAlert[]; limit?: nu
             <div className="ops-row-actions">
               {!a.acknowledged && a.status === "ACTIVE" && (
                 <PillButton variant="secondary" onClick={() => void acknowledge(a.ruleId)}>
-                  Mark as seen
+                  {ACTION.acknowledge}
                 </PillButton>
               )}
               {wo ? (
-                <span className="ops-tag ops-tag-quiet">Work order {wo.id}: {STATUS_LABEL[wo.status]}</span>
+                <span className="ops-tag ops-tag-quiet">
+                  {woRef(wo.id)}: {STATUS_LABEL[wo.status]}
+                </span>
               ) : (
                 a.status === "ACTIVE" && (
                   <PillButton variant="primary" onClick={() => void createWorkOrder(a.ruleId)}>
-                    Create work order
+                    {ACTION.workOrder}
                   </PillButton>
                 )
               )}
@@ -171,7 +175,7 @@ export function OpsWorkOrderRows({ orders }: { orders: OpsWorkOrder[] }) {
           <li key={w.id} className="ops-row" data-status={w.status}>
             <button type="button" className="ops-row-main" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : w.id)}>
               <span className="ops-row-top">
-                <span className="ops-tag" title="Work order number">No. {w.id}</span>
+                <span className="ops-tag">{woRef(w.id)}</span>
                 <span className="ops-tag ops-tag-status" data-status={w.status}>{STATUS_LABEL[w.status]}</span>
                 <span className="ops-tag ops-tag-quiet">{w.actionKind === "repair" ? "Repair" : "Short-term fix"}</span>
                 <span className="ops-tag ops-tag-quiet" title="Priority 1 is the most urgent">Priority {w.priority.replace("P", "")}</span>
@@ -229,8 +233,8 @@ export function OpsCenter() {
       <div className="ast-card ops-card">
         <div className="ast-card-head">
           <h2 className="ast-card-title">Problems found</h2>
-          <span className="ast-caption ast-num">
-            {alerts.length} open · {unread} not yet seen
+          <span className="ast-caption">
+            {alerts.length} open · {unread} not yet acknowledged
           </span>
         </div>
         <OpsAlertRows alerts={alerts} />

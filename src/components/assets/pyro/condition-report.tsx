@@ -9,10 +9,10 @@
  */
 
 import React, { useMemo } from "react";
-import { PillButton, Table, type Column } from "@/components/ui";
-import { conditionReport, type MachineReport } from "@/lib/condition-report";
-import { formatDuration, simTimeMs } from "@/lib/kiln-sim/engine";
-import { PYRO_MACHINES, PYRO_MACHINE_BY_ID } from "@/lib/pyro-sim/signals";
+import { ACTION, PillButton, Table, type Column } from "@/components/ui";
+import { conditionReport, type MachineReport } from "@shared/lib/condition-report";
+import { formatDuration, simTimeMs } from "@shared/lib/kiln-sim/engine";
+import { PYRO_MACHINES, PYRO_MACHINE_BY_ID } from "@shared/lib/pyro-sim/signals";
 import { formatLocalTime } from "@/lib/time";
 import { useKilnFleet, usePrimaryMachineId } from "@/providers/kiln-simulation-context";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
@@ -154,12 +154,12 @@ export function ConditionReport() {
       <div className="ast-card-head">
         <h2 className="ast-card-title">
           Condition report
-          <span className="ast-caption ast-num">
-            {when(from)} – {when(to)} · {formatDuration(to - from)} · made monthly in normal use (D4 Table 11.1)
+          <span className="ast-caption">
+            {when(from)} – {when(to)} · {formatDuration(to - from)}
           </span>
         </h2>
         <PillButton variant="secondary" onClick={download}>
-          Download CSV
+          {ACTION.exportCsv}
         </PillButton>
       </div>
       <Table columns={cols} data={rows} keyExtractor={(r) => r.machineId} />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, type ComponentType } from "react";
+import { useId, useMemo, type ComponentType } from "react";
 import {
   HomeIcon,
   AssetsIcon,
@@ -9,44 +9,92 @@ import {
   ConfigureIcon,
   MaintenanceIcon,
   SimulationIcon,
-  ProblemsIcon,
 } from "./navigation-icons";
 import { ThemeToggle } from "./theme-toggle";
 import { ContextSwitchers, UserSwitcher } from "./context-switchers";
 import { useEdge } from "@/providers/edge-context";
-import { usePrimaryMachineId } from "@/providers/kiln-simulation-context";
-import { isPyroMachineId, isVpcMachineId } from "@/lib/live-defs";
+import { useIndustrialData } from "@/providers/industrial-data-context";
+import { useApi } from "@/lib/api-cache";
+import { conditionUrl, type ConditionStrip as ConditionData } from "@/components/problems/cases-api";
 
 export type WorkspaceTab = "home" | "assets" | "problems" | "maintenance" | "devices" | "assetiq" | "configure" | "simulation";
 
 interface LiquidGlassShellProps {
   activeTab?: WorkspaceTab;
   onSelectTab?: (tab: WorkspaceTab) => void;
+  /** The logo: back to Home's Operator view at the Full line. */
+  onBrand?: () => void;
 }
 
-const PRIMARY: Array<{ id: WorkspaceTab; label: string; hint: string; Icon: ComponentType<{ className?: string }> }> = [
-  { id: "home", label: "Home", hint: "Home: 3D view of the plant and its machines", Icon: HomeIcon },
+type RailItem = { id: WorkspaceTab; label: string; hint: string; Icon: ComponentType<{ className?: string }> };
+
+// Daily work first, in the order an operator reaches for it; plant set-up last (Serial position).
+const PRIMARY: RailItem[] = [
+  { id: "home", label: "Home", hint: "Home: live view of the plant and its machines", Icon: HomeIcon },
+  // Problems (cases) and planned maintenance in one place; planned sections where the plant has checklists.
+  { id: "maintenance", label: "Maintenance", hint: "Maintenance: problems to follow up, planned checks, repair jobs and their history", Icon: MaintenanceIcon },
   // Asset directory and each machine's Sensors, Diagnosis, Prognosis and Analysis.
   { id: "assets", label: "Assets", hint: "Assets: every machine, its sensors, health and problems", Icon: AssetsIcon },
-  { id: "problems", label: "Problems", hint: "Problems: follow each problem from first sign to a checked repair", Icon: ProblemsIcon },
-  // Planned maintenance: the pyro line and VPC 066 carry checklists and plans.
-  { id: "maintenance", label: "Maintenance", hint: "Maintenance: planned checks, repair jobs and their history", Icon: MaintenanceIcon },
-  { id: "devices", label: "Devices", hint: "Devices: the data collectors and connections that bring sensor readings in", Icon: DevicesIcon },
   { id: "assetiq", label: "AssetIQ", hint: "AssetIQ: ask questions about your machines in plain words", Icon: AssetIQIcon },
 ];
 
-function RailButton({ id, label, hint, Icon, active, onSelect }: { id: WorkspaceTab; label: string; hint?: string; Icon: ComponentType<{ className?: string }>; active: boolean; onSelect?: (tab: WorkspaceTab) => void }) {
+const SETUP: RailItem[] = [
+  { id: "devices", label: "Devices", hint: "Devices: the gateways and racks that bring sensor readings in, and which machine sensor each channel feeds", Icon: DevicesIcon },
+  { id: "configure", label: "Configure", hint: "Configure: plants, machines, users and settings", Icon: ConfigureIcon },
+  { id: "simulation", label: "Simulation", hint: "Simulation: how often faults happen, how long they last, and each machine's demo state", Icon: SimulationIcon },
+];
+
+/** Open alarms on the active plant: the same server read (and cache entry) as Maintenance › Problems' "Open alarms", every 30 s. */
+function useOpenAlarms(): { count: number; critical: number } {
+  const { selectedPlantId } = useIndustrialData();
+  const { data } = useApi<ConditionData>(selectedPlantId ? conditionUrl({ plantId: selectedPlantId }) : null, { refreshMs: 30_000 });
+  return useMemo(() => {
+    const alarms = data?.alarms ?? [];
+    return { count: alarms.length, critical: alarms.filter((a) => a.severity === "Critical").length };
+  }, [data]);
+}
+
+function RailButton({
+  id,
+  label,
+  hint,
+  Icon,
+  active,
+  onSelect,
+  badge,
+}: {
+  id: WorkspaceTab;
+  label: string;
+  hint?: string;
+  Icon: ComponentType<{ className?: string }>;
+  active: boolean;
+  onSelect?: (tab: WorkspaceTab) => void;
+  /** A count worth noticing from any page (open alarms on Problems). */
+  badge?: { count: number; tone: "warn" | "bad"; text: string };
+}) {
+  const hintId = useId();
   return (
     <button
       type="button"
       className={`rail-btn ${active ? "active" : ""}`}
       onClick={() => onSelect?.(id)}
-      title={hint ?? label}
-      aria-label={hint ?? label}
+      aria-label={label}
+      aria-describedby={hint ? hintId : undefined}
       aria-current={active ? "page" : undefined}
     >
       <Icon />
       <span className="rail-label" aria-hidden="true">{label}</span>
+      {badge && badge.count > 0 && (
+        <span className="rail-badge" data-tone={badge.tone} title={badge.text}>
+          <span aria-hidden="true">{badge.count > 99 ? "99+" : badge.count}</span>
+          <span className="sr-only">{badge.text}</span>
+        </span>
+      )}
+      {hint && (
+        <span id={hintId} className="sr-only">
+          {hint}
+        </span>
+      )}
     </button>
   );
 }
@@ -86,20 +134,30 @@ function GatewayNavbarStatus({ onSelectTab }: { onSelectTab?: (tab: WorkspaceTab
   }, [registry, snapshot, error]);
 
   return (
-    <button type="button" className="navbar-gw-status" data-active={gw.tone} onClick={() => onSelectTab?.("devices")} title={gw.title}>
+    <button type="button" className="navbar-gw-status" data-active={gw.tone} onClick={() => onSelectTab?.("devices")} title={gw.title} aria-label={gw.label}>
       <span className="navbar-gw-dot" aria-hidden="true" />
       <span className="navbar-gw-label">{gw.label}</span>
     </button>
   );
 }
 
-export function LiquidGlassShell({ activeTab = "home", onSelectTab }: LiquidGlassShellProps) {
-  const primaryId = usePrimaryMachineId();
-  const hasPms = isPyroMachineId(primaryId) || isVpcMachineId(primaryId);
+export function LiquidGlassShell({ activeTab = "home", onSelectTab, onBrand }: LiquidGlassShellProps) {
+  const alarms = useOpenAlarms();
+  const superAdmin = Boolean(useIndustrialData().currentUser?.role.allPlants);
+  const problemsBadge = {
+    count: alarms.count,
+    tone: alarms.critical > 0 ? ("bad" as const) : ("warn" as const),
+    text: `${alarms.count} open alarm${alarms.count === 1 ? "" : "s"}${alarms.critical ? `, ${alarms.critical} critical` : ""}`,
+  };
   return (
     <>
       <header className="navbar liquid-glass" aria-label="Top navigation">
-        <button type="button" className="brand-btn" onClick={() => onSelectTab?.("home")} aria-label="Go to the home page">
+        <button
+          type="button"
+          className="brand-btn"
+          onClick={() => (onBrand ? onBrand() : onSelectTab?.("home"))}
+          aria-label="Go to the full line operator view"
+        >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/brand/wordmark-dark.png" alt="" className="brand-logo brand-logo-dark" />
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -114,14 +172,22 @@ export function LiquidGlassShell({ activeTab = "home", onSelectTab }: LiquidGlas
 
       <nav className="nav-rail liquid-glass" aria-label="Primary navigation">
         <div className="nav-rail-group">
-          {PRIMARY.filter((item) => item.id !== "maintenance" || hasPms).map((item) => (
-            <RailButton key={item.id} {...item} active={activeTab === item.id} onSelect={onSelectTab} />
+          {PRIMARY.map((item) => (
+            <RailButton
+              key={item.id}
+              {...item}
+              active={activeTab === item.id}
+              onSelect={onSelectTab}
+              badge={item.id === "maintenance" ? problemsBadge : undefined}
+            />
           ))}
         </div>
         <div className="rail-divider" />
         <div className="nav-rail-group">
-          <RailButton id="configure" label="Configure" hint="Configure: plants, machines, users and settings" Icon={ConfigureIcon} active={activeTab === "configure"} onSelect={onSelectTab} />
-          <RailButton id="simulation" label="Simulation" hint="Simulation: how often faults happen, how long they last, and each machine's demo state" Icon={SimulationIcon} active={activeTab === "simulation"} onSelect={onSelectTab} />
+          {/* Simulation belongs to the Oswar super administrator alone. */}
+          {SETUP.filter((item) => item.id !== "simulation" || superAdmin).map((item) => (
+            <RailButton key={item.id} {...item} active={activeTab === item.id} onSelect={onSelectTab} />
+          ))}
         </div>
 
         <div className="nav-rail-footer">
@@ -140,7 +206,7 @@ export function LiquidGlassShell({ activeTab = "home", onSelectTab }: LiquidGlas
       </nav>
 
       <footer className="info-bar" aria-label="Product information">
-        <span>ORCAS.v.jg.3</span>
+        <span className="ast-num">ORCAS.v.jg.3</span>
         <span>Copyright © OSWAR TECK INC.</span>
       </footer>
     </>

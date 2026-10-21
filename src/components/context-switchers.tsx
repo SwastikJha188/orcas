@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from "react-dom";
 import type { HierarchyNode } from "@/components/assets/assets-data";
 import { IconChevron, machineTone } from "@/components/assets/assets-shell-ui";
-import { toCondition } from "@/components/ui/status";
+import { toCondition, worstCondition } from "@/components/ui/status";
 import { TypeIcon } from "@/components/assets/hierarchy/hierarchy-icons";
 import {
   nodeLabel,
@@ -85,6 +85,11 @@ export function useAnchoredMenu(width: number) {
         close();
         return;
       }
+      // Tab leaves the menu: focus goes back to the trigger, then the browser moves on from there.
+      if (e.key === "Tab") {
+        close();
+        return;
+      }
       if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Home" && e.key !== "End") return;
       const items = Array.from(menu.current?.querySelectorAll<HTMLElement>("[data-menu-item]") ?? []);
       if (items.length === 0) return;
@@ -122,6 +127,7 @@ export function Trigger({
   kind,
   label,
   tone,
+  condition,
   onClick,
   disabled,
 }: {
@@ -131,9 +137,12 @@ export function Trigger({
   kind: string;
   label: string;
   tone?: string;
+  /** Condition word for the dot (Normal, Alert, Critical…), read out with the label. */
+  condition?: string;
   onClick: () => void;
   disabled?: boolean;
 }) {
+  const said = condition ? `${kind}: ${label}, ${condition}` : `${kind}: ${label}`;
   return (
     <button
       ref={innerRef}
@@ -141,8 +150,8 @@ export function Trigger({
       className="ctx-trigger"
       aria-haspopup="menu"
       aria-expanded={open}
-      aria-label={`${kind}: ${label}. Change`}
-      title={`${kind}: ${label}`}
+      aria-label={`${said}. Change`}
+      title={said}
       data-open={open || undefined}
       onClick={onClick}
       disabled={disabled}
@@ -187,14 +196,26 @@ export function Check({ on }: { on: boolean }) {
   );
 }
 
+/** "3 machines", with only the count in the number face. */
 function plural(n: number, noun: string) {
-  return `${n} ${noun}${n === 1 ? "" : "s"}`;
+  return (
+    <>
+      <span className="ast-num">{n}</span> {noun}
+      {n === 1 ? "" : "s"}
+    </>
+  );
 }
 
 const IconUser = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <circle cx="12" cy="8" r="4" />
     <path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" />
+  </svg>
+);
+
+const IconSignOut = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11" />
   </svg>
 );
 
@@ -225,6 +246,7 @@ function PlantSwitcher({
         kind="Plant"
         label={label}
         tone={plant ? rollupTone(plant, lookup) : undefined}
+        condition={plant ? worstCondition(subtreeMachines(plant).map((n) => machineCondition(n, lookup).status)) : undefined}
         disabled={roots.length === 0}
         onClick={() => {
           m.setOpen((o) => !o);
@@ -235,7 +257,9 @@ function PlantSwitcher({
         <Menu innerRef={m.menu} pos={m.pos} width={PLANT_W} label="Plants">
           <div className="ctx-menu-head">
             <span className="ctx-menu-title">Plants you can open</span>
-            <span className="ctx-menu-meta ast-num">{roots.length}</span>
+            <span className="ctx-menu-meta">
+              <span className="ast-num">{roots.length}</span>
+            </span>
           </div>
           <div className="ctx-list">
             {roots.map((p) => {
@@ -260,7 +284,7 @@ function PlantSwitcher({
                   </span>
                   <span className="ctx-row-text">
                     <span className="ctx-row-name">{shortName(p.name)}</span>
-                    <span className="ctx-row-meta ast-num">{plural(n, "machine")}</span>
+                    <span className="ctx-row-meta">{plural(n, "machine")}</span>
                   </span>
                   <span className="ctx-dot" data-tone={rollupTone(p, lookup)} aria-hidden="true" />
                 </button>
@@ -333,6 +357,7 @@ function MachineSwitcher({
         kind="Machine"
         label={machineNode ? nodeLabel(machineNode) : "All machines"}
         tone={tone}
+        condition={machineNode ? toCondition(machineCondition(machineNode, lookup).status) : undefined}
         onClick={() => {
           m.setOpen((o) => !o);
           m.focusFirst();
@@ -340,7 +365,7 @@ function MachineSwitcher({
       />
       {m.open && (
         <Menu innerRef={m.menu} pos={m.pos} width={MACHINE_W} label="Machines">
-          <nav className="ctx-crumbs" aria-label="Location in plant">
+          <nav className="ctx-crumbs" role="none">
             {steps.length > 0 && (
               <button type="button" className="ctx-crumb-back" aria-label="Up one level" onClick={() => go(trail.slice(0, steps.length - 1))}>
                 <IconChevron size={10} dir="left" />
@@ -385,7 +410,7 @@ function MachineSwitcher({
                 </span>
                 <span className="ctx-row-text">
                   <span className="ctx-row-name">All machines</span>
-                  <span className="ctx-row-meta">3D view of the whole plant</span>
+                  <span className="ctx-row-meta">The whole plant</span>
                 </span>
               </button>
             )}
@@ -411,7 +436,7 @@ function MachineSwitcher({
                     </span>
                     <span className="ctx-row-text">
                       <span className="ctx-row-name">{row.name}</span>
-                      <span className="ctx-row-meta ast-num">{plural(n, "machine")}</span>
+                      <span className="ctx-row-meta">{plural(n, "machine")}</span>
                     </span>
                     <span className="ctx-dot" data-tone={rollupTone(row, lookup)} aria-hidden="true" />
                     <span className="ctx-row-chev" aria-hidden="true">
@@ -500,8 +525,8 @@ export function UserSwitcher({
             <span className="ctx-menu-title">Signed in</span>
             <span className="ctx-menu-meta">{currentUser.email}</span>
           </div>
-          <div className="ctx-list">
-            <div className="ctx-row" aria-current="true">
+          <div className="ctx-list" role="none">
+            <div className="ctx-row" role="none">
               <Check on />
               <span className="ctx-badge" data-tone={userTone} style={{ fontSize: 10, fontWeight: 600 }}>
                 {currentUser.avatarInitials}
@@ -530,7 +555,7 @@ export function UserSwitcher({
                   <IconUser />
                 </span>
                 <span className="ctx-row-text">
-                  <span className="ctx-row-name">Manage users & plants…</span>
+                  <span className="ctx-row-name">Manage users & plants</span>
                   <span className="ctx-row-meta">Choose who can see and change each plant</span>
                 </span>
               </button>
@@ -547,7 +572,7 @@ export function UserSwitcher({
             >
               <Check on={false} />
               <span className="ctx-badge">
-                <IconUser />
+                <IconSignOut />
               </span>
               <span className="ctx-row-text">
                 <span className="ctx-row-name">Sign out</span>

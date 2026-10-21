@@ -1,9 +1,9 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { Dialog, Field, FormNote, PillButton, TextArea, type Tone } from "@/components/ui";
-import { STEPS, planGenerates, planHours, type PlanDue } from "@/lib/pms";
-import type { PmsPlan, PmsWorkOrder } from "@/types/pms";
+import { Dialog, Field, FormNote, PillButton, PillNav, TextArea, type Tone } from "@/components/ui";
+import { STEPS, planGenerates, planHours, planKey, type PlanDue } from "@shared/lib/pms";
+import type { PmsPlan, PmsWorkOrder } from "@shared/types/pms";
 import { machineName, planName, planRound, unitLabel, woRef, type Outcome } from "./pms-model";
 
 /* ==========================================================================
@@ -12,19 +12,80 @@ import { machineName, planName, planRound, unitLabel, woRef, type Outcome } from
 
 /* ------------------------------------------------------------ pages and focus */
 
-export type PmsPage = "overview" | "preventive" | "predictive" | "proactive" | "work" | "calendar" | "machine" | "resources" | "history";
+export type PmsPage =
+  | "overview"
+  | "problems"
+  | "guides"
+  | "preventive"
+  | "predictive"
+  | "proactive"
+  | "work"
+  | "calendar"
+  | "machine"
+  | "resources"
+  | "history";
 
 export const PMS_PAGES: { id: PmsPage; label: string }[] = [
   { id: "overview", label: "Overview" },
+  { id: "problems", label: "Problems" },
+  { id: "guides", label: "Investigation guides" },
   { id: "preventive", label: "Preventive" },
   { id: "predictive", label: "Predictive & planned" },
   { id: "proactive", label: "Proactive" },
   { id: "work", label: "Work orders" },
   { id: "calendar", label: "Calendar" },
-  { id: "machine", label: "Machine maintenance" },
+  { id: "machine", label: "Machines" },
   { id: "resources", label: "People, parts & shutdowns" },
   { id: "history", label: "History & performance" },
 ];
+
+/**
+ * The workspace sections. Some pages share a section with a second view: investigation
+ * guides sit with Problems, history with Work orders, people / parts / shutdowns with
+ * Calendar. Every page id stays valid, so stored pages and links from other pages still
+ * open the right section. `planned` sections need the plant's planned maintenance
+ * (checklists); Problems works on every plant.
+ */
+export const PMS_TABS: { id: PmsPage; label: string; views: PmsPage[]; planned: boolean }[] = [
+  { id: "overview", label: "Overview", views: ["overview"], planned: true },
+  { id: "problems", label: "Problems", views: ["problems", "guides"], planned: false },
+  { id: "preventive", label: "Preventive", views: ["preventive"], planned: true },
+  { id: "predictive", label: "Predictive", views: ["predictive"], planned: true },
+  { id: "proactive", label: "Proactive", views: ["proactive"], planned: true },
+  { id: "work", label: "Work orders", views: ["work", "history"], planned: true },
+  { id: "calendar", label: "Calendar", views: ["calendar", "resources"], planned: true },
+  { id: "machine", label: "Machines", views: ["machine"], planned: true },
+];
+
+/** Asks the Maintenance workspace (mounted or not) to open a page. */
+export const MAINT_PAGE_KEY = "ultron.maint.page";
+export const MAINT_PAGE_EVENT = "ultron:maint-page";
+export function requestMaintenancePage(page: PmsPage) {
+  try {
+    localStorage.setItem(MAINT_PAGE_KEY, page);
+  } catch {
+    /* storage unavailable */
+  }
+  window.dispatchEvent(new CustomEvent(MAINT_PAGE_EVENT, { detail: page }));
+}
+
+/** The tab a page belongs to. */
+export const pmsTabOf = (page: PmsPage) => PMS_TABS.find((t) => t.views.includes(page)) ?? PMS_TABS[0];
+
+/** View switch for a tab that holds two pages (Work orders · History, Calendar · People, parts & shutdowns). */
+export function PmsViewNav({ page }: { page: PmsPage }) {
+  const nav = usePmsNav();
+  const tab = pmsTabOf(page);
+  if (tab.views.length < 2) return null;
+  return (
+    <PillNav
+      ariaLabel={`${tab.label} views`}
+      items={tab.views.map((id) => ({ id, label: PMS_PAGES.find((p) => p.id === id)?.label ?? id }))}
+      activeId={page}
+      onChange={(id) => nav(id as PmsPage)}
+    />
+  );
+}
 
 const NavContext = createContext<(page: PmsPage, focus?: string) => void>(() => {});
 export const PmsNavProvider = NavContext.Provider;
@@ -100,7 +161,7 @@ export function occurrences(plans: PmsPlan[], dues: Map<string, PlanDue>, wos: P
   const today = startOfDay(now);
   for (const p of plans) {
     const h = planHours(p);
-    const d = dues.get(p.id);
+    const d = dues.get(planKey(p));
     if (!planGenerates(p) || h === null || !d || d.dueAt === null) continue;
     const step = h * 3_600_000;
     const routine = h <= 24;
@@ -111,7 +172,7 @@ export function occurrences(plans: PmsPlan[], dues: Map<string, PlanDue>, wos: P
     let first = d.dueAt <= now;
     for (let n = 0; at < to && n < 400; n++, at += step) {
       out.push({
-        key: `${p.id}@${at}`,
+        key: `${planKey(p)}@${at}`,
         at,
         kind: "plan",
         title: planName(p),
@@ -122,7 +183,7 @@ export function occurrences(plans: PmsPlan[], dues: Map<string, PlanDue>, wos: P
         due: first && d.dueAt <= now,
         routine,
         isolate,
-        ref: p.id,
+        ref: planKey(p),
         sensor: p.kind === "sensor",
       });
       first = false;
@@ -154,7 +215,7 @@ export function routineSummary(list: Occurrence[], plans: PmsPlan[]): string | n
   const byRoute = new Map<string, number>();
   for (const o of list) {
     if (!o.routine) continue;
-    const p = plans.find((x) => x.id === o.ref);
+    const p = plans.find((x) => planKey(x) === o.ref);
     const name = p ? p.routeLabel : "Round";
     byRoute.set(name, (byRoute.get(name) ?? 0) + 1);
   }
@@ -188,7 +249,7 @@ export function Stepper({ step, paused, ended }: { step: number; paused?: string
         const state = i < step ? "done" : i === step ? "current" : "todo";
         return (
           <li key={s} className="pm-step" data-state={state} aria-current={i === step ? "step" : undefined}>
-            <span className="pm-step-num ast-num">{String(i + 1).padStart(2, "0")}</span>
+            <span className="pm-step-num">{String(i + 1).padStart(2, "0")}</span>
             <span className="pm-step-label">{s}</span>
             {i === step && (paused || ended) && <span className="pm-step-flag">{paused ?? ended}</span>}
           </li>
@@ -259,6 +320,7 @@ export function NoteDialog({
       title={title}
       subtitle={subtitle}
       busy={busy}
+      dirty={value !== initial}
       onSubmit={() => void submit()}
       width={520}
       footer={

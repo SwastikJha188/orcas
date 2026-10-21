@@ -13,6 +13,7 @@ import {
   type UpdateUserInput,
 } from "@/providers/industrial-data-context";
 import {
+  ConfirmAction,
   Dialog,
   Field,
   FieldGrid,
@@ -29,11 +30,13 @@ import {
 import { IconChevron, StatusTag, type Tone } from "@/components/assets/assets-shell-ui";
 import type { HierarchyNode } from "@/components/assets/assets-data";
 import { DIAGRAM_SHEETS } from "@/components/assets/diagrams";
-import type { AssetMachine } from "@/types/assets";
-import type { OnboardingStatus } from "@/types/onboarding";
+import { MoreFields } from "@/components/ui/more-fields";
+import type { AssetMachine } from "@shared/types/assets";
+import type { OnboardingStatus } from "@shared/types/onboarding";
 import { invalidateApi, useApi } from "@/lib/api-cache";
 import { formatLocalTime } from "@/lib/time";
 import { OnboardingPanel } from "./onboarding/onboarding-panel";
+import { SupportSection, useSupportTickets } from "./support-section";
 import { PhotoPicker, attachDraftPhotos, discardDraftPhotos, type DrawingState } from "./photo-picker";
 import "@/components/assets/assets-shell.css";
 import "@/components/ui/page.css";
@@ -44,7 +47,7 @@ import "./configure.css";
 /* ==========================================================================
    Configure — the one place things are set up (modelled on the ULTRON
    console's Configure studio): a step list on the left, the chosen section on
-   the right. Monitoring stays on the monitoring pages; data collectors and
+   the right. Monitoring stays on the monitoring pages; gateways and
    racks stay on Devices; simulation stays on Simulation. Only what builds or
    sets up the plant lives here:
 
@@ -54,7 +57,7 @@ import "./configure.css";
      Monitoring settings  how readings are saved and checked (system_settings)
    ========================================================================== */
 
-const CONFIGURE_SECTIONS = ["plants", "onboarding", "users", "monitoring"] as const;
+const CONFIGURE_SECTIONS = ["plants", "onboarding", "users", "monitoring", "support"] as const;
 type ConfigureSection = (typeof CONFIGURE_SECTIONS)[number];
 
 const SECTION_META: Record<ConfigureSection, { label: string; blurb: string; Icon: () => React.JSX.Element }> = {
@@ -78,10 +81,18 @@ const SECTION_META: Record<ConfigureSection, { label: string; blurb: string; Ico
     blurb: "How often readings are saved and checked, and how long they are kept. A change applies within a minute.",
     Icon: () => <IconSliders />,
   },
+  support: {
+    label: "Support",
+    blurb: "Ask the Oswar Teck support team for help, and follow each answer.",
+    Icon: () => <IconSupport />,
+  },
 
 };
 
 const SECTION_KEY = "ultron.configure.section";
+
+/** "1 area", "6 machines". */
+const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 interface SettingRow {
   key: string;
@@ -147,6 +158,12 @@ const IconDoc = () => (
     <path d="M14 3v5h5M9 13h6M9 17h4" />
   </svg>
 );
+const IconSupport = () => (
+  <svg {...svgProps}>
+    <path d="M4 5h16v11H9l-5 4z" />
+    <path d="M8 9h8M8 12h5" />
+  </svg>
+);
 const IconSliders = () => (
   <svg {...svgProps}>
     <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />
@@ -191,6 +208,13 @@ export function ConfigureView() {
 
   // What the signed-in account may change (the server checks the same rules).
   const superAdmin = Boolean(currentUser?.role.allPlants);
+  // Support: plant people raise tickets; the Oswar super administrator answers them.
+  const canRaiseTickets = Boolean(currentUser?.role.canRaiseTickets);
+  const showSupport = canRaiseTickets || superAdmin;
+  const tickets = useSupportTickets();
+  const openTickets = (tickets.data ?? []).filter((t) => t.status === "open").length;
+  const [raiseOpen, setRaiseOpen] = useState(false);
+  const visibleSections = CONFIGURE_SECTIONS.filter((id) => id !== "support" || showSupport);
   const myPlantLevel = useMemo(
     () => new Map((currentUser?.plantAccess ?? []).map((a) => [a.plantId, a.accessLevel])),
     [currentUser],
@@ -479,6 +503,12 @@ export function ConfigureView() {
           : "Loading…"
         : `${settings.data.length} settings`,
     },
+    support: {
+      count: openTickets ? String(openTickets) : undefined,
+      detail: tickets.data ? `${openTickets} open` : "Loading…",
+      // The support team (super administrator) is the one who must act on an open ticket.
+      badge: superAdmin && openTickets ? { tone: "warn", text: `${openTickets} waiting for an answer` } : undefined,
+    },
   };
 
   /* ---------- columns */
@@ -553,11 +583,11 @@ export function ConfigureView() {
     },
     {
       key: "count",
-      header: "Areas · machines · users",
-      width: "150px",
+      header: "Contains",
+      width: "200px",
       render: (p) => (
-        <span className="ast-num">
-          {p.areaCount} · {p.machineCount} · {p.userCount}
+        <span className="ast-cell-text">
+          {plural(p.areaCount, "area")}, {plural(p.machineCount, "machine")}, {plural(p.userCount, "user")}
         </span>
       ),
     },
@@ -624,7 +654,7 @@ export function ConfigureView() {
     },
     {
       key: "criticality",
-      header: "How critical",
+      header: "Importance",
       width: "170px",
       render: (m) => (
         <InlineSelect
@@ -786,11 +816,11 @@ export function ConfigureView() {
           r.canManageUsers ? "Users" : null,
           r.canManagePlants ? "Plants" : null,
           r.canManageMachines ? "Machines" : null,
-          r.canManageEdge ? "Data collectors" : null,
+          r.canManageEdge ? "Gateways" : null,
           r.canManageWorkOrders ? "Work orders" : null,
-          r.canAckAlerts ? "Mark alerts seen" : null,
+          r.canAckAlerts ? "Acknowledge alarms" : null,
         ].filter((p): p is string => Boolean(p));
-        return <span className="ast-cell-text">{perms.length ? perms.join(" · ") : "Can only view"}</span>;
+        return <span className="ast-cell-text">{perms.length ? perms.join(", ") : "Can only look, not change anything"}</span>;
       },
     },
   ];
@@ -816,6 +846,12 @@ export function ConfigureView() {
           </PillButton>
         )}
       </>
+    ) : section === "support" ? (
+      canRaiseTickets && (
+        <PillButton variant="primary" onClick={() => setRaiseOpen(true)}>
+          Raise a ticket
+        </PillButton>
+      )
     ) : section === "users" ? (
       canAddUsers && (
         <PillButton
@@ -862,7 +898,7 @@ export function ConfigureView() {
       <header className="opc-topbar cfg-topbar" aria-label="Configure sections">
         <div className="opc-stage-tabs">
           <div className="opc-pill-group" role="tablist" aria-label="Configure sections">
-            {CONFIGURE_SECTIONS.map((id) => {
+            {visibleSections.map((id) => {
               const m = SECTION_META[id];
               const st = steps[id];
               const active = section === id;
@@ -945,7 +981,7 @@ export function ConfigureView() {
                 <div className="ast-card-head">
                   <h2 className="ast-card-title">
                     Plants
-                    <span className="ast-caption ast-num">{plantRecords.length}</span>
+                    <span className="ast-caption">{plantRecords.length}</span>
                   </h2>
                 </div>
                 {plantRecords.length ? (
@@ -958,7 +994,29 @@ export function ConfigureView() {
                     onRowClick={(p) => setSelectedPlantId(p.id)}
                   />
                 ) : (
-                  <div className="ast-empty">{hasLoaded ? "No plants yet. Add one, or bring one in from its documents." : "Loading plants…"}</div>
+                  <div className="ast-empty">
+                    {hasLoaded ? "No plants yet. Add one, or bring one in from its documents." : "Loading plants…"}
+                    {hasLoaded && (canAddPlants || canAdminister) && (
+                      <div className="cfg-empty-actions">
+                        {canAddPlants && (
+                          <PillButton
+                            variant="primary"
+                            onClick={() => {
+                              setEditingPlant(null);
+                              setPlantDialogOpen(true);
+                            }}
+                          >
+                            + Add plant
+                          </PillButton>
+                        )}
+                        {canAdminister && (
+                          <PillButton variant="secondary" onClick={() => setSection("onboarding")}>
+                            Add from documents
+                          </PillButton>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
               </section>
 
@@ -967,7 +1025,7 @@ export function ConfigureView() {
                   <div className="ast-card-head">
                     <h2 className="ast-card-title">
                       Machines in {selectedPlant.name}
-                      <span className="ast-caption ast-num">{plantMachines.length}</span>
+                      <span className="ast-caption">{plantMachines.length}</span>
                     </h2>
                   </div>
                   {plantMachines.length ? (
@@ -998,7 +1056,7 @@ export function ConfigureView() {
                 <div className="ast-card-head">
                   <h2 className="ast-card-title">
                     Users
-                    <span className="ast-caption ast-num">{scopedUsers.length}</span>
+                    <span className="ast-caption">{scopedUsers.length}</span>
                   </h2>
                 </div>
                 {scopedUsers.length ? (
@@ -1012,13 +1070,15 @@ export function ConfigureView() {
                 <div className="ast-card-head">
                   <h2 className="ast-card-title">
                     Roles
-                    <span className="ast-caption">what each kind of user may change</span>
+                    <span className="ast-caption">What each kind of user may change</span>
                   </h2>
                 </div>
                 <Table className="ast-table" columns={roleColumns} data={assignableRoles} keyExtractor={(r) => r.id} />
               </section>
             </>
           )}
+
+          {section === "support" && <SupportSection raiseOpen={raiseOpen} onRaiseClose={() => setRaiseOpen(false)} />}
 
           {section === "monitoring" && (
             <section className="ast-card pg-table-card" aria-label="Monitoring settings">
@@ -1179,15 +1239,36 @@ const USER_STATUS_OPTIONS: Array<{ value: UserRecord["status"]; label: string }>
 ];
 
 const CRITICALITY_OPTIONS: Array<{ value: AssetMachine["criticality"]; label: string }> = [
-  { value: "A (Critical)", label: "A · Critical" },
-  { value: "B (Essential)", label: "B · Essential" },
-  { value: "C (General)", label: "C · General" },
+  { value: "A (Critical)", label: "A · Highest" },
+  { value: "B (Essential)", label: "B · Medium" },
+  { value: "C (General)", label: "C · Low" },
 ];
 
+/** A "✓ Saved" mark on the edited cell for 2 s after its value is stored (the sub-bar names the change too). */
+function useSavedMark(): [boolean, () => void] {
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    if (!saved) return;
+    const t = window.setTimeout(() => setSaved(false), 2000);
+    return () => window.clearTimeout(t);
+  }, [saved]);
+  const mark = useCallback(() => setSaved(true), []);
+  return [saved, mark];
+}
+
+function SavedMark() {
+  return (
+    <span className="cfg-saved" aria-hidden="true">
+      ✓ Saved
+    </span>
+  );
+}
+
 /**
- * A text cell that reads as plain text until hovered or focused. Saves on blur
- * or Enter when changed; Escape restores the saved value. A failed save keeps
- * the typed text and marks the cell.
+ * A text cell that reads as plain text with a faint dotted rule (editable)
+ * until hovered or focused. Saves on blur or Enter when changed; Escape
+ * restores the saved value. A failed save keeps the typed text and marks the
+ * cell; a stored one shows "✓ Saved" for 2 s.
  */
 function InlineText({
   label,
@@ -1213,6 +1294,7 @@ function InlineText({
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const [state, setState] = useState<"idle" | "saving" | "error">("idle");
+  const [saved, markSaved] = useSavedMark();
   const commit = async () => {
     if (draft === null) return;
     const v = upper ? draft.trim().toUpperCase() : draft.trim();
@@ -1230,37 +1312,41 @@ function InlineText({
       await onSave(v);
       setDraft(null);
       setState("idle");
+      markSaved();
     } catch {
       setState("error");
     }
   };
   return (
-    <input
-      className="cfg-inline"
-      data-strong={strong || undefined}
-      data-sub={sub || undefined}
-      data-state={state === "idle" ? undefined : state}
-      aria-label={label}
-      aria-invalid={state === "error" || undefined}
-      title={draft ?? value}
-      size={1}
-      value={draft ?? value}
-      placeholder={state === "error" && required && !(draft ?? "").trim() ? "Required" : disabled ? undefined : placeholder}
-      disabled={disabled || state === "saving"}
-      onChange={(e) => {
-        setDraft(e.target.value);
-        if (state === "error") setState("idle");
-      }}
-      onBlur={() => void commit()}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") e.currentTarget.blur();
-        if (e.key === "Escape") {
-          setDraft(null);
-          setState("idle");
-          e.currentTarget.blur();
-        }
-      }}
-    />
+    <span className="cfg-inline-wrap">
+      <input
+        className="cfg-inline"
+        data-strong={strong || undefined}
+        data-sub={sub || undefined}
+        data-state={state === "idle" ? undefined : state}
+        aria-label={label}
+        aria-invalid={state === "error" || undefined}
+        title={draft ?? value}
+        size={1}
+        value={draft ?? value}
+        placeholder={state === "error" && required && !(draft ?? "").trim() ? "Required" : disabled ? undefined : placeholder}
+        disabled={disabled || state === "saving"}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          if (state === "error") setState("idle");
+        }}
+        onBlur={() => void commit()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") {
+            setDraft(null);
+            setState("idle");
+            e.currentTarget.blur();
+          }
+        }}
+      />
+      {saved && <SavedMark />}
+    </span>
   );
 }
 
@@ -1282,8 +1368,9 @@ function InlineSelect({
 }) {
   const [pending, setPending] = useState<string | null>(null);
   const [state, setState] = useState<"idle" | "saving" | "error">("idle");
+  const [saved, markSaved] = useSavedMark();
   return (
-    <span className="cfg-inline-select" data-state={state === "idle" ? undefined : state} data-warn={warn || undefined}>
+    <span className="cfg-inline-select" data-state={state === "idle" ? undefined : state} data-warn={warn || undefined} data-saved={saved || undefined}>
       <select
         className="cfg-inline"
         aria-label={label}
@@ -1297,6 +1384,7 @@ function InlineSelect({
           try {
             await onSave(v);
             setState("idle");
+            markSaved();
           } catch {
             setState("error");
           } finally {
@@ -1313,6 +1401,7 @@ function InlineSelect({
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <polyline points="6 9 12 15 18 9" />
       </svg>
+      {saved && <SavedMark />}
     </span>
   );
 }
@@ -1320,6 +1409,11 @@ function InlineSelect({
 /* ==========================================================================
    Modal Dialogs for Plant, Machine, and User CRUD
    ========================================================================== */
+
+/** After a refused save: put the cursor in the first field that needs fixing. */
+function focusFirstInvalid() {
+  requestAnimationFrame(() => document.querySelector<HTMLElement>('.ui-dialog [aria-invalid="true"]')?.focus());
+}
 
 function PlantDialog({
   open,
@@ -1352,7 +1446,7 @@ function PlantDialog({
   const [location, setLocation] = useState("");
   const [coordinates, setCoordinates] = useState("");
   const [timeZone, setTimeZone] = useState(browserTimeZone);
-  const [status, setStatus] = useState<"Operational" | "Alert" | "Standby" | "Maintenance">("Operational");
+  const [serviceState, setServiceState] = useState<PlantRecord["serviceState"]>("Operational");
   const [managerUserId, setManagerUserId] = useState("");
   const [designCapacity, setDesignCapacity] = useState("");
   const [commissionedYear, setCommissionedYear] = useState("");
@@ -1360,10 +1454,27 @@ function PlantDialog({
   const [initialAreas, setInitialAreas] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Field errors show once Save was pressed, and clear as the field is filled.
+  const [tried, setTried] = useState(false);
+  const [touched, setTouched] = useState(false);
+  const edit =
+    <T,>(set: (v: T) => void) =>
+    (v: T) => {
+      setTouched(true);
+      set(v);
+    };
+  const missing = {
+    code: code.trim() ? null : "Enter the plant code",
+    shortName: shortName.trim() ? null : "Enter a short name",
+    name: name.trim() ? null : "Enter the full plant name",
+    commissionedYear: !commissionedYear.trim() || Number.isInteger(Number(commissionedYear)) ? null : "Enter a year, like 2019",
+  };
 
   useEffect(() => {
     if (!open) return;
     setErr(null);
+    setTried(false);
+    setTouched(false);
     if (plant) {
       setCode(plant.code);
       setName(plant.name);
@@ -1372,7 +1483,7 @@ function PlantDialog({
       setLocation(plant.location ?? "");
       setCoordinates(plant.coordinates ?? "");
       setTimeZone(plant.timeZone);
-      setStatus(plant.status);
+      setServiceState(plant.serviceState);
       setManagerUserId(plant.managerUserId ?? "");
       setDesignCapacity(plant.designCapacity ?? "");
       setCommissionedYear(plant.commissionedYear ? String(plant.commissionedYear) : "");
@@ -1385,7 +1496,7 @@ function PlantDialog({
       setLocation("");
       setCoordinates("");
       setTimeZone(browserTimeZone());
-      setStatus("Operational");
+      setServiceState("Operational");
       setManagerUserId("");
       setDesignCapacity("");
       setCommissionedYear("");
@@ -1408,22 +1519,27 @@ function PlantDialog({
   };
 
   const submit = async () => {
+    setTried(true);
+    if (Object.values(missing).some(Boolean)) {
+      focusFirstInvalid();
+      return;
+    }
     setBusy(true);
     setErr(null);
     try {
       await onSave(
         {
-          code,
-          name,
-          shortName,
+          code: code.trim().toUpperCase(),
+          name: name.trim(),
+          shortName: shortName.trim(),
           region,
           location,
           coordinates,
           timeZone,
-          status,
+          serviceState,
           managerUserId: managerUserId || null,
           designCapacity,
-          commissionedYear: Number(commissionedYear) || 2024,
+          commissionedYear: commissionedYear.trim() ? Number(commissionedYear) : null,
           description,
           initialAreas: initialAreas
             .split(",")
@@ -1447,28 +1563,30 @@ function PlantDialog({
       title={plant ? `Edit plant · ${plant.name}` : "Add a plant"}
       subtitle="The plant's place in the plant list and its user access are set up for you"
       busy={busy}
+      dirty={touched || drawing.photos > 0}
+      onSubmit={submit}
       width={drawing.photos ? 880 : 620}
-      footerStart={err ? <span className="cfg-foot-err" role="alert">{err}</span> : undefined}
+      footerStart={
+        onDelete && plant ? (
+          <ConfirmAction
+            label="Delete plant"
+            question={plant.machineCount ? `Delete this plant and its ${plant.machineCount} machine${plant.machineCount === 1 ? "" : "s"}?` : "Delete this plant?"}
+            disabled={busy}
+            onConfirm={async () => {
+              setBusy(true);
+              try {
+                await onDelete(plant.id);
+              } catch (e) {
+                setErr(e instanceof Error ? e.message : "Delete failed");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          />
+        ) : undefined
+      }
       footer={
         <>
-          {onDelete && plant && (
-            <PillButton
-              variant="danger"
-              disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  await onDelete(plant.id);
-                } catch (e) {
-                  setErr(e instanceof Error ? e.message : "Delete failed");
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              Delete Plant
-            </PillButton>
-          )}
           {plant && onAddMachine && (
             <PillButton variant="secondary" onClick={() => onAddMachine(plant)} disabled={busy}>
               + Add machine
@@ -1477,41 +1595,42 @@ function PlantDialog({
           <PillButton variant="secondary" onClick={close} disabled={busy}>
             Cancel
           </PillButton>
-          <PillButton variant="primary" onClick={submit} disabled={busy}>
-            {busy ? "Saving…" : plant ? "Save Changes" : "Create Plant"}
+          <PillButton variant="primary" type="submit" disabled={busy}>
+            {busy ? "Saving…" : plant ? "Save changes" : "Create plant"}
           </PillButton>
         </>
       }
     >
       {err && <FormNote tone="bad">{err}</FormNote>}
       <FieldGrid>
-        <Field label="Plant code" hint="Short unique code, for example MIN-LUM-04" required>
-          {(id) => <TextInput id={id} value={code} onChange={setCode} mono placeholder="MIN-LUM-04" />}
+        <Field label="Plant code" hint="Short unique code, for example MIN-LUM-04" required error={tried ? missing.code : null}>
+          {(id, describedBy) => <TextInput id={id} describedBy={describedBy} value={code} onChange={edit(setCode)} autoCapitalize="characters" mono placeholder="MIN-LUM-04" />}
         </Field>
-        <Field label="Short name" required>
-          {(id) => <TextInput id={id} value={shortName} onChange={setShortName} placeholder="Lumwana Concentrator" />}
+        <Field label="Short name" required error={tried ? missing.shortName : null}>
+          {(id, describedBy) => <TextInput id={id} describedBy={describedBy} value={shortName} onChange={edit(setShortName)} placeholder="Lumwana Concentrator" />}
         </Field>
-        <Field label="Full plant name" wide required>
-          {(id) => <TextInput id={id} value={name} onChange={setName} placeholder="Lumwana Super-Pit Comminution Plant" />}
+        <Field label="Full plant name" wide required error={tried ? missing.name : null}>
+          {(id, describedBy) => <TextInput id={id} describedBy={describedBy} value={name} onChange={edit(setName)} placeholder="Lumwana Super-Pit Comminution Plant" />}
         </Field>
         <Field label="Region">
-          {(id) => <TextInput id={id} value={region} onChange={setRegion} />}
+          {(id, describedBy) => <TextInput id={id} describedBy={describedBy} value={region} onChange={edit(setRegion)} />}
         </Field>
         <Field label="Location">
-          {(id) => <TextInput id={id} value={location} onChange={setLocation} />}
+          {(id, describedBy) => <TextInput id={id} describedBy={describedBy} value={location} onChange={edit(setLocation)} />}
         </Field>
         <Field label="Coordinates">
-          {(id) => <TextInput id={id} value={coordinates} onChange={setCoordinates} mono />}
+          {(id, describedBy) => <TextInput id={id} describedBy={describedBy} value={coordinates} onChange={edit(setCoordinates)} mono />}
         </Field>
         <Field label="Time zone">
-          {(id) => <Select id={id} value={timeZone} onChange={setTimeZone} options={zoneOptions} />}
+          {(id, describedBy) => <Select id={id} describedBy={describedBy} value={timeZone} onChange={edit(setTimeZone)} options={zoneOptions} />}
         </Field>
         <Field label="Plant manager">
-          {(id) => (
+          {(id, describedBy) => (
             <Select
               id={id}
+              describedBy={describedBy}
               value={managerUserId}
-              onChange={setManagerUserId}
+              onChange={edit(setManagerUserId)}
               options={[
                 { value: "", label: "Unassigned" },
                 ...users.map((u) => ({ value: u.id, label: `${u.fullName} (${u.role.name})` })),
@@ -1520,14 +1639,14 @@ function PlantDialog({
           )}
         </Field>
         <Field label="Plant status">
-          {(id) => (
+          {(id, describedBy) => (
             <Select
               id={id}
-              value={status}
-              onChange={(v) => setStatus(v as typeof status)}
+              describedBy={describedBy}
+              value={serviceState}
+              onChange={edit((v: string) => setServiceState(v as typeof serviceState))}
               options={[
                 { value: "Operational", label: "Operational" },
-                { value: "Alert", label: "Alert" },
                 { value: "Standby", label: "Standby" },
                 { value: "Maintenance", label: "Maintenance" },
               ]}
@@ -1535,22 +1654,24 @@ function PlantDialog({
           )}
         </Field>
         <Field label="Design capacity">
-          {(id) => <TextInput id={id} value={designCapacity} onChange={setDesignCapacity} />}
+          {(id, describedBy) => <TextInput id={id} describedBy={describedBy} value={designCapacity} onChange={edit(setDesignCapacity)} />}
         </Field>
-        <Field label="Year it started running">
-          {(id) => <NumberInput id={id} value={commissionedYear} onChange={setCommissionedYear} min={1950} max={2050} />}
+        <Field label="Year it started running" error={tried ? missing.commissionedYear : null}>
+          {(id, describedBy) => <NumberInput id={id} describedBy={describedBy} value={commissionedYear} onChange={edit(setCommissionedYear)} min={1950} max={2050} />}
         </Field>
         {!plant && (
           <Field label="Plant areas (separate with commas)" wide>
-            {(id) => <TextInput id={id} value={initialAreas} onChange={setInitialAreas} />}
+            {(id, describedBy) => <TextInput id={id} describedBy={describedBy} value={initialAreas} onChange={edit(setInitialAreas)} />}
           </Field>
         )}
         <Field label="Description" wide>
-          {(id) => <TextArea id={id} value={description} onChange={setDescription} rows={2} />}
+          {(id, describedBy) => <TextArea id={id} describedBy={describedBy} value={description} onChange={edit(setDescription)} rows={2} />}
         </Field>
         <Field label="Photos or site layout" wide>
-          {() => (
+          {(id, describedBy) => (
             <PhotoPicker
+              id={id}
+              describedBy={describedBy}
               label="Photos or drawings"
               hint="A photo, aerial view or layout of the plant or a line is drawn as its line drawing and shown here before you add the plant."
               draft={draftKey ? { draftKey, subject: "plant", name, code } : null}
@@ -1595,19 +1716,39 @@ function MachineDialog({
   const [serialNumber, setSerialNumber] = useState("");
   const [powerRating, setPowerRating] = useState("");
   const [operatingSpeed, setOperatingSpeed] = useState("");
+  // The six optional details fold away; they open by themselves when one has a value.
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const hasDetails = [type, manufacturer, model, serialNumber, powerRating, operatingSpeed].some((v) => v.trim() !== "");
   const [diagramType, setDiagramType] = useState<string>("pump");
   const [criticality, setCriticality] = useState<"A (Critical)" | "B (Essential)" | "C (General)">("A (Critical)");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Field errors show once Add was pressed, and clear as the field is filled.
+  const [tried, setTried] = useState(false);
+  const [touched, setTouched] = useState(false);
+  const edit =
+    <T,>(set: (v: T) => void) =>
+    (v: T) => {
+      setTouched(true);
+      set(v);
+    };
+  const missing = {
+    id: id.trim() ? null : "Enter the machine code",
+    name: name.trim() ? null : "Enter the machine name",
+    areaName: areaId || areaName.trim() ? null : "Enter a name for the new area",
+  };
 
   useEffect(() => {
     if (!open) return;
     setErr(null);
+    setTried(false);
+    setTouched(false);
     setDraftKey(crypto.randomUUID());
     setDrawing({ photos: 0, kind: null, drawing: false, ready: false });
     setDiagramType("pump");
     setAreaId(areas[0]?.id ?? "");
     setAreaName("");
+    setDetailsOpen(hasDetails);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset per opening, not when the area list refreshes
   }, [open, plant?.id]);
   // The photo's drawing becomes the machine's drawing unless another style was chosen on purpose.
@@ -1624,16 +1765,21 @@ function MachineDialog({
   };
 
   const submit = async () => {
+    setTried(true);
+    if (Object.values(missing).some(Boolean)) {
+      focusFirstInvalid();
+      return;
+    }
     setBusy(true);
     setErr(null);
     try {
       await onSave(
         {
-        id,
-        name,
+        id: id.trim().toUpperCase(),
+        name: name.trim(),
         plantId,
         areaId: areaId || undefined,
-        areaName: areaId ? undefined : areaName,
+        areaName: areaId ? undefined : areaName.trim(),
         type,
         manufacturer,
         model,
@@ -1646,7 +1792,7 @@ function MachineDialog({
         draftKey,
       );
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Failed to commission machine");
+      setErr(e instanceof Error ? e.message : "Could not add the machine");
     } finally {
       setBusy(false);
     }
@@ -1659,48 +1805,52 @@ function MachineDialog({
       title={plant ? `Add a machine to ${plant.shortName || plant.name}` : "Add a machine"}
       subtitle="Creates the machine and its model record in this plant; a photo of it becomes its 2D drawing and 3D model"
       busy={busy}
+      dirty={touched || drawing.photos > 0}
+      onSubmit={submit}
       width={drawing.photos ? 880 : 620}
-      footerStart={err ? <span className="cfg-foot-err" role="alert">{err}</span> : undefined}
       footer={
         <>
           <PillButton variant="secondary" onClick={close} disabled={busy}>
             Cancel
           </PillButton>
-          <PillButton variant="primary" onClick={submit} disabled={busy}>
-            {busy ? "Commissioning…" : drawing.drawing ? "Add without waiting for the drawing" : "Commission Machine"}
+          <PillButton variant="primary" type="submit" disabled={busy}>
+            {busy ? "Adding…" : drawing.drawing ? "Add without waiting for the drawing" : "Add machine"}
           </PillButton>
         </>
       }
     >
       {err && <FormNote tone="bad">{err}</FormNote>}
       <FieldGrid>
-        <Field label="Machine code" hint="Short unique code, for example PUMP-205" required>
-          {(fid) => <TextInput id={fid} value={id} onChange={setId} mono placeholder="PUMP-205" />}
+        <Field label="Machine code" hint="Short unique code, for example PUMP-205" required error={tried ? missing.id : null}>
+          {(fid, describedBy) => <TextInput id={fid} describedBy={describedBy} value={id} onChange={edit(setId)} autoCapitalize="characters" mono placeholder="PUMP-205" />}
         </Field>
         <Field label="Plant">
-          {(fid) => <TextInput id={fid} value={plant ? `${plant.code} · ${plant.shortName || plant.name}` : ""} onChange={() => undefined} disabled />}
+          {(fid, describedBy) => <TextInput id={fid} describedBy={describedBy} value={plant ? `${plant.code} · ${plant.shortName || plant.name}` : ""} onChange={() => undefined} disabled />}
         </Field>
-        <Field label="Machine name" wide required>
-          {(fid) => <TextInput id={fid} value={name} onChange={setName} />}
+        <Field label="Machine name" wide required error={tried ? missing.name : null}>
+          {(fid, describedBy) => <TextInput id={fid} describedBy={describedBy} value={name} onChange={edit(setName)} />}
         </Field>
         <Field label="Area (factory, section, line)">
-          {(fid) => (
+          {(fid, describedBy) => (
             <Select
               id={fid}
+              describedBy={describedBy}
               value={areaId}
-              onChange={setAreaId}
+              onChange={edit(setAreaId)}
               options={[...areas.map((a) => ({ value: a.id, label: a.name })), { value: "", label: "A new area…" }]}
             />
           )}
         </Field>
         {!areaId && (
-          <Field label="New area name" required>
-            {(fid) => <TextInput id={fid} value={areaName} onChange={setAreaName} placeholder="Kiln line" />}
+          <Field label="New area name" required error={tried ? missing.areaName : null}>
+            {(fid, describedBy) => <TextInput id={fid} describedBy={describedBy} value={areaName} onChange={edit(setAreaName)} placeholder="Kiln line" />}
           </Field>
         )}
         <Field label="Photo, drawing or P&ID" wide>
-          {() => (
+          {(fid, describedBy) => (
             <PhotoPicker
+              id={fid}
+              describedBy={describedBy}
               label="Photos or drawings"
               hint="Claude Code draws the machine's 2D drawing and 3D model from it and shows them here before you add the machine."
               draft={draftKey ? { draftKey, subject: "machine", name, type, code: id, plantId } : null}
@@ -1710,11 +1860,12 @@ function MachineDialog({
           )}
         </Field>
         <Field label="Drawing style">
-          {(fid) => (
+          {(fid, describedBy) => (
             <Select
               id={fid}
+              describedBy={describedBy}
               value={diagramType}
-              onChange={setDiagramType}
+              onChange={edit(setDiagramType)}
               options={[
                 ...(drawing.kind ? [{ value: drawing.kind, label: drawing.ready ? "Drawn from the photo" : "Drawn from the photo (being drawn)" }] : []),
                 { value: "pump", label: "Centrifugal / Slurry Pump" },
@@ -1728,39 +1879,40 @@ function MachineDialog({
             />
           )}
         </Field>
-        <Field label="Machine type">
-          {(fid) => <TextInput id={fid} value={type} onChange={setType} />}
-        </Field>
-        <Field label="Manufacturer">
-          {(fid) => <TextInput id={fid} value={manufacturer} onChange={setManufacturer} />}
-        </Field>
-        <Field label="Model number">
-          {(fid) => <TextInput id={fid} value={model} onChange={setModel} />}
-        </Field>
-        <Field label="Serial number">
-          {(fid) => <TextInput id={fid} value={serialNumber} onChange={setSerialNumber} mono />}
-        </Field>
-        <Field label="Power rating">
-          {(fid) => <TextInput id={fid} value={powerRating} onChange={setPowerRating} />}
-        </Field>
-        <Field label="Operating speed">
-          {(fid) => <TextInput id={fid} value={operatingSpeed} onChange={setOperatingSpeed} />}
-        </Field>
-        <Field label="How critical it is" hint="A = plant stops without it, C = general">
-          {(fid) => (
+        <Field label="Importance" hint="A = the plant stops without it, C = little effect if it stops">
+          {(fid, describedBy) => (
             <Select
               id={fid}
+              describedBy={describedBy}
               value={criticality}
-              onChange={(v) => setCriticality(v as typeof criticality)}
-              options={[
-                { value: "A (Critical)", label: "A (Critical)" },
-                { value: "B (Essential)", label: "B (Essential)" },
-                { value: "C (General)", label: "C (General)" },
-              ]}
+              onChange={edit((v: string) => setCriticality(v as typeof criticality))}
+              options={CRITICALITY_OPTIONS}
             />
           )}
         </Field>
       </FieldGrid>
+      <MoreFields label="More details" open={detailsOpen} onToggle={setDetailsOpen}>
+        <FieldGrid>
+          <Field label="Machine type">
+            {(fid, describedBy) => <TextInput id={fid} describedBy={describedBy} value={type} onChange={edit(setType)} />}
+          </Field>
+          <Field label="Manufacturer">
+            {(fid, describedBy) => <TextInput id={fid} describedBy={describedBy} value={manufacturer} onChange={edit(setManufacturer)} />}
+          </Field>
+          <Field label="Model number">
+            {(fid, describedBy) => <TextInput id={fid} describedBy={describedBy} value={model} onChange={edit(setModel)} />}
+          </Field>
+          <Field label="Serial number">
+            {(fid, describedBy) => <TextInput id={fid} describedBy={describedBy} value={serialNumber} onChange={edit(setSerialNumber)} mono />}
+          </Field>
+          <Field label="Power rating">
+            {(fid, describedBy) => <TextInput id={fid} describedBy={describedBy} value={powerRating} onChange={edit(setPowerRating)} />}
+          </Field>
+          <Field label="Operating speed">
+            {(fid, describedBy) => <TextInput id={fid} describedBy={describedBy} value={operatingSpeed} onChange={edit(setOperatingSpeed)} />}
+          </Field>
+        </FieldGrid>
+      </MoreFields>
     </Dialog>
   );
 }
@@ -1797,10 +1949,18 @@ function UserDialog({
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Field errors show once Save was pressed, and clear as the field is filled.
+  const [tried, setTried] = useState(false);
+  const missing = {
+    fullName: fullName.trim() ? null : "Enter the person's name",
+    email: !email.trim() ? "Enter an email address" : /^[^\s@]+@[^\s@]+$/.test(email.trim()) ? null : "Enter a full email address, like name@company.com",
+    password: password && password.length < 8 ? "Use at least 8 characters" : null,
+  };
 
   useEffect(() => {
     if (!open) return;
     setErr(null);
+    setTried(false);
     setPassword("");
     if (user) {
       setFullName(user.fullName);
@@ -1840,6 +2000,11 @@ function UserDialog({
   const allPlants = roles.find((r) => r.id === roleId)?.allPlants ?? (user?.roleId === roleId && user.role.allPlants);
 
   const submit = async () => {
+    setTried(true);
+    if (Object.values(missing).some(Boolean)) {
+      focusFirstInvalid();
+      return;
+    }
     setBusy(true);
     setErr(null);
     try {
@@ -1852,8 +2017,8 @@ function UserDialog({
         }));
       await onSave(
         {
-          fullName,
-          email,
+          fullName: fullName.trim(),
+          email: email.trim().toLowerCase(),
           title,
           department,
           phone,
@@ -1884,48 +2049,63 @@ function UserDialog({
       title={user ? `Edit user · ${user.fullName}` : "Add a user"}
       subtitle="Choose what this person may change and which plants they can open"
       busy={busy}
+      onSubmit={submit}
       width={620}
+      footerStart={
+        onDelete && user ? (
+          <ConfirmAction
+            label="Delete user"
+            question="Delete this user?"
+            disabled={busy}
+            onConfirm={async () => {
+              setBusy(true);
+              try {
+                await onDelete(user.id);
+              } catch (e) {
+                setErr(e instanceof Error ? e.message : "Delete failed");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          />
+        ) : undefined
+      }
       footer={
         <>
-          {onDelete && user && (
-            <PillButton
-              variant="danger"
-              disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  await onDelete(user.id);
-                } catch (e) {
-                  setErr(e instanceof Error ? e.message : "Delete failed");
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              Delete User
-            </PillButton>
-          )}
           <PillButton variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </PillButton>
-          <PillButton variant="primary" onClick={submit} disabled={busy}>
-            {busy ? "Saving…" : user ? "Save Changes" : "Create User"}
+          <PillButton variant="primary" type="submit" disabled={busy}>
+            {busy ? "Saving…" : user ? "Save changes" : "Create user"}
           </PillButton>
         </>
       }
     >
       {err && <FormNote tone="bad">{err}</FormNote>}
       <FieldGrid>
-        <Field label="Full name" required>
-          {(id) => <TextInput id={id} value={fullName} onChange={setFullName} placeholder="Mulenga Phiri" />}
+        <Field label="Full name" required error={tried ? missing.fullName : null}>
+          {(id, describedBy) => <TextInput id={id} describedBy={describedBy} value={fullName} onChange={setFullName} placeholder="Mulenga Phiri" />}
         </Field>
-        <Field label="Email address" required>
-          {(id) => <TextInput id={id} value={email} onChange={setEmail} placeholder="mulenga.phiri@ultron.industrial" />}
+        <Field label="Email address" required error={tried ? missing.email : null}>
+          {(id, describedBy) => (
+            <TextInput
+              id={id}
+              describedBy={describedBy}
+              type="email"
+              inputMode="email"
+              autoCapitalize="none"
+              autoComplete="off"
+              value={email}
+              onChange={setEmail}
+              placeholder="mulenga.phiri@ultron.industrial"
+            />
+          )}
         </Field>
         <Field label="Role" hint="Decides what this person may change" required>
-          {(id) => (
+          {(id, describedBy) => (
             <Select
               id={id}
+              describedBy={describedBy}
               value={roleId}
               onChange={setRoleId}
               options={roleOptions}
@@ -1934,9 +2114,10 @@ function UserDialog({
           )}
         </Field>
         <Field label="Status">
-          {(id) => (
+          {(id, describedBy) => (
             <Select
               id={id}
+              describedBy={describedBy}
               value={status}
               disabled={!canChangeAccess}
               onChange={(v) => setStatus(v as typeof status)}
@@ -1950,16 +2131,16 @@ function UserDialog({
           )}
         </Field>
         <Field label="Job title">
-          {(id) => <TextInput id={id} value={title} onChange={setTitle} />}
+          {(id, describedBy) => <TextInput id={id} describedBy={describedBy} value={title} onChange={setTitle} />}
         </Field>
         <Field label="Department">
-          {(id) => <TextInput id={id} value={department} onChange={setDepartment} />}
+          {(id, describedBy) => <TextInput id={id} describedBy={describedBy} value={department} onChange={setDepartment} />}
         </Field>
         <Field label="Phone">
-          {(id) => <TextInput id={id} value={phone} onChange={setPhone} />}
+          {(id, describedBy) => <TextInput id={id} describedBy={describedBy} value={phone} onChange={setPhone} />}
         </Field>
         <Field label="Shift">
-          {(id) => <TextInput id={id} value={shift} onChange={setShift} />}
+          {(id, describedBy) => <TextInput id={id} describedBy={describedBy} value={shift} onChange={setShift} />}
         </Field>
         <Field
           label={user ? "New password" : "Password"}
@@ -1970,8 +2151,9 @@ function UserDialog({
                 : "No password yet: set one so this person can sign in"
               : "At least 8 characters. Without one this person cannot sign in"
           }
+          error={tried ? missing.password : null}
         >
-          {(id) => <TextInput id={id} type="password" value={password} onChange={setPassword} autoComplete="new-password" />}
+          {(id, describedBy) => <TextInput id={id} describedBy={describedBy} type="password" value={password} onChange={setPassword} autoComplete="new-password" />}
         </Field>
       </FieldGrid>
 
@@ -1985,9 +2167,10 @@ function UserDialog({
             <FieldGrid>
               {plants.map((p) => (
                 <Field key={p.id} label={`${p.code} · ${p.shortName}`}>
-                  {(id) => (
+                  {(id, describedBy) => (
                     <Select
                       id={id}
+                      describedBy={describedBy}
                       value={selectedPlants[p.id] ?? "none"}
                       onChange={(v) =>
                         setSelectedPlants((prev) => ({

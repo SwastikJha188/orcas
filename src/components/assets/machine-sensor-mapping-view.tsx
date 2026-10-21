@@ -12,10 +12,10 @@ import { isKilnMachine, isLiveMachine, useKilnSimulationFor } from "@/providers/
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { formatLocalTime } from "@/lib/time";
-import { simTimeMs } from "@/lib/kiln-sim/engine";
+import { simTimeMs } from "@shared/lib/kiln-sim/engine";
 import { defsFor } from "@/lib/live-defs";
-import type { MachineLivePoint } from "@/types/edge";
-import type { LiveSignal } from "@/lib/kiln-sim/engine";
+import type { MachineLivePoint } from "@shared/types/edge";
+import type { LiveSignal } from "@shared/lib/kiln-sim/engine";
 import type { SensorScope } from "./sensor-mapping-diagram";
 import type { Tone } from "./assets-shell-ui";
 import { Empty, PageHeader, Section, SectionIndex, scrollToSection, type SectionIndexItem } from "./analysis/an-ui";
@@ -50,8 +50,8 @@ import "./sensors-page.css";
 import { TRENDS_FOCUS_KEY } from "./trends-focus";
 import { ManualRecords } from "./pyro/manual-records";
 import { PyroMachineSpec } from "./pyro/pyro-machine-spec";
-import { PYRO_MACHINE_BY_ID } from "@/lib/pyro-sim/signals";
-import { VPC_MACHINE_BY_ID } from "@/lib/vpc-sim/signals";
+import { PYRO_MACHINE_BY_ID } from "@shared/lib/pyro-sim/signals";
+import { VPC_MACHINE_BY_ID } from "@shared/lib/vpc-sim/signals";
 
 /* ==========================================================================
    Machine › Sensors — one scrolling page.
@@ -59,12 +59,12 @@ import { VPC_MACHINE_BY_ID } from "@/lib/vpc-sim/signals";
    what is measured, where, how it is wired, and whether the data can be
    trusted (D4 instrument list, D5 Table 9.1 signals, Table 9.2 calculated
    values, Table 9.6 sensor validation).
-     01 Summary      4 KPIs: valid data, flagged, outside limits, gateway links
-     02 Map          machine-kit drawing, pads coloured by validity / limits
-     03 Validity     flagged sensors + D5 Table 9.6 checks (hidden without live data)
-     04 Sensors      transducer allocation (table or cards); D4 coverage gaps as group lines and
+     Summary         4 KPIs: valid data, flagged, outside limits, gateway links
+     Sensors         the register (primary task): one table; coverage gaps as group lines and
                      ghost rows; calculated values (Table 9.2) in the detail panel
-     05 Acquisition  sensor → card / channel → rack slot → gateway → broker
+     Reading checks  flagged sensors + D5 Table 9.6 checks (hidden without live data)
+     Data path       sensor → card / channel → rack slot → gateway → broker
+     Parts · Normal values · Planned sensors (whole machine / pyro spec only)
    History lives on Trends, alarms on Diagnosis, chassis hardware on Rack and
    the edge network on Devices; this page links to them.
    ========================================================================== */
@@ -503,13 +503,14 @@ export function MachineSensorMappingView({
   // The machine's specification is about the whole machine: not on a part's page.
   const planned = pyroSpec && !scope;
   const asmTone: Tone | undefined = counts.status.Critical ? "bad" : counts.status.Alert ? "warn" : undefined;
+  // The register (the page's primary task) comes first; reading quality and wiring follow it.
   const index: SectionIndexItem[] = [
-    ...(scope ? [] : [{ id: SENSORS_SECTIONS.assemblies, label: "Parts", tone: asmTone }]),
-    ...(planned ? [{ id: "sensors-spec", label: "Planned sensors" }] : []),
-    ...(hasValidity ? [{ id: SENSORS_SECTIONS.validity, label: "Reading checks", tone: issue(validTone) }] : []),
     { id: SENSORS_SECTIONS.register, label: "Sensors" },
-    { id: REFERENCES_SECTION_ID, label: "Normal values" },
+    ...(hasValidity ? [{ id: SENSORS_SECTIONS.validity, label: "Reading checks", tone: issue(validTone) }] : []),
     { id: SENSORS_SECTIONS.chain, label: "Data path", tone: counts.wired && counts.linked < counts.wired ? ("warn" as Tone) : undefined },
+    ...(scope ? [] : [{ id: SENSORS_SECTIONS.assemblies, label: "Parts", tone: asmTone }]),
+    { id: REFERENCES_SECTION_ID, label: "Normal values" },
+    ...(planned ? [{ id: "sensors-spec", label: "Planned sensors" }] : []),
   ];
 
 
@@ -555,6 +556,20 @@ export function MachineSensorMappingView({
           <SensorsSummary ctx={ctx} />
           <SectionIndex items={index} label="Sensors sections" pendingKey={SENSORS_SECTION_KEY} />
           <div className="pg-frame-body pg-sensors-body">
+            <Section id={SENSORS_SECTIONS.register} title="Sensors">
+              <SensorsRegister ctx={ctx} scope={externalScope !== undefined ? scope : null} onClearScope={() => setScope(null)} />
+            </Section>
+
+            {hasValidity && (
+              <Section id={SENSORS_SECTIONS.validity} title="Reading checks" bare>
+                <SensorsValidity ctx={ctx} />
+              </Section>
+            )}
+
+            <Section id={SENSORS_SECTIONS.chain} title="Data path" bare>
+              <SensorsChain ctx={ctx} />
+            </Section>
+
             {/* Whole machine only: on a part's page the part bar above picks parts. */}
             {!scope && (
               <Section id={SENSORS_SECTIONS.assemblies} title="Parts" bare>
@@ -569,28 +584,14 @@ export function MachineSensorMappingView({
               </Section>
             )}
 
+            <ReferencesSection machineId={machine.id} tags={scopeTags} />
+
             {planned && (
-              <Section id="sensors-spec" index={1} title="Planned sensors">
+              <Section id="sensors-spec" title="Planned sensors">
                 <PyroMachineSpec machineId={machine.id} t={frame?.t} />
                 {frame?.records && frame.records.length > 0 && <ManualRecords records={frame.records} timeZone={tz.timeZone} />}
               </Section>
             )}
-
-            {hasValidity && (
-              <Section id={SENSORS_SECTIONS.validity} index={planned ? 2 : 1} title="Reading checks" bare>
-                <SensorsValidity ctx={ctx} />
-              </Section>
-            )}
-
-            <Section id={SENSORS_SECTIONS.register} index={(hasValidity ? 2 : 1) + (planned ? 1 : 0)} title="Sensors">
-              <SensorsRegister ctx={ctx} scope={externalScope !== undefined ? scope : null} onClearScope={() => setScope(null)} />
-            </Section>
-
-            <ReferencesSection machineId={machine.id} index={(hasValidity ? 3 : 2) + (planned ? 1 : 0)} tags={scopeTags} />
-
-            <Section id={SENSORS_SECTIONS.chain} index={(hasValidity ? 4 : 3) + (planned ? 1 : 0)} title="Data path" bare>
-              <SensorsChain ctx={ctx} />
-            </Section>
           </div>
         </>
       )}

@@ -3,9 +3,9 @@
  * readings past an Alert / Critical limit, in everyday words (docs/plain-language.md). The Home alarm
  * list and the Simulation page's Alarms view both build their rows here, so they read the same.
  */
-import { formatClock, formatDuration, type SimFrame } from "@/lib/kiln-sim/engine";
+import { formatClock, formatDuration, type SimFrame } from "@shared/lib/kiln-sim/engine";
 import { normalPhrase, plainLimitAlarm } from "@/lib/plain-words";
-import type { PlantDefs } from "@/lib/plant-defs";
+import type { PlantDefs } from "@shared/lib/plant-defs";
 import type { HomeAlert } from "./home-widgets";
 
 const partName = (defs: PlantDefs, sub: string | undefined): string | undefined => (sub ? defs.subassemblies.find((s) => s.id === sub)?.name : undefined);

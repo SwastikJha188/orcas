@@ -35,7 +35,7 @@
 .hx-row {
   position: relative;
   min-height: 34px;
-  gap: 6px;
+  gap: 8px;
   user-select: none;
 }
 
@@ -111,7 +111,7 @@
 .hx-type-tag {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding: 2px 8px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
@@ -126,8 +126,8 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 10px;
-  padding: 14px 18px;
+  gap: 12px;
+  padding: 12px 18px;
   border-radius: var(--corner-card);
   background: var(--card-bg);
   border: 1px solid var(--card-border);
@@ -153,7 +153,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 6px;
+  gap: 4px 8px;
   font-size: var(--fs-sm);
   color: var(--text-muted);
 }
@@ -161,7 +161,7 @@
 .hx-legend i {
   width: 6px;
   height: 6px;
-  margin-left: 6px;
+  margin-left: 8px;
   border-radius: 50%;
   background: var(--tone);
 }
@@ -196,7 +196,7 @@
 }
 
 .hx-card {
-  gap: 14px;
+  gap: 16px;
 }
 
 .hx-card-body {
@@ -213,13 +213,48 @@
   overflow-wrap: break-word;
 }
 
+/* Area card: one plain row per machine (dot · name · health), divided by hairlines. */
+.hx-units {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--separator);
+}
+
+.hx-units > li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  font-size: var(--fs-sm);
+  color: var(--page-fg);
+  border-bottom: 1px solid var(--separator);
+}
+
+.hx-units > li:last-child {
+  border-bottom: 0;
+}
+
+.hx-unit-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .hx-facts {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin: 0;
-  padding: 10px 0 0;
+  padding: 8px 0 0;
   border-top: 1px solid var(--separator);
+}
+
+.hx-facts--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .hx-facts dt {
@@ -230,14 +265,15 @@
 .hx-facts dd {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  margin: 3px 0 0;
+  gap: 4px;
+  margin: 4px 0 0;
   font-size: var(--fs-base);
   font-weight: 500;
   color: var(--dx-ink);
 }
 
 .hx-open {
+  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -255,96 +291,11 @@
   font-size: var(--fs-lg);
 }
 
-/* ---------------------------------------------------------------- directory: register */
-.hx-register .ast-card-title .ast-caption {
-  font-weight: 400;
-}
-
-.hx-register-tools {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 0 16px 10px;
-}
-
-.hx-register-tools .ast-search {
-  width: 260px;
-  max-width: 100%;
-}
-
-/* The table always fits its card: the machine column takes the leftover width and
-   truncates, location truncates, and the actions column keeps its natural size. */
-.hx-register-table.ui-table-container .ui-table {
-  width: 100%;
-  table-layout: auto;
-}
-
 .hx-register-table.ui-table-container .ui-table :is(th, td):first-child {
   width: 100%;
   max-width: 0;
 }
 
-.hx-register-table .ast-row-btn,
-.hx-register-table .ast-cell-stack {
-  min-width: 0;
-}
-
-.hx-register-table .ast-cell-sub,
-.hx-register-table .ast-cell-title,
-.hx-register-table .ast-cell-text {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.hx-register-table .ast-cell-text {
-  max-width: 280px;
-}
-
 .hx-register-table :is(th, td):last-child {
   white-space: nowrap;
-}
-
-.hx-row-actions {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  width: 100%;
-}
-
-.hx-row-link {
-  padding: 3px 10px;
-  border: none;
-  border-radius: var(--corner-pill);
-  background: transparent;
-  font: inherit;
-  font-size: var(--fs-sm);
-  color: var(--text-muted);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
-}
-
-.hx-row-link:active {
-  transform: scale(0.97);
-}
-
-.ui-table tbody tr:hover .hx-row-link,
-.ui-table tbody tr:focus-within .hx-row-link,
-.hx-row-link:focus-visible {
-  opacity: 1;
-}
-
-.hx-row-link:hover {
-  background: var(--row-hover-bg);
-  color: var(--dx-ink);
-}
-
-@media (hover: none) {
-  .hx-row-link {
-    opacity: 1;
-  }
 }

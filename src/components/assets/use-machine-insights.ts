@@ -1,16 +1,20 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { revalidateApi, useApi } from "@/lib/api-cache";
 import { useKilnSimulationFor } from "@/providers/kiln-simulation-context";
 import type { AssetMachine } from "./assets-data";
-import type { InsightsResponse } from "@/server/services/insights-service";
+import type { InsightsResponse } from "@backend/services/insights-service";
 
 export interface MachineInsightsState {
   data: InsightsResponse | null;
   isLoading: boolean;
   isError: boolean;
   error: string | null;
+  /** Reads the predictions again now (after a failed load). */
+  retry: () => void;
+  /** True while a retry is on its way. */
+  retrying: boolean;
 }
 
 /**
@@ -40,5 +44,11 @@ export function useMachineInsights(machine: AssetMachine): MachineInsightsState 
     if (seen.current !== null && seen.current !== active) void revalidateApi(url);
     seen.current = active;
   }, [active, url]);
-  return { data: data ?? null, isLoading, isError: error !== null, error };
+  const [retrying, setRetrying] = useState(false);
+  const retry = () => {
+    if (!url || retrying) return;
+    setRetrying(true);
+    void revalidateApi(url).finally(() => setRetrying(false));
+  };
+  return { data: data ?? null, isLoading, isError: error !== null, error, retry, retrying };
 }

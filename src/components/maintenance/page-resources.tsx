@@ -2,8 +2,8 @@
 
 import React, { useMemo } from "react";
 import { rowActivate } from "@/components/ui";
-import { READINESS_KEYS, READINESS_LABEL, READINESS_STATE_LABEL, STAGE_LABEL, planGenerates, readinessBlockers, stepOf } from "@/lib/pms";
-import type { PmsWorkOrder } from "@/types/pms";
+import { READINESS_KEYS, READINESS_LABEL, READINESS_STATE_LABEL, STAGE_LABEL, planGenerates, planKey, readinessBlockers, stepOf } from "@shared/lib/pms";
+import type { PmsWorkOrder } from "@shared/types/pms";
 import { Empty, KpiStrip, Section } from "@/components/assets/analysis/an-ui";
 import type { PmsModel } from "./pms-model";
 import { machineCode, machineName, planName, priorityTone, stageTone, woRef } from "./pms-model";
@@ -16,6 +16,8 @@ import { ItemCell, PM_ICON, StateWord, setPmsFocus, usePmsNav } from "./pms-ui";
    and which jobs can share one stop. Jobs are grouped by isolation zone (the
    machine), never merely by proximity; ULTRON records permits, it never
    asserts that equipment is safe to enter (PMS interface p.10, report §9).
+   Second view of the Calendar tab; the machine comes from the workspace's
+   machine tabs.
    ========================================================================== */
 
 const SHORT_LABEL: Record<string, string> = {
@@ -58,7 +60,7 @@ export function PageResources({ pms }: { pms: PmsModel }) {
         const rounds = data.plans.filter((p) => {
           if (p.machineId !== m || !planGenerates(p)) return false;
           if (p.route === "stop") return true;
-          const d = dues.get(p.id);
+          const d = dues.get(planKey(p));
           return p.tasks.length > 0 && p.tasks.every((t) => t.mode === "OFF") && d?.dueAt !== null && d?.dueAt !== undefined && d.dueAt <= horizon;
         });
         const hours = wos.reduce((s, w) => s + (w.estimateHours ?? 0), 0);
@@ -178,7 +180,7 @@ export function PageResources({ pms }: { pms: PmsModel }) {
                           .filter((w) => w.estimateHours)
                           .map((w) => (
                             <i key={w.id} style={{ flexGrow: w.estimateHours ?? 0 }} data-tone={readinessBlockers(w.readiness).length ? "warn" : undefined} title={`${woRef(w.id)} · ${w.estimateHours} h`}>
-                              #{String(w.id).padStart(4, "0")}
+                              {woRef(w.id)}
                             </i>
                           ))}
                       </div>
@@ -195,7 +197,7 @@ export function PageResources({ pms }: { pms: PmsModel }) {
                       ))}
                       {p.rounds.map((r) => (
                         <li key={r.id}>
-                          <button type="button" className="pm-link" onClick={() => { setPmsFocus(`p:${r.id}`); nav("calendar"); }}>
+                          <button type="button" className="pm-link" onClick={() => { setPmsFocus(`p:${planKey(r)}`); nav("calendar"); }}>
                             {planName(r)}
                           </button>
                           <span className="ast-caption">{r.tasks.length} tasks</span>

@@ -9,7 +9,7 @@ import { IconBack, IconChevron, IconClose, StatusTag, healthTone, severityTone, 
 import type { HealthBands } from "@/lib/reference-data";
 import type { Distribution } from "@/components/assets/hierarchy/hierarchy-model";
 import { useMachineOverview } from "@/components/assets/overview-data";
-import { healthTrack } from "@/lib/health-recorder";
+import { healthTrack } from "@shared/lib/health-recorder";
 import { AlertsFeed, HealthTrendCard, PlantHealthGauge, type HomeActivity, type HomeAlert } from "../home-widgets";
 import { OperatorConsole } from "../operator/operator-console";
 import type { TwinPaints } from "./twin-part";

@@ -48,7 +48,7 @@
   :root .hx-tree-toggle {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     flex: none;
     width: 100%;
     min-height: 44px;
@@ -139,15 +139,15 @@
   }
 
   :root .hx-contents {
-    padding: 14px 14px 24px;
-    gap: 14px;
+    padding: 12px 12px 24px;
+    gap: 16px;
   }
 
   /* Header: stacked, crumbs keep only the parent level as a way up. */
   :root .hx-head {
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
+    gap: 12px;
   }
   :root .hx-head .ast-crumbs li:not(:nth-last-child(-n + 2)) {
     display: none;
@@ -172,12 +172,12 @@
   /* KPI strip 2×2, tighter tiles. */
   :root .hx-contents .ast-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+    gap: 12px;
   }
   :root .hx-contents .ast-kpi {
     min-height: 0;
     gap: 8px;
-    padding: 12px 14px;
+    padding: 12px 12px;
   }
   :root .hx-contents .ast-kpi-value {
     font-size: var(--fs-3xl);
@@ -191,65 +191,18 @@
     -webkit-line-clamp: 2;
     overflow: hidden;
   }
-
-  /* Register: machine · status · health. */
-  :root .hx-register.ast-card {
-    padding: 12px 4px 6px;
-  }
-  :root .hx-register .ast-card-head {
-    padding: 0 10px;
-  }
-  :root .hx-register .ast-card-title {
-    flex-wrap: wrap;
-    gap: 2px 10px;
-  }
-  :root .hx-register-tools {
-    padding: 0 10px 10px;
-    gap: 8px;
-  }
-  :root .hx-register-tools > .nav-pill-group {
-    flex-wrap: nowrap;
-    max-width: 100%;
-    overflow-x: auto;
-  }
-  :root .hx-register-tools .nav-pill {
-    flex: none;
-  }
-  :root .hx-register-table .ui-table {
-    table-layout: fixed;
-  }
   :root .hx-register-table .ui-table :is(th, td):nth-child(3) {
     width: 104px;
   }
   :root .hx-register-table .ui-table :is(th, td):nth-child(4) {
     width: 64px;
   }
-  :root .hx-register-table .ast-row-btn,
-  :root .hx-register-table .ast-cell-stack {
-    min-width: 0;
-  }
-  :root .hx-register-table .ast-cell-title {
-    white-space: normal;
-    line-height: 1.3;
-  }
-  :root .hx-register-table .ast-cell-sub {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  :root .hx-register-table.ui-table-container .ui-table tbody td:first-child {
-    white-space: normal;
-  }
-  :root .hx-register-tools .ast-search {
-    width: 100%;
-  }
   :root .hx-register-table .ui-table :is(th, td):nth-child(2),
   :root .hx-register-table .ui-table :is(th, td):nth-child(5) {
     display: none;
   }
   :root .hx-register-table.ui-table-container .ui-table :is(th, td) {
-    padding-inline: 10px;
+    padding-inline: 8px;
   }
 }
 
@@ -259,7 +212,7 @@
 
 @media (min-width: 1920px) {
   :root .assets-machine-workspace {
-    padding: 14px 24px 32px;
+    padding: 12px 24px 32px;
   }
 }
 
@@ -272,7 +225,7 @@
 
 @media (max-width: 599px) {
   :root .assets-machine-workspace {
-    padding: 12px 14px 24px;
+    padding: 12px 12px 24px;
     gap: 12px;
   }
 }
@@ -353,16 +306,16 @@
   :root .sim-head {
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
+    gap: 12px;
   }
   :root .sim-head .ast-title {
     font-size: var(--fs-2xl);
   }
   :root .sim-head .sim-actions {
-    gap: 6px;
+    gap: 8px;
   }
   :root .sim-head .sim-actions > .btn-pill {
-    padding: 6px 14px;
+    padding: 4px 12px;
   }
   :root .sim-head .sim-actions > .nav-pill-group {
     order: 5;
@@ -371,7 +324,7 @@
 
   /* Mode row: Autopilot/Manual, then the hold profiles scroll on their own line. */
   :root .sim-mode {
-    gap: 6px 8px;
+    gap: 8px 8px;
   }
   :root .sim-mode > .sim-sep {
     display: none;
@@ -391,12 +344,12 @@
   /* KPI strip 2×2. */
   :root .sim-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+    gap: 12px;
   }
   :root .sim-kpis .ast-kpi {
     min-height: 0;
-    padding: 12px 14px;
-    gap: 6px;
+    padding: 12px 12px;
+    gap: 8px;
   }
   :root .sim-kpis .ast-kpi-value {
     font-size: var(--fs-3xl);
@@ -410,7 +363,7 @@
 
   /* Cards: tighter padding; chart keeps its 230px drawing height. */
   :root .sim-page > section.ast-card:not(.sim-table-card) {
-    padding: 14px;
+    padding: 12px;
   }
   :root .sim-card-head-row {
     align-items: flex-start;
@@ -425,12 +378,12 @@
     flex-wrap: nowrap;
   }
   :root .sim-table-card .sim-card-head {
-    padding: 10px 12px 0;
+    padding: 8px 12px 0;
   }
   :root .sim-chart-foot {
     flex-direction: column;
     align-items: flex-start;
-    gap: 6px;
+    gap: 8px;
   }
   :root .sim-chart-foot .sim-link {
     margin-left: 0;
@@ -438,7 +391,7 @@
 
   /* Tables: leading item + result + action only. */
   :root .sim-page .ast-table.ui-table-container .ui-table :is(th, td) {
-    padding-inline: 10px;
+    padding-inline: 8px;
   }
   :root .sim-register .ui-table :is(th, td):nth-child(3),
   :root .sim-register .ui-table :is(th, td):nth-child(5) {

@@ -10,10 +10,9 @@
 
 import React, { memo, useMemo, useState } from "react";
 import { StatusTag } from "@/components/ui/status-tag";
-import { rowActivate } from "@/components/ui/row-activate";
-import { PillButton, PillNav, Tile, TileGrid, type TileFact } from "@/components/ui";
-import type { SimFrame } from "@/lib/kiln-sim/engine";
-import type { PlantDefs } from "@/lib/plant-defs";
+import { ACTION, PillButton, PillNav, Tile, TileGrid, type TileFact } from "@/components/ui";
+import type { SimFrame } from "@shared/lib/kiln-sim/engine";
+import type { PlantDefs } from "@shared/lib/plant-defs";
 import { formatLocalTime } from "@/lib/time";
 import { displayName, nameIds } from "@/lib/display-name";
 import type { AssetMachine } from "./assets-data";
@@ -347,7 +346,7 @@ export function ExplorerSection({
               label="Value scale"
             />
             <PillButton variant="secondary" className="pg-trends-btn-sm" disabled={raw.length === 0} onClick={() => onExport(active, raw)} title="Download this sensor's readings as a spreadsheet file (CSV)">
-              Download CSV
+              {ACTION.exportCsv}
             </PillButton>
           </div>
         </header>
@@ -589,12 +588,22 @@ function OverlayLegend({
         const st = ctx.stats.get(c.id);
         const r = i === 0 ? null : corr[i];
         return (
-          <div key={c.id} role="listitem" className="pg-trends-legend-item is-clickable" title={`${c.id} · show as the chosen sensor`} {...rowActivate(() => ctx.focus(c.id))}>
+          // The cell is a mouse target; keyboard users reach the same action through the name button.
+          <div key={c.id} role="listitem" className="pg-trends-legend-item is-clickable" title={`${c.id} · show as the chosen sensor`} onClick={() => ctx.focus(c.id)}>
             <div className="pg-trends-legend-head">
               <svg width="16" height="6" aria-hidden="true">
                 <line className={`pg-trends-ov pg-trends-ov--${i % OVERLAY_STYLES}`} x1="1" x2="15" y1="3" y2="3" />
               </svg>
-              <span className="pg-trends-legend-tag">{displayName(c.name)}</span>
+              <button
+                type="button"
+                className="pg-trends-legend-tag pg-trends-legend-pick"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  ctx.focus(c.id);
+                }}
+              >
+                {displayName(c.name)}
+              </button>
               {onRemove && (
                 <button
                   type="button"

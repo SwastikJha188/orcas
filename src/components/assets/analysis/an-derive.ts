@@ -7,9 +7,9 @@
  * figure is computed on the page it is marked "calc." where it is shown, and
  * when the data does not carry a figure the section shows what is missing.
  */
-import type { InsightsResponse, RulItem, Severity } from "@/server/services/insights-service";
-import type { SimFrame, RuleState } from "@/lib/kiln-sim/engine";
-import type { PlantDefs } from "@/lib/plant-defs";
+import type { InsightsResponse, RulItem, Severity } from "@backend/services/insights-service";
+import type { SimFrame, RuleState } from "@shared/lib/kiln-sim/engine";
+import type { PlantDefs } from "@shared/lib/plant-defs";
 import type { AssetMachine } from "../assets-data";
 import type { AssetsSubPage } from "../assets-view";
 import type { Tone } from "../assets-shell-ui";

@@ -89,6 +89,8 @@ export function PhotoPicker({
   machineId = null,
   previewLabel,
   onState,
+  id,
+  describedBy,
 }: {
   label: string;
   hint: string;
@@ -100,6 +102,9 @@ export function PhotoPicker({
   /** Name for the preview ("Cooling fan"). */
   previewLabel: string;
   onState?: (s: DrawingState) => void;
+  /** Id of the add button, so a form label points at it. */
+  id?: string;
+  describedBy?: string;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [listing, setListing] = useState<Listing | null>(null);
@@ -219,7 +224,7 @@ export function PhotoPicker({
             <i aria-hidden="true" />
           </a>
         ))}
-        <button type="button" className="cfg-photo-add" disabled={busy || !query} onClick={() => input.current?.click()}>
+        <button id={id} aria-describedby={describedBy} type="button" className="cfg-photo-add" disabled={busy || !query} onClick={() => input.current?.click()}>
           {busy ? "Uploading…" : `+ ${label}`}
         </button>
         <input

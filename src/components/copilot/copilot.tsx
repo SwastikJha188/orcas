@@ -1,32 +1,23 @@
 "use client";
 
 /**
- * AssetIQ chat pieces: the message renderers (thinking / streaming
- * animation, evidence chips, sparklines, action buttons) the AssetIQ Ask sheet draws its thread with. Conversation state
- * lives in `copilot-provider.tsx`; the "AI" is the deterministic intent
- * engine in `copilot-engine.ts`.
+ * AssetIQ chat pieces: the message renderers (answer text, evidence chips,
+ * sparklines, action buttons) the AssetIQ Ask sheet draws its thread with.
+ * Conversation state lives in `copilot-provider.tsx`; answers come from the
+ * deterministic intent engine in `copilot-engine.ts` and are shown in full
+ * the moment they are computed.
  */
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo } from "react";
 import { ACTION } from "@/components/ui/status";
 import type { ActionKind, ActionSpec, EvidenceChip, Spark } from "./copilot-engine";
-import { useCopilot, type Msg } from "./copilot-provider";
+import type { Msg } from "./copilot-provider";
 import { displayName } from "@/lib/display-name";
 import "./copilot.css";
-
-const reducedMotion = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
 /* ------------------------------------------------------------------ */
 /* Icons                                                               */
 /* ------------------------------------------------------------------ */
 
-export function SparkIcon({ size = 16 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9L12 3.5Z" />
-      <path d="M18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7.7-1.8Z" />
-    </svg>
-  );
-}
 export function CloseIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
@@ -150,7 +141,7 @@ function EvidenceSpark({ s }: { s: Spark }) {
       <figcaption>
         <span className="cp-spark-tag" title={s.tag}>{displayName(s.label)}</span>
         <span className="cp-spark-key">
-          <i className="cp-key-line" /> measured <i className="cp-key-dash" /> expected
+          <i className="cp-key-line" aria-hidden="true" /> measured <i className="cp-key-dash" aria-hidden="true" /> expected
         </span>
       </figcaption>
     </figure>
@@ -166,52 +157,15 @@ const ACTION_DONE: Record<ActionKind, string> = { mitigate: "Short-term fix sent
 export const AssistantMessage = memo(function AssistantMessage({
   msg,
   doneActions,
-  onDone,
   onAction,
 }: {
   msg: Msg;
   doneActions: Record<string, boolean>;
-  onDone: (id: string) => void;
   onAction: (msgId: string, a: ActionSpec) => void;
 }) {
   const a = msg.answer!;
-  const animate = !!msg.fresh && !reducedMotion();
-  const tokens = useMemo(() => a.text.split(/(\s+)/), [a.text]);
-  const [phase, setPhase] = useState<"thinking" | "stream" | "done">(animate ? (a.steps.length && !msg.proactive ? "thinking" : "stream") : "done");
-  const [step, setStep] = useState(0);
-  const [shown, setShown] = useState(animate ? 0 : tokens.length);
-
-  useEffect(() => {
-    if (!animate) {
-      if (msg.fresh) onDone(msg.id);
-      return;
-    }
-    if (phase !== "thinking") return;
-    if (step >= a.steps.length) {
-      const t = setTimeout(() => setPhase("stream"), 320);
-      return () => clearTimeout(t);
-    }
-    const t = setTimeout(() => setStep((s) => s + 1), 380 + (step === 0 ? 120 : 0));
-    return () => clearTimeout(t);
-  }, [animate, phase, step, a.steps.length, msg.fresh, msg.id, onDone]);
-
-  useEffect(() => {
-    if (!animate || phase !== "stream") return;
-    if (shown >= tokens.length) {
-      setPhase("done");
-      onDone(msg.id);
-      return;
-    }
-    const t = setTimeout(() => setShown((n) => Math.min(tokens.length, n + 3)), 28);
-    return () => clearTimeout(t);
-  }, [animate, phase, shown, tokens.length, msg.id, onDone]);
-
-  const partial = phase === "done" ? a.text : tokens.slice(0, shown).join("");
   return (
-    <div className="cp-msg cp-msg-ai" aria-busy={phase !== "done"}>
-      <span className="cp-avatar" aria-hidden="true">
-        <SparkIcon size={13} />
-      </span>
+    <div className="cp-msg cp-msg-ai">
       <div className="cp-body">
         {msg.proactive && (
           <span className={`cp-meta ${msg.severity ? `cp-meta-${msg.severity.toLowerCase()}` : ""}`}>
@@ -220,81 +174,45 @@ export const AssistantMessage = memo(function AssistantMessage({
             {msg.clock && <span className="cp-meta-clock">{msg.clock}</span>}
           </span>
         )}
-        {phase === "thinking" && (
-          <ol className="cp-think" aria-label="Steps being checked">
-            {a.steps.slice(0, Math.min(step + 1, a.steps.length)).map((s, i) => (
-              <li key={i} className={i < step ? "done" : "active"}>
-                <span className="cp-step-ic">{i < step ? <CheckIcon /> : <i className="cp-spin" />}</span>
-                {s}
-              </li>
-            ))}
-          </ol>
-        )}
-        {phase !== "thinking" && (
-          <>
-            {a.steps.length > 0 && !msg.proactive && (
-              <details className="cp-reasoning">
-                <summary>How this answer was worked out ({a.steps.length} steps)</summary>
-                <ol>
-                  {a.steps.map((s, i) => (
-                    <li key={i}>{s}</li>
-                  ))}
-                </ol>
-              </details>
-            )}
-            <div className="cp-text" aria-hidden={phase !== "done"}>
-              <RichText text={partial} />
-              {phase === "stream" && <span className="cp-caret" aria-hidden="true" />}
+        <div className="cp-text">
+          <RichText text={a.text} />
+        </div>
+        <div className="cp-extras">
+          {a.spark && <EvidenceSpark s={a.spark} />}
+          {a.evidence.length > 0 && (
+            <div className="cp-evidence" aria-label="Readings behind this answer">
+              {a.evidence.map((c) => (
+                <Chip key={c.tag} c={c} />
+              ))}
             </div>
-            {phase === "done" && (
-              <div className="cp-extras">
-                {a.spark && <EvidenceSpark s={a.spark} />}
-                {a.evidence.length > 0 && (
-                  <div className="cp-evidence" aria-label="Readings behind this answer">
-                    {a.evidence.map((c) => (
-                      <Chip key={c.tag} c={c} />
-                    ))}
-                  </div>
-                )}
-                {a.confidence !== null && (
-                  <div className="cp-conf" aria-label={`How sure: ${a.confidence} percent`}>
-                    <span>How sure</span>
-                    <span className="cp-conf-bar">
-                      <i style={{ inlineSize: `${a.confidence}%` }} />
-                    </span>
-                    <span className="cp-conf-n">{a.confidence}%</span>
-                  </div>
-                )}
-                {a.actions.length > 0 && (
-                  <div className="cp-actions">
-                    {a.actions.map((x, i) => {
-                      const key = `${msg.id}:${x.kind}`;
-                      const done = doneActions[key];
-                      // One primary action per message; the rest stay quiet text actions.
-                      return (
-                        <button
-                          key={x.kind}
-                          type="button"
-                          className={`cp-btn ${i === 0 ? "cp-btn-primary" : "cp-btn-text"}`}
-                          disabled={done && x.kind !== "diagnosis"}
-                          onClick={() => onAction(msg.id, x)}
-                        >
-                          {done && x.kind !== "diagnosis" ? (
-                            <>
-                              <CheckIcon /> {ACTION_DONE[x.kind]}
-                            </>
-                          ) : (
-                            x.kind === "workorder" ? ACTION.workOrder : x.label
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </>
-        )}
+          )}
+          {a.actions.length > 0 && (
+            <div className="cp-actions">
+              {a.actions.map((x, i) => {
+                const key = `${msg.id}:${x.kind}`;
+                const done = doneActions[key];
+                // One primary action per message; the rest stay quiet text actions.
+                return (
+                  <button
+                    key={x.kind}
+                    type="button"
+                    className={`cp-btn ${i === 0 ? "cp-btn-primary" : "cp-btn-text"}`}
+                    disabled={done && x.kind !== "diagnosis"}
+                    onClick={() => onAction(msg.id, x)}
+                  >
+                    {done && x.kind !== "diagnosis" ? (
+                      <>
+                        <CheckIcon /> {ACTION_DONE[x.kind]}
+                      </>
+                    ) : (
+                      x.kind === "workorder" ? ACTION.workOrder : x.label
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

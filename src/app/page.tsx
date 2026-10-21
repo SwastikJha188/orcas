@@ -3,7 +3,7 @@
 import React, { Suspense, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { LiquidGlassShell } from "@/components/liquid-glass-shell";
-import { PlantHome } from "@/components/home/plant-home";
+import { PlantHome, MAP_VIEW_KEY } from "@/components/home/plant-home";
 import {
   IndustrialDataProvider,
   useIndustrialData,
@@ -12,20 +12,28 @@ import { KilnSimulationProvider } from "@/providers/kiln-simulation-context";
 import { KilnOpsProvider } from "@/providers/kiln-ops-context";
 import { EdgeProvider } from "@/providers/edge-context";
 import { CopilotProvider } from "@/components/copilot/copilot-provider";
-import { SignInScreen } from "@/components/auth/sign-in";
+import { AuthChecking, SignInScreen } from "@/components/auth/sign-in";
 import { homeActive } from "@/components/home/home-active";
 
 // Home (the operator overview) is the landing tab; the other workspaces load on first visit.
-const AssetsView = dynamic(() => import("@/components/assets/assets-view").then((m) => m.AssetsView));
-const IndustrialDevicesView = dynamic(() => import("@/components/devices/devices-view").then((m) => m.IndustrialDevicesView));
-const MaintenanceWorkspace = dynamic(() => import("@/components/maintenance/maintenance-workspace").then((m) => m.MaintenanceWorkspace));
-const AssetIqHubView = dynamic(() => import("@/components/assetiq/assetiq-hub-view").then((m) => m.AssetIqHubView));
-const ConfigureView = dynamic(() => import("@/components/configure/configure-view").then((m) => m.ConfigureView));
-const ProblemsView = dynamic(() => import("@/components/problems/problems-view").then((m) => m.ProblemsView));
-const SimulationView = dynamic(() => import("@/components/simulation/simulation-view").then((m) => m.SimulationView));
+// While a tab's code loads it shows one quiet line instead of an empty workspace.
+function TabLoading() {
+  return <div className="ast-empty" role="status">Loading…</div>;
+}
+const AssetsView = dynamic(() => import("@/components/assets/assets-view").then((m) => m.AssetsView), { loading: TabLoading });
+const IndustrialDevicesView = dynamic(() => import("@/components/devices/devices-view").then((m) => m.IndustrialDevicesView), { loading: TabLoading });
+const MaintenanceWorkspace = dynamic(() => import("@/components/maintenance/maintenance-workspace").then((m) => m.MaintenanceWorkspace), { loading: TabLoading });
+const AssetIqHubView = dynamic(() => import("@/components/assetiq/assetiq-hub-view").then((m) => m.AssetIqHubView), { loading: TabLoading });
+const ConfigureView = dynamic(() => import("@/components/configure/configure-view").then((m) => m.ConfigureView), { loading: TabLoading });
+const SimulationView = dynamic(() => import("@/components/simulation/simulation-view").then((m) => m.SimulationView), { loading: TabLoading });
 
 function UltronWorkspaceContent() {
-  const { activeTab, setActiveTab, navigateToMachine, navigateToAssetsHome } = useIndustrialData();
+  const { activeTab, setActiveTab, setSelectedMachineId, setActiveSubPage, navigateToMachine, navigateToAssetsHome, currentUser } = useIndustrialData();
+  // Simulation belongs to the Oswar super administrator alone (an old link opens nothing for anyone else).
+  const canSimulate = Boolean(currentUser?.role.allPlants);
+  useEffect(() => {
+    if (activeTab === "simulation" && currentUser && !canSimulate) setActiveTab("home");
+  }, [activeTab, currentUser, canSimulate, setActiveTab]);
   const isHome = activeTab === "home";
 
   // Home stays mounted once opened: rebuilding its 3D scene froze the page for
@@ -58,14 +66,31 @@ function UltronWorkspaceContent() {
     else setActiveTab(tab as Parameters<typeof setActiveTab>[0]);
   };
 
-  return (
-    <main className="app-shell liquid-glass-backdrop">
-      <LiquidGlassShell activeTab={activeTab} onSelectTab={handleSelectTab} />
+  // The logo always lands on Home's Operator view at the Full line, whatever was open.
+  const goToFullLine = () => {
+    setSelectedMachineId(null);
+    setActiveSubPage("overview");
+    setActiveTab("home");
+    try {
+      localStorage.setItem(MAP_VIEW_KEY, "operator");
+    } catch {
+      /* storage unavailable */
+    }
+    window.dispatchEvent(new Event("ultron:open-full-line"));
+  };
 
-      <section
+  return (
+    <div className="app-shell liquid-glass-backdrop">
+      <a className="skip-link" href="#workspace-content">
+        Skip to workspace
+      </a>
+      <LiquidGlassShell activeTab={activeTab} onSelectTab={handleSelectTab} onBrand={goToFullLine} />
+
+      <main
         className="workspace"
         id="workspace-content"
-        aria-label="Workspace Content"
+        aria-label="Workspace"
+        tabIndex={-1}
         style={{ height: "100%", overflow: "hidden" }}
       >
         {/* A tab's code loading suspends here, inside the providers: without this
@@ -77,22 +102,21 @@ function UltronWorkspaceContent() {
             </div>
           )}
           {activeTab === "assets" && <AssetsView />}
-          {activeTab === "problems" && <ProblemsView />}
           {activeTab === "maintenance" && <MaintenanceWorkspace />}
           {activeTab === "devices" && <IndustrialDevicesView />}
           {activeTab === "assetiq" && <AssetIqHubView />}
           {activeTab === "configure" && <ConfigureView />}
-          {activeTab === "simulation" && <SimulationView />}
+          {activeTab === "simulation" && canSimulate && <SimulationView />}
         </Suspense>
-      </section>
-    </main>
+      </main>
+    </div>
   );
 }
 
 /** Signed-out visitors see the sign-in screen; the workspace mounts only for a signed-in account. */
 function AuthGate() {
   const { authStatus } = useIndustrialData();
-  if (authStatus === "checking") return <main className="app-shell liquid-glass-backdrop" aria-busy="true" />;
+  if (authStatus === "checking") return <AuthChecking />;
   if (authStatus === "signedOut") return <SignInScreen />;
   return (
     <KilnSimulationProvider>

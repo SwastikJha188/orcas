@@ -2,7 +2,7 @@
 
 import React, { useMemo } from "react";
 import { conditionTone, rowActivate, toCondition, type Tone } from "@/components/ui";
-import { isOpenStage } from "@/lib/pms";
+import { isOpenStage, planKey } from "@shared/lib/pms";
 import { useKilnFleet } from "@/providers/kiln-simulation-context";
 import { Empty, KpiStrip, Section } from "@/components/assets/analysis/an-ui";
 import type { PmsModel, QueueItem } from "./pms-model";
@@ -63,7 +63,7 @@ export function PageOverview({ pms }: { pms: PmsModel }) {
     const c = { week: 0, weekTasks: 0, overdue: 0, overdueTasks: 0, requests: 0, fromFindings: 0, ready: 0, blocked: 0, done7: 0 };
     if (!data) return c;
     for (const p of data.plans) {
-      const d = dues.get(p.id);
+      const d = dues.get(planKey(p));
       if (!d || d.state === "none") continue;
       if (d.state === "overdue") {
         c.overdue += 1;
@@ -93,7 +93,7 @@ export function PageOverview({ pms }: { pms: PmsModel }) {
       let due = 0;
       let overdue = 0;
       for (const p of plans) {
-        const d = dues.get(p.id);
+        const d = dues.get(planKey(p));
         if (d?.state === "overdue") overdue += 1;
         else if (d?.state === "due") due += 1;
       }

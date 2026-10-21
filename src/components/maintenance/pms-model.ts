@@ -2,17 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invalidateApi, useApi } from "@/lib/api-cache";
-import { isConditionRule } from "@/lib/plant-defs";
-import { everyText, roundName } from "@/lib/maintenance";
-import { STAGE_LABEL, isOpenStage, planDues, readinessBlockers, statusForStage, type PlanDue } from "@/lib/pms";
+import { isConditionRule } from "@shared/lib/plant-defs";
+import { everyText, roundName } from "@shared/lib/maintenance";
+import { STAGE_LABEL, isOpenStage, planDues, planKey, readinessBlockers, statusForStage, type PlanDue } from "@shared/lib/pms";
 import { useKilnFleet, usePrimaryMachineId } from "@/providers/kiln-simulation-context";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useKilnOps } from "@/providers/kiln-ops-context";
 import type { Tone } from "@/components/ui";
-import type { ChecklistDocument, ChecklistKind, MaintenanceRecord } from "@/types/maintenance";
-import type { PmsEvent, PmsLine, PmsPlan, PmsWorkOrder, WoStage } from "@/types/pms";
-import type { WorkOrderPriorityDto } from "@/types/monitoring";
-import type { MaintenanceTypeId } from "@/types/maintenance-types";
+import type { ChecklistDocument, ChecklistKind, MaintenanceRecord } from "@shared/types/maintenance";
+import type { PmsEvent, PmsLine, PmsPlan, PmsWorkOrder, WoStage } from "@shared/types/pms";
+import type { WorkOrderPriorityDto } from "@shared/types/monitoring";
+import type { MaintenanceTypeId } from "@shared/types/maintenance-types";
 import { useWorkOrderPriorities } from "@/lib/reference-data";
 
 /* ==========================================================================
@@ -80,8 +80,8 @@ export interface PmsData {
 export async function pmsCall<T = unknown>(url: string, method: "POST" | "PATCH", body: unknown, fallback: string): Promise<{ data: T } | { error: string }> {
   try {
     const res = await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    const json = (await res.json()) as { data?: T; error?: { message: string } };
-    if (!res.ok || json.data === undefined) throw new Error(json.error?.message ?? fallback);
+    const json = (await res.json().catch(() => null)) as { data?: T; error?: { message?: string } } | null;
+    if (!res.ok || !json || json.data === undefined) throw new Error(json?.error?.message ?? fallback);
     invalidateApi("/api/");
     return { data: json.data };
   } catch (e) {
@@ -335,10 +335,10 @@ export function usePmsLine(): PmsModel {
       });
     }
     for (const p of data.plans) {
-      const d = dues.get(p.id);
+      const d = dues.get(planKey(p));
       if (!d || (d.state !== "due" && d.state !== "overdue")) continue;
       out.push({
-        key: `p:${p.id}`,
+        key: `p:${planKey(p)}`,
         kind: "plan",
         machineId: p.machineId,
         priority: d.state === "overdue" ? "P3" : "P4",
@@ -348,7 +348,7 @@ export function usePmsLine(): PmsModel {
         next: p.kind === "sensor" ? "Check the sensors" : "Do the inspection round",
         status: d.state === "overdue" ? { label: "Overdue", tone: "warn" } : { label: "Due", tone: "idle" },
         at: d.dueAt ?? now,
-        ref: p.id,
+        ref: planKey(p),
       });
     }
     const kindRank: Record<QueueKind, number> = { finding: 0, wo: 1, plan: 2 };

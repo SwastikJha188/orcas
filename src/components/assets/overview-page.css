@@ -7,13 +7,13 @@
    ========================================================================== */
 
 .pg-ov {
-  gap: 10px;
+  gap: 12px;
 }
 
 .pg-ov-body {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   min-width: 0;
   padding-bottom: 0;
 }
@@ -21,8 +21,8 @@
 /* Non-scrollable Overview workspace: the full screen IS the CAD canvas (.mx-canvas), with the header bar and pill toggles embedded directly inside it. */
 :root .assets-machine-workspace[data-subpage="overview"] {
   overflow: hidden;
-  padding: 10px 16px 12px;
-  gap: 10px;
+  padding: 8px 16px 12px;
+  gap: 12px;
   background-color: var(--mx-canvas);
   background-image:
     linear-gradient(var(--mx-grid-major) 1px, transparent 1px),
@@ -42,7 +42,7 @@
 }
 
 :root .assets-machine-workspace[data-subpage="overview"] > .ast-head {
-  padding-bottom: 6px;
+  padding-bottom: 4px;
   border-bottom: 1px solid var(--mx-hud-border, var(--border-subtle));
 }
 
@@ -61,7 +61,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   overflow: hidden;
 }
 
@@ -276,7 +276,7 @@
 }
 
 .pg-ov-hero-actions .btn-pill {
-  padding: 5px 12px;
+  padding: 4px 12px;
   font-size: var(--fs-sm);
 }
 
@@ -292,7 +292,7 @@
 .pg-ov-state {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: var(--fs-sm);
   font-weight: 500;
   color: var(--text-muted);
@@ -360,7 +360,7 @@
   display: inline-flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 14px;
+  gap: 16px;
   font-size: var(--fs-xs);
   color: var(--text-muted);
 }
@@ -445,7 +445,7 @@
   gap: 8px;
   min-width: 0;
   flex-shrink: 0;
-  padding: 6px 12px;
+  padding: 4px 12px;
   border-radius: var(--corner-sm);
   border: 1px solid var(--border-subtle);
   background: var(--surface-bg);
@@ -454,7 +454,7 @@
 .pg-ov-note > .lsh-note {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 8px;
   flex: 1;
   min-width: 0;
   padding: 0;
@@ -481,7 +481,7 @@
 
 .pg-ov-note-more {
   flex-shrink: 0;
-  padding: 2px 10px;
+  padding: 2px 8px;
   border: 0;
   border-radius: var(--corner-pill);
   background: var(--hover-faint);
@@ -650,7 +650,7 @@
 .pg-ov-group-name {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -742,7 +742,7 @@
 }
 
 .pg-ov-table th {
-  padding: 10px 16px;
+  padding: 8px 16px;
   font-size: var(--fs-sm);
   font-weight: 500;
   text-align: left;
@@ -752,7 +752,7 @@
 }
 
 .pg-ov-table td {
-  padding: 10px 16px;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--separator);
   vertical-align: middle;
   color: var(--page-fg);
@@ -768,7 +768,7 @@
 
 .pg-ov-groups-table th,
 .pg-ov-groups-table td {
-  padding: 6px 12px;
+  padding: 4px 12px;
 }
 
 .pg-ov-groups-table th:last-child {
@@ -965,7 +965,7 @@
   top: 1px;
   width: 10px;
   height: 10px;
-  margin-left: -5px;
+  margin-left: -4px;
   border-radius: 50%;
   background: var(--dx-ink, var(--page-fg));
   box-shadow: 0 0 0 2px var(--card-bg);

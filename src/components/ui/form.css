@@ -50,14 +50,14 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 16px 20px 14px;
+  padding: 16px 20px 12px;
   border-bottom: 1px solid var(--separator);
 }
 
 .ui-dialog-titles {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -80,8 +80,8 @@
 .ui-dialog-close {
   display: inline-grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   flex: none;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
@@ -154,7 +154,7 @@
 .ui-field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -169,7 +169,7 @@
 }
 
 .ui-field-req {
-  margin-left: 3px;
+  margin-left: 4px;
   color: var(--status-danger);
 }
 
@@ -208,7 +208,7 @@
   width: 100%;
   min-height: 36px;
   padding: 8px 12px;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--input-border);
   border-radius: var(--radius-md);
   background: var(--bg-canvas);
   color: var(--dx-ink);
@@ -225,7 +225,7 @@
 
 .ui-input::placeholder {
   color: var(--text-muted);
-  opacity: 0.75;
+  opacity: 1;
 }
 
 .ui-input[data-mono] {
@@ -296,7 +296,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   background: var(--bg-canvas);
@@ -401,4 +401,71 @@
   .ui-toggle-track,
   .ui-toggle-thumb,
   .ui-input { animation: none; transition: none; }
+}
+
+/* Discard guard shown in place of the footer when a dirty dialog is closed. */
+.ui-dialog-discard {
+  font-size: var(--fs-md);
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+/* Two-step confirmation in place (ConfirmAction). */
+.ui-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.ui-confirm-q {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+.ui-confirm-q[data-tone="danger"] { color: var(--status-danger); }
+
+/* Optional fields behind one labelled toggle (MoreFields). */
+.ui-more {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-block-start: var(--space-3);
+  border-block-start: 1px solid var(--separator);
+}
+
+.ui-more-btn {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--space-2);
+  min-block-size: 28px;
+  margin-inline-start: calc(-1 * var(--space-2));
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--corner-sm);
+  background: none;
+  color: var(--dx-ink);
+  font: inherit;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ui-more-btn:hover {
+  background: var(--hover-faint);
+}
+
+.ui-more-btn svg {
+  color: var(--text-muted);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.ui-more-btn[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+
+.ui-more-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
 }

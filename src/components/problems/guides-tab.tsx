@@ -7,7 +7,7 @@
  */
 import React, { useMemo, useState } from "react";
 import { useApi } from "@/lib/api-cache";
-import { PillButton } from "@/components/ui";
+import { PillButton, PillNav } from "@/components/ui";
 import { guidesUrl, type Guide } from "./cases-api";
 import { useRefreshOnCaseChange } from "./condition-strip";
 import type { NewCasePreset } from "./new-case-dialog";
@@ -58,16 +58,12 @@ export function GuidesTab({ plantId, onStartCase }: { plantId: string | null; on
       <div className="prb-toolbar">
         <p className="prb-intro">Starting points for an investigation — not problems the system has found.</p>
         {machineChips.length > 1 && (
-          <span className="prb-seg" role="group" aria-label="Machine">
-            <button type="button" aria-pressed={machine === "all"} onClick={() => setMachine("all")}>
-              All machines ({guides.length})
-            </button>
-            {machineChips.map((m) => (
-              <button key={m.id} type="button" aria-pressed={machine === m.id} onClick={() => setMachine(m.id)}>
-                {m.name} ({m.n})
-              </button>
-            ))}
-          </span>
+          <PillNav
+            ariaLabel="Machine"
+            items={[{ id: "all", label: `All machines (${guides.length})` }, ...machineChips.map((m) => ({ id: m.id, label: `${m.name} (${m.n})` }))]}
+            activeId={machine}
+            onChange={setMachine}
+          />
         )}
       </div>
 

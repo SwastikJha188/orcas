@@ -1,13 +1,14 @@
 "use client";
 
 /**
- * The case page's side column, the same on every tab: next step, checks,
- * maintenance (work orders, checking the fix, closing), files, history and
- * alarms recorded by hand for this case.
+ * The case page's side column, the same on every tab: checks (with the next
+ * step), maintenance (work orders, checking the fix, closing), files, and
+ * history (with alarms recorded by hand for this case).
  */
 import React, { useRef, useState } from "react";
-import { Dialog, Field, FieldGrid, PillButton, Select, TextArea } from "@/components/ui";
+import { ConfirmAction, Dialog, Field, FieldGrid, PillButton, Select, TextArea } from "@/components/ui";
 import { StatusTag } from "@/components/assets/assets-shell-ui";
+import { woRef } from "@/components/maintenance/pms-model";
 import { casesApi, fileUrl, sizeWord, type CaseCheck } from "./cases-api";
 import { CaseCard, ErrorNote, RESULT_TONE, useCase, useSave } from "./case-shared";
 
@@ -16,11 +17,9 @@ const Count = ({ n, word }: { n: number; word?: string }) => <span className="ca
 export function CaseSide() {
   return (
     <aside className="case-side" aria-label="Case tools">
-      <NextStepCard />
       <ChecksCard />
       <MaintenanceCard />
       <FilesCard />
-      <AlarmsCard />
       <HistoryCard />
     </aside>
   );
@@ -28,32 +27,12 @@ export function CaseSide() {
 
 /* ------------------------------------------------------------------ */
 
-function NextStepCard() {
-  const { c, askCheck, sendToMaintenance } = useCase();
-  const closed = c.stage === "closed";
-  return (
-    <CaseCard title="Next step" id="case-next">
-      <p className="case-text">{c.nextAction ?? <span className="ast-muted">No next step yet.</span>}</p>
-      {!closed && (
-        <div className="case-buttons">
-          <PillButton variant="secondary" onClick={() => askCheck()}>
-            Ask for a check
-          </PillButton>
-          <PillButton variant="secondary" onClick={sendToMaintenance}>
-            Send to maintenance
-          </PillButton>
-        </div>
-      )}
-    </CaseCard>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-
+/** Checks, headed by the case's next step; "Ask for a check" is the card's action. */
 function ChecksCard() {
-  const { c, when } = useCase();
+  const { c, when, askCheck } = useCase();
   const save = useSave();
   const [finishing, setFinishing] = useState<CaseCheck | null>(null);
+  const closed = c.stage === "closed";
   const open = c.checks.filter((k) => k.status === "open");
   const rest = c.checks.filter((k) => k.status !== "open").sort((a, b) => Date.parse(b.doneAt ?? b.createdAt) - Date.parse(a.doneAt ?? a.createdAt));
 
@@ -65,7 +44,18 @@ function ChecksCard() {
         </>
       }
       id="case-checks"
+      actions={
+        !closed && (
+          <PillButton variant="secondary" onClick={() => askCheck()}>
+            Ask for a check
+          </PillButton>
+        )
+      }
     >
+      <div className="case-next">
+        <span className="case-label">Next step</span>
+        <p className="case-text">{c.nextAction ?? <span className="ast-muted">No next step yet.</span>}</p>
+      </div>
       {c.checks.length ? (
         <ul className="case-list">
           {[...open, ...rest].map((k) => (
@@ -99,16 +89,22 @@ function ChecksCard() {
                   <PillButton variant="secondary" onClick={() => setFinishing(k)} disabled={save.busy}>
                     Record the result
                   </PillButton>
-                  <PillButton variant="secondary" disabled={save.busy} onClick={() => void save.run(() => casesApi.finishCheck(c.id, k.id, { cancel: true }))}>
-                    Cancel
-                  </PillButton>
+                  <ConfirmAction
+                    tone="secondary"
+                    label="Cancel this check"
+                    question="Cancel this check?"
+                    confirmLabel="Cancel the check"
+                    keepLabel="Keep it"
+                    disabled={save.busy}
+                    onConfirm={() => void save.run(() => casesApi.finishCheck(c.id, k.id, { cancel: true }))}
+                  />
                 </div>
               )}
             </li>
           ))}
         </ul>
       ) : (
-        <p className="ast-muted">No checks yet. Ask for one from Next step or from a possible cause.</p>
+        <p className="ast-muted">No checks yet. Ask for one here or from a possible cause.</p>
       )}
       <ErrorNote error={save.error} />
       {finishing && <FinishDialog check={finishing} onClose={() => setFinishing(null)} />}
@@ -132,6 +128,7 @@ function FinishDialog({ check, onClose }: { check: CaseCheck; onClose: () => voi
       title="Record the result"
       subtitle={`${check.kindWord}: ${check.detail}`}
       busy={save.busy}
+      dirty={note.trim() !== ""}
       onSubmit={() => void submit()}
       footerStart={<ErrorNote error={save.error} />}
       footer={
@@ -189,7 +186,7 @@ function MaintenanceCard() {
               <p className="case-text">{r.scope}</p>
               <span className="case-sub">
                 {r.team}
-                {r.workOrderId !== null ? ` · work order ${r.workOrderId}` : ""} · {when(r.createdAt)}
+                {r.workOrderId !== null ? ` · ${woRef(r.workOrderId)}` : ""} · {when(r.createdAt)}
               </span>
               <span className="case-sub">Fixed when: {r.acceptance}</span>
             </li>
@@ -279,7 +276,6 @@ function FilesCard() {
   const { c, when } = useCase();
   const save = useSave();
   const input = useRef<HTMLInputElement | null>(null);
-  const [confirm, setConfirm] = useState<number | null>(null);
 
   const attach = (f: File | undefined) => {
     if (input.current) input.current.value = "";
@@ -320,24 +316,14 @@ function FilesCard() {
                 {when(f.uploadedAt)}
               </span>
               <div className="case-buttons">
-                {confirm === f.id ? (
-                  <>
-                    <PillButton
-                      variant="danger"
-                      loading={save.busy}
-                      onClick={() => void save.run(() => casesApi.removeFile(c.id, f.id)).then(() => setConfirm(null))}
-                    >
-                      Remove for good
-                    </PillButton>
-                    <PillButton variant="secondary" disabled={save.busy} onClick={() => setConfirm(null)}>
-                      Keep it
-                    </PillButton>
-                  </>
-                ) : (
-                  <PillButton variant="secondary" disabled={save.busy} onClick={() => setConfirm(f.id)}>
-                    Remove
-                  </PillButton>
-                )}
+                <ConfirmAction
+                  label="Remove"
+                  question={`Remove ${f.name} for good?`}
+                  confirmLabel="Remove for good"
+                  keepLabel="Keep it"
+                  disabled={save.busy}
+                  onConfirm={() => void save.run(() => casesApi.removeFile(c.id, f.id))}
+                />
               </div>
             </li>
           ))}
@@ -352,18 +338,13 @@ function FilesCard() {
 
 /* ------------------------------------------------------------------ */
 
-function AlarmsCard() {
+/** Alarms recorded by hand for this case, shown at the top of History. */
+function HandAlarms() {
   const { c, when } = useCase();
   if (!c.alarms.length) return null;
   return (
-    <CaseCard
-      title={
-        <>
-          Alarms recorded by hand <Count n={c.alarms.length} />
-        </>
-      }
-      id="case-alarms"
-    >
+    <div className="case-alarms">
+      <span className="case-label">Alarms recorded by hand · {c.alarms.length}</span>
       <ul className="case-list">
         {c.alarms.map((a) => (
           <li key={a.id} className="case-item">
@@ -383,7 +364,7 @@ function AlarmsCard() {
           </li>
         ))}
       </ul>
-    </CaseCard>
+    </div>
   );
 }
 
@@ -404,6 +385,7 @@ function HistoryCard() {
       }
       id="case-history"
     >
+      <HandAlarms />
       {events.length ? (
         <>
           <ul className="case-list case-history">

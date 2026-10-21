@@ -9,7 +9,7 @@
    and a machine without registry entries gets `null`.
    ========================================================================== */
 
-import type { EdgeCard, EdgeGateway, EdgeRegistry, EdgeSource } from "@/types/edge";
+import type { EdgeCard, EdgeGateway, EdgeRegistry, EdgeSource } from "@shared/types/edge";
 
 /** A vibration DAQ node of the machine: a rack source carrying IEPE cards. */
 export interface DaqNodeSpec {

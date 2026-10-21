@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import type { CabinetChannel, CabinetModule, SensorTypeCode } from "./rack-data";
+import type { CabinetChannel, CabinetModule, SensorTypeCode } from "@shared/lib/rack-data";
 import { displayName } from "@/lib/display-name";
 
 /** Label strip text: from the connector (y + 125) to the strip foot (h − 24), about 5.6 px a character. */

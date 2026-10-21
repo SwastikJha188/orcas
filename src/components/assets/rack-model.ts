@@ -11,14 +11,14 @@
    acquisition chain: signal quality, gateway link, clock, power and wiring.
    ========================================================================== */
 
-import type { CabinetChannel, CabinetModule, MachineRackInfo, RackChassisInfo } from "./rack-data";
+import type { CabinetChannel, CabinetModule, MachineRackInfo, RackChassisInfo } from "@shared/lib/rack-data";
 import type { CatalogSensorView } from "./use-machine-catalog";
-import type { MachineAcquisition, MachineLivePoint } from "@/types/edge";
-import type { SimFrame } from "@/lib/kiln-sim/engine";
-import type { PlantDefs } from "@/lib/plant-defs";
+import type { MachineAcquisition, MachineLivePoint } from "@shared/types/edge";
+import type { SimFrame } from "@shared/lib/kiln-sim/engine";
+import type { PlantDefs } from "@shared/lib/plant-defs";
 import type { Tone } from "./assets-shell-ui";
 import { channelState, processState, worstState, type SlotState } from "./eurocard-module";
-import type { MeasurementDto } from "@/types/monitoring";
+import type { MeasurementDto } from "@shared/types/monitoring";
 import { calcDefsFor } from "./sensors-model";
 import { isPyroMachineId } from "@/lib/live-defs";
 

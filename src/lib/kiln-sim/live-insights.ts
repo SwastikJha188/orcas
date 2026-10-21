@@ -36,10 +36,10 @@ import type {
   SensorLocation,
   SourceEvidence,
   Severity,
-} from "@/server/services/insights-service";
-import { limitPair, resolveLimit, type SignalDef } from "./signals";
-import { isConditionRule, type PlantDefs } from "../plant-defs";
-import { formatDuration, type RuleState, type SimFrame } from "./engine";
+} from "@backend/services/insights-service";
+import { limitPair, resolveLimit, type SignalDef } from "@shared/lib/kiln-sim/signals";
+import { isConditionRule, type PlantDefs } from "@shared/lib/plant-defs";
+import { formatDuration, type RuleState, type SimFrame } from "@shared/lib/kiln-sim/engine";
 
 const HORIZONS: ForecastHorizon[] = [
   { id: "1h", label: "1H", hours: 1, steps: 14 },

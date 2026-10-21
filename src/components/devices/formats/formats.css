@@ -33,7 +33,7 @@
 }
 
 .fmt-root code {
-  padding: 1px 5px;
+  padding: 1px 4px;
   border-radius: var(--corner-sm);
   background: var(--active-faint);
 }
@@ -85,17 +85,13 @@
 .fmt-editor-title {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
 .fmt-confirm {
   font-size: var(--fs-md);
   color: var(--dx-ink);
-}
-
-.btn-pill.fmt-danger {
-  color: var(--status-danger);
 }
 
 .fmt-workspace {
@@ -152,8 +148,8 @@
 .fmt-preset {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 10px 12px;
+  gap: 4px;
+  padding: 8px 12px;
   border: 1px solid var(--separator);
   border-radius: var(--corner-row);
   background: transparent;
@@ -197,12 +193,12 @@
 .fmt-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   margin-top: -6px;
 }
 
 .fmt-chip {
-  padding: 3px 10px;
+  padding: 4px 8px;
   border: none;
   border-radius: var(--corner-pill);
   background: var(--active-faint);
@@ -227,7 +223,7 @@
   grid-template-columns: minmax(140px, 2fr) minmax(0, 3fr);
   align-items: center;
   gap: 12px;
-  padding: 6px 0;
+  padding: 4px 0;
   border-bottom: 1px solid var(--separator);
 }
 
@@ -238,7 +234,7 @@
 @media (max-width: 560px) {
   .fmt-map-row {
     grid-template-columns: minmax(0, 1fr);
-    gap: 6px;
+    gap: 8px;
   }
 }
 
@@ -262,7 +258,7 @@
 
 .fmt-path {
   min-height: 32px;
-  padding: 6px 10px;
+  padding: 4px 8px;
   font-size: var(--fs-md);
 }
 
@@ -279,7 +275,7 @@
 .fmt-preview {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   min-width: 0;
 }
 
@@ -306,7 +302,7 @@
 }
 
 .fmt-source-bar .btn-pill {
-  padding: 6px 14px;
+  padding: 4px 12px;
   font-size: var(--fs-md);
 }
 
@@ -316,7 +312,7 @@
 
 .fmt-select select {
   min-height: 32px;
-  padding: 6px 30px 6px 12px;
+  padding: 4px 30px 4px 12px;
   border-radius: var(--corner-pill);
   font-size: var(--fs-md);
 }
@@ -336,9 +332,9 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
-  padding: 7px 10px;
+  padding: 8px 8px;
   border: none;
   border-radius: var(--corner-row);
   background: transparent;
@@ -374,14 +370,14 @@
 .fmt-outcome {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
 }
 
 .fmt-outcome-line {
   display: flex;
   align-items: center;
-  gap: 8px 14px;
+  gap: 8px 16px;
   flex-wrap: wrap;
 }
 
@@ -407,22 +403,22 @@
 .fmt-tree {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   max-height: 180px;
   overflow-y: auto;
   font-size: var(--fs-md);
 }
 
 .fmt-tree ul {
-  padding-left: 14px;
+  padding-left: 12px;
   margin-top: 2px;
   border-left: 1px solid var(--separator);
 }
 
 .fmt-tree ul li {
   display: flex;
-  gap: 10px;
-  padding: 1px 0 1px 10px;
+  gap: 12px;
+  padding: 1px 0 1px 8px;
 }
 
 .fmt-tree-rack {
@@ -453,7 +449,7 @@
 .fmt-json-wrap {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -461,13 +457,13 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
 .fmt-json {
   margin: 0;
-  padding: 10px 12px;
+  padding: 8px 12px;
   max-height: 340px;
   overflow: auto;
   border-radius: var(--corner-row);

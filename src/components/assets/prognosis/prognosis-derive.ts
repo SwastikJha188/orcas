@@ -3,7 +3,7 @@
  * Nothing here invents data: every value comes from `InsightsResponse["prognosis"]`;
  * values computed on the page are named in each section's Method disclosure.
  */
-import { parseDuration } from "@/lib/kiln-sim/engine";
+import { parseDuration } from "@shared/lib/kiln-sim/engine";
 import type { HealthBands } from "@/lib/reference-data";
 import type {
   FailureRisk,
@@ -12,7 +12,7 @@ import type {
   InsightsResponse,
   RulItem,
   Severity,
-} from "@/server/services/insights-service";
+} from "@backend/services/insights-service";
 
 export type PrognosisData = InsightsResponse["prognosis"];
 

@@ -1,281 +1,439 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { PillButton } from "@/components/ui";
 import { EdgeProvider, useEdge } from "@/providers/edge-context";
-import { useIndustrialData } from "@/providers/industrial-data-context";
-import { DevicesHierarchy } from "@/components/devices/hierarchy/devices-hierarchy";
-import { MqttView } from "@/components/devices/mqtt-view";
-import { FormatsView } from "@/components/devices/formats/formats-view";
-import { DevicesOverview, type DevicesSectionId } from "@/components/devices/devices-overview";
-import { usePlantMachineTabs } from "@/components/home/operator/machine-nav";
+import { useKilnFleet } from "@/providers/kiln-simulation-context";
+import { ULTRON_FORMAT, ULTRON_FORMAT_ID } from "@shared/lib/edge-format";
+import type { EdgeBroker, EdgeFormat, EdgeGateway, EdgePoint, EdgeSource } from "@shared/types/edge";
+import { type DiscoveredGateway, buildIndex, discoveredGateways, gatewayTone } from "./edge-model";
+import { type ChannelRow, type Signals, allChannels, detections } from "./devices-rows";
+import { DiscoveredBody, GatewayBody } from "./devices-gateways";
+import { ALL_MACHINES, MappingBody, machineRows } from "./devices-mapping";
+import { BrokerDialog } from "./broker-dialog";
+import { FormatEditor } from "./formats/format-editor";
+import { draftFrom, usage, type FormatDraft } from "./formats/format-model";
+import { GatewayDialog, type GatewayPrefill } from "./hierarchy/edge-gateway-dialog";
+import { SourceDialog, type SourcePrefill } from "./hierarchy/edge-source-dialog";
+import { PointDialog } from "./hierarchy/edge-point-dialog";
+import { MapDialog, type MapTarget } from "./hierarchy/edge-map-dialog";
+import { ConnectWizard } from "./hierarchy/edge-connect-wizard";
+import { mapTarget } from "./hierarchy/edge-channels";
+import { IconPlus } from "./hierarchy/edge-icons";
+import { plural, sortGateways } from "./hierarchy/edge-tree-model";
 import "@/components/assets/assets-shell.css";
+import "@/components/ui/page.css";
 import "@/components/home/plant-home.css";
 import "@/components/home/operator/operator-console.css";
-import "./devices-overview.css";
+import "@/components/configure/configure.css";
+import "./devices.css";
 
 /* ==========================================================================
-   Devices — the acquisition network behind the plant.
-     Overview:  is data reaching ULTRON? The data path per gateway
-                (broker → gateway → source → card → point), where it stops,
-                and the machine each point feeds.
-     Hierarchy: gateway → source (DAQ rack · PLC · SCADA · DCS) → points,
-                configured here and joined with what the brokers report.
-     Formats:   how each gateway's messages are read (topic + JSON layout).
-     MQTT:      the brokers the gateways publish to, and the live traffic.
-   One registry fetch and one event stream (EdgeProvider) serve all four.
+   Devices — how sensor readings reach ULTRON. Same frame as Configure: a
+   section bar, a bar for what is inside the section, then the section.
+
+     Gateways         pick a gateway → its settings, its racks, the chosen
+                      rack's channels. Data connection (MQTT broker) and
+                      message format open from the gateway.
+     Machine mapping  pick a machine → which gateway › rack › card · channel
+                      feeds each of its sensors; channels linked to none.
+
+   One registry fetch and one event stream (EdgeProvider) serve both.
    ========================================================================== */
 
-type DevicesSection = DevicesSectionId;
-const SECTIONS: DevicesSection[] = ["overview", "hierarchy", "formats", "mqtt"];
-const asSection = (v: string | null): DevicesSection => (SECTIONS as (string | null)[]).includes(v) ? (v as DevicesSection) : "overview";
-const SECTION_KEY = "ultron.devices.section";
+type Section = "gateways" | "mapping";
+const SECTIONS: Section[] = ["gateways", "mapping"];
+const SECTION_LABEL: Record<Section, string> = { gateways: "Gateways", mapping: "Machine mapping" };
+const KEY = { section: "ultron.devices.section", gateway: "ultron.devices.gateway", machine: "ultron.devices.machine" };
 
-const SECTION_ITEMS: { id: DevicesSection; label: string }[] = [
-  { id: "overview", label: "Overview" },
-  { id: "hierarchy", label: "Device tree" },
-  { id: "formats", label: "Message formats" },
-  { id: "mqtt", label: "Data connections (MQTT)" },
-];
+const discKey = (d: DiscoveredGateway) => `disc:${d.brokerId}/${d.gatewayId}`;
 
-function readSection(): DevicesSection {
+function read(key: string): string | null {
   try {
-    return asSection(sessionStorage.getItem(SECTION_KEY));
+    return sessionStorage.getItem(key);
   } catch {
-    return "overview";
+    return null;
   }
 }
 
-/** What the hierarchy opens on when another section sends the operator there. */
-interface HierarchyIntent {
+function store(key: string, value: string) {
+  try {
+    sessionStorage.setItem(key, value);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/** Wall clock for "12s ago", ticking every few seconds. 0 until mounted. */
+function useClock(ms: number): number {
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    setNow(Date.now());
+    const t = window.setInterval(() => setNow(Date.now()), ms);
+    return () => window.clearInterval(t);
+  }, [ms]);
+  return now;
+}
+
+type DialogSpec =
+  | { kind: "gateway"; gateway?: EdgeGateway; prefill?: GatewayPrefill }
+  | { kind: "source"; source?: EdgeSource; prefill?: SourcePrefill }
+  | { kind: "point"; sourceId: string; point?: EdgePoint }
+  | { kind: "map"; target: MapTarget }
+  | { kind: "broker"; broker: EdgeBroker | null }
+  | { kind: "connect" };
+
+interface DialogState {
+  /** Remounts the form, so every opening starts from its own values. */
   seq: number;
-  key?: string;
-  connect?: boolean;
+  open: boolean;
+  spec: DialogSpec;
+}
+
+type Editing = { format: EdgeFormat | null; initial: FormatDraft; seq: number } | null;
+
+/** "8 racks with 223 channels. All are linked to a machine." */
+function gatewaySummary(racks: number, channels: number, linked: number): string {
+  const head = `${plural(racks, "rack")} with ${plural(channels, "channel")}.`;
+  if (!channels) return head;
+  if (linked === channels) return `${head} All are linked to a machine.`;
+  return `${head} ${linked} of ${channels} are linked to a machine.`;
 }
 
 export function IndustrialDevicesView() {
   return (
     <EdgeProvider>
-      <DevicesWorkspaceShell />
+      <DevicesShell />
     </EdgeProvider>
   );
 }
 
-function DevicesWorkspaceShell() {
-  const { registry } = useEdge();
-  const { setActiveTab, navigateToMachine } = useIndustrialData();
+function DevicesShell() {
+  const { registry, snapshot, loading, error, refresh } = useEdge();
+  const fleet = useKilnFleet();
+  const clock = useClock(5000);
+  const now = Math.max(clock, snapshot ? Date.parse(snapshot.serverNow) : 0);
 
-  const [section, setSection] = useState<DevicesSection>("overview");
-  const [intent, setIntent] = useState<HierarchyIntent | null>(null);
-  const [activeGatewayId, setActiveGatewayId] = useState<string>("all");
+  const [section, setSectionState] = useState<Section>("gateways");
+  const [gatewayKey, setGatewayKey] = useState<string | null>(null);
+  const [rackId, setRackId] = useState<string | null>(null);
+  const [machineId, setMachineId] = useState<string>(ALL_MACHINES);
+  const [dialog, setDialog] = useState<DialogState | null>(null);
+  const [editing, setEditing] = useState<Editing>(null);
 
   // Restored after mount: sessionStorage is client-only and SSR renders the default.
-  useEffect(() => setSection(readSection()), []);
-
-  const change = useCallback((id: string) => {
-    const next = asSection(id);
-    setSection(next);
-    if (next !== "hierarchy") setIntent(null);
-    try {
-      sessionStorage.setItem(SECTION_KEY, next);
-    } catch {
-      /* storage unavailable */
-    }
+  useEffect(() => {
+    const s = read(KEY.section);
+    if (s && (SECTIONS as string[]).includes(s)) setSectionState(s as Section);
+    setGatewayKey(read(KEY.gateway));
+    setMachineId(read(KEY.machine) ?? ALL_MACHINES);
   }, []);
 
-  const openHierarchy = useCallback(
-    (opts?: { key?: string; connect?: boolean }) => {
-      setIntent((i) => ({ seq: (i?.seq ?? 0) + 1, ...opts }));
-      change("hierarchy");
-    },
-    [change],
-  );
+  const setSection = useCallback((s: Section) => {
+    setSectionState(s);
+    setEditing(null);
+    store(KEY.section, s);
+  }, []);
+  const pickGateway = useCallback((key: string) => {
+    setGatewayKey(key);
+    setRackId(null);
+    setEditing(null);
+    store(KEY.gateway, key);
+  }, []);
+  const pickMachine = useCallback((id: string) => {
+    setMachineId(id);
+    store(KEY.machine, id);
+  }, []);
 
-  // The active plant's machine pills, named as the Operator view names them.
-  const plantTabs = usePlantMachineTabs();
-  const equipmentTabs = useMemo(
-    () => plantTabs.map((t) => ({ id: t.machineId ?? "full-line", label: t.label })),
-    [plantTabs],
-  );
+  const ix = useMemo(() => (registry ? buildIndex(registry, snapshot) : null), [registry, snapshot]);
+  const signals = useMemo<Signals>(() => Object.fromEntries(Object.entries(fleet).map(([id, s]) => [id, s.frame.signals])), [fleet]);
+  const det = useMemo(() => (ix ? detections(ix) : new Map()), [ix]);
+  const channels = useMemo<ChannelRow[]>(() => (ix ? allChannels(ix, det, signals) : []), [ix, det, signals]);
+  const discovered = useMemo(() => (ix ? discoveredGateways(ix) : []), [ix]);
+  const gateways = useMemo(() => (registry ? sortGateways(registry.gateways) : []), [registry]);
 
-  const gatewayPills = useMemo(() => {
-    const gws = registry?.gateways ?? [];
-    return [
-      { id: "all", label: "All data collectors" },
-      ...gws.map((g) => ({ id: g.id, label: g.name || g.code })),
-    ];
-  }, [registry]);
+  const gw = gateways.find((g) => g.id === gatewayKey) ?? (discovered.some((d) => discKey(d) === gatewayKey) ? null : (gateways[0] ?? null));
+  const found = gw ? null : (discovered.find((d) => discKey(d) === gatewayKey) ?? (gateways.length ? null : (discovered[0] ?? null)));
+  const machines = useMemo(() => (ix ? machineRows(ix, channels) : []), [ix, channels]);
+  const machine = machines.find((m) => m.id === machineId) ?? null;
+  const unlinked = channels.filter((r) => !r.tag).length;
 
-  const activeGwIdx = Math.max(0, gatewayPills.findIndex((g) => g.id === activeGatewayId));
-  const selectGateway = (gwId: string) => {
-    setActiveGatewayId(gwId);
-    if (gwId === "all") {
-      change("overview");
-    } else {
-      openHierarchy({ key: `gateway:${gwId}` });
-    }
+  const openDialog = (spec: DialogSpec) => setDialog((d) => ({ seq: (d?.seq ?? 0) + 1, open: true, spec }));
+  const closeDialog = () => setDialog((d) => (d ? { ...d, open: false } : d));
+  const link = (r: ChannelRow) => openDialog({ kind: "map", target: mapTarget(r.gw, r.ch) });
+  const editPoint = (r: ChannelRow) => r.ch.point && openDialog({ kind: "point", sourceId: r.ch.point.sourceId, point: r.ch.point });
+
+  const openFormat = (g: EdgeGateway) => {
+    const id = g.formatId ?? ULTRON_FORMAT_ID;
+    const format = registry?.formats.find((f) => f.id === id) ?? (g.formatId ? null : ULTRON_FORMAT);
+    setEditing((e) => ({ format, initial: draftFrom(format), seq: (e?.seq ?? 0) + 1 }));
   };
-  const stepGateway = (delta: number) => {
-    if (gatewayPills.length <= 1) return;
-    const nextIdx = (activeGwIdx + delta + gatewayPills.length) % gatewayPills.length;
-    selectGateway(gatewayPills[nextIdx].id);
+  const duplicateFormat = (source: EdgeFormat | null) => (draft: FormatDraft) =>
+    setEditing((e) => ({
+      format: null,
+      initial: { ...draft, name: `Copy of ${draft.name || source?.name || "format"}` },
+      seq: (e?.seq ?? 0) + 1,
+    }));
+
+  /* ---------- bars */
+  const sectionCount: Record<Section, string> = {
+    gateways: String(gateways.length + discovered.length),
+    mapping: String(channels.length - unlinked),
+  };
+  const sectionTone: Record<Section, string | undefined> = {
+    gateways: ix && gateways.some((g) => ["warn", "bad"].includes(gatewayTone(ix, g))) ? "bad" : discovered.length ? "info" : undefined,
+    mapping: unlinked ? "warn" : undefined,
   };
 
-  const switchToHomeView = useCallback(
-    (v: "operator" | "twin" | "layout" | "assets") => {
-      // Assets is its own workspace.
-      if (v === "assets") {
-        setActiveTab("assets");
-        return;
-      }
-      try {
-        localStorage.setItem("ultron.home.viewMode", v);
-      } catch {
-        /* ignore */
-      }
-      window.dispatchEvent(new CustomEvent("ultron:set-home-view", { detail: v }));
-      setActiveTab("home");
-    },
-    [setActiveTab],
-  );
+  type Pill = { id: string; label: string; count?: string; tone?: string; title?: string };
+  const pills: Pill[] =
+    section === "gateways"
+      ? [
+          ...gateways.map((g) => {
+            const tone = ix ? gatewayTone(ix, g) : "idle";
+            return { id: g.id, label: g.code, count: String(det.get(g.id)?.racks.length ?? 0), tone: tone === "good" || tone === "idle" ? undefined : tone, title: g.name };
+          }),
+          ...discovered.map((d) => ({ id: discKey(d), label: d.gatewayId, count: "New", tone: "info", title: `${d.gatewayId} is sending readings but is not added yet` })),
+        ]
+      : [
+          { id: ALL_MACHINES, label: "All machines", count: String(machines.length) },
+          ...machines.map((m) => ({ id: m.id, label: m.name, count: String(m.linked), title: m.id })),
+        ];
+  const activePill = section === "gateways" ? (gw?.id ?? (found ? discKey(found) : "")) : machine ? machine.id : ALL_MACHINES;
 
-  return (
-    <div className="ph-root ph-operator-canvas ast-root" aria-label="Devices">
-      <div className="opc-shell">
-        {/* ROW 1: Equipment Units (left) + View Switcher (right) */}
-        <header className="opc-topbar">
-          <div className="opc-stage-tabs" role="tablist" aria-label="Machines">
-            <div className="opc-pill-group">
-              {equipmentTabs.map((item) => {
-                const isActive = item.id === "full-line";
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={isActive}
-                    data-active={isActive || undefined}
-                    className={`opc-pill-btn ${isActive ? "is-active" : ""}`}
-                    onClick={() => {
-                      if (item.id === "full-line") {
-                        change("overview");
-                      } else {
-                        navigateToMachine(item.id, "rack");
-                      }
-                    }}
-                  >
-                    <span>{item.label}</span>
-                  </button>
-                );
-              })}
+  const barActions =
+    // The format editor carries its own Close.
+    section === "gateways" && gw && !editing ? (
+      <PillButton variant="secondary" onClick={() => openDialog({ kind: "gateway", gateway: gw })}>
+        Edit gateway
+      </PillButton>
+    ) : section === "mapping" && unlinked > 0 ? (
+      <span className="pg-note cfg-bar-note" data-tone="warn">
+        {unlinked === 1 ? "1 channel is" : `${unlinked} channels are`} not linked to any machine
+      </span>
+    ) : null;
+
+  /* ---------- section head */
+  const gwChannels = gw ? channels.filter((r) => r.gw.id === gw.id) : [];
+  const head =
+    section === "gateways"
+      ? editing && gw
+        ? { title: "Message format", context: "How ULTRON reads this gateway's messages: where they arrive, and where each reading sits in them." }
+        : gw
+          ? {
+              title: gw.name,
+              context: gatewaySummary(det.get(gw.id)?.racks.length ?? 0, gwChannels.length, gwChannels.filter((r) => r.tag).length),
+            }
+          : found
+            ? { title: found.gatewayId, context: "This gateway is sending readings but is not added yet. Add it to see its racks and link its sensors." }
+            : { title: "Gateways", context: "A gateway is the box on site that collects sensor readings from racks and control systems and sends them to ULTRON." }
+      : machine
+        ? { title: machine.name, context: "Where each sensor of this machine is wired: its gateway, rack, card and channel." }
+        : { title: "Machine mapping", context: "Where each machine's sensors are wired: the gateway, rack, card and channel that bring in their readings." };
+
+  let body: React.ReactNode;
+  if (!ix) {
+    body = (
+      <div className="ast-card ast-empty" role={error ? "alert" : "status"}>
+        {loading || !error ? (
+          "Loading gateways…"
+        ) : (
+          <>
+            The gateways could not be loaded. Try again.
+            <div className="cfg-empty-actions">
+              <PillButton variant="secondary" onClick={() => void refresh()}>
+                Retry
+              </PillButton>
             </div>
-          </div>
-
-          <div className="opc-topbar-right">
-            <div className="opc-pill-group" role="tablist" aria-label="How to show the plant">
-              {(["operator", "twin", "assets"] as const).map((v) => {
-                const label = v === "operator" ? "Operator view" : v === "twin" ? "3D twin" : "Assets";
-                return (
-                  <button
-                    key={v}
-                    type="button"
-                    role="tab"
-                    aria-selected={false}
-                    className="opc-pill-btn"
-                    onClick={() => switchToHomeView(v)}
-                  >
-                    <span>{label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </header>
-
-        <div className="opc-workspace">
-          <div className="opc-main-col">
-            {/* ROW 2: Edge Gateways + Stepper (left) + Sub-navigation & Connect Action (right) */}
-            <div className="opc-subbar">
-              <div className="opc-stage-toggles">
-                <div className="opc-pill-group" role="tablist" aria-label="Data collectors (gateways)">
-                  {gatewayPills.map((gw) => {
-                    const isActive = activeGatewayId === gw.id;
-                    return (
-                      <button
-                        key={gw.id}
-                        type="button"
-                        role="tab"
-                        aria-selected={isActive}
-                        data-active={isActive || undefined}
-                        className={`opc-pill-btn ${isActive ? "is-active" : ""}`}
-                        onClick={() => selectGateway(gw.id)}
-                      >
-                        <span>{gw.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="opc-stepper" aria-label="Previous or next data collector">
-                  <span className="opc-stepper-pos">
-                    {activeGwIdx + 1}/{gatewayPills.length}
-                  </span>
-                  <button type="button" className="opc-step-btn" onClick={() => stepGateway(-1)} aria-label="Previous data collector">
-                    ‹
-                  </button>
-                  <button type="button" className="opc-step-btn" onClick={() => stepGateway(1)} aria-label="Next data collector">
-                    ›
-                  </button>
-                </div>
-              </div>
-
-              <div className="opc-stage-toggles" style={{ marginLeft: "auto" }}>
-                <div className="opc-pill-group" role="tablist" aria-label="Devices pages">
-                  {SECTION_ITEMS.map((item) => {
-                    const isActive = section === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        role="tab"
-                        aria-selected={isActive}
-                        data-active={isActive || undefined}
-                        className={`opc-pill-btn ${isActive ? "is-active" : ""}`}
-                        onClick={() => change(item.id)}
-                      >
-                        <span>{item.label}</span>
-                      </button>
-                    );
-                  })}
-                  {section !== "overview" && (
-                    <button
-                      type="button"
-                      className="opc-pill-btn"
-                      onClick={() => openHierarchy({ connect: true })}
-                    >
-                      <span>+ Connect a data collector</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="opc-module-stage" style={{ padding: 0 }}>
-              <div className="dv-frame" style={{ height: "100%" }}>
-                <div className="dv-frame-body">
-                  {section === "overview" ? (
-                    <DevicesOverview sectionNav={null} onOpenHierarchy={openHierarchy} onOpenSection={change} />
-                  ) : section === "mqtt" ? (
-                    <MqttView />
-                  ) : section === "formats" ? (
-                    <FormatsView />
-                  ) : (
-                    <DevicesHierarchy key={intent?.seq ?? 0} sectionNav={null} initialSelection={intent?.key} startConnect={intent?.connect} />
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
+          </>
+        )}
+      </div>
+    );
+  } else if (section === "mapping") {
+    body = <MappingBody ix={ix} channels={channels} machineId={machine ? machine.id : ALL_MACHINES} now={now} onMachine={pickMachine} onLink={link} onEditPoint={editPoint} />;
+  } else if (gw && editing) {
+    body = (
+      <FormatEditor
+        key={editing.seq}
+        format={editing.format}
+        initial={editing.initial}
+        gateways={editing.format ? (usage(ix.registry).get(editing.format.id) ?? []) : []}
+        onClose={() => setEditing(null)}
+        onDuplicate={duplicateFormat(editing.format)}
+      />
+    );
+  } else if (gw) {
+    body = (
+      <GatewayBody
+        ix={ix}
+        gw={gw}
+        detection={det.get(gw.id)}
+        rackId={rackId}
+        now={now}
+        signals={signals}
+        onRack={setRackId}
+        onBroker={(broker) => openDialog({ kind: "broker", broker })}
+        onEditGateway={() => openDialog({ kind: "gateway", gateway: gw })}
+        onFormat={() => openFormat(gw)}
+        onAddRack={(code) => openDialog({ kind: "source", prefill: { gatewayId: gw.id, ...(code ? { code } : {}) } })}
+        onEditRack={(source) => openDialog({ kind: "source", source })}
+        onAddChannel={(source) => openDialog({ kind: "point", sourceId: source.id })}
+        onLink={link}
+        onEditPoint={editPoint}
+      />
+    );
+  } else if (found) {
+    body = (
+      <DiscoveredBody
+        ix={ix}
+        found={found}
+        now={now}
+        onAdd={() => openDialog({ kind: "gateway", prefill: { code: found.gatewayId, brokerId: found.brokerId, ipAddress: found.ip || null, racks: found.rackIds } })}
+      />
+    );
+  } else {
+    body = (
+      <div className="ast-card ast-empty">
+        No gateways yet. Add one: choose its message server and topic, and its racks and channels appear as soon as it sends readings.
+        <div className="cfg-empty-actions">
+          <PillButton variant="primary" icon={<IconPlus size={13} />} onClick={() => openDialog({ kind: "connect" })}>
+            Add gateway
+          </PillButton>
         </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="cfg-shell dvp-shell" aria-label="Devices">
+      <header className="opc-topbar cfg-topbar" aria-label="Devices sections">
+        <div className="opc-stage-tabs">
+          <div className="opc-pill-group" role="tablist" aria-label="Devices sections">
+            {SECTIONS.map((id) => {
+              const active = section === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  className="opc-pill-btn"
+                  data-active={active || undefined}
+                  onClick={() => setSection(id)}
+                >
+                  {sectionTone[id] && <span className="ph-unit-dot" data-tone={sectionTone[id]} aria-hidden="true" />}
+                  <span>{SECTION_LABEL[id]}</span>
+                  {ix && <span className="opc-app-count">{sectionCount[id]}</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="opc-topbar-right">
+          <PillButton variant="primary" icon={<IconPlus size={13} />} onClick={() => openDialog({ kind: "connect" })} disabled={!ix}>
+            Add gateway
+          </PillButton>
+        </div>
+      </header>
+
+      <div className="opc-subbar cfg-subbar" role="region" aria-label={`${SECTION_LABEL[section]}: contents and actions`}>
+        <div className="opc-stage-tabs">
+          {pills.length > 0 && (
+            <div className="opc-pill-group opc-subassembly-pills" role="tablist" aria-label={section === "gateways" ? "Gateways" : "Machines"}>
+              {pills.map((p) => {
+                const active = p.id === activePill;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    className="opc-pill-btn"
+                    data-active={active || undefined}
+                    title={p.title ?? p.label}
+                    onClick={() => (section === "gateways" ? pickGateway(p.id) : pickMachine(p.id))}
+                  >
+                    {p.tone && <span className="ph-unit-dot" data-tone={p.tone} aria-hidden="true" />}
+                    <span>{p.label}</span>
+                    {p.count && <span className="opc-app-count">{p.count}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className="opc-stage-toggles">{barActions}</div>
+      </div>
+
+      <div className="pg-root ast-root cfg-root">
+        <div className="cfg-main">
+          <header className="ast-head pg-head">
+            <div className="ast-head-main">
+              <div className="ast-title-row">
+                <h1 className="ast-title">{head.title}</h1>
+              </div>
+              <p className="pg-cfg-context">{head.context}</p>
+            </div>
+          </header>
+          {body}
+        </div>
+      </div>
+
+      {ix && dialog?.spec.kind === "gateway" && (
+        <GatewayDialog
+          key={dialog.seq}
+          open={dialog.open}
+          ix={ix}
+          gateway={dialog.spec.gateway}
+          prefill={dialog.spec.prefill}
+          onClose={closeDialog}
+          onSaved={(sel) => {
+            closeDialog();
+            if (sel.type === "gateway") pickGateway(sel.id);
+          }}
+        />
+      )}
+      {ix && dialog?.spec.kind === "source" && (
+        <SourceDialog
+          key={dialog.seq}
+          open={dialog.open}
+          ix={ix}
+          source={dialog.spec.source}
+          prefill={dialog.spec.prefill}
+          lockGateway={!dialog.spec.source}
+          onClose={closeDialog}
+          onSaved={(sel) => {
+            closeDialog();
+            const code = sel.type === "source" ? ix.sources.get(sel.id)?.code : undefined;
+            if (code) setRackId(code);
+          }}
+        />
+      )}
+      {ix && dialog?.spec.kind === "point" && (
+        <PointDialog key={dialog.seq} open={dialog.open} ix={ix} sourceId={dialog.spec.sourceId} point={dialog.spec.point} onClose={closeDialog} onSaved={closeDialog} />
+      )}
+      {ix && dialog?.spec.kind === "map" && <MapDialog key={dialog.seq} open={dialog.open} ix={ix} target={dialog.spec.target} onClose={closeDialog} />}
+      {ix && dialog?.spec.kind === "connect" && (
+        <ConnectWizard
+          key={dialog.seq}
+          open={dialog.open}
+          ix={ix}
+          now={now}
+          onClose={closeDialog}
+          onCommissioned={(id) => {
+            setSection("gateways");
+            pickGateway(id);
+          }}
+        />
+      )}
+      {ix && dialog?.open && dialog.spec.kind === "broker" && (
+        <BrokerDialog
+          key={dialog.seq}
+          broker={dialog.spec.broker}
+          gatewayCount={dialog.spec.broker ? ix.registry.gateways.filter((g) => g.brokerId === (dialog.spec as { broker: EdgeBroker }).broker.id).length : 0}
+          onClose={closeDialog}
+        />
+      )}
     </div>
   );
 }

@@ -45,7 +45,7 @@ def q(v):
 
 COLS = [
     ("id", "id"), ("machine_id", "machine"), ("group_code", "group"), ("component", "component"), ("title", "title"),
-    ("origin", "origin"), ("rev_status", "status"), ("active", "active"), ("conditional", "conditional"),
+    ("origin", "origin"), ("rev_status", "status"),
     ("applicability", "applicability"), ("primary_text", "primaryText"), ("support_text", "supportText"),
     ("baseline", "baseline"), ("setpoints", "setpoints"), ("detection", "detection"), ("evidence_rule", "evidence"),
     ("what", "what"), ("where_text", "where"), ("alternatives", "why"), ("impact", "impact"),
@@ -85,8 +85,6 @@ CREATE TABLE IF NOT EXISTS fault_library (
   title VARCHAR(200) NOT NULL,
   origin VARCHAR(64) NOT NULL,
   rev_status VARCHAR(24) NOT NULL CHECK (rev_status IN ('Unchanged', 'Inputs updated', 'Re-scoped', 'Converted', 'New', 'Conditional', 'Retired')),
-  active BOOLEAN NOT NULL DEFAULT TRUE,
-  conditional BOOLEAN NOT NULL DEFAULT FALSE,
   applicability TEXT,
   primary_text TEXT,
   support_text TEXT,

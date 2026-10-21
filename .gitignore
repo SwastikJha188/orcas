@@ -15,3 +15,6 @@ graphify-out/
 
 # onboarding processor work folders (uploads, extracts, drawings; results live in the DB)
 onboarding-work/
+
+# backend build output (npm run build -w backend)
+backend/dist/

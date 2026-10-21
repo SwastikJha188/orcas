@@ -2,16 +2,16 @@
 
 /*
  * Shared building blocks for the one-page Prognosis (prefix pg-prog-).
- * Generic AI-page primitives (Section, SectionIndex, VerdictCard, EvidenceChip,
- * ConfidenceMeter, WhyDisclosure, MissingNote, PointerCard …) come from the
+ * Generic page primitives (Section, SectionIndex, ConfidenceMeter,
+ * WhyDisclosure …) come from the
  * Analysis page so the two pages read as siblings; only prognosis-specific
  * pieces live here.
  */
 
 import React from "react";
 import { rowActivate } from "@/components/ui/row-activate";
-import type { FailureRisk, Severity } from "@/server/services/insights-service";
-import type { SimFrame } from "@/lib/kiln-sim/engine";
+import type { FailureRisk, Severity } from "@backend/services/insights-service";
+import type { SimFrame } from "@shared/lib/kiln-sim/engine";
 import type { AssetMachine } from "../assets-data";
 import type { AssetsSubPage } from "../assets-view";
 import { severityTone, type Tone } from "../assets-shell-ui";
@@ -19,7 +19,7 @@ import { ANALYSIS_ANCHOR_KEY } from "../analysis/analysis-page";
 import { SECTION_IDS as ANALYSIS_SECTIONS } from "../analysis/an-derive";
 import { logPos, tagsForRisk, TIME_TICKS, type AnalysisPayload, type PrognosisData, type RulRow } from "./prognosis-derive";
 
-export { Empty, EvidenceChip, KpiStrip, PageHeader, Section, SectionIndex, WhyDisclosure, priorityTone, type KpiItem } from "../analysis/an-ui";
+export { Empty, KpiStrip, PageHeader, Section, SectionIndex, WhyDisclosure, priorityTone, type KpiItem } from "../analysis/an-ui";
 
 /** Open Analysis scrolled to one of its sections (Analysis reads the anchor once on mount). */
 export function openAnalysisAt(section: keyof typeof ANALYSIS_SECTIONS, go: (sub: AssetsSubPage) => void): void {
@@ -46,7 +46,7 @@ export interface ProgSectionProps {
   go: (sub: AssetsSubPage) => void;
   /** Live kiln frame (rule onset, persistence, validation); null for snapshots. */
   frame: SimFrame | null;
-  /** Failure mode selected in the risk table; drives forecasts and degradation. */
+  /** Failure mode in focus (from another page or the part picked); the default part for row links. */
   mode: FailureRisk | null;
   setMode: (id: string) => void;
   focusedComponent?: string | null;

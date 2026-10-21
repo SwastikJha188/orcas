@@ -3,6 +3,7 @@
 import { displayName } from "@/lib/display-name";
 import React, { useMemo } from "react";
 import { PillButton } from "@/components/ui";
+import { conditionTone, toCondition } from "@/components/ui/status";
 import type { HierarchyNode } from "../assets-data";
 import type { AssetsSubPage } from "../assets-view";
 import { IconChevron, SegmentBar, StatusTag } from "../assets-shell-ui";
@@ -16,8 +17,10 @@ import {
   findPath,
   isFolder,
   landingSubPage,
+  machineCondition,
   machineEntries,
   nodeLabel,
+  nodeTone,
   rollupLabel,
   rollupTone,
   subtreeFolders,
@@ -71,25 +74,35 @@ export function HierarchyContents({ roots, lookup, node, onSelectNode, onOpenMac
     .filter(Boolean)
     .join(" · ");
 
+  const areaGrid =
+    node.type === "plant" && childFolders.length > 0 ? (
+      <div className="hx-grid" role="group" aria-label="Areas">
+        {childFolders.map((f) => (
+          <FolderCard key={f.id} node={f} lookup={lookup} onOpen={() => onSelectNode(f)} />
+        ))}
+      </div>
+    ) : null;
+
   return (
     <div className="assets-directory-workspace ast-root hx-contents" aria-label={`${node.name} assets`}>
       <header className="ast-head hx-head">
         <div className="ast-head-main">
-          <ol className="ast-crumbs" aria-label="Location">
-            <li>Home</li>
-            <li>Assets</li>
-            {path.map((p, i) => (
-              <li key={p.id}>
-                {i < path.length - 1 ? (
-                  <button type="button" className="hx-crumb" onClick={() => onSelectNode(p)}>
-                    {nodeLabel(p)}
-                  </button>
-                ) : (
-                  <span aria-current="page">{nodeLabel(p)}</span>
-                )}
-              </li>
-            ))}
-          </ol>
+          <nav aria-label="Location">
+            <ol className="ast-crumbs">
+              <li>Assets</li>
+              {path.map((p, i) => (
+                <li key={p.id}>
+                  {i < path.length - 1 ? (
+                    <button type="button" className="hx-crumb" onClick={() => onSelectNode(p)}>
+                      {nodeLabel(p)}
+                    </button>
+                  ) : (
+                    <span aria-current="page">{nodeLabel(p)}</span>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </nav>
           <div className="ast-title-row">
             <h1 className="ast-title">{node.name}</h1>
             {nodeEngine !== "vpc" && (
@@ -102,10 +115,10 @@ export function HierarchyContents({ roots, lookup, node, onSelectNode, onOpenMac
               </>
             )}
           </div>
-          {nodeEngine !== "vpc" && <span className="ast-caption ast-num">{context}</span>}
+          {nodeEngine !== "vpc" && <span className="ast-caption">{context}</span>}
         </div>
         {((worst && needsAttention > 0) || viewSwitcher) && (
-          <div className="pg-actions" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div className="pg-actions">
             {worst && needsAttention > 0 && (
               <PillButton
                 variant="secondary"
@@ -120,22 +133,15 @@ export function HierarchyContents({ roots, lookup, node, onSelectNode, onOpenMac
         )}
       </header>
 
-      {nodeEngine === "pyro" && <PyroLineOverview onOpenMachine={onOpenMachine} />}
-
-      {node.type === "plant" && childFolders.length > 0 && (
-        <div className="hx-grid" role="list" aria-label="Areas">
-          {childFolders.map((f) => (
-            <FolderCard key={f.id} node={f} lookup={lookup} onOpen={() => onSelectNode(f)} />
-          ))}
-        </div>
-      )}
+      {/* The pyro line places its areas after its latest problems; other plants show them here. */}
+      {nodeEngine === "pyro" ? <PyroLineOverview plantId={node.id} onOpenMachine={onOpenMachine} areas={areaGrid} /> : areaGrid}
 
       {nodeEngine === "vpc" && (
         <VpcPlantOverview node={node} lookup={lookup} onSelectNode={onSelectNode} onOpenMachine={onOpenMachine} />
       )}
 
       {node.type !== "plant" && entries.length > 0 && (
-        <div className="hx-grid" role="list" aria-label="Machines">
+        <div className="hx-grid" role="group" aria-label="Machines">
           {entries.map((entry) => (
             <MachineCard
               key={entry.node.id}
@@ -163,7 +169,7 @@ function FolderCard({ node, lookup, onOpen }: { node: HierarchyNode; lookup: Mac
   const tone = rollupTone(node, lookup);
   const health = averageHealth(machines, lookup);
   return (
-    <button type="button" className="ast-card ast-tile hx-card" onClick={onOpen} aria-label={`Open ${node.name}`}>
+    <button type="button" className="ast-card ast-tile hx-card" onClick={onOpen}>
       <div className="ast-tile-top">
         <span className="ast-icon-tile" data-tone={tone}>
           <TypeIcon type={node.type} size={14} />
@@ -172,12 +178,27 @@ function FolderCard({ node, lookup, onOpen }: { node: HierarchyNode; lookup: Mac
       </div>
       <div className="hx-card-body">
         <span className="ast-tile-name">{node.name}</span>
-        <span className="hx-card-meta ast-num">
+        <span className="hx-card-meta">
           {folders.length > 0 && `${folders.length} ${folders.length === 1 ? "group" : "groups"} · `}
           {machines.length} {machines.length === 1 ? "machine" : "machines"}
           {health !== null && ` · health ${health}/100`}
         </span>
       </div>
+      {/* Each machine's health, so the directory shows it without opening the area. */}
+      {machines.length > 0 && (
+        <ul className="hx-units" aria-label={`Machines in ${node.name}`}>
+          {machines.map((m) => {
+            const h = machineCondition(m, lookup).health;
+            return (
+              <li key={m.id}>
+                <span className="ast-chip-dot" data-tone={nodeTone(m, lookup)} aria-hidden="true" />
+                <span className="hx-unit-name">{displayName(m.name)}</span>
+                <span className="ast-num">{h !== null ? `${Math.round(h)}/100` : "—"}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
       {machines.length > 0 && (
         <SegmentBar
           label={`${dist.healthy} normal, ${dist.atRisk} alert, ${dist.critical} critical, ${dist.offline} on standby`}
@@ -190,10 +211,6 @@ function FolderCard({ node, lookup, onOpen }: { node: HierarchyNode; lookup: Mac
         />
       )}
       <div className="ast-tile-foot">
-        <span className="ast-tile-status" data-tone={tone}>
-          <i aria-hidden="true" />
-          {tone === "bad" ? "A machine is Critical" : tone === "warn" ? "A machine is on Alert" : tone === "idle" ? "A machine is on standby" : "All normal"}
-        </span>
         <span className="hx-open">
           Open <IconChevron size={10} />
         </span>
@@ -204,22 +221,25 @@ function FolderCard({ node, lookup, onOpen }: { node: HierarchyNode; lookup: Mac
 
 function MachineCard({ entry, onOpen }: { entry: MachineEntry; onOpen: () => void }) {
   const { node, machineId, machine, health, location } = entry;
+  const condition = toCondition(entry.status);
+  const tone = conditionTone(condition);
   return (
-    <button
-      type="button"
-      className="ast-card ast-tile hx-card"
-      onClick={onOpen}
-      aria-label={`Open ${node.name}`}
-    >
+    <button type="button" className="ast-card ast-tile hx-card" onClick={onOpen}>
+      <div className="ast-tile-top">
+        <span className="ast-icon-tile" data-tone={tone}>
+          <TypeIcon type={node.type} size={14} />
+        </span>
+        <StatusTag tone={tone} label={condition} />
+      </div>
       <div className="hx-card-body">
         <span className="ast-tile-name">{node.name}</span>
-        <span className="hx-card-meta ast-num">
+        <span className="hx-card-meta">
           {machineId}
           {machine?.type ? ` · ${machine.type}` : ""}
           {location.length > 0 ? ` · ${location[location.length - 1]}` : ""}
         </span>
       </div>
-      <dl className="hx-facts" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+      <dl className="hx-facts hx-facts--2">
         <div>
           <dt>Health</dt>
           <dd className="ast-num">{health === null ? "—" : `${health}/100`}</dd>

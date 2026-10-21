@@ -15,18 +15,19 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { DISPLAY_MS, useKilnFleet, useKilnSimulation, usePrimaryMachineId } from "@/providers/kiln-simulation-context";
 import { useApi } from "@/lib/api-cache";
 import { useMachineEvents } from "@/lib/monitoring-client";
-import type { FindingDto } from "@/types/monitoring";
+import type { FindingDto } from "@shared/types/monitoring";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { nameIds } from "@/lib/display-name";
-import type { PlantDefs } from "@/lib/plant-defs";
+import type { PlantDefs } from "@shared/lib/plant-defs";
 import { ask, findingInsight, pendingRules, suggestions, type ActionSpec, type CopilotAnswer, type Focus, type MachineRecord, type PlantMachine } from "./copilot-engine";
+import { answerPrefixed, matchQuestion, type AssetIqQuestion, type PrefixedContext } from "./prefixed";
+import { usePlantMachineTabs } from "@/components/home/operator/machine-nav";
 
 export interface Msg {
   id: string;
   role: "user" | "assistant" | "note";
   text: string;
   answer?: CopilotAnswer;
-  fresh?: boolean;
   proactive?: boolean;
   /** Severity of the finding a proactive insight reports. */
   severity?: string;
@@ -56,6 +57,8 @@ const MAX_THREADS = 40;
 const MAX_MESSAGES = 60;
 /** Waiting insights shown at once: the newest few, not a backlog. */
 const MAX_DELIVERED = 3;
+/** How long a deleted conversation can be brought back. */
+const UNDO_MS = 10_000;
 let uid = 0;
 const nextId = () => `m${Date.now().toString(36)}${(uid++).toString(36)}`;
 
@@ -73,14 +76,12 @@ function titleOf(messages: Msg[]): string {
   return line.length > 64 ? `${line.slice(0, 63)}…` : line;
 }
 
-const settle = (m: Msg): Msg => ({ ...m, fresh: false });
-
 function loadThreads(machineId: string): ChatThread[] {
   try {
     const raw = window.localStorage.getItem(storeKey(machineId));
     if (raw) {
       const p = JSON.parse(raw) as { threads: ChatThread[] };
-      return (p.threads ?? []).map((t) => ({ ...t, messages: t.messages.map(settle) }));
+      return p.threads ?? [];
     }
   } catch {
     /* storage unavailable or corrupt: start empty */
@@ -91,7 +92,7 @@ function loadThreads(machineId: string): ChatThread[] {
     if (!raw) return [];
     const p = JSON.parse(raw) as { messages: Msg[]; focus: Focus };
     if (!p.messages?.length) return [];
-    const messages = p.messages.map(settle);
+    const messages = p.messages;
     return [{ id: nextId(), title: titleOf(messages), messages, focus: p.focus ?? null, updatedAt: Date.now() }];
   } catch {
     return [];
@@ -100,7 +101,7 @@ function loadThreads(machineId: string): ChatThread[] {
 
 function saveThreads(machineId: string, threads: ChatThread[]) {
   try {
-    const slim = threads.slice(0, MAX_THREADS).map((t) => ({ ...t, messages: t.messages.slice(-MAX_MESSAGES).map(settle) }));
+    const slim = threads.slice(0, MAX_THREADS).map((t) => ({ ...t, messages: t.messages.slice(-MAX_MESSAGES) }));
     window.localStorage.setItem(storeKey(machineId), JSON.stringify({ threads: slim }));
   } catch {
     /* storage full or unavailable: conversations stay in memory */
@@ -151,11 +152,18 @@ export interface CopilotState {
   setViewing: (on: boolean) => void;
   /** `label` is what the user bubble shows (a suggestion's text with names instead of IDs). */
   send: (q: string, label?: string) => void;
-  onDone: (id: string) => void;
+  /** The signed-in account's own questions (assetiq_questions), in order. */
+  questions: string[];
+  /** True while an answer is being worked out. */
+  thinking: boolean;
   onAction: (msgId: string, a: ActionSpec) => void;
   newChat: () => void;
   selectChat: (id: string) => void;
+  /** Removes a conversation; it can be brought back with `undoDelete` for a few seconds. */
   deleteChat: (id: string) => void;
+  /** The conversation deleted last, while it can still be brought back. */
+  deleted: { id: string; title: string } | null;
+  undoDelete: () => void;
 }
 
 const CopilotContext = createContext<CopilotState | null>(null);
@@ -176,7 +184,23 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
   const fleet = useKilnFleet();
   const fleetRef = useRef(fleet);
   fleetRef.current = fleet;
-  const { machines, selectedPlantId } = useIndustrialData();
+  const { machines, selectedPlantId, currentUser, plants } = useIndustrialData();
+  // The account's own questions; the user id keeps one account's list out of another's cache.
+  const questionList = useApi<AssetIqQuestion[]>(currentUser ? `/api/assetiq/questions?u=${encodeURIComponent(currentUser.id)}` : null).data;
+  const questionsRef = useRef<AssetIqQuestion[]>([]);
+  questionsRef.current = questionList ?? [];
+  const plantTabs = usePlantMachineTabs();
+  const prefixedRef = useRef<PrefixedContext | null>(null);
+  prefixedRef.current = {
+    plantId: selectedPlantId,
+    plantName: plants.find((p) => p.id === selectedPlantId)?.name ?? "This plant",
+    machines: machines.filter((m) => m.plantId === selectedPlantId).map((m) => ({ id: m.id, name: m.name })),
+    plants: plants.map((p) => ({ id: p.id, name: p.name })),
+    frames: Object.fromEntries(Object.entries(fleet).map(([id, s]) => [id, s.frame])),
+    shortNames: Object.fromEntries(plantTabs.flatMap((t) => (t.machineId ? [[t.machineId, t.label]] : []))),
+    allNames: Object.fromEntries(machines.map((m) => [m.id, m.name])),
+  };
+  const [thinking, setThinking] = useState(false);
   // Alarms come from the database: the plant's open findings and the primary machine's events.
   const openUrl = selectedPlantId ? `/api/findings?plantId=${encodeURIComponent(selectedPlantId)}&status=open&limit=500` : null;
   const plantFindings = useApi<FindingDto[]>(openUrl, { refreshMs: DISPLAY_MS }).data;
@@ -236,8 +260,8 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
   }, [threads, loadedFor]);
 
   /** Appends to the open thread, starting one when none is open. */
-  const append = useCallback((add: Msg[], focus?: Focus) => {
-    let tid = activeRef.current;
+  const append = useCallback((add: Msg[], focus?: Focus, threadId?: string): string => {
+    let tid = threadId ?? activeRef.current;
     if (!tid) {
       tid = nextId();
       activeRef.current = tid;
@@ -250,6 +274,7 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
       const next: ChatThread = { ...cur, messages, focus: focus === undefined ? cur.focus : focus, title: cur.title || titleOf(messages), updatedAt: Date.now() };
       return [next, ...ts.filter((t) => t.id !== id)].slice(0, MAX_THREADS);
     });
+    return id;
   }, []);
 
   const pushInsight = useCallback(
@@ -261,7 +286,7 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
       if (threadsRef.current.some((t) => t.messages.some((m) => m.findingId === findingId))) return;
       const raw = findingInsight(finding, { frame: f, focus: null, machineId: primaryRef.current, record: recordRef.current });
       const answer = namedAnswer(raw, f.defs, machineNamesRef.current);
-      append([{ id: nextId(), role: "assistant", text: answer.text, answer, fresh: true, proactive: true, severity: finding.severity, findingId, clock: f.clock }], answer.focus);
+      append([{ id: nextId(), role: "assistant", text: answer.text, answer, proactive: true, severity: finding.severity, findingId, clock: f.clock }], answer.focus);
     },
     [append],
   );
@@ -300,7 +325,25 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
   const send = useCallback(
     (q: string, label?: string) => {
       const f = frameRef.current;
-      if (!f) return;
+      // One of the account's own questions: answered from the account's live data (any plant, live engine or not).
+      const pq = matchQuestion(q, questionsRef.current);
+      if (pq && prefixedRef.current) {
+        const tid = append([{ id: nextId(), role: "user", text: label ?? pq.question }]);
+        setThinking(true);
+        void answerPrefixed(pq, prefixedRef.current)
+          // These answers are written with names already (no tag or machine codes to swap).
+          .then((answer) => append([{ id: nextId(), role: "assistant", text: answer.text, answer }], answer.focus, tid))
+          .catch(() => append([{ id: nextId(), role: "note", text: "That answer could not be worked out just now. Try again in a moment." }], undefined, tid))
+          .finally(() => setThinking(false));
+        return;
+      }
+      if (!f) {
+        append([
+          { id: nextId(), role: "user", text: label ?? q },
+          { id: nextId(), role: "note", text: "This plant has no live model to answer free questions from. Ask one of the suggested questions: they read the plant's stored readings and alarms." },
+        ]);
+        return;
+      }
       const sid = scopeRef.current;
       const scoped = sid ? fleetRef.current[sid]?.frame : null;
       let raw: CopilotAnswer;
@@ -314,14 +357,10 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
         raw = ask(q, { frame: f, focus: focusRef.current, machineId: primaryRef.current, plant: plantRef.current, record: recordRef.current });
       }
       const answer = namedAnswer(raw, defsOf(raw.machineId, f), machineNamesRef.current);
-      append([{ id: nextId(), role: "user", text: label ?? q }, { id: nextId(), role: "assistant", text: answer.text, answer, fresh: true }], answer.focus);
+      append([{ id: nextId(), role: "user", text: label ?? q }, { id: nextId(), role: "assistant", text: answer.text, answer }], answer.focus);
     },
     [append, recordOf],
   );
-
-  const onDone = useCallback((id: string) => {
-    setThreads((ts) => ts.map((t) => (t.messages.some((x) => x.id === id && x.fresh) ? { ...t, messages: t.messages.map((x) => (x.id === id ? settle(x) : x)) } : t)));
-  }, []);
 
   const onAction = useCallback(
     (msgId: string, a: ActionSpec) => {
@@ -358,10 +397,39 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
 
   const newChat = useCallback(() => setActiveId(null), []);
   const selectChat = useCallback((id: string) => setActiveId(id), []);
+  /** The conversation deleted last, with its place in the list, kept for UNDO_MS so it can be brought back. */
+  const [trash, setTrash] = useState<{ thread: ChatThread; index: number; wasActive: boolean } | null>(null);
+  useEffect(() => {
+    if (!trash) return;
+    const t = setTimeout(() => setTrash(null), UNDO_MS);
+    return () => clearTimeout(t);
+  }, [trash]);
+  // A plant switch loads other conversations; the deleted one cannot come back into them.
+  useEffect(() => setTrash(null), [primaryId]);
   const deleteChat = useCallback((id: string) => {
-    setThreads((ts) => ts.filter((t) => t.id !== id));
+    const ts = threadsRef.current;
+    const index = ts.findIndex((t) => t.id === id);
+    if (index < 0) return;
+    setTrash({ thread: ts[index], index, wasActive: activeRef.current === id });
+    setThreads((cur) => cur.filter((t) => t.id !== id));
     setActiveId((cur) => (cur === id ? null : cur));
   }, []);
+  const trashRef = useRef(trash);
+  trashRef.current = trash;
+  const undoDelete = useCallback(() => {
+    const d = trashRef.current;
+    if (!d) return;
+    setTrash(null);
+    setThreads((ts) => {
+      if (ts.some((t) => t.id === d.thread.id)) return ts;
+      const next = [...ts];
+      next.splice(Math.min(d.index, next.length), 0, d.thread);
+      return next.slice(0, MAX_THREADS);
+    });
+    // Reopen it only when nothing else was started in the meantime.
+    if (d.wasActive && activeRef.current === null) setActiveId(d.thread.id);
+  }, []);
+  const deleted = useMemo(() => (trash ? { id: trash.thread.id, title: trash.thread.title } : null), [trash]);
 
   const focus = active?.focus ?? null;
   const scopeId = scope && fleet[scope] ? scope : null;
@@ -370,10 +438,19 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
   const chipRecord = scopeId ? recordOf(scopeId) : record;
   const chipRecordKey = chipRecord ? chipRecord.findings.filter((x) => x.clearedAt === null).map((x) => x.id).join(",") : "";
   const pendKey = chipFrame ? pendingRules(chipFrame).map((r) => r.id).join(",") : "";
-  const chips = useMemo(
+  const engineChips = useMemo(
     () => (chipFrame ? suggestions(chipFrame, focus?.machineId && focus.machineId !== (scopeId ?? primaryId) ? null : focus, chipRecord) : []),
     [Boolean(chipFrame), chipRecordKey, pendKey, focus, primaryId, scopeId], // eslint-disable-line react-hooks/exhaustive-deps
   );
+  // The account's own questions come first: the next three not yet asked in this conversation.
+  const questions = useMemo(() => (questionList ?? []).map((q) => q.question), [questionList]);
+  const askedKey = (active?.messages ?? []).filter((m) => m.role === "user").map((m) => m.text).join("|");
+  const chips = useMemo(() => {
+    if (!questions.length) return engineChips;
+    const asked = new Set(askedKey.split("|"));
+    const next = questions.filter((q) => !asked.has(q));
+    return (next.length ? next : questions).slice(0, 3);
+  }, [questions, askedKey, engineChips]);
   const defs = chipFrame?.defs;
   const chipLabel = useCallback((c: string) => (defs ? nameIds(c, defs, machineNamesRef.current) : c), [defs]);
 
@@ -384,8 +461,13 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
     [fleetIds, nameOf],
   );
   const abnormal = (xs: FindingDto[]) => xs.filter((x) => x.clearedAt === null && x.severity !== "Normal").length;
+  const plantMachineCount = machines.filter((m) => m.plantId === selectedPlantId).length;
   const header = useMemo<CopilotHeader | null>(() => {
-    if (!frame) return null;
+    // A plant without a live model still has its stored readings and alarms (the account's questions read those).
+    if (!frame)
+      return questions.length
+        ? { machineId: null, label: "Full line", machineCount: plantMachineCount, overall: null, condition: null, signalCount: null, ruleCount: null, openFindings: plantFindings ? abnormal(plantFindings) : null }
+        : null;
     if (scopeId) {
       const f = fleet[scopeId].frame;
       return {
@@ -409,13 +491,13 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
       ruleCount: null,
       openFindings: plantFindings ? abnormal(plantFindings) : null,
     };
-  }, [frame, scopeId, fleet, nameOf, plantFindings]);
+  }, [frame, scopeId, fleet, nameOf, plantFindings, questions.length, plantMachineCount]);
   const nudgeCritical = nudges.some((id) => record?.findings.find((x) => x.id === id)?.severity === "Critical");
   const messages = active?.messages;
 
   const value = useMemo<CopilotState>(
     () => ({
-      ready: Boolean(sim && frame),
+      ready: Boolean(sim && frame) || questions.length > 0,
       header,
       scopes,
       scope: scopeId,
@@ -432,13 +514,16 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
       viewing,
       setViewing,
       send,
-      onDone,
+      questions,
+      thinking,
       onAction,
       newChat,
       selectChat,
       deleteChat,
+      deleted,
+      undoDelete,
     }),
-    [sim, frame, header, scopes, scopeId, setScope, threads, activeId, messages, chips, chipLabel, doneActions, nudges.length, nudgeCritical, showNudges, viewing, setViewing, send, onDone, onAction, newChat, selectChat, deleteChat],
+    [sim, frame, header, scopes, scopeId, setScope, threads, activeId, messages, chips, chipLabel, doneActions, nudges.length, nudgeCritical, showNudges, viewing, setViewing, send, questions, thinking, onAction, newChat, selectChat, deleteChat, deleted, undoDelete],
   );
 
   return <CopilotContext.Provider value={value}>{children}</CopilotContext.Provider>;

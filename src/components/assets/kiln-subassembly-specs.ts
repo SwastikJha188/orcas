@@ -10,7 +10,7 @@
  * under that sub-assembly; label, value, unit and status are filled from the
  * catalog / live frame by the consumer.
  */
-import { SIGNAL_BY_TAG } from "@/lib/kiln-sim/signals";
+import { SIGNAL_BY_TAG } from "@shared/lib/kiln-sim/signals";
 import type { DiagramPin } from "./kiln-component-diagrams";
 
 /** One drawing window: its id (the DB sub-assembly id), title block and pin geometry. */

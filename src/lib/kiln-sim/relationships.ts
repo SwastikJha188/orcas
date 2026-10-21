@@ -17,8 +17,8 @@
  * estimated ambient (D5 Table 9.5, last row).
  */
 
-import { BEARING_OFFSETS, VIB_BASE, type SimFrame } from "./engine";
-import { SIGNALS, SIGNAL_BY_TAG, SUBASSEMBLIES, type SubassemblyId } from "./signals";
+import { BEARING_OFFSETS, VIB_BASE, type SimFrame } from "@shared/lib/kiln-sim/engine";
+import { SIGNALS, SIGNAL_BY_TAG, SUBASSEMBLIES, type SubassemblyId } from "@shared/lib/kiln-sim/signals";
 
 /* ------------------------------------------------------------------ */
 /* Nodes                                                               */

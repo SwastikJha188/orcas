@@ -34,7 +34,7 @@ export function Table<T>({
         <thead>
           <tr>
             {columns.map((col) => (
-              <th key={col.key} data-col={col.key} style={{ width: col.width }}>
+              <th key={col.key} scope="col" data-col={col.key} style={{ width: col.width }}>
                 {col.header}
               </th>
             ))}
@@ -48,7 +48,7 @@ export function Table<T>({
               <tr
                 key={id}
                 className={[isSelected ? "active" : "", onRowClick ? "is-clickable" : ""].filter(Boolean).join(" ") || undefined}
-                {...(onRowClick ? rowActivate(() => onRowClick(row)) : {})}
+                {...(onRowClick ? rowActivate(() => onRowClick(row), isSelected) : {})}
               >
                 {columns.map((col) => (
                   <td key={col.key} data-col={col.key} data-label={col.header || undefined}>

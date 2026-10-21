@@ -16,7 +16,7 @@
 .sim-head-main {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -24,7 +24,7 @@
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: 8px 14px;
+  gap: 8px 16px;
 }
 
 .sim-clock {
@@ -38,7 +38,7 @@
 .sim-live {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: var(--fs-md);
   font-weight: 500;
   color: var(--status-success);
@@ -102,7 +102,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 10px;
+  gap: 8px 12px;
 }
 
 .sim-sep {
@@ -117,21 +117,13 @@
   margin: 0;
 }
 
-.sim-kpi dd {
-  margin: 0;
-}
-
-.sim-kpi[data-tone] .ast-kpi-value {
-  color: var(--tone);
-}
-
 /* ---------------------------------------------------------------- cards */
 .sim-card-head-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 10px 16px;
+  gap: 12px 16px;
 }
 
 .sim-card-head-text {
@@ -151,11 +143,11 @@
 
 /* Card that holds a divider-list table: the table owns its own padding. */
 .sim-table-card {
-  padding: 6px 4px;
+  padding: 4px 4px;
 }
 
 .sim-card-head {
-  padding: 10px 16px 0;
+  padding: 8px 16px 0;
   margin-bottom: 4px;
 }
 
@@ -168,7 +160,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .sim-progress {
@@ -292,7 +284,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 20px;
+  gap: 8px 20px;
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--separator);
@@ -319,7 +311,7 @@
 }
 
 .sim-id {
-  padding: 1px 7px;
+  padding: 1px 8px;
   border-radius: var(--corner-sm);
   border: 1px solid color-mix(in srgb, var(--tone) 40%, transparent);
   color: var(--tone);
@@ -334,7 +326,7 @@
 
 /* Trailing row action revealed on hover / focus, per the table style. */
 .sim-register .sim-row-action {
-  padding: 4px 14px;
+  padding: 4px 12px;
   font-size: var(--fs-sm);
   opacity: 0;
   transition: opacity var(--dur-fast) var(--ease-out);
@@ -353,7 +345,7 @@
 
 .sim-row-actions {
   display: inline-flex;
-  gap: 6px;
+  gap: 8px;
 }
 
 .sim-row-actions .btn-pill {
@@ -393,7 +385,7 @@
 .sim-link:focus-visible {
   outline: 2px solid var(--signal-blue);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: var(--corner-card);
 }
 
 /* Inline confirmation for the destructive Reset. */
@@ -420,13 +412,13 @@
 .simc-card {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 
 .simc-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px 28px;
+  gap: 12px 28px;
 }
 
 .simc-action-group {
@@ -449,7 +441,7 @@
   grid-template-columns: minmax(160px, 220px) minmax(0, 1fr) auto;
   align-items: end;
   gap: 12px;
-  padding-top: 14px;
+  padding-top: 12px;
   border-top: 1px solid var(--separator);
 }
 
@@ -516,7 +508,7 @@
 .simc-health {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .simc-health-value {

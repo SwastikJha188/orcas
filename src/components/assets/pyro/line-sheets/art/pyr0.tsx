@@ -14,7 +14,7 @@
  */
 import React, { useId } from "react";
 import { MX } from "@/components/assets/machine-kit/machine-kit";
-import { PYRO_SIGNALS, PYRO_SUBASSEMBLIES } from "@/lib/pyro-sim/signals";
+import { PYRO_SIGNALS, PYRO_SUBASSEMBLIES } from "@shared/lib/pyro-sim/signals";
 import type { LineSheetArt } from "../types";
 import { sheet as f0 } from "./f0";
 import { sheet as p0 } from "./p0";

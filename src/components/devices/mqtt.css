@@ -18,20 +18,6 @@
   flex-wrap: wrap;
 }
 
-.mq-confirm {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.mq-filter {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
 .mq-lead {
   display: inline-flex;
   align-items: center;
@@ -62,7 +48,7 @@
 .mq-flags {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -84,9 +70,10 @@
   color: var(--status-danger);
 }
 
-/* A disabled broker reads as switched off; its actions stay at full strength. */
-.mq-brokers .ui-table tbody tr:has([data-broker-off]) td:not(:last-child) {
-  opacity: 0.55;
+/* A disabled broker reads as switched off (muted text, contrast kept); its actions stay at full strength. */
+.mq-brokers .ui-table tbody tr:has([data-broker-off]) td:not(:last-child),
+.mq-brokers .ui-table tbody tr:has([data-broker-off]) td:not(:last-child) :is(.ast-cell-title, .ast-cell-text, .ast-num) {
+  color: var(--text-muted);
 }
 
 .mq-brokers .ui-table tbody tr.is-clickable {
@@ -98,12 +85,12 @@
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
 }
 
 .mq-action .btn-pill {
-  padding: 5px 14px;
+  padding: 4px 12px;
   font-size: var(--fs-md);
 }
 
@@ -132,7 +119,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 10px 4px 6px;
+  padding: 4px 8px 4px 4px;
   border: none;
   border-radius: var(--corner-pill);
   background: transparent;
@@ -212,7 +199,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .mq-subs {
@@ -220,7 +207,7 @@
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 
 .mq-root code {
@@ -228,21 +215,11 @@
   font-size: var(--fs-md);
   font-weight: 500;
   color: var(--dx-ink);
-  padding: 1px 6px;
+  padding: 1px 4px;
   border-radius: var(--corner-sm);
   border: 1px solid var(--border-subtle);
   background: var(--surface-bg);
   overflow-wrap: anywhere;
-}
-
-/* ---------------------------------------------------------------- dialog */
-.mq-confirm {
-  font-size: var(--fs-md);
-  color: var(--dx-ink);
-}
-
-.btn-pill.mq-danger {
-  color: var(--status-danger);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -256,6 +233,6 @@
 .mq-tags {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
 }

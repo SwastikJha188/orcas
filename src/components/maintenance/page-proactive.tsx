@@ -2,14 +2,14 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { PillButton, PillNav, rowActivate, type Tone } from "@/components/ui";
-import { isOpenStage } from "@/lib/pms";
+import { isOpenStage } from "@shared/lib/pms";
 import { formatLocalTime } from "@/lib/time";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { Empty, KpiStrip, Section } from "@/components/assets/analysis/an-ui";
 import { formatRulHours } from "@/components/assets/prognosis/prognosis-derive";
-import type { PmsWorkOrder } from "@/types/pms";
-import type { TrendLife } from "@/types/maintenance-types";
+import type { PmsWorkOrder } from "@shared/types/pms";
+import type { TrendLife } from "@shared/types/maintenance-types";
 import type { Outcome, PmsModel } from "./pms-model";
 import { machineName, pmsCall, prognosisText, woRef } from "./pms-model";
 import { lifeUnits, partLife, useRunningHours, useServiceParts, useTrendLives, type PartLife } from "./maint-types-model";

@@ -16,7 +16,7 @@
 .pg-sensors-quality {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: var(--fs-md);
   font-weight: 500;
   color: var(--page-fg);
@@ -31,19 +31,9 @@
   color: var(--text-muted);
 }
 
-/* Diagram card: data-quality mark in place of the point label. */
-.pg-sensors-qmark {
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  letter-spacing: 0;
-  color: var(--tone);
-  white-space: nowrap;
-}
-
 .pg-sensors-flag {
   display: inline-block;
-  margin-left: 6px;
+  margin-left: 8px;
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   font-weight: 600;
@@ -70,7 +60,7 @@
 .pg-sensors-id {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -89,8 +79,8 @@
 /* The register carries ten columns: tighter cell padding keeps it inside the card at 1280 px. */
 .pg-sensors-register .ast-table.ui-table-container .ui-table thead th,
 .pg-sensors-register .ast-table.ui-table-container .ui-table tbody td {
-  padding-left: 10px;
-  padding-right: 10px;
+  padding-left: 8px;
+  padding-right: 8px;
 }
 
 .pg-sensors-wrap {
@@ -111,7 +101,7 @@
 
 /* Group header rows in the register (no hover capsule: th, not td). */
 .ast-table.ui-table-container .ui-table tr.pg-sensors-group th {
-  padding: 14px 16px 6px;
+  padding: 12px 16px 4px;
   text-align: left;
   font-size: var(--fs-sm);
   font-weight: 600;
@@ -121,7 +111,7 @@
 }
 
 .ast-table.ui-table-container .ui-table tbody:first-of-type tr.pg-sensors-group th {
-  padding-top: 6px;
+  padding-top: 4px;
 }
 
 .pg-sensors-group th {
@@ -130,7 +120,7 @@
 
 .pg-sensors-group-name {
   color: var(--dx-ink);
-  margin-right: 10px;
+  margin-right: 12px;
 }
 
 .pg-sensors-group .ast-caption {
@@ -141,7 +131,7 @@
 .pg-sensors-register {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -168,7 +158,7 @@
   align-items: baseline;
   gap: 2px 0;
   margin: 0;
-  padding-bottom: 6px;
+  padding-bottom: 4px;
   font-size: var(--fs-sm);
   font-weight: 600;
   border-bottom: 1px solid var(--separator);
@@ -194,9 +184,9 @@
 .pg-sensors-tile {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
-  padding: 12px 14px;
+  padding: 12px 12px;
   font: inherit;
   color: inherit;
   text-align: left;
@@ -258,7 +248,7 @@
   flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 4px 10px;
+  gap: 4px 12px;
 }
 
 .pg-sensors-tile-value .pg-sensors-flag {
@@ -268,7 +258,7 @@
 .pg-sensors-tile-facts {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 3px 12px;
+  gap: 4px 12px;
   padding-top: 8px;
   border-top: 1px solid var(--separator);
   font-size: var(--fs-sm);
@@ -285,7 +275,7 @@
 
 @media (max-width: 599px) {
   .pg-sensors-tiles {
-    padding: 6px 10px;
+    padding: 4px 8px;
   }
 }
 
@@ -294,7 +284,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border-radius: var(--corner-sm);
   border-left: 2px solid var(--tone);
   background: var(--row-hover-bg, transparent);
@@ -310,7 +300,7 @@
 .pg-sensors-spark {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 /* ---------------------------------------------------------------- section cards */
@@ -358,7 +348,7 @@
 .pg-sensors-calc {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .pg-sensors-calc .pg-sensors-sub {
@@ -421,28 +411,8 @@
   margin-left: auto;
 }
 
-/* Channel tiles sit on the section card: plain surface, no second layer of
-   frosted glass, no float shadow, no hover lift. */
-.pg-sensors .ast-smw-card {
-  background: var(--hover-faint);
-  border-color: var(--separator);
-  box-shadow: none;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-}
-
-.pg-sensors .ast-smw-card:hover,
-.pg-sensors .ast-smw-card[data-hot] {
-  transform: none;
-  background: var(--row-hover-bg);
-}
-
 .pg-sensors .ast-smw-card:is([data-tone="warn"], [data-tone="bad"]) {
   border-color: color-mix(in srgb, var(--tone) 45%, transparent);
-}
-
-.pg-sensors .ast-smw-card[aria-pressed="true"] {
-  border-color: var(--dx-ink);
 }
 
 /* ---------------------------------------------------------------- card sections (Section bare + TileGrid) */
@@ -461,60 +431,6 @@
   align-items: flex-start;
 }
 
-/* ---------------------------------------------------------------- card charts
-   One graph per measurement type (sensor-tile-chart.tsx). Neutral ink while
-   the reading is inside its limits; limit zones and off-normal spans in tone. */
-.stc {
-  --stc-ink: var(--dx-ink);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  width: 100%;
-}
-
-.stc[data-tone] {
-  --stc-ink: var(--tone);
-}
-
-.stc svg {
-  display: block;
-  overflow: visible;
-}
-
-.stc-caption {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stc-line,
-.stc-model {
-  fill: none;
-  stroke: var(--stc-ink);
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.stc-model {
-  stroke: var(--text-muted);
-  stroke-width: 1;
-  stroke-dasharray: 3 3;
-}
-
-.stc-area {
-  fill: var(--stc-ink);
-  opacity: 0.07;
-}
-
-.stc-dot {
-  fill: var(--stc-ink);
-  stroke: var(--card-bg);
-  stroke-width: 1.5;
-}
-
 .stc-zone,
 .stc-arc,
 .stc-iso,
@@ -526,145 +442,6 @@
 
 :is(.stc-zone, .stc-arc, .stc-iso, .stc-run, .stc-col, .stc-limit--mark)[data-z="bad"] {
   --z: var(--status-danger);
-}
-
-.stc-zone {
-  fill: var(--z);
-  opacity: 0.1;
-}
-
-.stc-zone--track {
-  opacity: 0.22;
-}
-
-.stc-limit {
-  stroke: var(--text-muted);
-  stroke-width: 1;
-  stroke-dasharray: 2 3;
-  opacity: 0.7;
-}
-
-.stc-limit--mark {
-  stroke: var(--z);
-  stroke-dasharray: none;
-  stroke-width: 1.5;
-  opacity: 1;
-}
-
-.stc-base,
-.stc-grid {
-  stroke: var(--separator);
-  stroke-width: 1;
-}
-
-.stc-col {
-  fill: var(--stc-ink);
-  opacity: 0.32;
-}
-
-.stc-col[data-now] {
-  opacity: 1;
-}
-
-.stc-col[data-z] {
-  fill: var(--z);
-  opacity: 0.85;
-}
-
-.stc-track,
-.stc-arc,
-.stc-fill {
-  fill: none;
-  stroke-width: 5;
-  stroke-linecap: butt;
-}
-
-.stc-track {
-  stroke: var(--dx-track);
-}
-
-.stc-arc {
-  stroke: var(--z);
-  opacity: 0.55;
-}
-
-.stc-fill {
-  stroke: var(--stc-ink);
-  stroke-width: 3;
-  stroke-linecap: round;
-}
-
-.stc-tick {
-  stroke: var(--text-muted);
-  stroke-width: 1;
-}
-
-.stc-needle {
-  stroke: var(--stc-ink);
-  stroke-width: 1.8;
-  stroke-linecap: round;
-}
-
-.stc-hub,
-.stc-pointer {
-  fill: var(--stc-ink);
-}
-
-.stc-ref {
-  stroke: var(--text-muted);
-  stroke-width: 2;
-  stroke-linecap: round;
-}
-
-.stc-label {
-  fill: var(--text-muted);
-  font-family: var(--font-ui);
-  font-size: var(--fs-3xs);
-  font-variant-numeric: tabular-nums;
-}
-
-.stc-label--zone {
-  font-weight: 600;
-}
-
-.stc-tube {
-  fill: var(--dx-track);
-}
-
-.stc-fill-solid {
-  fill: var(--stc-ink);
-}
-
-.stc-fill-soft {
-  fill: var(--stc-ink);
-  opacity: 0.28;
-}
-
-.stc-surface {
-  stroke: var(--stc-ink);
-  stroke-width: 1.5;
-}
-
-.stc-vessel {
-  fill: none;
-  stroke: var(--text-muted);
-  stroke-width: 1.2;
-  stroke-linejoin: round;
-}
-
-.stc-dwell {
-  stroke: var(--stc-ink);
-  stroke-width: 1;
-  opacity: 0.12;
-}
-
-.stc-iso {
-  fill: var(--dx-ink);
-  opacity: 0.03;
-}
-
-.stc-iso[data-z="b"] {
-  opacity: 0.07;
 }
 
 .stc-iso:is([data-z="warn"], [data-z="bad"]) {

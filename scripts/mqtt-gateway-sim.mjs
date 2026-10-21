@@ -96,6 +96,29 @@ function hostPort(url) {
   }
 }
 
+/**
+ * Alert / danger level of each linked measurement, from its own limit (a point
+ * has no limits of its own), so the simulated values cross them now and then.
+ */
+async function loadLimits(points) {
+  const out = new Map();
+  for (const machineId of new Set(points.map((p) => p.machineId).filter(Boolean))) {
+    try {
+      const res = await fetch(`${APP_URL}/api/measurements?machineId=${encodeURIComponent(machineId)}`, { signal: AbortSignal.timeout(5000) });
+      for (const m of (await res.json())?.data ?? []) {
+        const l = m.limit;
+        if (!l || l.direction === "lo") continue; // the simulator only pushes values upward
+        const alert = l.warnValue ?? l.warnHi ?? null;
+        const danger = l.alarmValue ?? l.alarmHi ?? null;
+        if (alert !== null || danger !== null) out.set(m.id, { alert, danger });
+      }
+    } catch (err) {
+      console.warn(`[sim] limits of ${machineId} unavailable (${err.message}); its points publish without thresholds.`);
+    }
+  }
+  return out;
+}
+
 async function loadTopology() {
   let registry;
   try {
@@ -122,6 +145,7 @@ async function loadTopology() {
   }
   if (!broker.enabled) console.warn(`[sim] broker ${broker.id} is disabled in the registry; the app will not read what this publishes until it is enabled.`);
 
+  const limits = await loadLimits(registry.points ?? []);
   const formats = new Map((registry.formats ?? []).map((f) => [f.id, f]));
   // Card types from the registry's cards (source + card code), else the source kind.
   const cardTypes = new Map((registry.cards ?? []).filter((c) => c.cardType).map((c) => [`${c.sourceId}\u0000${c.code}`, c.cardType]));
@@ -149,8 +173,8 @@ async function loadTopology() {
               name: p.name,
               card: cardTypes.get(`${s.id}\u0000${p.slot}`) ?? s.kind,
               unit: p.unit ?? "",
-              alert: p.alertLimit,
-              danger: p.dangerLimit,
+              alert: limits.get(p.measurementId)?.alert ?? null,
+              danger: limits.get(p.measurementId)?.danger ?? null,
               dataType: p.dataType,
             })),
         }));

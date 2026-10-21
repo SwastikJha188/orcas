@@ -67,7 +67,7 @@ export function AssetHierarchyPage({ viewSwitcher }: { viewSwitcher?: React.Reac
             ) : loadError ? (
               <>
                 <strong className="hx-empty-title">Could not load the plant&apos;s equipment</strong>
-                {loadError}
+                <span title={loadError}>Check the connection, then reload the page.</span>
               </>
             ) : (
               <>

@@ -34,7 +34,7 @@ export function PillNav<T extends string = string>({
   ariaLabel,
   arrows = false,
 }: PillNavProps<T>) {
-  const navRef = useRef<HTMLElement | null>(null);
+  const navRef = useRef<HTMLDivElement | null>(null);
   const activeIdx = items.findIndex((item) => item.id === activeId);
 
   useEffect(() => {
@@ -45,7 +45,8 @@ export function PillNav<T extends string = string>({
     // Scroll only the horizontal pill container if it overflows, never the page.
     if (nav.scrollWidth > nav.clientWidth) {
       const targetLeft = activeEl.offsetLeft - nav.clientWidth / 2 + activeEl.offsetWidth / 2;
-      nav.scrollTo({ left: Math.max(0, targetLeft), behavior: "smooth" });
+      const calm = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      nav.scrollTo({ left: Math.max(0, targetLeft), behavior: calm ? "auto" : "smooth" });
     }
   }, [activeId]);
 
@@ -56,15 +57,30 @@ export function PillNav<T extends string = string>({
     onChange(items[nextIdx].id);
   };
 
+  // Tabs pattern: one tab stop for the whole row, arrows / Home / End move and select.
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const keys: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+    let next: number | null = null;
+    if (e.key in keys) next = ((activeIdx >= 0 ? activeIdx : 0) + keys[e.key] + items.length) % items.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = items.length - 1;
+    if (next === null || items.length === 0) return;
+    e.preventDefault();
+    onChange(items[next].id);
+    navRef.current?.querySelectorAll<HTMLButtonElement>(".nav-pill")[next]?.focus();
+  };
+  const tabStop = activeIdx >= 0 ? activeIdx : 0;
+
   const navNode = (
-    <nav
+    <div
       ref={navRef}
       className={`nav-pill-group ${wrap ? "nav-pill-wrap" : "nav-pill-scroll"} ${className}`}
       role="tablist"
       aria-label={ariaLabel}
       style={style}
+      onKeyDown={onKeyDown}
     >
-      {items.map((item) => {
+      {items.map((item, i) => {
         const isActive = item.id === activeId;
         return (
           <button
@@ -72,6 +88,7 @@ export function PillNav<T extends string = string>({
             type="button"
             role="tab"
             aria-selected={isActive}
+            tabIndex={i === tabStop ? 0 : -1}
             className={`nav-pill ${isActive ? "active" : ""}`}
             onClick={() => onChange(item.id)}
           >
@@ -81,7 +98,7 @@ export function PillNav<T extends string = string>({
           </button>
         );
       })}
-    </nav>
+    </div>
   );
 
   if (!arrows || items.length <= 1) return navNode;

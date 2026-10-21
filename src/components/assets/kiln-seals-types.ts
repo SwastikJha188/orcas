@@ -75,7 +75,7 @@ export interface KilnSealsHealthScores {
 export interface EvaluatedRule {
   id: string; // "R-SHL-03" etc
   name: string;
-  category: import("@/lib/kiln-sim/rules").RuleCategory;
+  category: import("@shared/lib/kiln-sim/rules").RuleCategory;
   severity: "Normal" | "Alert" | "Critical";
   status: "ACTIVE" | "PENDING" | "QUIET";
   logicDescription: string;

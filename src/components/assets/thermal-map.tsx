@@ -13,7 +13,7 @@
  */
 
 import React, { memo, useEffect, useId, useMemo, useRef, useState } from "react";
-import type { Severity } from "@/lib/kiln-sim/signals";
+import type { Severity } from "@shared/lib/kiln-sim/signals";
 import {
   SHELL_ALERT,
   SHELL_DA,
@@ -28,7 +28,7 @@ import {
   shellZoneAt,
   type HandheldPoint,
   type ShellMap,
-} from "@/lib/kiln-sim/shell-map";
+} from "@shared/lib/kiln-sim/shell-map";
 import { MX, MachineLabel, MachinePad, MachineSvg, PAINT, Bolt } from "./machine-kit/machine-kit";
 import { COLD_BAND, signed, tempTone, type HotSpot } from "./thermal-derive";
 

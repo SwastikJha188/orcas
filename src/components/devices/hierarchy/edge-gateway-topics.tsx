@@ -4,11 +4,11 @@ import React, { useEffect, useMemo, useState } from "react";
 import { FormNote, PillButton, Table, type Column } from "@/components/ui";
 import { StatusTag } from "@/components/assets/assets-shell-ui";
 import { useEdge } from "@/providers/edge-context";
-import { topicMatchesFilter } from "@/lib/edge-format";
+import { topicMatchesFilter } from "@shared/lib/edge-format";
 import { formatLocalTime } from "@/lib/time";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
-import type { EdgeGateway, RawSample } from "@/types/edge";
-import type { ApiResponse } from "@/types/api";
+import type { EdgeGateway, RawSample } from "@shared/types/edge";
+import type { ApiResponse } from "@shared/types/api";
 import { type EdgeIndex, ago } from "../edge-model";
 import { gatewayFormat } from "./edge-detect";
 import { IconPlus } from "./edge-icons";
@@ -219,10 +219,10 @@ export function GatewayTopics({ ix, gw, subscription, now }: { ix: EdgeIndex; gw
       </h2>
       <div className="ast-card pg-table-card">
         {!broker ? (
-          <div className="ast-empty">Link this data collector to a data connection (MQTT broker) to listen on its channels.</div>
+          <div className="ast-empty">Link this gateway to a message server (MQTT broker) to listen on its channels.</div>
         ) : (
           <>
-            {!broker.enabled && <FormNote tone="warn">{broker.name} is switched off, so nothing is being received. Switch it on under Data connections.</FormNote>}
+            {!broker.enabled && <FormNote tone="warn">{broker.name} is switched off, so nothing is being received. Switch it on in its message server settings.</FormNote>}
             <Table
               className="ast-table"
               columns={columns}
@@ -235,7 +235,7 @@ export function GatewayTopics({ ix, gw, subscription, now }: { ix: EdgeIndex; gw
               <div className="hx-topic-detail">
                 <div className="hx-topic-detail-head">
                   <code className="dv-code">{opened.latest.topic}</code>
-                  <span className="ast-caption ast-num">
+                  <span className="ast-caption">
                     {formatLocalTime(opened.latest.at, { date: true, zone: true, timeZone })} · {fmt(opened.latest.bytes)} B
                     {opened.latest.truncated ? " · cut at 16 kB" : ""}
                   </span>
@@ -269,7 +269,7 @@ export function GatewayTopics({ ix, gw, subscription, now }: { ix: EdgeIndex; gw
             )}
             {gatewayFormat(ix, gw.formatId)?.kind !== "json" && gw.topics.length > 0 && (
               <p className="ast-caption hx-topic-hint">
-                <StatusTag tone="idle" label="Kept as is" /> This data collector uses the standard ULTRON format, so messages on added channels outside {broker.topicPrefix} are
+                <StatusTag tone="idle" label="Kept as is" /> This gateway uses the standard ULTRON format, so messages on added channels outside {broker.topicPrefix} are
                 kept as they arrive; pick a JSON message format to read them as readings.
               </p>
             )}

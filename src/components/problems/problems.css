@@ -20,16 +20,16 @@
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   border: 1px solid var(--card-border);
   border-radius: var(--corner-card);
-  background: var(--card-bg);
+  background: var(--card-glass-bg);
 }
 .prb-cell {
   position: relative;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
-  padding: 8px 14px;
+  padding: 8px 12px;
   border-left: 1px solid var(--separator);
 }
 .prb-cell:first-child {
@@ -42,11 +42,11 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 3px;
+  gap: 4px;
   width: 100%;
   height: 100%;
   min-width: 0;
-  padding: 8px 14px;
+  padding: 8px 12px;
   border: none;
   background: transparent;
   color: inherit;
@@ -99,7 +99,7 @@
   gap: 8px;
   width: min(380px, calc(100vw - 48px));
   max-height: min(520px, calc(100vh - 220px));
-  padding: 12px 14px;
+  padding: 12px 12px;
   border: 1px solid var(--border-hover);
   border-radius: var(--radius-md);
   background: var(--card-bg);
@@ -147,7 +147,7 @@
 }
 .prb-pop-empty {
   margin: 0;
-  padding: 8px 14px;
+  padding: 8px 12px;
   font-size: var(--fs-md);
   color: var(--text-muted);
 }
@@ -163,7 +163,7 @@
 .prb-mini-table th {
   position: sticky;
   top: 0;
-  padding: 6px 14px;
+  padding: 4px 12px;
   font-size: var(--fs-xs);
   font-weight: 500;
   color: var(--text-muted);
@@ -172,7 +172,7 @@
   white-space: nowrap;
 }
 .prb-mini-table td {
-  padding: 7px 14px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--separator);
   vertical-align: middle;
   line-height: 1.35;
@@ -190,55 +190,6 @@
 .prb-muted-cell {
   color: var(--text-muted);
   min-width: 160px;
-}
-
-/* Segmented filter (alarm filters, guide machines). */
-.prb-seg {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--bg-canvas);
-}
-.prb-seg button {
-  padding: 3px 10px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-muted);
-  font: inherit;
-  font-size: var(--fs-sm);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.prb-seg button:hover {
-  color: var(--dx-ink);
-}
-.prb-seg button[aria-pressed="true"] {
-  background: var(--card-bg);
-  color: var(--dx-ink);
-  box-shadow: inset 0 0 0 1px var(--border-hover);
-}
-
-.prb-small-btn {
-  padding: 3px 10px;
-  border: 1px solid var(--border-hover);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--dx-ink);
-  font: inherit;
-  font-size: var(--fs-sm);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.prb-small-btn:hover:not(:disabled) {
-  border-color: var(--accent-primary);
-}
-.prb-small-btn:disabled {
-  opacity: 0.6;
-  cursor: default;
 }
 
 .prb-link-btn {
@@ -267,7 +218,7 @@
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 10px 16px;
+  gap: 12px 16px;
 }
 .prb-intro {
   margin: 0;
@@ -310,29 +261,21 @@
 .prb-list {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
+  gap: 12px;
 }
 
-/* ---------------------------------------------------------------- case card */
-.prb-case,
+/* ---------------------------------------------------------------- guide card */
 .prb-guide {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
-  padding: 14px 18px;
+  padding: 12px 18px;
 }
-.prb-case-main,
 .prb-guide-main {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
-}
-.prb-case-tags {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
 }
 .prb-machine-chip {
   --tone: var(--text-muted);
@@ -344,55 +287,9 @@
   color: var(--dx-ink);
   line-height: 1.35;
 }
-.prb-title-btn {
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.prb-title-btn:hover {
-  text-decoration: underline;
-}
 .prb-where {
   font-size: var(--fs-sm);
   color: var(--text-muted);
-}
-.prb-next {
-  margin: 0;
-  font-size: var(--fs-md);
-  line-height: 1.4;
-}
-.prb-next[data-empty] {
-  color: var(--text-muted);
-}
-.prb-next-label {
-  color: var(--text-muted);
-}
-.prb-case-side {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  min-width: 200px;
-  text-align: right;
-}
-.prb-owner {
-  font-size: var(--fs-md);
-  font-weight: 500;
-  color: var(--dx-ink);
-}
-.prb-side-line {
-  font-size: var(--fs-sm);
-  color: var(--text-muted);
-}
-.prb-checks {
-  color: var(--signal-blue);
-}
-.prb-open-btn {
-  margin-top: auto;
 }
 
 /* ---------------------------------------------------------------- guides */
@@ -410,7 +307,7 @@
   display: inline-flex;
   align-items: center;
   align-self: flex-start;
-  gap: 6px;
+  gap: 8px;
   margin-top: 4px;
   padding: 0;
   border: none;
@@ -433,12 +330,12 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
-  margin-top: 6px;
-  padding-top: 10px;
+  margin-top: 8px;
+  padding-top: 8px;
   border-top: 1px solid var(--separator);
 }
 .prb-guide-col-title {
-  margin: 0 0 6px;
+  margin: 0 0 8px;
   font-size: var(--fs-xs);
   font-weight: 500;
   color: var(--text-muted);
@@ -459,7 +356,7 @@
 
 /* ---------------------------------------------------------------- dialogs */
 .prb-dialog-note {
-  margin: 0 0 14px;
+  margin: 0 0 16px;
   font-size: var(--fs-md);
   line-height: 1.45;
   color: var(--text-secondary);
@@ -481,13 +378,8 @@
   }
 }
 @media (max-width: 700px) {
-  .prb-case,
   .prb-guide {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .prb-case-side {
-    align-items: flex-start;
-    text-align: left;
   }
 }
 

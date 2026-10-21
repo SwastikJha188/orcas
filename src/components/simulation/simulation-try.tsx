@@ -23,12 +23,12 @@ import { MachineAnalysisPage } from "@/components/assets/analysis/analysis-page"
 import { MachineSensorMappingView } from "@/components/assets/machine-sensor-mapping-view";
 import { OperatorAlarmLog, useLatchedAlarms } from "@/components/home/operator/operator-telemetry";
 import { liveFrameAlerts } from "@/components/home/live-alerts";
-import { formatClock, simTimeMs } from "@/lib/kiln-sim/engine";
+import { formatClock, simTimeMs } from "@shared/lib/kiln-sim/engine";
 import { formatLocalTime } from "@/lib/time";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
-import { levelDelta, type SignalFaultSpec } from "@/lib/pyro-sim/scenarios";
-import { PYRO_SIGNAL_BY_TAG } from "@/lib/pyro-sim/signals";
-import type { SimMachine, SimScenarioKind } from "@/server/services/simulation-service";
+import { levelDelta, type SignalFaultSpec } from "@shared/lib/pyro-sim/scenarios";
+import { PYRO_SIGNAL_BY_TAG } from "@shared/lib/pyro-sim/signals";
+import type { SimMachine, SimScenarioKind } from "@backend/services/simulation-service";
 import "@/components/home/operator/operator-console.css";
 
 type ViewId = "sensors" | "diagnosis" | "alarms" | "prognosis" | "analysis";
@@ -96,19 +96,27 @@ export function SimulationTry({
   busy,
   note,
   onCommand,
+  onClearNote,
 }: {
   /** The plant's live-line machines (pyro engine). */
   machines: SimMachine[];
-  busy: boolean;
+  /** The action being saved (its button shows the spinner), or null. */
+  busy: string | null;
   /** Outcome of the last action (shown beside Start). */
   note: { tone: "good" | "bad" | "info"; text: string } | null;
-  /** Queue a command; resolves true when the server took it. */
-  onCommand: (body: Record<string, unknown>, done: string) => Promise<boolean>;
+  /** Queue a command; resolves true when the server took it. `key` names the button that shows the spinner. */
+  onCommand: (body: Record<string, unknown>, done: string, key?: string) => Promise<boolean>;
+  /** Drop the last outcome (it belongs to the machine it was started on). */
+  onClearNote?: () => void;
 }) {
   const { allMachines } = useIndustrialData();
   const fleet = useKilnFleet();
   const [machineId, setMachineIdState] = useState<string>(() => remembered(MACHINE_KEY) ?? machines[0]?.machineId ?? "");
-  const setMachineId = (id: string) => (setMachineIdState(id), remember(MACHINE_KEY, id));
+  const setMachineId = (id: string) => {
+    if (id !== machineId) onClearNote?.();
+    setMachineIdState(id);
+    remember(MACHINE_KEY, id);
+  };
   const current = machines.find((m) => m.machineId === machineId) ?? machines[0] ?? null;
   const tz = useSiteTimeZone({ machineId: current?.machineId });
   const asset = useMemo(() => (current ? (allMachines.find((m) => m.id === current.machineId) ?? null) : null), [allMachines, current]);
@@ -153,7 +161,8 @@ export function SimulationTry({
         items={machines.map((m) => ({
           id: m.machineId,
           label: m.name.replace(/\s*\([A-Z0-9-]+\)\s*$/, ""),
-          prefix: <span className="ph-unit-dot" data-tone={openByMachine.get(m.machineId) ?? "good"} aria-hidden="true" />,
+          // A dot only when the machine has an open alarm; a quiet machine shows its name alone.
+          prefix: openByMachine.has(m.machineId) ? <span className="ph-unit-dot" data-tone={openByMachine.get(m.machineId)} aria-hidden="true" /> : undefined,
         }))}
         activeId={current.machineId}
         onChange={setMachineId}
@@ -170,8 +179,9 @@ export function SimulationTry({
             <span className="sim-head-actions">
               <PillButton
                 variant="secondary"
-                disabled={busy || running.length === 0}
-                onClick={() => void onCommand({ kind: "clear", machineId: current.machineId }, `The faults on ${current.name} are easing off.`)}
+                loading={busy === `stop:${current.machineId}`}
+                disabled={(busy !== null && busy !== `stop:${current.machineId}`) || running.length === 0}
+                onClick={() => void onCommand({ kind: "clear", machineId: current.machineId }, `The faults on ${current.name} are easing off.`, `stop:${current.machineId}`)}
               >
                 Stop all
               </PillButton>
@@ -252,9 +262,9 @@ function FaultForm({
 }: {
   machine: SimMachine;
   signals: Array<{ tag: string; name: string; unit: string; type: "analog" | "state"; calculated?: boolean; origin?: string; normalBand: string }>;
-  busy: boolean;
+  busy: string | null;
   note: { tone: "good" | "bad" | "info"; text: string } | null;
-  onCommand: (body: Record<string, unknown>, done: string) => Promise<boolean>;
+  onCommand: (body: Record<string, unknown>, done: string, key?: string) => Promise<boolean>;
 }) {
   const kinds = KINDS.filter((k) => k.id === "reading" || machine.scenarios.some((s) => s.kind === k.id));
   const [kind, setKind] = useState<FaultKind>(kinds[0]?.id ?? "reading");
@@ -276,20 +286,22 @@ function FaultForm({
   const [amount, setAmount] = useState("");
   const [over, setOver] = useState("5");
   const [sensorOnly, setSensorOnly] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  /** Problems with the typed numbers, shown under each field. */
+  const [errors, setErrors] = useState<{ lasts?: string; amount?: string; over?: string }>({});
+  const clearError = (k: "lasts" | "amount" | "over") => setErrors((e) => (e[k] ? { ...e, [k]: undefined } : e));
 
-  const num = (v: string, label: string, lo: number, hi: number): number | null => {
-    const n = Number(v);
+  const num = (v: string, field: "lasts" | "amount" | "over", lo: number, hi: number): number | null => {
+    const n = Number(v.replace(",", "."));
     if (v.trim() === "" || !Number.isFinite(n) || n < lo || n > hi) {
-      setError(`${label}: use a number from ${lo} to ${hi}`);
+      setErrors((e) => ({ ...e, [field]: v.trim() === "" ? "Enter a number." : `Use a number from ${lo} to ${hi}.` }));
       return null;
     }
     return n;
   };
 
   const start = async () => {
-    setError(null);
-    const life = num(lasts, "Lasts", 1, 240);
+    setErrors({});
+    const life = num(lasts, "lasts", 1, 240);
     if (life === null) return;
     const grow = Number(worse);
     if (kind !== "reading") {
@@ -297,6 +309,7 @@ function FaultForm({
       await onCommand(
         { kind: "inject", machineId: machine.machineId, scenarioId: scenario.id, spec: { scale: Number(strength), life: toSim(life), grow } },
         `Started "${scenario.name}" on ${machine.name}. It builds up over about a minute.`,
+        "try-start",
       );
       return;
     }
@@ -304,12 +317,12 @@ function FaultForm({
     const level = change.value === "Alert" || change.value === "Critical" ? change.value : undefined;
     let delta = 0;
     if (change.amount) {
-      const d = num(amount, `Amount (${reading.unit})`, -1e6, 1e6);
+      const d = num(amount, "amount", -1e6, 1e6);
       if (d === null) return;
-      if (d === 0) return setError("Amount: enter a change other than 0");
+      if (d === 0) return setErrors((e) => ({ ...e, amount: "Enter a change other than 0." }));
       delta = d;
     }
-    const overMin = change.over ? num(over, "Over", 0, 240) : 0;
+    const overMin = change.over ? num(over, "over", 0, 240) : 0;
     if (overMin === null) return;
     const shape: SignalFaultSpec["shape"] = level ? (overMin > 0 ? "ramp" : "step") : (change.value as SignalFaultSpec["shape"]);
     await onCommand(
@@ -319,6 +332,7 @@ function FaultForm({
         spec: { tag: reading.tag, shape, delta, level, rampMin: toSim(overMin), sensor: shape === "freeze" || sensorOnly, life: toSim(life), grow },
       },
       `Started on ${reading.name} (${machine.name}).`,
+      "try-start",
     );
   };
 
@@ -329,7 +343,7 @@ function FaultForm({
           Start a fault on {machine.name.replace(/\s*\([A-Z0-9-]+\)\s*$/, "")}
         </h2>
       </div>
-      <PillNav<FaultKind> ariaLabel="Kind of fault" wrap items={kinds} activeId={kind} onChange={(k) => (setKind(k), setError(null))} />
+      <PillNav<FaultKind> ariaLabel="Kind of fault" wrap items={kinds} activeId={kind} onChange={(k) => (setKind(k), setErrors({}))} />
       {kind !== "reading" ? (
         <>
           <FieldGrid>
@@ -345,7 +359,9 @@ function FaultForm({
           )}
           <FieldGrid>
             <Field label="How strong">{(id) => <Select id={id} value={strength} onChange={setStrength} options={STRENGTH} />}</Field>
-            <Field label="Lasts (minutes)">{(id) => <NumberInput id={id} value={lasts} onChange={setLasts} min={1} max={240} step="any" />}</Field>
+            <Field label="Lasts (minutes)" error={errors.lasts}>
+              {(id, d) => <NumberInput id={id} describedBy={d} value={lasts} onChange={(v) => (setLasts(v), clearError("lasts"))} min={1} max={240} step="any" />}
+            </Field>
             <Field label="While it lasts, it" hint="Getting worse is what lets Prognosis show time left.">
               {(id) => <Select id={id} value={worse} onChange={setWorse} options={WORSE} />}
             </Field>
@@ -366,16 +382,18 @@ function FaultForm({
             </Field>
             <Field label="What happens">{(id) => <Select id={id} value={change?.value ?? ""} onChange={(v) => setChangeId(v as Change)} options={changes.map((c) => ({ value: c.value, label: c.label }))} />}</Field>
             {change?.amount && (
-              <Field label={`Amount (${reading?.unit || "units"})`} hint={reading ? `Normal range ${reading.normalBand}.` : undefined}>
-                {(id) => <NumberInput id={id} value={amount} onChange={setAmount} step="any" />}
+              <Field label={`Amount (${reading?.unit || "units"})`} hint={reading ? `Normal range ${reading.normalBand}.` : undefined} error={errors.amount}>
+                {(id, d) => <NumberInput id={id} describedBy={d} value={amount} onChange={(v) => (setAmount(v), clearError("amount"))} step="any" />}
               </Field>
             )}
             {change?.over && (
-              <Field label="Over (minutes)" hint={change.value === "osc" ? "One full swing." : "0 jumps at once."}>
-                {(id) => <NumberInput id={id} value={over} onChange={setOver} min={0} max={240} step="any" />}
+              <Field label="Over (minutes)" hint={change.value === "osc" ? "One full swing." : "0 jumps at once."} error={errors.over}>
+                {(id, d) => <NumberInput id={id} describedBy={d} value={over} onChange={(v) => (setOver(v), clearError("over"))} min={0} max={240} step="any" />}
               </Field>
             )}
-            <Field label="Lasts (minutes)">{(id) => <NumberInput id={id} value={lasts} onChange={setLasts} min={1} max={240} step="any" />}</Field>
+            <Field label="Lasts (minutes)" error={errors.lasts}>
+              {(id, d) => <NumberInput id={id} describedBy={d} value={lasts} onChange={(v) => (setLasts(v), clearError("lasts"))} min={1} max={240} step="any" />}
+            </Field>
             <Field label="While it lasts, it">{(id) => <Select id={id} value={worse} onChange={setWorse} options={WORSE} />}</Field>
           </FieldGrid>
           {change?.value !== "freeze" && (
@@ -389,18 +407,16 @@ function FaultForm({
         </>
       )}
       <div className="sim-form-foot">
-        {error ? (
-          <span className="pg-note" data-tone="bad" role="alert">
-            {error}
+        {note && (
+          <span className="pg-note" data-tone={note.tone} role="status">
+            {note.text}
           </span>
-        ) : (
-          note && (
-            <span className="pg-note" data-tone={note.tone} role="status">
-              {note.text}
-            </span>
-          )
         )}
-        <PillButton disabled={busy || (kind === "reading" ? !reading : !scenario)} onClick={() => void start()}>
+        <PillButton
+          loading={busy === "try-start"}
+          disabled={(busy !== null && busy !== "try-start") || (kind === "reading" ? !reading : !scenario)}
+          onClick={() => void start()}
+        >
           Start
         </PillButton>
       </div>

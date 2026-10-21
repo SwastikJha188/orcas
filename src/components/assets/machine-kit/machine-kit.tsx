@@ -711,6 +711,7 @@ export function MachinePad({
   selected = false,
   scale = 1,
   priority = "required",
+  quiet = false,
   className,
 }: {
   x: number;
@@ -720,15 +721,17 @@ export function MachinePad({
   scale?: number;
   /** "optional": thinner, lighter healthy ring (D4 retained-optional point). */
   priority?: "required" | "optional";
+  /** Value mimics: a healthy pad is a neutral ring so the few abnormal ones stand out (Von Restorff, ISA-101). */
+  quiet?: boolean;
   className?: string;
 }) {
-  const color = statusColor(status);
   const attention = status !== "Normal" && status !== "Clear" && status !== "OK";
+  const color = quiet && !attention ? MX.label : statusColor(status);
   const optional = priority === "optional" && !attention;
   return (
     <g className={className} aria-hidden="true">
       {(selected || attention) && <circle cx={x} cy={y} r={12 * scale} fill={color} opacity={0.16} className={attention ? "mx-pad-halo" : undefined} />}
-      <circle cx={x} cy={y} r={8.5 * scale} fill={color} opacity={attention ? 0.22 : optional ? 0.04 : 0.1} />
+      {!(quiet && !attention) && <circle cx={x} cy={y} r={8.5 * scale} fill={color} opacity={attention ? 0.22 : optional ? 0.04 : 0.1} />}
       <circle
         cx={x}
         cy={y}

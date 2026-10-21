@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MqttCommandResult, MqttSnapshot, MqttTick, MqttTrafficEntry } from "@/types/mqtt";
-import type { ApiResponse } from "@/types/api";
+import type { MqttCommandResult, MqttSnapshot, MqttTick, MqttTrafficEntry } from "@shared/types/mqtt";
+import type { ApiResponse } from "@shared/types/api";
 
 const TRAFFIC_LIMIT = 300;
 /** Points kept per reading for its trend line (about a minute at 2 Hz). */

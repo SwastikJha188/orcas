@@ -38,8 +38,6 @@
   }
 }
 
-/* Rail labels exist for the phone tab bar only. */
-:root .rail-label { display: none; }
 
 /* Touch screens: no hover, 44x44px minimum hit areas on interactive controls. */
 @media (hover: none) and (pointer: coarse) {
@@ -47,9 +45,24 @@
   :root .btn-pill,
   :root .opc-pill-btn,
   :root .opc-step-btn,
-  :root .ctx-trigger {
+  :root .ctx-trigger,
+  :root .nav-pill-step-btn,
+  :root .ui-dialog-close,
+  :root .ast-icon-btn,
+  :root .mx-vp-btn,
+  :root .aqk-hist-del,
+  :root .aqk-send,
+  :root .aqk-chip,
+  :root .onb-x,
+  :root .onb-mini,
+  :root .ast-filter,
+  :root .dxo-filter-chip {
     min-block-size: 44px;
     min-inline-size: 44px;
+  }
+  /* Inline text actions keep their look but get a finger-sized hit area. */
+  :root :is(.pm-link, .pm-cal-more, .prb-link-btn, .prb-disclose, .dv-chip, .dv-map-btn) {
+    min-block-size: 44px;
   }
   :root .navbar-gw-status { min-block-size: 44px; }
   :root .theme-toggle {
@@ -99,7 +112,7 @@
   :root .navbar {
     block-size: auto;
     gap: 8px;
-    padding: env(safe-area-inset-top, 0px) 6px 0 14px;
+    padding: env(safe-area-inset-top, 0px) 4px 0 12px;
   }
   :root .brand-logo { height: 17px; }
   :root .brand-btn { flex: none; }
@@ -137,7 +150,7 @@
     align-items: center;
     justify-content: space-around;
     gap: 2px;
-    padding: 4px 6px env(safe-area-inset-bottom, 0px);
+    padding: 4px 4px env(safe-area-inset-bottom, 0px);
     border-top: 1px solid var(--separator);
     background: var(--topbar-bg);
     overflow-x: auto;
@@ -154,7 +167,7 @@
     width: auto;
     height: 50px;
     flex-direction: column;
-    gap: 3px;
+    gap: 4px;
     border-radius: var(--corner-card);
   }
   :root .rail-btn svg { width: 20px; height: 20px; }

@@ -4,8 +4,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FormNote, PillButton, PillNav, Table, type Column } from "@/components/ui";
 import { SearchPill, StatusTag } from "@/components/assets/assets-shell-ui";
 import { useEdge } from "@/providers/edge-context";
-import { naturalCompare, parseMessage } from "@/lib/edge-format";
-import type { EdgeFormat, ParsedReading, RawSample } from "@/types/edge";
+import { naturalCompare, parseMessage } from "@shared/lib/edge-format";
+import type { EdgeFormat, ParsedReading, RawSample } from "@shared/types/edge";
 import { JsonView, type JsonPath } from "./json-view";
 
 /* ==========================================================================
@@ -154,8 +154,8 @@ export function FormatPreview({
         <div className="fmt-source">
           <div className="fmt-source-bar">
             <span className="ui-select fmt-select">
-              <select aria-label="Data connection" value={brokerId} onChange={(e) => setBrokerId(e.target.value)}>
-                <option value="all">All data connections</option>
+              <select aria-label="Message server" value={brokerId} onChange={(e) => setBrokerId(e.target.value)}>
+                <option value="all">All message servers</option>
                 {brokers.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
@@ -174,7 +174,7 @@ export function FormatPreview({
               variant="secondary"
               onClick={() => void startListening()}
               disabled={!listenBroker || isListening}
-              title={listenBroker ? `Listen to every channel on ${brokerName(listenBroker)} for ${LISTEN_SECONDS} s` : "Choose a data connection to listen on"}
+              title={listenBroker ? `Listen to every channel on ${brokerName(listenBroker)} for ${LISTEN_SECONDS} s` : "Choose a message server to listen on"}
             >
               {isListening ? `Listening · ${remaining} s` : `Listen ${LISTEN_SECONDS} s`}
             </PillButton>
@@ -188,7 +188,7 @@ export function FormatPreview({
             <p className="fmt-muted">
               {samples.length === 0
                 ? listenBroker
-                  ? `No messages recorded${scopeId ? ` on ${brokerName(scopeId)}` : ""}. Listen for ${LISTEN_SECONDS} s to record what the data collectors send, or paste a message.`
+                  ? `No messages recorded${scopeId ? ` on ${brokerName(scopeId)}` : ""}. Listen for ${LISTEN_SECONDS} s to record what the gateways send, or paste a message.`
                   : "No messages captured. Choose a broker and listen, or paste a message."
                 : "No captured message matches the filter."}
             </p>
@@ -280,7 +280,7 @@ function Outcome({ result, topic }: { result: ReturnType<typeof parseMessage>; t
   const captures = Object.entries(result.captures);
 
   const columns: Column<ParsedReading & { k: string }>[] = [
-    { key: "rack", header: "Device", render: (r) => <span className="ast-num">{r.rack}</span> },
+    { key: "rack", header: "Rack", render: (r) => <span className="ast-num">{r.rack}</span> },
     { key: "card", header: "Card", render: (r) => <span className="ast-num">{r.card}</span> },
     { key: "channel", header: "Channel", render: (r) => <span className="ast-num">{r.channel}</span> },
     { key: "name", header: "Name", render: (r) => <span className="ast-cell-text">{r.name ?? <span className="ast-muted">—</span>}</span> },

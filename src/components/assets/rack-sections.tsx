@@ -9,7 +9,7 @@
 import React from "react";
 import { PillButton, PillNav, Table, type Column } from "@/components/ui";
 import { StatusTag } from "./assets-shell-ui";
-import type { CabinetChannel, CabinetModule, MachineRackInfo } from "./rack-data";
+import type { CabinetChannel, CabinetModule, MachineRackInfo } from "@shared/lib/rack-data";
 import { RackEnclosure } from "./rack-enclosure";
 import {
   ModuleGlyph,
@@ -64,7 +64,7 @@ function CardHead({ title, meta, right }: { title: string; meta?: React.ReactNod
     <div className="ast-card-head pg-rack-card-head">
       <div className="pg-rack-card-title">
         <h4 className="ast-card-title">{title}</h4>
-        {meta && <span className="ast-caption ast-num">{meta}</span>}
+        {meta && <span className="ast-caption">{meta}</span>}
       </div>
       {right}
     </div>

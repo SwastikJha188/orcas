@@ -8,7 +8,7 @@
 .dxo-root {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   width: 100%;
   min-width: 0;
   color: var(--page-fg);
@@ -17,13 +17,6 @@
 .dxo-root :focus-visible {
   outline: 2px solid var(--signal-blue);
   outline-offset: 2px;
-}
-
-.dxo-toolbar-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
 }
 
 /* ---------------------------------- Card -------------------------------- */
@@ -35,30 +28,16 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 
 .dxo-card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
   min-height: 28px;
-}
-
-.dxo-link {
-  font-size: var(--fs-sm);
-  color: var(--text-muted);
-  background: none;
-  border: none;
-  padding: 2px 4px;
-  border-radius: var(--corner-sm);
-  cursor: pointer;
-}
-
-.dxo-link:hover {
-  color: var(--dx-ink);
 }
 
 /* --------------------------- Tier 1: KPI strip -------------------------- */
@@ -78,7 +57,7 @@
 /* Banded linear gauge */
 .dxo-gauge {
   position: relative;
-  padding-bottom: 14px;
+  padding-bottom: 12px;
 }
 
 .dxo-gauge-track {
@@ -128,7 +107,7 @@
 
 /* ------------------------- Tier 3: register table ----------------------- */
 .dxo-table-card {
-  padding: 16px 12px 10px;
+  padding: 16px 12px 8px;
 }
 
 .dxo-table-card > .dxo-card-head {
@@ -138,14 +117,19 @@
 .dxo-filter-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: var(--fs-sm);
   color: var(--dx-ink);
   background: var(--pill-active-bg);
   border: 1px solid var(--card-border);
   border-radius: var(--corner-pill);
+  min-height: 30px;
   padding: 4px 8px 4px 12px;
   cursor: pointer;
+}
+
+.dxo-filter-chip:hover {
+  border-color: var(--border-hover);
 }
 
 .dxo-table-wrap {
@@ -165,7 +149,7 @@
 }
 
 .dxo-table th {
-  padding: 10px 16px;
+  padding: 8px 16px;
   font-size: var(--fs-sm);
   font-weight: 400;
   color: var(--text-muted);
@@ -180,7 +164,7 @@
 }
 
 .dxo-table td {
-  padding: 10px 16px;
+  padding: 8px 16px;
   vertical-align: middle;
   border-bottom: 1px solid var(--separator);
   color: var(--dx-ink-2);
@@ -210,7 +194,7 @@
 .dxo-ident {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -253,46 +237,6 @@
   color: var(--text-muted);
 }
 
-.dxo-limit-bar {
-  display: block;
-  width: 120px;
-  height: 14px;
-}
-
-.dxo-none {
-  color: var(--text-muted);
-}
-
-.dxo-icon-btn {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: var(--corner-pill);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.dxo-icon-btn:hover {
-  background: var(--dx-track);
-  color: var(--dx-ink);
-}
-
-.dxo-icon-btn:active {
-  transform: scale(0.97);
-}
-
-.dxo-icon-btn svg {
-  transition: transform var(--dur-fast) var(--ease-out);
-}
-
-.dxo-icon-btn[aria-expanded="true"] svg {
-  transform: rotate(180deg);
-}
-
 /* Expanded drawer */
 .dxo-drawer > td {
   padding: 4px 16px 16px;
@@ -309,19 +253,4 @@
   padding: 18px 16px;
   font-size: var(--fs-md);
   color: var(--text-muted);
-}
-
-/* ------------------------------- Responsive ------------------------------ */
-
-@media (prefers-reduced-motion: reduce) {
-  .dxo-icon-btn svg { transition: none; }
-}
-
-.dxo-sr {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
 }

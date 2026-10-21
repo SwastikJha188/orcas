@@ -329,16 +329,4 @@
     padding-inline: 8px;
   }
 
-  /* Toasts sit above the bottom tab bar, full width. */
-  :root .ops-toasts {
-    right: 12px;
-    left: 12px;
-    bottom: calc(var(--tabbar-height, 58px) + env(safe-area-inset-bottom, 0px) + 12px);
-    width: auto;
-  }
-
-  /* AssetIQ answers: narrower confidence bar. */
-  :root .cp-conf-bar {
-    flex-basis: 64px;
-  }
 }

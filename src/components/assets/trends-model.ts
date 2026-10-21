@@ -13,10 +13,10 @@ import type { OperatingEvent } from "./assets-data";
 import type { CatalogSensorView, MachineCatalog } from "./use-machine-catalog";
 import type { MachineHistory, TrendRecordMetric } from "./use-machine-history";
 import type { TrendSample } from "./sensor-trend-graph";
-import { formatDuration, simMinuteMs, simTimeMs, type SimFrame } from "@/lib/kiln-sim/engine";
+import { formatDuration, simMinuteMs, simTimeMs, type SimFrame } from "@shared/lib/kiln-sim/engine";
 import { EQUATION_BY_TARGET, type Equation } from "@/lib/kiln-sim/relationships";
-import { limitBand } from "@/lib/kiln-sim/signals";
-import type { DefSignal, PlantDefs } from "@/lib/plant-defs";
+import { limitBand } from "@shared/lib/kiln-sim/signals";
+import type { DefSignal, PlantDefs } from "@shared/lib/plant-defs";
 import { zoneOffsetMs, zonedParts } from "@/lib/time";
 import { displayName } from "@/lib/display-name";
 

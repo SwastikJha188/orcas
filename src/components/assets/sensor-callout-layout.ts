@@ -384,6 +384,8 @@ export function layoutEmbeddedCallouts(
     busy?: (l: number, t: number, r: number, b: number) => number;
     /** Share of a box covered by equipment at all (bodies too): leaders keep off it. */
     cover?: (l: number, t: number, r: number, b: number) => number;
+    /** Share of a box covered by the drawing's words: plates keep off titles and labels. */
+    text?: (l: number, t: number, r: number, b: number) => number;
     /** Where plates may go (sheet units): the drawing box grown to the canvas shape, so the canvas's free space is used. */
     space?: [number, number, number, number];
   },
@@ -523,6 +525,7 @@ function layoutByFreeSpace(
     frame?: [number, number, number, number];
     busy: (l: number, t: number, r: number, b: number) => number;
     cover?: (l: number, t: number, r: number, b: number) => number;
+    text?: (l: number, t: number, r: number, b: number) => number;
     space?: [number, number, number, number];
   },
 ): { callouts: SensorCallout[]; viewBox: [number, number, number, number] } {
@@ -539,6 +542,15 @@ function layoutByFreeSpace(
   // Weights (in plate heights of leader): what a plate may hide, against how far it may move.
   const W_BUSY = 36;
   const W_LEADER_BUSY = 6;
+  // Covering the drawing's words (a section title, an equipment name) costs far more than covering lines:
+  // the label is what tells the reader which group a plate belongs to.
+  const W_TEXT = 400;
+  const wordShare = options.text ?? (() => 0);
+  // Words are thin, so even a small share means a title is cut: any real overlap pays a fixed price first.
+  const words = (l: number, t: number, r: number, b: number) => {
+    const share = wordShare(l, t, r, b);
+    return share > 0.002 ? 0.4 + share : 0;
+  };
   /** Leaders already drawn, as thin boxes: a plate may not sit on one, a new leader may not cross a plate. */
   const wires: Box[] = [];
   const hits = (a: Box, b: Box) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
@@ -615,7 +627,7 @@ function layoutByFreeSpace(
       const tl = c.textCx! - p.w / 2;
       const tr = c.textCx! + p.w / 2;
       const box = { l: c.cx - c.w / 2, r: c.cx + c.w / 2, t: c.cy - c.h / 2, b: c.cy + c.h / 2 };
-      consider(c, overlapCost(box, p.tag) + W_BUSY * busy(tl, box.t, tr, box.b) + (side === prefer ? 0 : 0.15));
+      consider(c, overlapCost(box, p.tag) + W_BUSY * busy(tl, box.t, tr, box.b) + W_TEXT * words(box.l, box.t, box.r, box.b) + (side === prefer ? 0 : 0.15));
     }
 
     // Stand-off: beside the pad (left edge right of it, or right edge left of it), above / below, and on existing lanes.
@@ -662,6 +674,7 @@ function layoutByFreeSpace(
           DETACH +
           overlapCost(box, p.tag) +
           W_BUSY * busy(box.l, box.t, box.r, box.b) +
+          W_TEXT * words(box.l, box.t, box.r, box.b) +
           (lead / u) * 0.45 +
           // Beyond a short reach every extra plate-height of leader costs more (a reading far from its pad is hard to pair).
           0.3 * Math.max(0, lead / u - 4) ** 2 +

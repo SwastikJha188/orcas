@@ -17,6 +17,8 @@ export interface BusyMap {
   density: (l: number, t: number, r: number, b: number) => number;
   /** Share (0–1) of the box covered by equipment at all (filled bodies and lines). */
   cover: (l: number, t: number, r: number, b: number) => number;
+  /** Share (0–1) of the box covered by the drawing's own words (section titles, equipment labels). */
+  text: (l: number, t: number, r: number, b: number) => number;
 }
 
 /** Pixels per sheet unit of the off-screen render. */
@@ -47,7 +49,9 @@ async function build(Art: React.ComponentType, width: number, height: number): P
   const lines = await table(inner, width, height, w, h, `*{fill:none!important;stroke:#000!important;opacity:1!important}text,tspan{fill:#000!important;stroke:none!important}`);
   // Everything drawn: filled bodies too (a leader should not cross a machine).
   const solid = await table(inner, width, height, w, h, `*{fill:#000!important;stroke:#000!important;opacity:1!important}[fill="none"]{fill:none!important}`);
-  if (!lines || !solid) return null;
+  // Words only: a plate over a section title or equipment label breaks the grouping it names (Proximity).
+  const words = await table(inner, width, height, w, h, `*{fill:none!important;stroke:none!important}text,tspan{fill:#000!important}`);
+  if (!lines || !solid || !words) return null;
   const share = (sat: Uint32Array) => (l: number, t: number, r: number, b: number) => {
     const cx = (v: number) => Math.max(0, Math.min(w, Math.round(v * SCALE)));
     const cy = (v: number) => Math.max(0, Math.min(h, Math.round(v * SCALE)));
@@ -58,7 +62,7 @@ async function build(Art: React.ComponentType, width: number, height: number): P
     const W1 = w + 1;
     return (sat[y1 * W1 + x1] - sat[y0 * W1 + x1] - sat[y1 * W1 + x0] + sat[y0 * W1 + x0]) / area;
   };
-  return { density: share(lines), cover: share(solid) };
+  return { density: share(lines), cover: share(solid), text: share(words) };
 }
 
 /** Renders the art markup with `css` and returns the summed-area table of its drawn pixels. */

@@ -7,31 +7,32 @@
  *   alarm limits ahead, health in 30 d) → Remaining life per sub-assembly →
  *   Health outlook → Signal forecasts. Every list keeps a fixed order.
  *
- * Diagnosis shows the same failure chance per sensor and links here; why a
- * prediction holds lives on Analysis.
+ * The failure chance lives here only (the KPI strip); why a prediction holds
+ * lives on Analysis.
  */
 
 import { useComponentScope, type ComponentScope } from "../component-scope";
 import React, { useEffect, useMemo, useState } from "react";
-import { PillButton } from "@/components/ui";
+import { PillButton, PillNav } from "@/components/ui";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useHealthBands } from "@/lib/reference-data";
 import { useKilnSimulationFor, useLiveMachineStatus } from "@/providers/kiln-simulation-context";
 import { conditionTone, toCondition } from "@/components/ui/status";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { formatLocalTime } from "@/lib/time";
-import { simTimeMs } from "@/lib/kiln-sim/engine";
+import { simTimeMs } from "@shared/lib/kiln-sim/engine";
 import type { AssetMachine } from "../assets-data";
 import { DIAGNOSIS_SUB_KEY, focusLayer, focusSensorOn, LAYER_FOCUS_EVENT, readLayerFocus, type LayerFocusPayload } from "../sensor-focus";
 import { useMachineInsights } from "../use-machine-insights";
 import { horizonText, isBaselineRisk, rulRows } from "./prognosis-derive";
 import { defsFor } from "@/lib/live-defs";
+import { displayName } from "@/lib/display-name";
 import { Empty, KpiStrip, PageHeader, PROG_SECTION_KEY, Section, type ProgSectionProps } from "./prog-ui";
 import { scrollToSection } from "../analysis/an-ui";
 import { downloadReport, progKpis } from "./prog-summary";
 import { ProgRul } from "./prog-rul";
 import { HealthOutlook } from "./prog-outlook";
-import { SignalForecastTable, signalForecastRows } from "./prog-signals";
+import { reachesAlarm, SignalForecastTable, signalForecastRows } from "./prog-signals";
 import "../analysis/analysis-page.css";
 import "./prognosis-page.css";
 
@@ -221,6 +222,8 @@ export function MachinePrognosisPage({
     const all = data ? signalForecastRows(data, defsFor(machine.id)) : [];
     return compTags ? all.filter((r) => compTags.has(r.tag)) : all;
   }, [data, machine.id, compTags]);
+  const [forecastView, setForecastView] = useState<"all" | "alarm">("all");
+  const alarmRows = useMemo(() => forecastRows.filter(reachesAlarm), [forecastRows]);
   const openTrend = (tag: string) => {
     focusSensorOn("trends", tag);
     go("trends");
@@ -229,7 +232,7 @@ export function MachinePrognosisPage({
   return (
     <div className="ast-root pg-frame pg-prog" aria-label="Prognosis">
       <PageHeader
-        title="What happens next"
+        title="Prognosis"
         status={{ label: condition, tone: conditionTone(condition) }}
         meta={[
           { label: "Data", value: live ? "Live" : data ? "Saved snapshot" : insights.isLoading ? "Loading…" : "No forecast" },
@@ -253,7 +256,12 @@ export function MachinePrognosisPage({
         </section>
       ) : insights.isError && !data ? (
         <section className="ast-card" role="alert">
-          <Empty title="Could not load the forecast. Try again in a moment." />
+          <Empty title="Could not load the forecast." />
+          <div className="pg-actions">
+            <PillButton variant="secondary" loading={insights.retrying} onClick={insights.retry}>
+              Try again
+            </PillButton>
+          </div>
         </section>
       ) : !props ? (
         <section className="ast-card">
@@ -278,14 +286,51 @@ export function MachinePrognosisPage({
             </Section>
           )}
           {forecastRows.length > 0 && (
-            <Section id="prog-forecast" title="Sensor reading forecasts">
-              <SignalForecastTable rows={forecastRows} onOpenTrend={openTrend} />
+            <Section
+              id="prog-forecast"
+              title="Sensor reading forecasts"
+              right={
+                <PillNav
+                  ariaLabel="Show sensors"
+                  activeId={forecastView}
+                  onChange={setForecastView}
+                  items={[
+                    { id: "all", label: "All", suffix: <span className="pg-sf-count">{forecastRows.length}</span> },
+                    {
+                      id: "alarm",
+                      label: "Reaching alarm",
+                      prefix: alarmRows.length ? <span className="ast-chip-dot" data-tone="bad" aria-hidden="true" /> : undefined,
+                      suffix: <span className="pg-sf-count">{alarmRows.length}</span>,
+                    },
+                  ]}
+                />
+              }
+            >
+              {forecastView === "alarm" && alarmRows.length === 0 ? (
+                <Empty title="No sensor reading reaches its alarm limit in the next 30 days." />
+              ) : (
+                <SignalForecastTable rows={forecastView === "alarm" ? alarmRows : forecastRows} onOpenTrend={openTrend} />
+              )}
             </Section>
           )}
-          {component && rows.length === 0 && forecastRows.length === 0 && (
-            <section className="ast-card">
-              <Empty title={`No forecast for ${component.name}: no remaining-life estimate and no sensor reading forecast cover this part.`} />
-            </section>
+          {!component && rows.length === 0 && forecastRows.length === 0 && (
+            <Section id="prog-forecast" title="Sensor reading forecasts">
+              <Empty title={`${machine.name} has no sensors yet, so there is nothing to forecast.`} />
+            </Section>
+          )}
+          {/* A part with no reading forecast: say which sensors it has and why they have none. */}
+          {component && forecastRows.length === 0 && (
+            <Section id="prog-forecast" title="Sensor reading forecasts">
+              <Empty
+                title={
+                  component.tags.length === 0
+                    ? `${component.name} has no sensors, so there is nothing to forecast.`
+                    : `No reading forecast for ${component.name}: its sensors (${component.tags
+                        .map((t) => displayName(defsFor(machine.id)?.signalByTag[t]?.name ?? t))
+                        .join(", ")}) are on/off signals, or do not have enough readings yet. Their state now is on the Diagnosis page.`
+                }
+              />
+            </Section>
           )}
         </>
       )}

@@ -5,9 +5,9 @@ import { useApi } from "@/lib/api-cache";
 import type { AssetMachine } from "./assets-data";
 import { isLiveMachine, useKilnSimulationFor } from "@/providers/kiln-simulation-context";
 import { useMachineAcquisition } from "./acquisition/use-machine-acquisition";
-import type { MachineAcquisition } from "@/types/edge";
-import type { MeasurementDto } from "@/types/monitoring";
-import type { LiveSignal } from "@/lib/kiln-sim/engine";
+import type { MachineAcquisition } from "@shared/types/edge";
+import type { MeasurementDto } from "@shared/types/monitoring";
+import type { LiveSignal } from "@shared/lib/kiln-sim/engine";
 
 export interface CatalogSensorView {
   tag: string;

@@ -30,7 +30,7 @@ import {
 } from "@/components/assets/hierarchy/hierarchy-model";
 import { useKilnFleet, usePlantEngineOf } from "@/providers/kiln-simulation-context";
 import { useIndustrialData } from "@/providers/industrial-data-context";
-import { isConditionRule } from "@/lib/plant-defs";
+import { isConditionRule } from "@shared/lib/plant-defs";
 import type { MapView } from "../plant-home";
 
 export type PyroSectionId = "line" | "phc" | "kln" | "clr" | "fed" | "brn" | "cct";
@@ -208,7 +208,7 @@ export function StatusSummary({ tone, label, health, offNormal }: { tone: Tone; 
       <span className="opc-tag-bar-val ast-num" data-tone={tone}>
         Health {health !== null ? `${health}%` : "—"}
       </span>
-      {offNormal && <span className="opc-tag-bar-band ast-num">{offNormal}</span>}
+      {offNormal && <span className="opc-tag-bar-band">{offNormal}</span>}
     </div>
   );
 }

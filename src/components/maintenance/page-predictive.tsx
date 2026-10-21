@@ -2,13 +2,13 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { Dialog, Field, PillButton, PillNav, TextArea, TextInput, rowActivate } from "@/components/ui";
-import { STAGE_LABEL, isOpenStage } from "@/lib/pms";
+import { STAGE_LABEL, isOpenStage } from "@shared/lib/pms";
 import { formatLocalTime } from "@/lib/time";
 import { invalidateApi } from "@/lib/api-cache";
 import { useWorkOrderPriorities } from "@/lib/reference-data";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { Empty, KpiStrip, Section } from "@/components/assets/analysis/an-ui";
-import type { AlertCheck } from "@/types/maintenance-types";
+import type { AlertCheck } from "@shared/types/maintenance-types";
 import type { Outcome, PmsModel } from "./pms-model";
 import { machineName, pmsCall, priorityTone, stageTone, woRef } from "./pms-model";
 import { ALERT_CHECKS_URL, checkState, useAlertChecks } from "./maint-types-model";
@@ -53,7 +53,6 @@ export function PagePredictive({ pms }: { pms: PmsModel }) {
   const [recording, setRecording] = useState<"fine" | "problem" | null>(null);
   const [notice, setNotice] = useState<Outcome | null>(null);
   const tz = useSiteTimeZone({ machineId: data?.machineIds[0] });
-  useEffect(() => setNotice(null), [picked?.kind, picked?.id]);
 
   const inPlant = useMemo(() => new Set(data?.machineIds ?? []), [data]);
   const checks = useMemo(() => (checksApi.data ?? []).filter((c) => inPlant.has(c.machineId)), [checksApi.data, inPlant]);
@@ -99,6 +98,11 @@ export function PagePredictive({ pms }: { pms: PmsModel }) {
   };
 
   const priorityName = (id: string) => priorities?.find((p) => p.id === id)?.name ?? null;
+  // A new pick drops the last outcome note; a just-planned job keeps its "planned" note.
+  const pick = (p: Pick) => {
+    setPicked(p);
+    setNotice(null);
+  };
 
   return (
     <div className="ast-root pg-frame pm-page" style={{ "--pm-side": "460px" } as React.CSSProperties}>
@@ -141,7 +145,7 @@ export function PagePredictive({ pms }: { pms: PmsModel }) {
                         const st = checkState(c, now);
                         const t = priorityTone(c.priority);
                         return (
-                          <tr key={c.id} className={`is-clickable ${check?.id === c.id ? "active" : ""}`} {...rowActivate(() => setPicked({ kind: "check", id: c.id }))}>
+                          <tr key={c.id} className={`is-clickable ${check?.id === c.id ? "active" : ""}`} {...rowActivate(() => pick({ kind: "check", id: c.id }), check?.id === c.id)}>
                             <td className="pm-pri ast-num" data-tone={st.open && t !== "idle" ? t : undefined}>
                               {c.priority}
                             </td>
@@ -178,7 +182,7 @@ export function PagePredictive({ pms }: { pms: PmsModel }) {
                     </thead>
                     <tbody>
                       {jobs.map((w) => (
-                        <tr key={w.id} className={`is-clickable ${job?.id === w.id ? "active" : ""}`} {...rowActivate(() => setPicked({ kind: "job", id: w.id }))}>
+                        <tr key={w.id} className={`is-clickable ${job?.id === w.id ? "active" : ""}`} {...rowActivate(() => pick({ kind: "job", id: w.id }), job?.id === w.id)}>
                           <td className="pm-muted">{when(w.plannedStart)}</td>
                           <td className="pm-grow">
                             <ItemCell icon={PM_ICON.plan} title={w.title} sub={`${woRef(w.id)} · ${machineName(w.machineId)}${w.component ? ` · ${w.component}` : ""}`} />
@@ -204,7 +208,7 @@ export function PagePredictive({ pms }: { pms: PmsModel }) {
                 setPicked({ kind: "check", id: check.id });
                 setRecording(mode);
               }}
-              onTakeBack={() => void record(null, "")} onOpenWo={(id) => { setPmsFocus(`w:${id}`); nav("work"); }} />
+              onTakeBack={() => record(null, "")} onOpenWo={(id) => { setPmsFocus(`w:${id}`); nav("work"); }} />
           ) : (
             <Section id="pm-check" title="Check">
               <Empty title="Pick a check or a planned job to see its details." />
@@ -247,9 +251,10 @@ function CheckDetail({
   priorityName: (id: string) => string | null;
   notice: Outcome | null;
   onRecord: (mode: "fine" | "problem") => void;
-  onTakeBack: () => void;
+  onTakeBack: () => Promise<Outcome>;
   onOpenWo: (id: number) => void;
 }) {
+  const [takingBack, setTakingBack] = useState(false);
   const st = checkState(c, now);
   const todo = c.todo ?? limitTodo(c);
   return (
@@ -261,8 +266,8 @@ function CheckDetail({
         rows={[
           ...(todo ? [{ label: "What to check", value: todo }] : []),
           ...(c.places.length ? [{ label: "Where", value: c.places.join(", ") }] : []),
-          { label: "What the alarm said", value: c.summary },
-          ...(c.tags.length ? [{ label: "Readings", value: c.tags.join(", ") }] : []),
+          { label: "What is happening", value: c.summary },
+          ...((c.readings ?? c.tags).length ? [{ label: "Readings behind it", value: (c.readings ?? c.tags).join(", ") }] : []),
           { label: "Raised", value: `${when(c.raisedAt)}${c.alarmActive ? " · alarm still on" : " · alarm has cleared"}` },
           { label: "Check by", value: c.dueAt ? `${when(c.dueAt)} · ${c.priority}${priorityName(c.priority) ? ` ${priorityName(c.priority)}` : ""}` : `${c.priority} · ${priorityName(c.priority) ?? "no fixed time"}`, tone: st.overdue ? "warn" : undefined },
           ...(c.consequence ? [{ label: "If nobody acts", value: c.consequence }] : []),
@@ -289,7 +294,15 @@ function CheckDetail({
             Open {woRef(c.workOrderId).toLowerCase()}
           </PillButton>
         ) : (
-          <PillButton variant="secondary" onClick={onTakeBack}>
+          <PillButton
+            variant="secondary"
+            loading={takingBack}
+            onClick={async () => {
+              setTakingBack(true);
+              await onTakeBack();
+              setTakingBack(false);
+            }}
+          >
             Take back
           </PillButton>
         )}
@@ -315,18 +328,24 @@ function CheckDialog({
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
+  const firstTitle = check ? `Repair: ${check.title}` : "";
   useEffect(() => {
     if (!open) return;
     setNote("");
-    setTitle(check ? `Repair: ${check.title}` : "");
+    setTitle(firstTitle);
     setErr(null);
+    setTried(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   const problem = mode === "problem";
+  const need = (v: string, msg: string) => (tried && problem && !v.trim() ? msg : null);
   const submit = async () => {
-    if (problem && !note.trim()) return setErr("Describe what was found");
+    setTried(true);
+    if (problem && (!title.trim() || !note.trim())) return;
+    setErr(null);
     setBusy(true);
-    const out = await onSave(note.trim(), problem ? title.trim() || undefined : undefined);
+    const out = await onSave(note.trim(), problem ? title.trim() : undefined);
     setBusy(false);
     if (out.tone === "bad") setErr(out.text);
     else onClose();
@@ -338,6 +357,7 @@ function CheckDialog({
       title={problem ? "Problem found" : "Nothing wrong found"}
       subtitle={check ? `${machineName(check.machineId)} · ${check.title}` : undefined}
       busy={busy}
+      dirty={note.trim() !== "" || (problem && title !== firstTitle)}
       onSubmit={() => void submit()}
       width={540}
       footer={
@@ -352,13 +372,18 @@ function CheckDialog({
       }
     >
       {problem && (
-        <Field label="Repair to ask for" required>
+        <Field label="Repair to ask for" required error={need(title, "Say what repair to ask for")}>
           {(fid, d) => <TextInput id={fid} describedBy={d} value={title} onChange={setTitle} />}
         </Field>
       )}
-      <Field label={problem ? "What was found" : "Note"} hint={problem ? undefined : "Optional"} error={err} required={problem}>
+      <Field label={problem ? "What was found" : "Note"} hint={problem ? undefined : "Optional"} error={need(note, "Describe what was found")} required={problem}>
         {(fid, d) => <TextArea id={fid} describedBy={d} value={note} onChange={setNote} rows={4} />}
       </Field>
+      {err && (
+        <p className="ui-form-note" data-tone="bad" role="alert">
+          {err}
+        </p>
+      )}
     </Dialog>
   );
 }

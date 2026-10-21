@@ -44,7 +44,7 @@
     gap: 2px 18px;
   }
   :root .pg-frame-kpi {
-    padding: 14px 16px;
+    padding: 12px 16px;
   }
   :root .pg-frame-kpi-value {
     font-size: var(--fs-5xl);
@@ -59,7 +59,7 @@
   :root .pg-frame-head {
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
+    gap: 12px;
     min-height: 0;
   }
   :root .pg-frame-head-main {
@@ -73,7 +73,7 @@
   :root .pg-frame-meta {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 3px;
+    gap: 4px;
     overflow: visible;
   }
   :root .pg-frame-meta > div {
@@ -98,18 +98,18 @@
     justify-content: center;
   }
   :root .pg-frame-actions > .btn-pill {
-    padding-inline: 14px;
+    padding-inline: 12px;
   }
   :root .pg-frame-actions > .nav-pill-group {
     flex: 1 1 100%;
   }
   :root .pg-frame-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+    gap: 12px;
   }
   :root .pg-frame-kpi {
-    gap: 6px;
-    padding: 12px 14px;
+    gap: 8px;
+    padding: 12px 12px;
   }
   :root .pg-frame-kpi-label {
     font-size: var(--fs-2xs);
@@ -128,7 +128,7 @@
   }
   :root .pg-analysis-section {
     gap: 12px;
-    padding: 14px;
+    padding: 12px;
     border-radius: var(--corner-card);
   }
 }
@@ -215,13 +215,13 @@
 @media (max-width: 599px) {
   :root .pg-ov-canvas {
     min-height: 0;
-    padding: 10px 4px;
+    padding: 8px 4px;
   }
   :root .pg-ov-drawing-head {
-    gap: 6px 12px;
+    gap: 8px 12px;
   }
   :root .pg-ov-counts {
-    gap: 6px 12px;
+    gap: 8px 12px;
   }
   :root .pg-ov-groups {
     margin-inline: -14px;
@@ -240,7 +240,7 @@
     margin-inline: -14px;
   }
   :root .pg-ov-table :is(th, td) {
-    padding: 10px 12px;
+    padding: 8px 12px;
   }
   /* Rows open on tap: the trailing link keeps only its chevron. */
   :root .pg-ov-areas .pg-ov-link {
@@ -273,7 +273,7 @@
     max-block-size: 48vh;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 14px 16px 16px;
+    padding: 12px 16px 16px;
     border-top: 1px solid var(--separator);
     border-radius: var(--corner-card) var(--corner-card) 0 0;
     background: var(--workspace-bg);
@@ -309,19 +309,13 @@
     gap: 12px;
   }
   :root .pg-sensors .ast-sm-table {
-    padding: 4px 0 6px;
+    padding: 4px 0 4px;
   }
 
   /* Map: clusters flow full width, cards two-up (the stage sets a fixed px
      column width inline, which would overflow a phone). */
   :root .pg-sensors .ast-smr-scene {
-    padding: 14px 10px 12px;
-  }
-  :root .pg-sensors .ast-smw-flow > .ast-smw-cluster {
-    flex: 1 1 100%;
-  }
-  :root .pg-sensors .ast-smw-flow .ast-smw-cards {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    padding: 12px 8px 12px;
   }
 
   /* Register: sensor · live value · data (row tap opens the sheet with every action). */
@@ -460,7 +454,7 @@
     margin-inline: -14px;
   }
   :root .thm-root .ast-table.ui-table-container .ui-table :is(thead th, tbody td) {
-    padding-inline: 10px;
+    padding-inline: 8px;
   }
 
   :root .thm-root .thm-card-head {
@@ -529,7 +523,7 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     align-content: start;
-    gap: 14px 24px;
+    gap: 16px 24px;
   }
   :root .pg-rack-inspect > .pg-rack-inspect-head {
     grid-column: 1 / -1;
@@ -567,7 +561,7 @@
     flex: none;
   }
   :root .pg-rack-card-head {
-    gap: 10px;
+    gap: 12px;
   }
   :root #rack-slots .pg-actions {
     flex-wrap: nowrap;
@@ -597,14 +591,14 @@
   :root .pg-rack-spec .ui-table tbody tr {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px 14px;
-    padding: 10px 14px;
+    gap: 8px 16px;
+    padding: 8px 12px;
     border-bottom: 1px solid var(--separator);
   }
   :root .pg-rack-spec.ui-table-container .ui-table tbody td {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 4px;
     min-inline-size: 0;
     padding: 0;
     border: 0;
@@ -661,7 +655,7 @@
   }
   :root .pg-rack .ast-table.ui-table-container .ui-table :is(thead th, tbody td),
   :root .pg-rack .ui-table-container.pg-rack-table .ui-table :is(thead th, tbody td) {
-    padding-inline: 10px;
+    padding-inline: 8px;
   }
 }
 

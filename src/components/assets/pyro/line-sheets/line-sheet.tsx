@@ -20,10 +20,10 @@
 
 import React, { useMemo, useState } from "react";
 import { MX, MachinePad, MachineSvg } from "@/components/assets/machine-kit/machine-kit";
-import { PYRO_SPEC } from "@/lib/pyro-sim/spec";
-import { PYRO_MACHINE_BY_ID, PYRO_SIGNAL_BY_TAG, PYRO_SIGNALS } from "@/lib/pyro-sim/signals";
-import { VPC_MACHINE_BY_ID, VPC_SIGNAL_BY_TAG, VPC_SPEC } from "@/lib/vpc-sim/signals";
-import type { LiveSignal, SimFrame } from "@/lib/kiln-sim/engine";
+import { PYRO_SPEC } from "@shared/lib/pyro-sim/spec";
+import { PYRO_MACHINE_BY_ID, PYRO_SIGNAL_BY_TAG, PYRO_SIGNALS } from "@shared/lib/pyro-sim/signals";
+import { VPC_MACHINE_BY_ID, VPC_SIGNAL_BY_TAG, VPC_SPEC } from "@shared/lib/vpc-sim/signals";
+import type { LiveSignal, SimFrame } from "@shared/lib/kiln-sim/engine";
 import { useKilnFleet } from "@/providers/kiln-simulation-context";
 import { LINE_SHEETS, LINE_SHEET_ART, LINE_SHEET_BY_ID, LINE_SHEET_GROUPS, lineSheetTags } from ".";
 import { textWidth } from "./text-width";

@@ -86,7 +86,7 @@
 .pm-state {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: var(--fs-sm);
   color: var(--page-fg);
   white-space: nowrap;
@@ -233,7 +233,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 10px 0;
+  padding: 8px 0;
   border-bottom: 1px solid var(--separator);
 }
 
@@ -311,7 +311,7 @@
 }
 
 .pm-cal-tools .nav-pill.active {
-  padding: 4px 14px;
+  padding: 4px 12px;
 }
 
 .pm-cal-step {
@@ -323,7 +323,7 @@
 .pm-cal {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 6px;
+  gap: 8px;
 }
 
 .pm-cal-head {
@@ -343,7 +343,7 @@
   flex-direction: column;
   gap: 4px;
   min-width: 0;
-  padding: 6px;
+  padding: 4px;
   border-radius: var(--corner-row);
   border: 1px solid var(--separator);
   background: color-mix(in srgb, var(--bg-canvas) 40%, transparent);
@@ -393,7 +393,7 @@
   gap: 1px;
   width: 100%;
   min-width: 0;
-  padding: 5px 8px 5px 10px;
+  padding: 4px 8px 4px 8px;
   border: 0;
   border-left: 2px solid var(--tone);
   border-radius: var(--corner-sm);
@@ -503,8 +503,8 @@
 .pm-tasks li {
   display: grid;
   grid-template-columns: 72px minmax(0, 1fr) auto;
-  gap: 10px;
-  padding: 5px 0;
+  gap: 12px;
+  padding: 4px 0;
   font-size: var(--fs-sm);
 }
 
@@ -530,7 +530,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 8px 8px 6px;
+  padding: 8px 8px 4px;
   border-top: 2px solid var(--separator);
   min-width: 0;
 }
@@ -588,7 +588,7 @@
 
 .pm-readiness ul {
   list-style: none;
-  margin: 6px 0 0;
+  margin: 8px 0 0;
   padding: 0;
 }
 
@@ -596,7 +596,7 @@
   display: grid;
   grid-template-columns: 10px minmax(0, 1fr) 150px;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   padding: 4px 0;
   font-size: var(--fs-md);
 }
@@ -642,7 +642,7 @@
 
 .pm-audit ol {
   list-style: none;
-  margin: 6px 0 0;
+  margin: 8px 0 0;
   padding: 0;
   max-height: 240px;
   overflow-y: auto;
@@ -651,8 +651,8 @@
 .pm-audit li {
   display: grid;
   grid-template-columns: 136px minmax(0, 1fr) auto;
-  gap: 10px;
-  padding: 5px 0;
+  gap: 12px;
+  padding: 4px 0;
   font-size: var(--fs-sm);
   color: var(--page-fg);
   border-bottom: 1px solid var(--separator);
@@ -677,7 +677,7 @@
   grid-template-columns: 14px 150px minmax(0, 1fr) auto;
   gap: 12px;
   align-items: baseline;
-  padding: 9px 0;
+  padding: 8px 0;
 }
 
 .pm-timeline li + li::before {
@@ -859,10 +859,10 @@
   display: grid;
   grid-template-columns: 8px minmax(0, 1fr);
   align-items: center;
-  column-gap: 10px;
+  column-gap: 12px;
   row-gap: 2px;
   width: 100%;
-  padding: 9px 10px;
+  padding: 8px 8px;
   border: 0;
   border-radius: var(--corner-row);
   background: transparent;
@@ -935,7 +935,7 @@
 
 .pm-rows {
   list-style: none;
-  margin: 6px 0 0;
+  margin: 8px 0 0;
   padding: 0;
 }
 
@@ -944,7 +944,7 @@
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: baseline;
   gap: 12px;
-  padding: 6px 0;
+  padding: 4px 0;
   font-size: var(--fs-md);
   border-bottom: 1px solid var(--separator);
 }
@@ -995,8 +995,8 @@ td[data-tone] .pm-value {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  margin: 10px 16px 0;
+  gap: 8px;
+  margin: 12px 16px 0;
 }
 
 .pm-legend .pm-rd-dot {
@@ -1049,18 +1049,19 @@ td[data-tone] .pm-value {
 
 .pm-timeline-bar > i {
   --tone: var(--dx-ink);
-  display: flex;
-  align-items: center;
+  display: block;
+  line-height: 18px;
   min-width: 0;
-  padding: 0 6px;
+  padding: 0 4px;
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--tone) 18%, transparent);
   border-left: 2px solid var(--tone);
   font-style: normal;
-  font-family: var(--font-mono);
+  font-family: inherit;
   font-size: var(--fs-2xs);
   color: var(--dx-ink);
   overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -1215,9 +1216,9 @@ button.pm-cal-more:hover {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
-  padding: 6px 8px 6px 10px;
+  padding: 4px 8px 4px 8px;
   border: 0;
   border-left: 2px solid var(--tone);
   border-radius: var(--corner-sm);
@@ -1318,7 +1319,7 @@ button.pm-cal-more:hover {
 }
 
 .pm-more-link {
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 /* Plan library: the list fills its card (as tall as the plan detail beside it) and scrolls inside. */
@@ -1341,11 +1342,11 @@ button.pm-cal-more:hover {
 
 /* Lifecycle steps fit seven names in the detail column. */
 .pm-steps {
-  gap: 3px;
+  gap: 4px;
 }
 
 .pm-step {
-  padding: 7px 2px 4px;
+  padding: 8px 2px 4px;
 }
 
 .pm-step-label {

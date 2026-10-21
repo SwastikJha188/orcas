@@ -25,7 +25,16 @@ const OUTLINE = { scale: 1, close: 2, open: 2.5, offset: 3 };
 const TONES: OutlineTone[] = ["good", "warn", "bad"];
 const colour = (tone: OutlineTone) => (tone === "bad" ? MX.bad : tone === "warn" ? MX.warn : MX.good);
 
-export function HealthOutline({ art, owners }: { art: Pick<LineSheetArt, "id" | "Art" | "width" | "height">; owners: OutlineOwner[] }) {
+export function HealthOutline({
+  art,
+  owners,
+  mute = true,
+}: {
+  art: Pick<LineSheetArt, "id" | "Art" | "width" | "height">;
+  owners: OutlineOwner[];
+  /** false: leave the drawing's light-mode greys as they are (a passing highlight, not a standing health layer). */
+  mute?: boolean;
+}) {
   const k = art.width / 1144.5;
   // A hidden copy of the drawing, traced once per sheet into the equipment outline.
   const source = useRef<SVGGElement>(null);
@@ -84,13 +93,14 @@ export function HealthOutline({ art, owners }: { art: Pick<LineSheetArt, "id" | 
 
   const Art = art.Art;
   return (
-    <g aria-hidden="true" pointerEvents="none">
+    // .mx-health-outline also mutes the drawing under it in light mode (globals.css).
+    <g className={mute ? "mx-health-outline" : undefined} aria-hidden="true" pointerEvents="none">
       <g ref={source} style={{ display: "none" }}>
         <Art />
       </g>
       {/* Worst drawn last. */}
       {TONES.map((tone) =>
-        paths[tone] ? <path key={tone} d={paths[tone]} fill="none" stroke={colour(tone)} strokeWidth={1.3 * k} strokeLinejoin="round" strokeLinecap="round" /> : null,
+        paths[tone] ? <path key={tone} d={paths[tone]} fill="none" stroke={colour(tone)} style={{ strokeWidth: `calc(${(1.3 * k).toFixed(3)}px * var(--mx-health-w, 1))` }} strokeLinejoin="round" strokeLinecap="round" /> : null,
       )}
     </g>
   );

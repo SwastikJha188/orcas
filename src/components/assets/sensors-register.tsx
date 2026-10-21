@@ -7,8 +7,7 @@ import { PillButton, PillNav } from "@/components/ui";
 import { IconClose, IconMore, IconSensor, SearchPill, StatusTag, Ticks, severityTone } from "./assets-shell-ui";
 import { Sparkline } from "@/components/ui/sparkline";
 import { LimitBar, gaugeScale, twoSided, twoSidedLoad } from "./sensor-gauge";
-import { SensorTileChart } from "./sensor-tile-chart";
-import { isRelativeLimit, limitNum, limitSummary, resolveLimit } from "@/lib/kiln-sim/signals";
+import { isRelativeLimit, limitNum, limitSummary, resolveLimit } from "@shared/lib/kiln-sim/signals";
 import { sensorAlarmLoad, type SensorScope } from "./sensor-mapping-diagram";
 import {
   D4_SOURCE_LABEL,
@@ -35,15 +34,17 @@ import {
 } from "./sensors-model";
 import type { SensorsCtx } from "./sensors-sections";
 import { formatLocalTime } from "@/lib/time";
-import { simTimeMs } from "@/lib/kiln-sim/engine";
+import { simTimeMs } from "@shared/lib/kiln-sim/engine";
+import { useMenuFocus } from "./use-menu-focus";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { displayName, isIdOnly, nameOf } from "@/lib/display-name";
-import { PYRO_RANGES, PYRO_RANGES_DOC } from "@/lib/pyro-sim/ranges";
+import { PYRO_RANGES, PYRO_RANGES_DOC } from "@shared/lib/pyro-sim/ranges";
 import { faultsForTag, libraryText, useFaultLibrary } from "./fault-library";
 
 /* ==========================================================================
    Sensors › Sensors.
-   The transducer allocation (divider-list table or a grid of sensor cards):
+   The transducer allocation (one divider-list table; toolbar: reading quality,
+   limit state, grouping, search):
    sensor ID, measurement, instrument, location, range, rack slot, Modbus
    register, sampling, live value, limit state and data quality — grouped by
    sub-assembly or by process / condition role, with a detail panel.
@@ -53,8 +54,6 @@ type StatusKey = "Normal" | "Alert" | "Critical";
 const STATUS_KEYS: StatusKey[] = ["Normal", "Alert", "Critical"];
 type QualityFilter = "all" | "valid" | "attention" | "nolive";
 type GroupBy = "sub" | "role" | "none";
-type ViewMode = "table" | "cards";
-const VIEW_KEY = "ultron.sensors.view";
 const needsAttention = (q: Quality) => q !== "Valid" && q !== "No live feed";
 
 function groupLine(list: SensorRow[], missing: string[], withSpec: boolean): string {
@@ -89,25 +88,7 @@ export function SensorsRegister({ ctx, scope, onClearScope }: { ctx: SensorsCtx;
   const [qualityFilter, setQualityFilter] = useState<QualityFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusKey | null>(null);
   const [groupBy, setGroupBy] = useState<GroupBy>("sub");
-  const [view, setView] = useState<ViewMode>("table");
   const [query, setQuery] = useState("");
-
-  // Table or cards, remembered per browser (read after mount: no hydration mismatch).
-  useEffect(() => {
-    try {
-      if (localStorage.getItem(VIEW_KEY) === "cards") setView("cards");
-    } catch {
-      /* storage unavailable: table view */
-    }
-  }, []);
-  const changeView = (next: ViewMode) => {
-    setView(next);
-    try {
-      localStorage.setItem(VIEW_KEY, next);
-    } catch {
-      /* storage unavailable: choice kept for this view only */
-    }
-  };
   const [menuTag, setMenuTag] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 });
 
@@ -209,7 +190,7 @@ export function SensorsRegister({ ctx, scope, onClearScope }: { ctx: SensorsCtx;
           )}
         </div>
         <div className="ast-toolbar-group">
-          <PillNav items={qualityTabs} activeId={qualityFilter} onChange={(id) => setQualityFilter(id as QualityFilter)} />
+          <PillNav items={qualityTabs} activeId={qualityFilter} onChange={(id) => setQualityFilter(id as QualityFilter)} ariaLabel="Reading quality" />
           <div className="ast-toolbar-group" role="group" aria-label="Filter by status">
             {STATUS_KEYS.filter((k) => k !== "Normal" && (counts.status[k] > 0 || statusFilter === k)).map((k) => (
               <button
@@ -235,15 +216,6 @@ export function SensorsRegister({ ctx, scope, onClearScope }: { ctx: SensorsCtx;
             onChange={(id) => setGroupBy(id as GroupBy)}
             ariaLabel="Group sensors"
           />
-          <PillNav
-            items={[
-              { id: "table", label: "Table" },
-              { id: "cards", label: "Cards" },
-            ]}
-            activeId={view}
-            onChange={(id) => changeView(id as ViewMode)}
-            ariaLabel="Sensors view"
-          />
           <SearchPill value={query} onChange={setQuery} placeholder="Search name, tag or instrument" label="Search sensors" />
         </div>
       </div>
@@ -252,36 +224,6 @@ export function SensorsRegister({ ctx, scope, onClearScope }: { ctx: SensorsCtx;
         <section className="ast-card ast-sm-table" aria-label="Sensors">
           {filtered.length === 0 ? (
             <div className="ast-empty">No sensors match these filters. Clear a filter to see more.</div>
-          ) : view === "cards" ? (
-            <div className="pg-sensors-tiles" aria-label="Sensors on this machine">
-              {groups.map((g) => (
-                <div key={g.key} className="pg-sensors-tile-group" role="group" aria-label={g.label || "Sensors"}>
-                  {g.label && (
-                    <h4 className="pg-sensors-tile-head">
-                      <span className="pg-sensors-group-name">{g.label}</span>
-                      <span className="ast-caption ast-num">{groupLine(g.rows, g.missing, ctx.hasSpec && groupBy === "sub")}</span>
-                    </h4>
-                  )}
-                  {g.missing.length > 0 && (
-                    <p className="pg-sensors-tile-missing">
-                      <span className="ast-num">{g.missing.join(" · ")}</span>
-                      <span className="ast-muted"> · planned in the sensor list, not set up yet</span>
-                    </p>
-                  )}
-                  <div className="pg-sensors-tile-grid">
-                    {g.rows.map((s) => (
-                      <SensorTile
-                        key={tagOf(s)}
-                        s={s}
-                        ctx={ctx}
-                        selected={selectedTag === tagOf(s)}
-                        onSelect={() => select(selectedTag === tagOf(s) ? null : tagOf(s))}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
           ) : (
             <div className="ui-table-container ast-table pg-sensors-table">
               <table className="ui-table" aria-label="Sensors on this machine">
@@ -318,7 +260,7 @@ export function SensorsRegister({ ctx, scope, onClearScope }: { ctx: SensorsCtx;
                       <tr className="pg-sensors-group">
                         <th colSpan={COLS} scope="colgroup">
                           <span className="pg-sensors-group-name">{g.label}</span>
-                          <span className="ast-caption ast-num">{groupLine(g.rows, g.missing, ctx.hasSpec && groupBy === "sub")}</span>
+                          <span className="ast-caption">{groupLine(g.rows, g.missing, ctx.hasSpec && groupBy === "sub")}</span>
                         </th>
                       </tr>
                     )}
@@ -438,7 +380,7 @@ function LiveReading({ s, unit, load }: { s: SensorRow; unit: string; load: Retu
       {load !== null && (
         <span className="ast-health-cell" title={load.title}>
           <Ticks value={Math.min(load.pct, 100)} tone={s.status === "Normal" ? "idle" : severityTone(s.status)} ticks={12} />
-          <span className="ast-caption ast-num">{load.pct} %</span>
+          <span className="ast-caption">{load.pct} %</span>
         </span>
       )}
     </span>
@@ -447,77 +389,6 @@ function LiveReading({ s, unit, load }: { s: SensorRow; unit: string; load: Retu
 
 function LimitState({ s }: { s: SensorRow }) {
   return s.status === "Normal" ? <span className="ast-muted">Normal</span> : <StatusTag tone={severityTone(s.status)} label={s.status} />;
-}
-
-/** Card view: one sensor per tile, same facts as a table row; click selects like a row. */
-function SensorTile({ s, ctx, selected, onSelect }: { s: SensorRow; ctx: SensorsCtx; selected: boolean; onSelect: () => void }) {
-  const { tag, calc, manual, scanner, slot, rate, load, unit, hold, place, placeTip, reg } = rowFacts(s, ctx);
-  const tone = s.status === "Normal" ? undefined : severityTone(s.status);
-  const rack = scanner ? "Scanner" : calc ? "Gateway" : manual ? "Manual" : slot;
-  const history = s.live ? ctx.frame?.history[tag] : s.livePoint ? ctx.history[s.livePoint.pointId] : undefined;
-  const model = s.live ? ctx.frame?.modelHistory[tag] : undefined;
-  return (
-    <button type="button" className="pg-sensors-tile" data-tone={tone} aria-pressed={selected} onClick={onSelect}>
-      <span className="pg-sensors-tile-top">
-        <span className="pg-sensors-id" data-sensor-tag={tag}>
-          <span className="ast-badge" data-tone={tone}>
-            <IconSensor size={15} />
-          </span>
-          <span className="ast-cell-stack">
-            <span className="ast-cell-title pg-sensors-tile-clip" title={`${tag} · ${s.name}`}>
-              {displayName(s.name)}
-              {hold && <HoldFlag />}
-            </span>
-          </span>
-        </span>
-        <LimitState s={s} />
-      </span>
-
-      <span className="pg-sensors-tile-value">
-        <span className="ast-sm-reading pg-sensors-reading">
-          <span className="ast-reading-val ast-num">
-            {s.value || "—"}
-            {unit && <span className="ast-unit">{unit}</span>}
-          </span>
-        </span>
-        {load !== null && (
-          <span className="ast-caption ast-num" title={load.title}>
-            {load.pct} % of the way to its limit
-          </span>
-        )}
-        {s.outOfRange && (
-          <span className="pg-sensors-flag" data-tone="bad" title="The reading is outside what this instrument can measure, so it is probably wrong">
-            beyond instrument range
-          </span>
-        )}
-      </span>
-
-      <SensorTileChart s={s} history={history} model={model} span={s.live ? "min" : "reading"} />
-
-      {s.q.quality !== "Valid" && <QualityMark row={s} prefix="Reading " />}
-
-      <span className="pg-sensors-tile-facts">
-        <span className="pg-sensors-tile-k">Measures</span>
-        <span className="pg-sensors-tile-v" title={s.sensorType}>
-          {displayName(s.sensorType) || "—"}
-        </span>
-        <span className="pg-sensors-tile-k">Where</span>
-        <span className="pg-sensors-tile-v" title={`${s.subAssembly || s.component || "—"} · ${placeTip}`}>
-          {s.subAssembly || s.component || "—"}
-          <span className="ast-muted"> · {place}</span>
-        </span>
-        <span className="pg-sensors-tile-k">{!calc && !manual && !scanner && isProposedSlot(s) ? "Wired to (planned)" : "Wired to"}</span>
-        <span className="pg-sensors-tile-v ast-num" title={reg}>
-          {rack}
-          {reg !== "—" && <span className="ast-muted"> · {reg}</span>}
-        </span>
-        <span className="pg-sensors-tile-k">How often</span>
-        <span className={`pg-sensors-tile-v ${rate.sps === null ? "ast-muted" : "ast-num"}`} title={s.sampleRate}>
-          {rate.label}
-        </span>
-      </span>
-    </button>
-  );
 }
 
 function RegisterRow({
@@ -538,6 +409,12 @@ function RegisterRow({
   onSelect: () => void;
 }) {
   const { tag, calc, manual, scanner, slot, module, rate, load, unit, hold, source, place, placeTip, reg } = rowFacts(s, ctx);
+  const menu = useMenuFocus(menuOpen, () => onMenu(false));
+  /** A menu choice: focus back on the "…" button first, then the action (which may open a pop-up). */
+  const choose = (action: () => void) => () => {
+    menu.closeToTrigger();
+    action();
+  };
   return (
     <tr
       className={["is-clickable", selected ? "active" : ""].filter(Boolean).join(" ")}
@@ -609,6 +486,7 @@ function RegisterRow({
       <td>
         <span className="ast-trail" data-row-menu>
           <button
+            ref={menu.triggerRef}
             type="button"
             className="ast-icon-btn"
             aria-label={`Actions for ${displayName(s.name)}`}
@@ -628,32 +506,28 @@ function RegisterRow({
           {menuOpen &&
             createPortal(
               <span
+                ref={menu.menuRef}
                 className="ast-menu ast-menu--fixed"
                 data-row-menu
                 role="menu"
+                aria-label={`Actions for ${displayName(s.name)}`}
                 style={{ top: menuPos.top, right: menuPos.right }}
                 onClick={(e) => e.stopPropagation()}
+                onKeyDown={menu.onMenuKeyDown}
               >
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    ctx.select(tag);
-                    onMenu(false);
-                  }}
-                >
+                <button type="button" role="menuitem" tabIndex={-1} onClick={choose(() => ctx.select(tag))}>
                   Show details
                 </button>
-                <button type="button" role="menuitem" onClick={() => ctx.goTrends(tag)}>
+                <button type="button" role="menuitem" tabIndex={-1} onClick={choose(() => ctx.goTrends(tag))}>
                   See its history chart
                 </button>
                 {!calc && !manual && s.cardId && (
-                  <button type="button" role="menuitem" onClick={ctx.goRack}>
+                  <button type="button" role="menuitem" tabIndex={-1} onClick={choose(ctx.goRack)}>
                     See where it is wired
                   </button>
                 )}
                 {s.livePoint && (
-                  <button type="button" role="menuitem" onClick={() => ctx.goDevices(s.livePoint)}>
+                  <button type="button" role="menuitem" tabIndex={-1} onClick={choose(() => ctx.goDevices(s.livePoint))}>
                     See its network device
                   </button>
                 )}

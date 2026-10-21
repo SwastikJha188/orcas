@@ -1,9 +1,9 @@
 "use client";
 
-import type { CabinetChannel, ChannelStatus, MachineRackInfo } from "./rack-data";
+import type { CabinetChannel, ChannelStatus, MachineRackInfo } from "@shared/lib/rack-data";
 import type { KilnSealsSensorData } from "./kiln-seals-types";
-import type { SimFrame } from "@/lib/kiln-sim/engine";
-import type { MachineAcquisition } from "@/types/edge";
+import type { SimFrame } from "@shared/lib/kiln-sim/engine";
+import type { MachineAcquisition } from "@shared/types/edge";
 
 /* ------------------------------------------------------------------
    Live layers over the cabinet model. Structure always comes from

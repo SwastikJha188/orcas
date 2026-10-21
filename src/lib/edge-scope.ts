@@ -8,8 +8,8 @@
  * so they never show up as "discovered" here. Brokers and data formats are
  * shared infrastructure and stay unscoped. Pure, no React.
  */
-import type { EdgeRegistry } from "@/types/edge";
-import type { MqttSnapshot, MqttTrafficEntry } from "@/types/mqtt";
+import type { EdgeRegistry } from "@shared/types/edge";
+import type { MqttSnapshot, MqttTrafficEntry } from "@shared/types/mqtt";
 
 export interface EdgeScope {
   /** Site node ids of the plant (the plant node and everything under it). */

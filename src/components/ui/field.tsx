@@ -32,7 +32,7 @@ export function Field({ label, hint, error, required, wide, children }: FieldPro
           </span>
         )}
       </label>
-      {children(id, note ? noteId : undefined)}
+      {withState(children(id, note ? noteId : undefined), !!error, !!required)}
       {note && (
         <span id={noteId} className="ui-field-note" role={error ? "alert" : undefined}>
           {note}
@@ -40,6 +40,25 @@ export function Field({ label, hint, error, required, wide, children }: FieldPro
       )}
     </div>
   );
+}
+
+/** Tell assistive tech what the label already shows: required, and invalid while an error is up. */
+function withState(control: React.ReactNode, invalid: boolean, required: boolean): React.ReactNode {
+  if (!React.isValidElement(control) || (!invalid && !required)) return control;
+  // A fragment (input + its datalist) takes no props: mark its first element.
+  if (control.type === React.Fragment) {
+    const [first, ...rest] = React.Children.toArray((control.props as { children?: React.ReactNode }).children);
+    return (
+      <>
+        {withState(first, invalid, required)}
+        {rest}
+      </>
+    );
+  }
+  return React.cloneElement(control as React.ReactElement<Record<string, unknown>>, {
+    "aria-invalid": invalid || undefined,
+    "aria-required": required || undefined,
+  });
 }
 
 export function FieldGrid({ children }: { children: React.ReactNode }) {
@@ -56,7 +75,16 @@ export function FieldSection({ title, children }: { title: string; children: Rea
   );
 }
 
-type Base = { id: string; describedBy?: string; disabled?: boolean; placeholder?: string };
+type Base = {
+  id: string;
+  describedBy?: string;
+  disabled?: boolean;
+  placeholder?: string;
+  /** Accessible name when no visible <label> points at the control (table cells, inline editors). */
+  ariaLabel?: string;
+  "aria-invalid"?: boolean;
+  "aria-required"?: boolean;
+};
 
 export function TextInput({
   id,
@@ -65,13 +93,26 @@ export function TextInput({
   onChange,
   type = "text",
   mono,
+  ariaLabel,
   ...rest
-}: Base & { value: string; onChange: (v: string) => void; type?: "text" | "password" | "url"; mono?: boolean; autoComplete?: string; required?: boolean; autoFocus?: boolean }) {
+}: Base & {
+  value: string;
+  onChange: (v: string) => void;
+  type?: "text" | "password" | "url" | "email";
+  mono?: boolean;
+  autoComplete?: string;
+  required?: boolean;
+  autoFocus?: boolean;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  autoCapitalize?: string;
+  onBlur?: () => void;
+}) {
   return (
     <input
       id={id}
       className="ui-input"
       data-mono={mono || undefined}
+      aria-label={ariaLabel}
       aria-describedby={describedBy}
       type={type}
       value={value}
@@ -82,26 +123,35 @@ export function TextInput({
   );
 }
 
-/** Numbers are edited as text so a half-typed "-" or "1." is not lost. */
+/** Numbers are edited as text so a half-typed "-" or "1." is not lost. A decimal comma
+ *  ("1,5") and stray spaces are accepted and handed on as "1.5". */
 export function NumberInput({
   id,
   describedBy,
   value,
   onChange,
+  ariaLabel,
   ...rest
-}: Base & { value: string; onChange: (v: string) => void; min?: number; max?: number; step?: number | "any"; required?: boolean }) {
+}: Base & { value: string; onChange: (v: string) => void; min?: number; max?: number; step?: number | "any"; required?: boolean; autoFocus?: boolean }) {
   return (
     <input
       id={id}
       className="ui-input"
+      aria-label={ariaLabel}
       aria-describedby={describedBy}
-      type="number"
+      type="text"
       inputMode="decimal"
+      autoComplete="off"
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(e) => onChange(normalizeNumberText(e.target.value))}
       {...rest}
     />
   );
+}
+
+/** "1,5" → "1.5", " 12 " → "12". Leaves anything else for the caller's own check. */
+export function normalizeNumberText(v: string): string {
+  return v.replace(/\s+/g, "").replace(/^(-?\d*),(\d*)$/, "$1.$2");
 }
 
 export interface SelectOption {
@@ -117,10 +167,21 @@ export function Select({
   onChange,
   options,
   disabled,
+  ariaLabel,
+  ...aria
 }: Base & { value: string; onChange: (v: string) => void; options: SelectOption[] }) {
   return (
     <span className="ui-select">
-      <select id={id} aria-describedby={describedBy} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
+      <select
+        id={id}
+        aria-label={ariaLabel}
+        aria-describedby={describedBy}
+        aria-invalid={aria["aria-invalid"]}
+        aria-required={aria["aria-required"]}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+      >
         {options.map((o) => (
           <option key={o.value} value={o.value} disabled={o.disabled}>
             {o.label}
@@ -141,13 +202,15 @@ export function TextArea({
   onChange,
   rows = 3,
   mono,
+  ariaLabel,
   ...rest
-}: Base & { value: string; onChange: (v: string) => void; rows?: number; mono?: boolean }) {
+}: Base & { value: string; onChange: (v: string) => void; rows?: number; mono?: boolean; autoFocus?: boolean; maxLength?: number }) {
   return (
     <textarea
       id={id}
       className="ui-input ui-textarea"
       data-mono={mono || undefined}
+      aria-label={ariaLabel}
       aria-describedby={describedBy}
       rows={rows}
       value={value}

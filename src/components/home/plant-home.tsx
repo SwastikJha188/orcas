@@ -3,14 +3,15 @@
 import dynamic from "next/dynamic";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PillButton, PillNav } from "@/components/ui";
-import { useApi } from "@/lib/api-cache";
+import { revalidateApi, useApi } from "@/lib/api-cache";
+import { conditionUrl, type ConditionStrip as ConditionData } from "@/components/problems/cases-api";
 import { useHealthModels, type HealthBands } from "@/lib/reference-data";
-import { combinedTrack } from "@/lib/health-recorder";
+import { combinedTrack } from "@shared/lib/health-recorder";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { isLiveMachine, useKilnFleet, usePlantEngine } from "@/providers/kiln-simulation-context";
 import type { KilnSimulation } from "@/components/assets/kiln-seals-simulation";
-import { formatClock } from "@/lib/kiln-sim/engine";
-import type { DiagnosisRecord, HierarchyNode, OperatingEvent } from "@/components/assets/assets-data";
+import { formatClock } from "@shared/lib/kiln-sim/engine";
+import type { HierarchyNode } from "@/components/assets/assets-data";
 import { IconChevron, IconClose, StatusTag, Ticks, healthTone, machineTone } from "@/components/assets/assets-shell-ui";
 import { Sparkline } from "@/components/ui/sparkline";
 import { TypeIcon } from "@/components/assets/hierarchy/hierarchy-icons";
@@ -58,7 +59,7 @@ const PyroSiteOverview = dynamic(() => import("./twin/pyro-site-overview").then(
 const CLEARED_HOLD_MS = 60_000;
 /** Live activity entries shown under the alerts, newest first across the kiln fleet. */
 const ACTIVITY_LIMIT = 24;
-const MAP_VIEW_KEY = "ultron.home.viewMode";
+export const MAP_VIEW_KEY = "ultron.home.viewMode";
 export type MapView = "operator" | "twin" | "layout" | "assets";
 
 const VIEW_ITEMS = [
@@ -86,20 +87,10 @@ function store(key: string, value: string) {
 }
 
 
-/** Stored alert sources for machines without live telemetry: diagnosis_records and operating_events. */
-function useStoredAlertSources() {
-  const d = useApi<DiagnosisRecord[]>("/api/diagnosis");
-  const e = useApi<OperatingEvent[]>("/api/history");
-  const diagnosis = useMemo(() => (Array.isArray(d.data) ? d.data : []), [d.data]);
-  const events = useMemo(() => (Array.isArray(e.data) ? e.data : []), [e.data]);
-  const failed = [d.error && `/api/diagnosis · ${d.error}`, e.error && `/api/history · ${e.error}`].filter(Boolean);
-  return { diagnosis, events, loading: d.isLoading || e.isLoading, error: failed.length > 0 ? failed.join(" · ") : null };
-}
 
 export function PlantHome() {
   const { navigateToMachine, setActiveTab, selectedPlantId, selectedMachine, setSelectedMachineId } = useIndustrialData();
   const { roots, lookup, isLoading: hierarchyLoading, loadError } = useHierarchyData();
-  const stored = useStoredAlertSources();
   const fleet = useKilnFleet();
   const isPyroLine = usePlantEngine() === "pyro";
 
@@ -142,9 +133,11 @@ export function PlantHome() {
       }
     };
     window.addEventListener("ultron:open-operator-machine", onOpenOperatorMachine);
+    window.addEventListener("ultron:open-full-line", onOpenOperatorMachine);
     window.addEventListener("ultron:set-home-view", onSetHomeView);
     return () => {
       window.removeEventListener("ultron:open-operator-machine", onOpenOperatorMachine);
+      window.removeEventListener("ultron:open-full-line", onOpenOperatorMachine);
       window.removeEventListener("ultron:set-home-view", onSetHomeView);
     };
   }, []);
@@ -215,74 +208,62 @@ export function PlantHome() {
     [live, machines, lookup],
   );
 
-  /* Alerts: confirmed rules from the live engine; for machines without live
-     telemetry, the Alert / Critical findings in diagnosis_records and the
-     Alert / Critical entries in operating_events. Nothing is derived from
-     a machine's status alone. */
+  /* Alerts: the plant's open alarms as the server records them (/api/cases/condition: limits
+     crossed and matched problem patterns, plus alarms recorded by hand), the same list and the
+     same cache entry as the Problems page and the rail's alarm count, so every place shows the
+     same number. A live machine's alarm keeps the engine's everyday-words row (text, parts and
+     tags for the drawing); the engine list only stands in until the server list has arrived. */
   const { timeZone: siteTimeZone } = useSiteTimeZone();
+  const alarmUrl = selectedPlantId ? conditionUrl({ plantId: selectedPlantId }) : null;
+  const serverAlarms = useApi<ConditionData>(alarmUrl, { refreshMs: 30_000 });
+  const engineAlerts = useMemo(() => {
+    const byId = new Map<string, HomeAlert>();
+    for (const { node, sim } of live) for (const a of liveFrameAlerts(node, sim.frame)) if (!byId.has(a.id)) byId.set(a.id, a);
+    return byId;
+  }, [live]);
+  // When the live engine raises or clears an alarm, read the server list at once instead of waiting.
+  const engineAlarmKey = useMemo(() => [...engineAlerts.keys()].sort().join("|"), [engineAlerts]);
+  useEffect(() => {
+    if (alarmUrl) void revalidateApi(alarmUrl);
+  }, [engineAlarmKey, alarmUrl]);
   const activeAlerts = useMemo<HomeAlert[]>(() => {
+    const rows = serverAlarms.data?.alarms;
+    if (!rows) return [...engineAlerts.values()];
+    const nameById = new Map(machines.filter((m) => m.machineId).map((m) => [m.machineId!, m.name.replace(/\s*\([A-Z0-9-]+\)\s*$/, "")]));
     const out: HomeAlert[] = [];
-    const seenIds = new Set<string>();
-    const pushAlert = (alert: HomeAlert) => {
-      if (seenIds.has(alert.id)) return;
-      seenIds.add(alert.id);
-      out.push(alert);
-    };
-
-    for (const { node, sim } of live) for (const a of liveFrameAlerts(node, sim.frame)) pushAlert(a);
-    const nameById = new Map<string, string>();
-    for (const m of machines) {
-      if (m.machineId && !machineCondition(m, lookup).isLive) {
-        nameById.set(m.machineId, m.name.replace(/\s*\([A-Z0-9-]+\)\s*$/, ""));
+    const used = new Set<string>();
+    for (const a of rows) {
+      const level = a.severity === "Critical" ? ("danger" as const) : ("alert" as const);
+      // Same id the engine gives the alarm, so a row keeps its place when the source behind it changes.
+      const engineId = a.ruleCode ? `${a.machineId}:${a.ruleCode}` : a.tag ? `${a.machineId}:sig:${a.tag}` : null;
+      const live = engineId ? engineAlerts.get(engineId) : undefined;
+      let id = engineId ?? `${a.machineId}:${a.key}`;
+      if (used.has(id)) id = `${id}#${a.key}`;
+      used.add(id);
+      if (live) {
+        out.push({ ...live, id, level });
+        continue;
       }
-    }
-    for (const rec of stored.diagnosis) {
-      const name = nameById.get(rec.machineId);
-      if (!name) continue;
-      for (const f of rec.findings) {
-        if (f.severity !== "Alert" && f.severity !== "Critical") continue;
-        pushAlert({
-          id: `${rec.machineId}:dx:${f.id}`,
-          level: f.severity === "Critical" ? "danger" : "alert",
-          machine: name,
-          machineId: rec.machineId,
-          finding: f.fault,
-          // Only the parts the record has: an empty field never shows as "null".
-          reading: [f.location, f.frequency, f.probability === null || f.probability === undefined ? null : `${f.probability} %`]
-            .filter((v) => v !== null && v !== undefined && String(v).trim() !== "" && String(v) !== "null")
-            .join(" · "),
-          recommendation: f.recommendation,
-          cause: f.fault,
-          action: f.recommendation,
-          age: null,
-          raised: null,
-          t: null,
-          origin: `diagnosis_records · ${rec.engineVersion}`,
-        });
-      }
-    }
-    for (const evt of stored.events) {
-      const name = nameById.get(evt.machineId);
-      if (!name || (evt.severity !== "Alert" && evt.severity !== "Critical")) continue;
-      pushAlert({
-        id: `${evt.machineId}:evt:${evt.id}`,
-        level: evt.severity === "Critical" ? "danger" : "alert",
-        machine: name,
-        machineId: evt.machineId,
-        finding: evt.title,
-        // The event's record type ("Telemetry Alert") is not a reading; its description says what happened.
-        reading: evt.description ?? "",
-        recommendation: evt.description,
-        cause: evt.title,
-        action: evt.description,
-        age: evt.timestamp ? formatLocalTime(evt.timestamp, { timeZone: siteTimeZone }) : null,
-        raised: evt.timestamp ? formatLocalTime(evt.timestamp, { timeZone: siteTimeZone }) : null,
+      const raised = formatLocalTime(a.since, { timeZone: siteTimeZone });
+      out.push({
+        id,
+        level,
+        machine: nameById.get(a.machineId) ?? a.machineName,
+        machineId: a.machineId,
+        finding: a.title,
+        reading: a.where ?? "",
+        recommendation: "",
+        plainTitle: a.title,
+        where: a.where ?? undefined,
+        tags: a.tag ? [a.tag] : undefined,
+        age: raised,
+        raised,
         t: null,
-        origin: `operating_events · ${evt.source}`,
+        origin: a.source,
       });
     }
     return out;
-  }, [live, machines, lookup, stored.diagnosis, stored.events, siteTimeZone]);
+  }, [serverAlarms.data, engineAlerts, machines, siteTimeZone]);
 
   /* Live activity: every live kiln's event stream merged, newest first (rules
      confirmed and cleared, limit alarms, crew actions, signal quality, state
@@ -381,8 +362,8 @@ export function PlantHome() {
         dist={dist}
         alerts={alerts}
         activity={activity}
-        alertsLoading={stored.loading}
-        alertsError={stored.error}
+        alertsLoading={serverAlarms.isLoading && !serverAlarms.data}
+        alertsError={serverAlarms.error ?? null}
         trackHealth={trackPlant}
         view={view}
         onChangeView={chooseView}
@@ -427,8 +408,8 @@ export function PlantHome() {
                     machine={activeMachine}
                     alerts={alerts.filter((a) => a.machineId === activeMachine.id)}
                     activity={activity.filter((a) => a.machineId === activeMachine.id)}
-                    alertsLoading={stored.loading}
-                    alertsError={stored.error}
+                    alertsLoading={serverAlarms.isLoading && !serverAlarms.data}
+                    alertsError={serverAlarms.error ?? null}
                     onOpenDiagnosis={openDiagnosis}
                     onBack={() => setSelectedMachineId(null)}
                     onOpen={(sub) => navigateToMachine(activeMachine.id, sub)}
@@ -465,8 +446,8 @@ export function PlantHome() {
                       activity={activity}
                       onOpen={openDiagnosis}
                       onNavigate={(mId, sub) => navigateToMachine(mId, sub)}
-                      loading={stored.loading}
-                      error={stored.error}
+                      loading={serverAlarms.isLoading && !serverAlarms.data}
+                      error={serverAlarms.error ?? null}
                     />
                   </aside>
                   <div ref={bottomRef} className="ph-hud-bottom ph-strip">
@@ -488,8 +469,8 @@ export function PlantHome() {
                       activity={activity}
                       onOpen={openDiagnosis}
                       onNavigate={(mId, sub) => navigateToMachine(mId, sub)}
-                      loading={stored.loading}
-                      error={stored.error}
+                      loading={serverAlarms.isLoading && !serverAlarms.data}
+                      error={serverAlarms.error ?? null}
                     />
                   </aside>
                   <div className="ph-main">
@@ -678,7 +659,7 @@ function Inspector({
         {rows.map(([k, v]) => (
           <div key={k}>
             <dt>{k}</dt>
-            <dd className="ast-num">{v}</dd>
+            <dd className={k === "Health" || k === "Sensors" ? "ast-num" : undefined}>{v}</dd>
           </div>
         ))}
       </dl>

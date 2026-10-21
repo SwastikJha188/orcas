@@ -8,12 +8,12 @@
  * use the kiln Test Lab result shape so the Simulation tab shows both plants
  * in the same table.
  */
-import { createLine, setScenario, stepLine } from "./engine";
-import { createVpcSim, setVpcAutopilot, setVpcScenario, stepVpcSim } from "../vpc-sim/engine";
-import { pyroLineSeed } from "./fleet";
-import { PYRO_SCENARIOS, type PyroScenario } from "./scenarios";
-import { VPC_SCENARIOS } from "../vpc-sim/scenarios";
-import { VPC_MACHINE_IDS } from "../vpc-sim/signals";
+import { createLine, setScenario, stepLine } from "@shared/lib/pyro-sim/engine";
+import { createVpcSim, setVpcAutopilot, setVpcScenario, stepVpcSim } from "@shared/lib/vpc-sim/engine";
+import { pyroLineSeed } from "@shared/lib/pyro-sim/fleet";
+import { PYRO_SCENARIOS, type PyroScenario } from "@shared/lib/pyro-sim/scenarios";
+import { VPC_SCENARIOS } from "@shared/lib/vpc-sim/scenarios";
+import { VPC_MACHINE_IDS } from "@shared/lib/vpc-sim/signals";
 import type { Affected, Fired, SuiteCase, TestResult } from "../kiln-sim/test-lab";
 
 /** Simulated minutes per scenario. */

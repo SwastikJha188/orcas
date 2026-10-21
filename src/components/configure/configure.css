@@ -87,7 +87,8 @@
 }
 
 /* ---------------------------------------------------------------- inline cell editors */
-/* Reads as the cell's text; a quiet border on hover, the focus ring while editing. */
+/* Reads as the cell's text with a faint dotted rule (editable); a quiet border on hover,
+   the focus ring while editing, "✓ Saved" at the cell's end for 2 s after a change is stored. */
 .cfg-inline {
   inline-size: 100%;
   min-inline-size: 0;
@@ -124,6 +125,11 @@
   color: var(--text-muted);
 }
 
+.cfg-inline:not(:disabled, :hover, :focus, [data-state="error"]) {
+  border-block-end-style: dotted;
+  border-block-end-color: color-mix(in srgb, var(--text-muted) 55%, transparent);
+}
+
 .cfg-inline:hover:not(:disabled) {
   border-color: var(--border-hover);
 }
@@ -147,6 +153,7 @@
 
 .cfg-inline[data-state="error"],
 .cfg-inline-select[data-state="error"] .cfg-inline {
+  border-style: solid;
   border-color: var(--status-danger);
 }
 
@@ -194,6 +201,33 @@
   color: var(--status-warning);
 }
 
+.cfg-inline-wrap {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.cfg-saved {
+  position: absolute;
+  inset-inline-end: var(--space-1);
+  inset-block-start: 50%;
+  translate: 0 -50%;
+  padding-inline: var(--space-1);
+  border-radius: var(--corner-sm);
+  background: var(--card-bg);
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* The mark takes the chevron's place while it shows. */
+.cfg-inline-select[data-saved] svg {
+  opacity: 0;
+}
+
 .cfg-cell-grow {
   flex: 1;
 }
@@ -226,7 +260,7 @@
 }
 
 .cfg-edit-table .ui-table td {
-  padding-block: 6px;
+  padding-block: 4px;
 }
 
 .cfg-edit-table .pg-cfg-lead {
@@ -253,7 +287,7 @@
 
 .cfg-set-group-title {
   margin: 0;
-  padding: 10px 16px 6px;
+  padding: 8px 16px 4px;
   font-size: var(--fs-sm);
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -271,7 +305,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) 150px 170px;
   align-items: center;
-  gap: 6px 16px;
+  gap: 8px 16px;
   padding: 8px 16px;
   border-bottom: 1px solid var(--separator);
   font-size: var(--fs-md);
@@ -322,7 +356,7 @@
 .pg-cfg-lead {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -338,7 +372,7 @@
 .cfg-photos {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .cfg-photos-row {
@@ -403,7 +437,7 @@
 
 .cfg-photo-add {
   height: 48px;
-  padding: 0 14px;
+  padding: 0 12px;
   border: 1px dashed var(--separator);
   border-radius: var(--radius-sm);
   background: none;
@@ -419,7 +453,7 @@
 
 .ui-form-note .cfg-photo-add {
   height: 24px;
-  margin-left: 6px;
+  margin-left: 8px;
   border-style: solid;
 }
 
@@ -433,7 +467,7 @@
   display: inline-block;
   width: 7px;
   height: 7px;
-  margin-right: 6px;
+  margin-right: 8px;
   border-radius: 50%;
   background: var(--signal-blue);
   vertical-align: 1px;
@@ -455,7 +489,7 @@
 .cfg-preview {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
 .cfg-preview-pane {
@@ -475,7 +509,7 @@
 .cfg-preview-box {
   position: relative;
   height: 240px;
-  padding: 6px;
+  padding: 4px;
   border: 1px solid var(--separator);
   border-radius: var(--radius-sm);
   background: var(--mx-canvas);
@@ -515,8 +549,38 @@
   border-style: solid;
 }
 
-/* A form's error beside its buttons, so it shows after scrolling down to save. */
-.cfg-foot-err {
-  font-size: var(--fs-sm);
-  color: var(--status-danger);
+/* Buttons under an empty list (no plants yet). */
+.cfg-empty-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ---------------------------------------------------------------- support tickets (support-section.tsx) */
+.cfg-ticket-state {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cfg-ticket-body {
+  margin: 0 0 16px;
+  white-space: pre-wrap;
+  font-size: var(--fs-md);
+  color: var(--dx-ink);
+}
+
+.cfg-ticket-reply {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-block-start: 12px;
+  border-block-start: 1px solid var(--separator);
+}
+
+.cfg-ticket-reply p {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: var(--fs-md);
 }

@@ -4,16 +4,18 @@
  * Case page: one problem on one machine, followed from first sign to a checked
  * repair. Header (stage, how soon, owner, actions), the stage stepper, the
  * machine's condition strip, then the main column (Diagnosis / Prognosis /
- * Analysis) beside the case tools (next step, checks, maintenance, files,
- * history), which stay the same on every tab. Everything comes from
- * /api/cases/<id> (src/server/services/case-service.ts).
+ * Analysis) beside the case tools (checks with the next step, maintenance,
+ * files, history with hand-recorded alarms), which stay the same on every tab.
+ * Download and Print sit behind the header's "More" menu. Everything comes from
+ * /api/cases/<id> (backend/src/services/case-service.ts).
  */
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { revalidateApi, useApi } from "@/lib/api-cache";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { Dialog, Field, FieldGrid, PillButton, PillNav, Select, TextArea, TextInput } from "@/components/ui";
 import { IconBack, StatusTag } from "@/components/assets/assets-shell-ui";
+import { useMenuFocus } from "@/components/assets/use-menu-focus";
 import { CASES_CHANGED_EVENT, STAGE_TONE, VOCABULARY_URL, casesApi, caseUrl, exportUrl, type CaseDetail, type CaseVocabulary } from "./cases-api";
 import { CaseProvider, CheckDialog, ErrorNote, MaintenanceDialog, PRIORITY_TONE, timeOf, useCase, useSave, type CaseCtx } from "./case-shared";
 import { AnalysisTab, DiagnosisTab, PrognosisTab } from "./case-tabs";
@@ -161,15 +163,57 @@ function CaseHeader({ onRecordAlarm }: { onRecordAlarm: () => void }) {
         <PillButton variant="secondary" onClick={onRecordAlarm}>
           Record an alarm
         </PillButton>
-        <a className="btn-pill btn-pill-secondary" href={exportUrl(c.id)} download={`case-${c.id}.json`}>
-          <span>Download</span>
-        </a>
-        <PillButton variant="secondary" onClick={() => window.print()}>
-          Print
-        </PillButton>
+        <MoreMenu caseId={c.id} />
       </div>
       {details && <DetailsDialog onClose={() => setDetails(false)} />}
     </header>
+  );
+}
+
+/** Download and Print, the rarely used header actions, behind one "More" button. */
+function MoreMenu({ caseId }: { caseId: number }) {
+  const [open, setOpen] = useState(false);
+  const menu = useMenuFocus(open, () => setOpen(false));
+  const wrap = useRef<HTMLSpanElement | null>(null);
+  // PillButton takes no ref: the menu returns focus to the first button in the wrapper.
+  useEffect(() => {
+    menu.triggerRef.current = wrap.current?.querySelector("button") ?? null;
+  }, [menu.triggerRef]);
+  // A click anywhere else closes it (Esc, Tab and the arrow keys are handled by useMenuFocus).
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [open]);
+  const choose = (run: () => void) => () => {
+    menu.closeToTrigger();
+    run();
+  };
+  const download = () => {
+    const a = document.createElement("a");
+    a.href = exportUrl(caseId);
+    a.download = `case-${caseId}.json`;
+    a.click();
+  };
+  return (
+    <span className="case-menu" ref={wrap}>
+      <PillButton variant="secondary" hasDropdown aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        More
+      </PillButton>
+      {open && (
+        <span ref={menu.menuRef} className="ast-menu" role="menu" aria-label="More actions" onKeyDown={menu.onMenuKeyDown}>
+          <button type="button" role="menuitem" tabIndex={-1} onClick={choose(download)}>
+            Download the case
+          </button>
+          <button type="button" role="menuitem" tabIndex={-1} onClick={choose(() => window.print())}>
+            Print
+          </button>
+        </span>
+      )}
+    </span>
   );
 }
 

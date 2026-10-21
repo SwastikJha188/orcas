@@ -5,20 +5,18 @@ import { PillButton } from "@/components/ui";
 import type { AssetMachine } from "./assets-data";
 import type { AssetsSubPage } from "./assets-view";
 import { useIndustrialData } from "@/providers/industrial-data-context";
-import { isLiveMachine, useKilnSimulationFor, useLiveMachineStatus } from "@/providers/kiln-simulation-context";
+import { useKilnSimulationFor, useLiveMachineStatus } from "@/providers/kiln-simulation-context";
 import { conditionTone, toCondition } from "@/components/ui/status";
 import { useKilnOps } from "@/providers/kiln-ops-context";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { formatLocalTime } from "@/lib/time";
-import { simTimeMs } from "@/lib/kiln-sim/engine";
-import { journalState } from "@/lib/alarm-journal";
+import { simTimeMs } from "@shared/lib/kiln-sim/engine";
+import { journalState } from "@shared/lib/alarm-journal";
 import { useMachineCatalog } from "./use-machine-catalog";
 import { DIAGNOSIS_SUB_KEY, focusLayer, focusSensorOn, LAYER_FOCUS_EVENT, readLayerFocus, type LayerFocusPayload } from "./sensor-focus";
-import { useMachineInsights } from "./use-machine-insights";
-import { rulRows } from "./prognosis/prognosis-derive";
 import { KpiStrip, PageHeader, Section, type KpiItem, type PageMetaItem } from "./analysis/an-ui";
 import { ackedFromEvents, dxSensorsFromFrame, toDxSensors, useDiagnosisRecord } from "./diagnosis-model";
-import { buildSensorRows, diagnosisTotals, inDefinitionOrder, type SensorRow } from "./diagnosis-rows";
+import { buildSensorRows, diagnosisTotals, inDefinitionOrder } from "./diagnosis-rows";
 import { defsFor } from "@/lib/live-defs";
 import { SensorDiagnosisTable } from "./diagnosis-sensor-table";
 import { SubassemblyHealthTable, type SubRow } from "./diagnosis-subassemblies";
@@ -52,6 +50,7 @@ export interface DiagnosisViewProps {
   /** @deprecated Health is part of Diagnosis now; ignored. */
   onNavigateToHealth?: () => void;
   onNavigateToAnalysis?: (ruleId?: string | null, component?: string | null, tag?: string | null) => void;
+  /** @deprecated Failure chance moved to Prognosis; Diagnosis no longer links there. Ignored. */
   onNavigateToPrognosis?: (ruleId?: string | null, component?: string | null, tag?: string | null) => void;
   externalScope?: { id: string; label: string; tags: string[] } | null;
   /** Component (sub-assembly id) the page is filtered to; undefined leaves the filter to the page. */
@@ -69,7 +68,6 @@ export function DiagnosisView({
   machine,
   onNavigateToTrends,
   onNavigateToAnalysis,
-  onNavigateToPrognosis,
   externalScope = null,
   componentId,
   onComponentChange,
@@ -140,11 +138,6 @@ export function DiagnosisView({
     focusLayer({ ruleId, component, tag, section: "an-diagnosis" });
     if (onNavigateToAnalysis) onNavigateToAnalysis(ruleId, component, tag);
     else go("analysis");
-  };
-  const openPrognosis = (ruleId?: string | null, component?: string | null, tag?: string | null) => {
-    focusLayer({ ruleId, component, tag, section: "prog-life" });
-    if (onNavigateToPrognosis) onNavigateToPrognosis(ruleId, component, tag);
-    else go("prognosis");
   };
 
   const fmtT = useCallback(
@@ -229,33 +222,19 @@ export function DiagnosisView({
     setPendingSub(null);
   }, [pendingSub, health.subs]);
 
-  // Failure chance per sub-assembly: Prognosis's remaining-life estimate (same rows as its RUL table).
-  const insights = useMachineInsights(machine);
-  // A live machine shows the stored snapshot until its engine starts: wait for the live estimate instead.
-  const liveMachine = isLiveMachine(machine.id);
-  const rul = useMemo(
-    () =>
-      insights.data?.prognosis && (frame || !liveMachine) ? rulRows(insights.data.prognosis, insights.data.analysis ?? null) : [],
-    [insights.data, frame, liveMachine],
-  );
-  const lifeFor = useCallback(
-    (r: SensorRow) => {
-      const id = subOf(r);
-      const hit = (id ? rul.find((x) => x.id === id) : undefined) ?? rul.find((x) => x.name === r.s.subAssembly);
-      return hit?.band ? { band: hit.band, name: hit.name } : null;
-    },
-    [rul, subOf],
-  );
-
   const subName = subFilter ? (health.subs.find((x) => x.id === subFilter)?.name ?? subFilter) : null;
 
   const partTags = useMemo(
     () => (externalScope && scopeToPart && externalScope.tags.length > 0 ? new Set(externalScope.tags) : null),
     [externalScope, scopeToPart],
   );
-  const ruleDef = ruleFilter ? frame?.defs.ruleById[ruleFilter] : undefined;
-  const ruleName = ruleFilter
-    ? (rows.flatMap((r) => r.faults).find((f) => f.ruleId === ruleFilter)?.name ?? (ruleDef ? ruleDef.plainTitle || ruleDef.name : ruleFilter))
+  // A problem filter (sent from Analysis or a finding) only applies on the parts that problem covers:
+  // on any other part it would empty the table, so it stays aside until you go back to one of them.
+  const ruleSubs = ruleFilter ? (frame?.rules.find((r) => r.id === ruleFilter)?.subs ?? frame?.defs.ruleById[ruleFilter]?.subs ?? []) : [];
+  const activeRule = ruleFilter && (!subFilter || ruleSubs.length === 0 || ruleSubs.includes(subFilter)) ? ruleFilter : null;
+  const ruleDef = activeRule ? frame?.defs.ruleById[activeRule] : undefined;
+  const ruleName = activeRule
+    ? (rows.flatMap((r) => r.faults).find((f) => f.ruleId === activeRule)?.name ?? (ruleDef ? ruleDef.plainTitle || ruleDef.name : activeRule))
     : null;
   const shown = useMemo(
     () =>
@@ -264,9 +243,9 @@ export function DiagnosisView({
           (!onlyAlarm || r.inAlarm) &&
           (!subFilter || subOf(r) === subFilter) &&
           (!partTags || partTags.has(r.s.tag)) &&
-          (!ruleFilter || r.faults.some((f) => f.ruleId === ruleFilter) || (frame?.defs.ruleById[ruleFilter]?.inputs ?? []).includes(r.s.tag)),
+          (!activeRule || r.faults.some((f) => f.ruleId === activeRule) || (frame?.defs.ruleById[activeRule]?.inputs ?? []).includes(r.s.tag)),
       ),
-    [rows, onlyAlarm, subFilter, subOf, partTags, ruleFilter, frame],
+    [rows, onlyAlarm, subFilter, subOf, partTags, activeRule, frame],
   );
   const inAlarm = rows.filter((r) => r.inAlarm).length;
 
@@ -324,16 +303,16 @@ export function DiagnosisView({
       label: "Problems found",
       value: frame ? String(totals.active) : "—",
       foot: frame ? `${totals.confirming} being confirmed` : "No live checks",
-      tone: totals.active ? "bad" : undefined,
+      tone: totals.active ? (totals.critical ? "bad" : "warn") : undefined,
     },
     {
       label: "Not acknowledged",
       value: frame ? String(totals.unacked) : "—",
       foot: frame ? `${totals.activeUnacked} still on · ${totals.clearedUnacked} back to normal` : "No live checks",
-      tone: totals.unacked ? "bad" : undefined,
+      tone: totals.unacked ? (totals.critical ? "bad" : "warn") : undefined,
     },
     {
-      label: "Untrusted sensors",
+      label: "Doubtful readings",
       value: loading ? "…" : String(totals.invalid),
       unit: `of ${partRow ? partRow.sensors : sensors.length}`,
       foot: `${totals.stale} not updating · ${totals.suspect} may be wrong`,
@@ -353,12 +332,12 @@ export function DiagnosisView({
       )}
       {subName && componentId !== undefined && (
         <button type="button" className="dxo-filter-chip" onClick={() => chooseSub(null)} aria-label={`Clear filter ${subName}`}>
-          {subName} ×
+          {subName} <span aria-hidden="true">×</span>
         </button>
       )}
-      {ruleFilter && (
+      {activeRule && (
         <button type="button" className="dxo-filter-chip" onClick={() => setRuleFilter(null)} aria-label={`Clear filter ${ruleName}`}>
-          {ruleName} ×
+          {ruleName} <span aria-hidden="true">×</span>
         </button>
       )}
       <button type="button" className="dxo-filter-chip" aria-pressed={onlyAlarm} onClick={() => setOnlyAlarm((v) => !v)}>
@@ -411,7 +390,13 @@ export function DiagnosisView({
         ) : sensors.length === 0 ? (
           <p className="pg-diag-missing">No sensors are linked to this machine yet.</p>
         ) : shown.length === 0 ? (
-          <p className="pg-diag-missing">{onlyAlarm ? "No sensor is in alarm." : "No sensor matches this filter."}</p>
+          <p className="pg-diag-missing">
+            {subName && partRow?.sensors === 0
+              ? `${subName} has no sensors, so nothing on it can be checked.`
+              : onlyAlarm
+                ? "No sensor is in alarm."
+                : "No sensor matches this filter."}
+          </p>
         ) : (
           <SensorDiagnosisTable
             rows={shown}
@@ -423,8 +408,7 @@ export function DiagnosisView({
             onWorkOrder={opsOn ? (id) => void ops.createWorkOrder(id) : undefined}
             onOpenTrend={openTrend}
             onWhy={(f, tag) => openReason(f.ruleId, f.where, tag)}
-            lifeFor={lifeFor}
-            onOpenLife={(name, tag) => openPrognosis(null, name, tag)}
+            hidePart={Boolean(subFilter || partTags)}
           />
         )}
       </Section>

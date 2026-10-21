@@ -7,13 +7,12 @@ import {
   MappedSignal,
   DiagnosisRecord,
   MachineTrendRecord,
-  RackChassisRecord,
 } from "@/components/assets/assets-data";
 import { WorkspaceTab } from "@/components/liquid-glass-shell";
 import { AssetsSubPage } from "@/components/assets/assets-view";
-import type { RoleRecord, UserRecord, CreateUserInput, UpdateUserInput } from "@/server/services/user-service";
-import type { PlantRecord, CreatePlantInput, UpdatePlantInput } from "@/server/services/plant-service";
-import type { CreateMachineInput } from "@/server/services/industrial-service";
+import type { RoleRecord, UserRecord, CreateUserInput, UpdateUserInput } from "@backend/services/user-service";
+import type { PlantRecord, CreatePlantInput, UpdatePlantInput } from "@backend/services/plant-service";
+import type { CreateMachineInput } from "@backend/services/industrial-service";
 
 export type { RoleRecord, UserRecord, CreateUserInput, UpdateUserInput, PlantRecord, CreatePlantInput, UpdatePlantInput, CreateMachineInput };
 
@@ -32,7 +31,6 @@ export interface FleetStats {
   standbyCount: number;
   avgHealth: number;
   totalSignals: number;
-  racksCount: number;
   machines: Array<{
     id: string;
     name: string;
@@ -69,6 +67,8 @@ interface IndustrialDataContextType {
   navigateToMachine: (machineId: string, subPage?: AssetsSubPage, workspace?: "home" | "assets") => void;
   /** Assets directory (no machine open). */
   navigateToAssetsHome: () => void;
+  /** Full line (no machine) on Assets, at a line page: Diagnosis, Prognosis or Analysis. */
+  navigateToLine: (page: "diagnosis" | "prognosis" | "analysis") => void;
   /** Plant chosen in the top bar's plant switcher (persisted). Null until hierarchy loads. */
   selectedPlantId: string | null;
   setSelectedPlantId: (id: string) => void;
@@ -93,7 +93,6 @@ interface IndustrialDataContextType {
   signals: MappedSignal[];
   diagnosisRecords: DiagnosisRecord[];
   trendRecords: MachineTrendRecord[];
-  racks: RackChassisRecord[];
   fleetStats: FleetStats | null;
   databaseStatus: DatabaseStatus | null;
 
@@ -229,7 +228,16 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
       const page = p.get("page");
       const subPage = isSubPage(page) ? page : "overview";
       // Older links had no tab for machine pages: those pages live in Assets now.
-      const resolvedTab = isWorkspaceTab(tab) ? tab : machine && subPage !== "overview" ? "assets" : "home";
+      let resolvedTab: WorkspaceTab = isWorkspaceTab(tab) ? tab : machine && subPage !== "overview" ? "assets" : "home";
+      // Problems moved into Maintenance (its Problems section).
+      if (resolvedTab === "problems") {
+        resolvedTab = "maintenance";
+        try {
+          localStorage.setItem("ultron.maint.page", "problems");
+        } catch {
+          /* storage unavailable */
+        }
+      }
       setActiveTab(resolvedTab);
       setSelectedMachineId(machine || null);
       setActiveSubPage(subPage);
@@ -250,6 +258,9 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
       // Machine pages live in Assets; Home shows a machine's Overview only.
       if (activeTab === "assets" && activeSubPage !== "overview") p.set("page", activeSubPage);
       if (activeTab === "assets" && selectedComponentId) p.set("component", selectedComponentId);
+    } else if (activeTab === "assets" && activeSubPage !== "overview") {
+      // Full line pages (no machine): Diagnosis, Prognosis, Analysis of the whole line.
+      p.set("page", activeSubPage);
     }
     const next = p.toString() ? `?${p}` : window.location.pathname;
     const current = window.location.search || window.location.pathname;
@@ -266,7 +277,6 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
   const [signals, setSignals] = useState<MappedSignal[]>([]);
   const [diagnosisRecords, setDiagnosisRecords] = useState<DiagnosisRecord[]>([]);
   const [trendRecords, setTrendRecords] = useState<MachineTrendRecord[]>([]);
-  const [racks, setRacks] = useState<RackChassisRecord[]>([]);
   const [fleetStats, setFleetStats] = useState<FleetStats | null>(null);
   const [databaseStatus, setDatabaseStatus] = useState<DatabaseStatus | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -330,7 +340,7 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
     const failed: string[] = [];
     try {
       // Hierarchy and machines gate every page, so they land (and end the first
-      // load) on their own; the slower fleet/health/rack reads fill in after.
+      // load) on their own; the slower fleet/health reads fill in after.
       const core = Promise.all([
         loadData("hierarchy", "/api/hierarchy", failed),
         loadData("machines", "/api/machines", failed),
@@ -354,16 +364,13 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
         }
         setHasLoaded(true);
       });
-      const [rk, fl, hl] = await Promise.all([
-        // Every rack_chassis row (Configure lists all gateways), not just the selection's.
-        loadData("racks", "/api/racks", failed),
+      const [fl, hl] = await Promise.all([
         loadData("fleet", "/api/fleet", failed),
         loadData("database", "/api/db/init", failed),
         core,
         loadMachineData(selectedRef.current),
       ]);
 
-      if (Array.isArray(rk)) setRacks(rk as RackChassisRecord[]);
       if (fl) setFleetStats(fl as FleetStats);
       if (hl) {
         setDatabaseStatus(hl as DatabaseStatus);
@@ -458,7 +465,6 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
     setAllMachines([]);
     setPlants([]);
     setUsers([]);
-    setRacks([]);
     setFleetStats(null);
     setHasLoaded(false);
     setAuth({ status: "signedOut", userId: null });
@@ -487,13 +493,6 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
     return allMachines.filter((m) => m.plantId && accessiblePlantIds.has(m.plantId));
   }, [allMachines, accessiblePlantIds]);
 
-  // Acquisition racks of the visible machines only: each plant is a separate workspace.
-  const scopedRacks = useMemo(() => {
-    if (!accessiblePlantIds) return racks;
-    const visible = new Set(machines.map((m) => m.id));
-    return racks.filter((r) => !r.machineId || visible.has(r.machineId));
-  }, [racks, machines, accessiblePlantIds]);
-
   // Cross-page machine navigator: the Overview opens in the Operator view, every
   // other machine page in Assets (see the type above).
   const navigateToMachine = useCallback(
@@ -514,6 +513,13 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
   const navigateToAssetsHome = useCallback(() => {
     setSelectedMachineId(null);
     setActiveSubPage("overview");
+    setActiveTab("assets");
+  }, []);
+
+  const navigateToLine = useCallback((page: "diagnosis" | "prognosis" | "analysis") => {
+    setSelectedMachineId(null);
+    setSelectedComponent(null);
+    setActiveSubPage(page);
     setActiveTab("assets");
   }, []);
 
@@ -615,6 +621,7 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
       selectComponent,
       navigateToMachine,
       navigateToAssetsHome,
+      navigateToLine,
       selectedPlantId,
       setSelectedPlantId,
       users,
@@ -633,7 +640,6 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
       signals,
       diagnosisRecords,
       trendRecords,
-      racks: scopedRacks,
       fleetStats,
       databaseStatus,
       isLoading,
@@ -659,6 +665,7 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
       selectComponent,
       navigateToMachine,
       navigateToAssetsHome,
+      navigateToLine,
       selectedPlantId,
       setSelectedPlantId,
       users,
@@ -677,7 +684,6 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
       signals,
       diagnosisRecords,
       trendRecords,
-      scopedRacks,
       fleetStats,
       databaseStatus,
       isLoading,

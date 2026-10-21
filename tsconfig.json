@@ -25,6 +25,12 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@shared/*": [
+        "./shared/*"
+      ],
+      "@backend/*": [
+        "./backend/src/*"
       ]
     }
   },
@@ -44,15 +50,17 @@
     ".next-perf/types/**/*.ts",
     ".next-preview/types/**/*.ts",
     ".next-responsive/types/**/*.ts",
+    ".next-stage/types/**/*.ts",
     ".next-twinperf/types/**/*.ts",
     ".next-verify-97703c/types/**/*.ts",
     ".next-verify-build/types/**/*.ts",
     ".next/types/**/*.ts",
     "next-env.d.ts",
-    ".next-stage/types/**/*.ts"
+    ".next-cards/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
+    "backend/dist/**",
     "LiquidGlassSkill-main/**",
     "liquid-glass-skill-main/**",
     "onboarding-work/**"

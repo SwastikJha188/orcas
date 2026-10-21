@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Dialog, Field, FieldGrid, PillButton, Select, TextInput, type Tone } from "@/components/ui";
+import { Dialog, Field, FieldGrid, NumberInput, PillButton, Select, TextInput, type Tone } from "@/components/ui";
 import {
   PAUSED,
   READINESS_KEYS,
@@ -15,10 +15,10 @@ import {
   transitionBlocker,
   transitionsFrom,
   type Transition,
-} from "@/lib/pms";
+} from "@shared/lib/pms";
 import { formatLocalTime } from "@/lib/time";
 import { useWorkOrderPriorities } from "@/lib/reference-data";
-import type { PmsWorkOrder, ReadinessKey, ReadinessState, WoStage } from "@/types/pms";
+import type { PmsWorkOrder, ReadinessKey, ReadinessState, WoStage } from "@shared/types/pms";
 import { Section } from "@/components/assets/analysis/an-ui";
 import type { Outcome, PmsModel } from "./pms-model";
 import { machineName, priorityOptions, priorityTone, stageTone, woRef } from "./pms-model";
@@ -81,6 +81,10 @@ export function WorkOrderDetail({
     return transitionBlocker(wo, t.to, "");
   };
   const primaryBlocker = primary ? blockerOf(primary) : null;
+  // Why the other actions are greyed out, said once each under the buttons (not only in a tooltip).
+  const otherBlockers = others
+    .map((t) => ({ label: t.label, why: blockerOf(t) }))
+    .filter((x): x is { label: string; why: string } => Boolean(x.why) && x.why !== primaryBlocker);
 
   const setReadiness = async (k: ReadinessKey, state: ReadinessState) => {
     setBusy(true);
@@ -135,7 +139,13 @@ export function WorkOrderDetail({
             {READINESS_KEYS.map((k) => (
               <li key={k} data-tone={READINESS_TONE[wo.readiness[k].state]}>
                 <span className="pm-rd-dot" data-state={wo.readiness[k].state} aria-hidden="true" />
-                <span className="pm-rd-label">{READINESS_LABEL[k]}</span>
+                {editableReadiness ? (
+                  <label className="pm-rd-label" htmlFor={`rd-${wo.id}-${k}`}>
+                    {READINESS_LABEL[k]}
+                  </label>
+                ) : (
+                  <span className="pm-rd-label">{READINESS_LABEL[k]}</span>
+                )}
                 {editableReadiness ? (
                   <Select
                     id={`rd-${wo.id}-${k}`}
@@ -182,6 +192,12 @@ export function WorkOrderDetail({
         </div>
       )}
       {live && primaryBlocker && <p className="ast-caption pm-foot">{primaryBlocker}</p>}
+      {live &&
+        otherBlockers.map((x) => (
+          <p key={x.label} className="ast-caption pm-foot">
+            {x.label}: {x.why}
+          </p>
+        ))}
       {!live && <p className="ast-caption pm-foot">This work order is closed and can no longer be changed.</p>}
 
       <div className="pm-audit" role="group" aria-label="History of changes">
@@ -259,6 +275,7 @@ function PlanningDialog({ open, wo, onClose, onSave }: { open: boolean; wo: PmsW
   const [hours, setHours] = useState(wo.estimateHours ? String(wo.estimateHours) : "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
   useEffect(() => {
     if (!open) return;
     setPriority(wo.priority);
@@ -267,16 +284,28 @@ function PlanningDialog({ open, wo, onClose, onSave }: { open: boolean; wo: PmsW
     setStart(toLocalInput(wo.plannedStart));
     setHours(wo.estimateHours ? String(wo.estimateHours) : "");
     setErr(null);
+    setTried(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, wo.id]);
+  const h = hours.trim() ? Number(hours) : null;
+  const hoursBad = h !== null && (!Number.isFinite(h) || h <= 0);
+  const dirty =
+    priority !== wo.priority ||
+    owner !== (wo.assignee ?? "") ||
+    mode !== (wo.workMode ?? "") ||
+    start !== toLocalInput(wo.plannedStart) ||
+    hours !== (wo.estimateHours ? String(wo.estimateHours) : "");
   const save = async () => {
+    setTried(true);
+    if (hoursBad) return;
+    setErr(null);
     setBusy(true);
     const out = await onSave({
       priority,
       assignee: owner,
       workMode: mode || null,
       plannedStart: start ? new Date(start).toISOString() : null,
-      estimateHours: hours ? Number(hours) : null,
+      estimateHours: h,
     });
     setBusy(false);
     if (out.tone === "bad") setErr(out.text);
@@ -289,6 +318,7 @@ function PlanningDialog({ open, wo, onClose, onSave }: { open: boolean; wo: PmsW
       title="Plan details"
       subtitle={`${woRef(wo.id)} · ${wo.title}`}
       busy={busy}
+      dirty={dirty}
       onSubmit={() => void save()}
       footer={
         <>
@@ -311,14 +341,18 @@ function PlanningDialog({ open, wo, onClose, onSave }: { open: boolean; wo: PmsW
         <Field label="Planned start" hint="Setting a date does not by itself make the job ready">
           {(fid, d) => <input id={fid} aria-describedby={d} className="ui-input" type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />}
         </Field>
-        <Field label="Time needed (hours)">
-          {(fid, d) => <input id={fid} aria-describedby={d} className="ui-input" type="number" min={0} step={0.5} inputMode="decimal" value={hours} onChange={(e) => setHours(e.target.value)} />}
+        <Field label="Time needed (hours)" error={tried && hoursBad ? "Enter hours as a number, like 1.5" : null}>
+          {(fid, d) => <NumberInput id={fid} describedBy={d} value={hours} onChange={setHours} />}
         </Field>
         <Field label="Who does it" wide>
           {(fid, d) => <TextInput id={fid} describedBy={d} value={owner} onChange={setOwner} placeholder="Crew or person" />}
         </Field>
       </FieldGrid>
-      {err && <p className="ui-form-note" data-tone="bad">{err}</p>}
+      {err && (
+        <p className="ui-form-note" data-tone="bad" role="alert">
+          {err}
+        </p>
+      )}
     </Dialog>
   );
 }

@@ -9,6 +9,7 @@ import { useApi } from "@/lib/api-cache";
 import { formatLocalTime } from "@/lib/time";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { Table, type Column } from "@/components/ui";
+import { woRef } from "@/components/maintenance/pms-model";
 import { requestsUrl, type CaseRequest } from "./cases-api";
 import { useRefreshOnCaseChange } from "./condition-strip";
 import "./problems.css";
@@ -60,7 +61,7 @@ export function RequestsTab({ plantId, onOpenCase }: { plantId: string | null; o
       render: (r) =>
         r.workOrderId !== null ? (
           <span className="ast-cell-stack">
-            <span>Number {r.workOrderId}</span>
+            <span>{woRef(r.workOrderId)}</span>
             <span className="ast-cell-sub">{r.workOrderStatus ?? "Status not known"}</span>
           </span>
         ) : (

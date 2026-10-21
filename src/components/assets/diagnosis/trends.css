@@ -45,13 +45,13 @@
 
 .dxt-tip {
   position: absolute; z-index: 2; pointer-events: none; display: flex; flex-direction: column; gap: 4px; min-width: 140px;
-  padding: 8px 10px; border-radius: var(--corner-sm); background: var(--page-bg); border: 1px solid var(--separator);
+  padding: 8px 8px; border-radius: var(--corner-sm); background: var(--page-bg); border: 1px solid var(--separator);
   font-size: var(--fs-sm); color: var(--page-fg); font-variant-numeric: tabular-nums;
 }
 .dxt-tip-time { color: var(--text-muted); font-size: var(--fs-xs); }
-.dxt-tip-row { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+.dxt-tip-row { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .dxt-tip-row strong { color: var(--dx-ink); font-weight: 600; font-size: var(--fs-md); }
-.dxt-tip-delta { margin-left: auto; padding-left: 10px; color: var(--text-muted); }
+.dxt-tip-delta { margin-left: auto; padding-left: 8px; color: var(--text-muted); }
 
 /* ==========================================================================
    ULTRON · Machine sub-page · Trends (prefix pg-trends-).
@@ -68,12 +68,12 @@
 
 /* ---------------------------------------------------------------- controls */
 .pg-trends-pills { gap: 2px; padding: 2px; flex-wrap: nowrap; }
-.pg-trends-pills .nav-pill { gap: 6px; padding: 5px 12px; font-size: var(--fs-sm); white-space: nowrap; }
-.pg-trends-pills .nav-pill.active { padding: 5px 12px; }
+.pg-trends-pills .nav-pill { gap: 8px; padding: 4px 12px; font-size: var(--fs-sm); white-space: nowrap; }
+.pg-trends-pills .nav-pill.active { padding: 4px 12px; }
 .pg-trends-count { font-family: var(--font-mono); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; color: var(--text-muted); }
-.pg-trends-btn-sm { padding: 5px 12px; font-size: var(--fs-sm); gap: 4px; }
+.pg-trends-btn-sm { min-height: 32px; padding: 4px 12px; font-size: var(--fs-sm); gap: 4px; }
 .pg-trends-icon-btn {
-  display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; flex-shrink: 0;
   border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-surface); color: var(--text-muted); cursor: pointer;
 }
 .pg-trends-icon-btn:hover:not(:disabled) { background: var(--bg-surface-elevated); border-color: var(--border-hover); color: var(--dx-ink); }
@@ -94,7 +94,7 @@
   border-right: 1.5px solid var(--text-muted); border-bottom: 1.5px solid var(--text-muted); transform: rotate(45deg);
 }
 .pg-trends-select {
-  appearance: none; -webkit-appearance: none; width: 100%; min-width: 0; padding: 6px 32px 6px 12px;
+  appearance: none; -webkit-appearance: none; width: 100%; min-width: 0; padding: 4px 32px 4px 12px;
   border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--dx-ink);
   font: 500 12px/1.4 var(--font-ui); font-variant-numeric: tabular-nums; cursor: pointer;
   text-overflow: ellipsis; white-space: nowrap; overflow: hidden;
@@ -116,7 +116,7 @@
 .pg-trends-ex-title > .pg-trends-muted { font-size: var(--fs-sm); }
 .pg-trends-ex-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .pg-trends-readouts { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 8px 32px; }
-.pg-trends-hero { display: flex; align-items: baseline; gap: 6px; }
+.pg-trends-hero { display: flex; align-items: baseline; gap: 8px; }
 .pg-trends-hero-value { font-family: var(--font-mono); font-size: var(--fs-7xl); font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1; color: var(--dx-ink); }
 .pg-trends-hero-unit { font-size: var(--fs-sm); color: var(--text-muted); }
 .pg-trends-stats { display: flex; flex-wrap: wrap; gap: 8px 0; margin: 0; }
@@ -189,10 +189,12 @@
 .pg-trends-ov-dot { fill: var(--card-bg); stroke-dasharray: none; }
 .pg-trends-ov-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .pg-trends-ov-x {
-  display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0;
+  position: relative; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0;
   border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font: 500 14px/1 var(--font-ui); cursor: pointer;
 }
 .pg-trends-ov-x:hover { background: var(--hover-faint); color: var(--dx-ink); }
+/* Larger hit area than the drawn button. */
+.pg-trends-ov-x::after { content: ""; position: absolute; inset: -4px; }
 .pg-trends-add { flex: 0 1 220px; }
 
 /* compare legend: one flush cell per compared signal, under the chart */
@@ -206,10 +208,12 @@
 }
 .pg-trends-legend-item:hover { background: var(--hover-faint); }
 .pg-trends-legend-item:focus-visible { outline: 2px solid var(--signal-blue); outline-offset: -2px; }
-.pg-trends-legend-head { display: flex; align-items: center; gap: 8px; min-width: 0; height: 20px; }
+.pg-trends-legend-head { display: flex; align-items: center; gap: 8px; min-width: 0; height: 24px; }
 .pg-trends-legend-head svg { flex-shrink: 0; }
 .pg-trends-legend-head .pg-trends-ov-x { margin-left: auto; }
 .pg-trends-legend-tag { font-size: var(--fs-md); font-weight: 600; min-width: 0; color: var(--dx-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pg-trends-legend-pick { padding: 0; border: 0; background: none; font-family: inherit; line-height: inherit; text-align: left; cursor: pointer; }
+.pg-trends-legend-pick:focus-visible { outline: 2px solid var(--signal-blue); outline-offset: 2px; border-radius: var(--corner-sm); }
 .pg-trends-legend-name { font-size: var(--fs-sm); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pg-trends-legend-value { display: flex; align-items: baseline; gap: 4px; min-width: 0; font-family: var(--font-mono); font-size: var(--fs-3xl); font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; color: var(--dx-ink); white-space: nowrap; }
 .pg-trends-legend-unit { font-family: var(--font-ui); font-size: var(--fs-sm); font-weight: 400; letter-spacing: 0; color: var(--text-muted); }
@@ -265,7 +269,7 @@
 
 /* Phone: signals two-up (shared .ui-tiles.is-compact), facts 2 × 2. */
 @media (max-width: 640px) {
-  .pg-trends-signal-grid .pg-trends-sigtile .ui-tile-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; }
+  .pg-trends-signal-grid .pg-trends-sigtile .ui-tile-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 8px; }
 }
 
 @media (max-width: 640px) {

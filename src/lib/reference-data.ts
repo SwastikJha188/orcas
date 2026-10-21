@@ -8,7 +8,7 @@
  */
 import { useMemo } from "react";
 import { useApi } from "@/lib/api-cache";
-import type { HealthModelDto, SeverityId, WorkOrderPriorityDto } from "@/types/monitoring";
+import type { HealthModelDto, SeverityId, WorkOrderPriorityDto } from "@shared/types/monitoring";
 
 export interface HealthBands {
   /** Scores below this are Alert. */

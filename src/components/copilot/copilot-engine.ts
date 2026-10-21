@@ -13,12 +13,12 @@
  * Pure TypeScript, no React, so it can be unit-tested headlessly.
  */
 import { ACTION } from "@/components/ui/status";
-import { isRelativeLimit, limitPair, type SignalDef } from "@/lib/kiln-sim/signals";
-import { formatDuration, type LiveSignal, type RuleState, type SimFrame } from "@/lib/kiln-sim/engine";
+import { isRelativeLimit, limitPair, type SignalDef } from "@shared/lib/kiln-sim/signals";
+import { formatDuration, type LiveSignal, type RuleState, type SimFrame } from "@shared/lib/kiln-sim/engine";
 import { buildLiveInsights } from "@/lib/kiln-sim/live-insights";
-import type { PlantDefs } from "@/lib/plant-defs";
-import { isConditionRule } from "@/lib/plant-defs";
-import type { FindingDto, MachineEventDto } from "@/types/monitoring";
+import type { PlantDefs } from "@shared/lib/plant-defs";
+import { isConditionRule } from "@shared/lib/plant-defs";
+import type { FindingDto, MachineEventDto } from "@shared/types/monitoring";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -176,7 +176,7 @@ function chip(f: SimFrame, tag: string): EvidenceChip | null {
   if (!s || !defOf(f, tag)) return null;
   return { tag, name: nm(f, tag), value: s.display, unit: unitOf(f, tag), z: s.z, status: s.status };
 }
-function chips(f: SimFrame, tags: string[], max = 5): EvidenceChip[] {
+export function chips(f: SimFrame, tags: string[], max = 5): EvidenceChip[] {
   const out: EvidenceChip[] = [];
   for (const t of tags) {
     if (out.length >= max) break;
@@ -187,7 +187,7 @@ function chips(f: SimFrame, tags: string[], max = 5): EvidenceChip[] {
   return out;
 }
 
-function spark(f: SimFrame, tag: string): Spark | null {
+export function spark(f: SimFrame, tag: string): Spark | null {
   const def = defOf(f, tag);
   const h = f.history[tag];
   if (!def || def.type !== "analog" || !h || h.length < 8) return null;

@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { Dialog, Field, FieldGrid, FieldSection, FormNote, NumberInput, PillButton, Select, TextArea, TextInput, Toggle } from "@/components/ui";
+import { ConfirmAction, Dialog, Field, FieldGrid, FieldSection, FormNote, NumberInput, PillButton, Select, TextArea, TextInput, Toggle } from "@/components/ui";
 import { useEdge } from "@/providers/edge-context";
-import { SOURCE_KINDS, SOURCE_KIND_LABEL, SOURCE_PROTOCOLS, type EdgeSource, type SourceKind } from "@/types/edge";
+import { SOURCE_KINDS, SOURCE_KIND_LABEL, SOURCE_PROTOCOLS, type EdgeSource, type SourceKind } from "@shared/types/edge";
 import { type EdgeIndex, pointsOf } from "../edge-model";
-import { CODE_RULE, CODE_RULE_TEXT, DeleteConfirm, machineOptions, numberOrNull, str, textOrNull } from "./edge-dialog-parts";
+import { CODE_RULE, CODE_RULE_TEXT, machineOptions, numberOrNull, str, textOrNull } from "./edge-dialog-parts";
 import { type Selection, plural, sortGateways } from "./edge-tree-model";
 
 /* ==========================================================================
@@ -90,8 +90,8 @@ export function SourceDialog({ open, ix, source, prefill, lockGateway, onClose, 
 
   const validate = (): boolean => {
     const e: Errors = {};
-    if (!gatewayId) e.gatewayId = "Pick the data collector that reads this device";
-    if (!code.trim()) e.code = "Enter the device code";
+    if (!gatewayId) e.gatewayId = "Pick the gateway that reads this rack";
+    if (!code.trim()) e.code = "Enter the rack code";
     else if (!CODE_RULE.test(code.trim())) e.code = CODE_RULE_TEXT;
     if (!name.trim()) e.name = "Name is required";
     const poll = numberOrNull(pollIntervalMs);
@@ -141,7 +141,7 @@ export function SourceDialog({ open, ix, source, prefill, lockGateway, onClose, 
   };
 
   const nPoints = source ? pointsOf(ix, source.id).length : 0;
-  const question = nPoints === 0 ? "Delete this device?" : `Delete this device and its ${plural(nPoints, "reading point")}?`;
+  const question = nPoints === 0 ? "Delete this rack?" : `Delete this rack and its ${plural(nPoints, "channel")}?`;
 
   return (
     <Dialog
@@ -150,23 +150,23 @@ export function SourceDialog({ open, ix, source, prefill, lockGateway, onClose, 
       busy={busy}
       onSubmit={submit}
       width={620}
-      title={editing ? "Edit device" : prefill?.code ? "Register device" : "Add device"}
-      subtitle={editing ? `${source!.name} · ${source!.code}` : gateway ? `Read by ${gateway.name} · ${gateway.code}` : "A sensor rack, controller (PLC), SCADA, DCS or analyser read by a data collector"}
-      footerStart={editing ? <DeleteConfirm label="Delete device" question={question} onDelete={doDelete} disabled={busy} /> : undefined}
+      title={editing ? "Edit rack" : prefill?.code ? "Register rack" : "Add rack"}
+      subtitle={editing ? `${source!.name} · ${source!.code}` : gateway ? `Read by ${gateway.name} · ${gateway.code}` : "A sensor rack, controller (PLC), SCADA, DCS or analyser read by a gateway"}
+      footerStart={editing ? <ConfirmAction label="Delete rack" question={question} onConfirm={doDelete} disabled={busy} /> : undefined}
       footer={
         <>
           <PillButton variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </PillButton>
           <PillButton type="submit" variant="primary" disabled={busy}>
-            {busy ? "Saving…" : editing ? "Save" : "Add device"}
+            {busy ? "Saving…" : editing ? "Save" : "Add rack"}
           </PillButton>
         </>
       }
     >
       <FieldSection title="Identity">
         <FieldGrid>
-          <Field label="Data collector" required error={errors.gatewayId} wide>
+          <Field label="Gateway" required error={errors.gatewayId} wide>
             {(id, d) => (
               <Select
                 id={id}
@@ -175,13 +175,13 @@ export function SourceDialog({ open, ix, source, prefill, lockGateway, onClose, 
                 onChange={setGatewayId}
                 disabled={busy || lockGateway}
                 options={[
-                  ...(gatewayId ? [] : [{ value: "", label: "Choose a data collector" }]),
+                  ...(gatewayId ? [] : [{ value: "", label: "Choose a gateway" }]),
                   ...sortGateways(registry.gateways).map((g) => ({ value: g.id, label: `${g.code} · ${g.name}` })),
                 ]}
               />
             )}
           </Field>
-          <Field label="Device code" required error={errors.code} hint="The code the data collector sends this device's data under">
+          <Field label="Rack code" required error={errors.code} hint="The code the gateway sends this rack's data under">
             {(id, d) => <TextInput id={id} describedBy={d} value={code} onChange={setCode} mono placeholder="PLC-01" autoFocus={!editing && !prefill?.code} disabled={busy} />}
           </Field>
           <Field label="Name" required error={errors.name}>
@@ -215,7 +215,7 @@ export function SourceDialog({ open, ix, source, prefill, lockGateway, onClose, 
 
       <FieldSection title="Placement">
         <FieldGrid>
-          <Field label="Machine" hint="The main machine it measures; single reading points can link to others">
+          <Field label="Machine" hint="The main machine it measures; single channels can link to others">
             {(id, d) => <Select id={id} describedBy={d} value={machineId} onChange={setMachineId} disabled={busy} options={machineOptions(registry)} />}
           </Field>
           <Field label="Location">
@@ -233,7 +233,7 @@ export function SourceDialog({ open, ix, source, prefill, lockGateway, onClose, 
         </FieldGrid>
       </FieldSection>
 
-      <Toggle checked={enabled} onChange={setEnabled} disabled={busy} label="Switched on" description="When off, the device keeps its reading points but shows no live data" />
+      <Toggle checked={enabled} onChange={setEnabled} disabled={busy} label="Switched on" description="When off, the rack keeps its channels but shows no live data" />
       {failure && <FormNote tone="bad">{failure}</FormNote>}
     </Dialog>
   );

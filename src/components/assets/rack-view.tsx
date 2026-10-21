@@ -2,13 +2,13 @@
 
 import React, { useCallback, useMemo, useState } from "react";
 import type { AssetMachine } from "./assets-data";
-import type { MachineRackInfo } from "./rack-data";
+import type { MachineRackInfo } from "@shared/lib/rack-data";
 import type { KilnSimulation } from "./kiln-seals-simulation";
 import { useMachineRackUnits } from "./use-machine-rack-units";
 import { applyRackLive, applyRackMqtt, applyRackSimulation } from "./rack-simulation";
 import { useMachineCatalog, useMachineMeasurements } from "./use-machine-catalog";
 import { useApi } from "@/lib/api-cache";
-import type { EdgeRegistry } from "@/types/edge";
+import type { EdgeRegistry } from "@shared/types/edge";
 import { rackSpecFrom } from "./rack-spec";
 import { useMachineAcquisition } from "./acquisition/use-machine-acquisition";
 import { STATE_TONE, buildRackModel, type ChannelRow, type RackModel } from "./rack-model";
@@ -29,7 +29,7 @@ import { useIndustrialData } from "@/providers/industrial-data-context";
 import { isKilnMachine, useKilnSimulationFor } from "@/providers/kiln-simulation-context";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { formatLocalTime } from "@/lib/time";
-import { simTimeMs } from "@/lib/kiln-sim/engine";
+import { simTimeMs } from "@shared/lib/kiln-sim/engine";
 import "./assets-shell.css";
 import "./analysis/analysis-page.css";
 import "./rack.css";
@@ -314,7 +314,7 @@ export function RackView({ machine, simulation }: RackViewProps) {
                 stampsOf={(tag) => {
                   const sg = sim?.frame?.signals[tag];
                   if (sg?.sourceTs === undefined) return null;
-                  const f = (t: number) => `${formatLocalTime(simTimeMs(t), { date: true, seconds: true, timeZone: tz.timeZone })} · sim.`;
+                  const f = (t: number) => `${formatLocalTime(simTimeMs(t), { date: true, seconds: true, timeZone: tz.timeZone })}`;
                   return { source: f(sg.sourceTs), received: sg.receivedTs !== undefined ? f(sg.receivedTs) : "—" };
                 }}
               />

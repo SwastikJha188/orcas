@@ -3,13 +3,15 @@
 import React from "react";
 import { PillButton, StatusTag, Table, type Column } from "@/components/ui";
 import { validityTone, VALIDITY_WORDS } from "@/components/ui/status";
-import { formatDuration, type SimFrame } from "@/lib/kiln-sim/engine";
-import { isConditionRule } from "@/lib/plant-defs";
+import { formatDuration, type SimFrame } from "@shared/lib/kiln-sim/engine";
+import { isConditionRule } from "@shared/lib/plant-defs";
 import { FAILURE_CHANCE_HEADER, FailureChance } from "../prognosis/prog-chance";
 import { rangeText, roundHours, type PrognosisData } from "../prognosis/prognosis-derive";
 import { SignalForecastTable, type SignalForecastRow } from "../prognosis/prog-signals";
-import { FEEDBACK, type FeedbackStore } from "./an-actions";
+import { type FeedbackStore } from "./an-actions";
 import { displayName } from "@/lib/display-name";
+import { formatLocalTime } from "@/lib/time";
+import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { episodes, fmt, offText, sigma, type DetectionRow } from "./an-derive";
 import { alternatives, couplingShifts, deviationOrder, evidenceFor, trendingSignals, type EvidenceRow, type ImpactRow, type Issue } from "./an-issues";
 import { StartCaseButton } from "@/components/problems/start-case-button";
@@ -54,7 +56,9 @@ export function issueState(issue: Issue, frame: SimFrame | null): string {
 /** Selected issue: name, where, state, and the operator's verification label. */
 export function IssueHead({ issue, frame, feedback, machineId }: { issue: Issue; frame: SimFrame | null; feedback: FeedbackStore; machineId?: string }) {
   const id = issue.rule?.id ?? null;
-  const cur = id ? (feedback.labels[id]?.label ?? null) : null;
+  const answer = id ? (feedback.labels[id] ?? null) : null;
+  const cur = answer?.label ?? null;
+  const { timeZone } = useSiteTimeZone(machineId ? { machineId } : {});
   // Engineering name and rule code stay reachable as the tooltip.
   const tip = issue.rule ? [issue.rule.name !== issue.title ? issue.rule.name : null, issue.rule.id].filter(Boolean).join(" · ") : undefined;
   return (
@@ -76,11 +80,30 @@ export function IssueHead({ issue, frame, feedback, machineId }: { issue: Issue;
       )}
       {id && (
         <span className="pg-an-verify" role="group" aria-label="Is this a real problem?">
-          {FEEDBACK.map((b) => (
-            <PillButton key={b.id} variant="secondary" className="pg-diag-sm" pressed={cur === b.id} onClick={() => feedback.set(id, cur === b.id ? null : b.id)}>
-              {b.label}
+          {feedback.kinds.map((b) => (
+            <PillButton
+              key={b.id}
+              variant="secondary"
+              className="pg-diag-sm"
+              pressed={cur === b.id}
+              loading={feedback.busy === id && cur === b.id}
+              onClick={() => feedback.set(id, cur === b.id ? null : b.id)}
+            >
+              {b.name}
             </PillButton>
           ))}
+          {/* Who answered and when: the answer is shared with everyone on the plant. */}
+          {answer && feedback.busy !== id && (
+            <span className="ast-caption pg-an-verify-by">
+              {answer.by ? `${answer.by} · ` : ""}
+              {formatLocalTime(answer.at, { timeZone })}
+            </span>
+          )}
+          {feedback.error && feedback.busy === null && (
+            <span className="ast-caption" role="alert" data-tone="bad">
+              {feedback.error}
+            </span>
+          )}
         </span>
       )}
     </div>
@@ -106,7 +129,7 @@ function Facts({ items }: { items: { label: string; value: React.ReactNode; titl
 function TagButton({ tag, name, onOpenTrend }: { tag: string; name: string; onOpenTrend: (tag: string) => void }) {
   return (
     <button type="button" className="ast-cell-title pg-dx-tag" onClick={() => onOpenTrend(tag)} title={`Open the trend chart for this sensor (${tag})`}>
-      {name} ↗
+      {name} <span aria-hidden="true">↗</span>
     </button>
   );
 }

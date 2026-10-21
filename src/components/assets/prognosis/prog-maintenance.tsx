@@ -2,7 +2,7 @@
 
 import { crossingsAt, windowFor, windowHours, type AnalysisPayload, type PrognosisData, type RulRow } from "./prognosis-derive";
 import { priorityRank } from "../analysis/an-ui";
-import type { WorkOrderPriorityDto } from "@/types/monitoring";
+import type { WorkOrderPriorityDto } from "@shared/types/monitoring";
 
 export interface Rec {
   id: string;

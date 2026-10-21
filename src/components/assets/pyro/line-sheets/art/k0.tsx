@@ -494,6 +494,8 @@ const pads: LineSheetArt["pads"] = {
   "PRX-KLN-04": [915.1, 695],
   "PRX-KLN-05": [929.3, 695],
   "PRX-KLN-06": [943.5, 695],
+  // the six circuits as one block while they all agree: its pad on the divider block face
+  "PRX-KLN-ALL": [908.5, 662.5],
   // station 2 plan (K-6)
   "TMP-KLN-05": [1007.2, 581.2],
   "TMP-KLN-06": [1239.2, 581.2],
@@ -591,6 +593,12 @@ const callouts: LineSheetArt["callouts"] = {
   "PRX-KLN-06": [954, 738, "start"],
   "PRX-KLN-05": [954, 764, "start"],
   "PRX-KLN-04": [915, 622, "middle"],
+  "PRX-KLN-ALL": [908.5, 622, "middle"],
 };
 
-export const sheet: LineSheetArt = { id: "K-0", ready: true, width: W, height: H, Art, pads, callouts };
+/** The six spray circuits read as one plate while they all agree and are Normal; any odd one splits them back out. */
+const averages: LineSheetArt["averages"] = {
+  "PRX-KLN-ALL": { tags: ["PRX-KLN-01", "PRX-KLN-02", "PRX-KLN-03", "PRX-KLN-04", "PRX-KLN-05", "PRX-KLN-06"], label: "SPRAYS 1–6" },
+};
+
+export const sheet: LineSheetArt = { id: "K-0", ready: true, width: W, height: H, Art, pads, callouts, averages };

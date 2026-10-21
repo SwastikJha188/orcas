@@ -1,17 +1,13 @@
 "use client";
 
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { StatusTag } from "@/components/ui/status-tag";
-import { alertTone, Fact, type FactItem } from "@/components/ui/kpi";
-import { PillButton } from "@/components/ui/pill-button";
-import type { InsightsResponse, Severity } from "@/server/services/insights-service";
-import { useIndustrialData } from "@/providers/industrial-data-context";
+import { alertTone } from "@/components/ui/kpi";
+import type { InsightsResponse, Severity } from "@backend/services/insights-service";
 import type { AssetMachine } from "../assets-data";
 import type { AssetsSubPage } from "../assets-view";
 import type { Tone } from "../assets-shell-ui";
-import type { WorkOrderPriorityDto } from "@/types/monitoring";
-import { focusSensorOn } from "../sensor-focus";
+import type { WorkOrderPriorityDto } from "@shared/types/monitoring";
 import "./analysis-page.css";
 
 /*
@@ -25,14 +21,10 @@ import "./analysis-page.css";
  *   Panel                                           flush titled block inside a section
  *   PageHeader                                      the one page header row (title · status · meta · actions)
  *   KpiStrip (page) / Fact                          page KPI strip (4 frosted tiles) / flush facts in a section
- *   VerdictCard                                     numbers-only summary block (status + facts)
- *   AiTag                                           tiny muted "est." suffix for derived values
  *   ConfidenceMeter                                 value + thin neutral bar
- *   EvidenceChip                                    sensor chip → Trends / Sensors focused on the tag
  *   WhyDisclosure                                   quiet disclosure (one per section at most)
  *   CausalChain                                     compact finding chain
- *   PointerCard                                     facts + link to the page that owns them
- *   MissingNote / Empty                             one muted line
+ *   Empty                                           one muted line
  */
 
 export type AnalysisData = InsightsResponse["analysis"];
@@ -117,15 +109,15 @@ export interface PageMetaItem {
 }
 
 /**
- * Where page headers render. The Assets workspace provides its second bar here, so a
- * machine page's header sits in the bar row (the Operator view's sheet row) and the
- * page toggle stays in the third bar on every page. Null (popups, elsewhere): in place.
+ * Where page headers render. The Assets workspace provides the first row below its machine
+ * bar here, so a machine page's header always leads the page, under the page toggle that
+ * picked it. Null (popups, elsewhere): in place.
  */
 export const PageHeaderSlot = createContext<HTMLElement | null>(null);
 const CONDITION_WORDS = ["Normal", "Alert", "Critical"] as const;
 
 /**
- * One row: h2 title + inline status (dot + label, tinted only when not
+ * One row: h1 title + inline status (dot + label, tinted only when not
  * Normal) + muted `Label value` meta pairs (max 4) + right-aligned actions
  * (pill buttons, max 3). Meta wraps under the title only on narrow widths.
  * Classes: .pg-frame-head > .pg-frame-head-main (.pg-frame-title,
@@ -143,7 +135,7 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   const slot = useContext(PageHeaderSlot);
-  // In the Assets bar the machine's condition sits in the status bar right below: a bare
+  // In the Assets workspace the machine's condition sits in the machine bar right above: a bare
   // Normal / Alert / Critical here would only repeat it. Page-own statuses still show.
   const shown = slot && status && (CONDITION_WORDS as readonly string[]).includes(status.label) ? null : status;
   const t = shown ? alertTone(shown.tone) : undefined;
@@ -151,7 +143,7 @@ export function PageHeader({
   const head = (
     <header className="pg-frame-head">
       <div className="pg-frame-head-main">
-        <h2 className="pg-frame-title">{title}</h2>
+        <h1 className="pg-frame-title">{title}</h1>
         {shown && (
           <span className="pg-frame-status" data-tone={t}>
             <span className="ast-chip-dot" aria-hidden="true" />
@@ -163,8 +155,7 @@ export function PageHeader({
             {pairs.map((m) => (
               <div key={m.label} title={m.title ?? (typeof m.value === "string" ? m.value : undefined)}>
                 <dt>{m.label}</dt>
-                {/* Numbers and times in the number font; plain words stay in the UI font. */}
-                <dd className={typeof m.value === "string" && !/\d/.test(m.value) ? undefined : "ast-num"}>{m.value}</dd>
+                <dd>{m.value}</dd>
               </div>
             ))}
           </dl>
@@ -579,19 +570,6 @@ export function Section({
 }
 
 /**
- * Derived-value marker: a tiny muted suffix (default "est."), never a pill.
- * "AI" / "model" / "calc." labels are normalised to "est.".
- */
-export function AiTag({ label = "est.", title = "Estimated, not measured" }: { label?: string; title?: string }) {
-  const text = /^(ai|model|calc\.?)$/i.test(label.trim()) ? "est." : label;
-  return (
-    <span className="pg-analysis-ai" title={title}>
-      {text}
-    </span>
-  );
-}
-
-/**
  * Confidence as a number with a thin neutral bar. `value` 0–100; `null`
  * means not validated (shown as "—").
  */
@@ -623,41 +601,6 @@ export function ConfidenceMeter({
   );
 }
 
-/** Sensor evidence chip: opens Trends (default) or Sensors focused on the tag. */
-export function EvidenceChip({
-  tag,
-  detail,
-  tone,
-  page = "trends",
-  title,
-}: {
-  tag: string;
-  detail?: string;
-  tone?: Tone;
-  page?: "trends" | "sensors";
-  title?: string;
-}) {
-  const { setActiveSubPage } = useIndustrialData();
-  const open = useCallback(() => {
-    focusSensorOn(page, tag);
-    setActiveSubPage(page);
-  }, [page, tag, setActiveSubPage]);
-  const t = alertTone(tone);
-  return (
-    <button
-      type="button"
-      className="pg-analysis-ev"
-      data-tone={t}
-      onClick={open}
-      title={title ?? `Open this sensor (${tag}) in ${page === "trends" ? "the trend chart" : "the sensor list"}${detail ? ` · ${detail}` : ""}`}
-    >
-      {t && <span className="ast-chip-dot" aria-hidden="true" />}
-      <span className="pg-analysis-ev-tag">{tag}</span>
-      {detail && <span className="pg-analysis-ev-detail ast-num">{detail}</span>}
-    </button>
-  );
-}
-
 /** Quiet disclosure for the one explanation a section has. */
 export function WhyDisclosure({ summary = "Details", children, open = false }: { summary?: string; children: React.ReactNode; open?: boolean }) {
   return (
@@ -668,62 +611,6 @@ export function WhyDisclosure({ summary = "Details", children, open = false }: {
       </summary>
       <div className="pg-analysis-why-body">{children}</div>
     </details>
-  );
-}
-
-/**
- * Numbers-only summary block: status chip + finding name, then up to four
- * facts and the evidence chips. No prose: `sentence`, `ai` and
- * `confidenceBasis` are accepted for compatibility; confidence shows as a
- * small value beside the finding.
- */
-export function VerdictCard({
-  tone,
-  status,
-  headline,
-  facts,
-  confidence,
-  confidenceBasis,
-  evidence,
-  why,
-  label = "Summary",
-}: {
-  tone: Tone;
-  status: string;
-  headline: string;
-  sentence?: React.ReactNode;
-  facts: FactItem[];
-  confidence: number | null;
-  confidenceBasis?: string;
-  evidence?: React.ReactNode;
-  why?: React.ReactNode;
-  ai?: string;
-  label?: string;
-}) {
-  const t = alertTone(tone);
-  return (
-    <div className="pg-analysis-verdict" role="group" aria-label={label}>
-      <div className="pg-analysis-verdict-top">
-        <StatusTag tone={t ?? "idle"} label={status} />
-        <span className="pg-analysis-verdict-headline" title={headline}>
-          {headline}
-        </span>
-        {confidence !== null && (
-          <span className="pg-analysis-verdict-conf">
-            <ConfidenceMeter value={confidence} basis={confidenceBasis} compact />
-          </span>
-        )}
-      </div>
-      {facts.length > 0 && (
-        <div className="pg-analysis-kpis">
-          {facts.slice(0, 4).map((f) => (
-            <Fact key={f.label} {...f} />
-          ))}
-        </div>
-      )}
-      {evidence && <div className="pg-analysis-evidence-chips">{evidence}</div>}
-      {why && <WhyDisclosure>{why}</WhyDisclosure>}
-    </div>
   );
 }
 
@@ -765,31 +652,6 @@ export function CausalChain({ steps, label = "Finding chain" }: { steps: ChainSt
         );
       })}
     </ol>
-  );
-}
-
-/** Pointer to the page that owns the content: one row of facts and a link. Not a card. */
-export function PointerCard({ title, facts, action, onOpen }: { title: string; caption?: string; facts: FactItem[]; action: string; onOpen: () => void }) {
-  return (
-    <div className="pg-analysis-pointer" role="group" aria-label={title}>
-      <div className="pg-analysis-pointer-facts">
-        {facts.slice(0, 4).map((f) => (
-          <Fact key={f.label} {...f} />
-        ))}
-      </div>
-      <PillButton variant="secondary" className="pg-analysis-link" trailing={<Chevron />} onClick={onOpen}>
-        {action}
-      </PillButton>
-    </div>
-  );
-}
-
-/** The single most important missing input, as one muted line (detail kept as a tooltip when it is text). */
-export function MissingNote({ title, children }: { title: string; children?: React.ReactNode }) {
-  return (
-    <p className="pg-analysis-missing" title={typeof children === "string" ? children : undefined}>
-      {title}
-    </p>
   );
 }
 

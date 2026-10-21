@@ -1,15 +1,15 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { PillButton, PillNav, Table, type Column } from "@/components/ui";
+import { KpiCard, KpiCards, PillButton, PillNav, Table, type Column } from "@/components/ui";
 import { ACTION, conditionTone, type Tone } from "@/components/ui/status";
 import { StatusTag } from "@/components/ui/status-tag";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useLivePlantStarting } from "@/providers/kiln-simulation-context";
-import type { KilnScenario } from "@/lib/kiln-sim/scenarios";
-import type { RuleState, SimEvent, StoryProfile } from "@/lib/kiln-sim/engine";
-import type { Severity } from "@/lib/kiln-sim/signals";
-import type { PlantDefs } from "@/lib/plant-defs";
+import type { KilnScenario } from "@shared/lib/kiln-sim/scenarios";
+import type { RuleState, SimEvent, StoryProfile } from "@shared/lib/kiln-sim/engine";
+import type { Severity } from "@shared/lib/kiln-sim/signals";
+import type { PlantDefs } from "@shared/lib/plant-defs";
 import { displayName, nameIds } from "@/lib/display-name";
 import { fmtMin, suiteCases, summariseSuite, type SuiteCase, type TestResult } from "@/lib/kiln-sim/test-lab";
 import { pyroSuiteCases, type PyroScenarioRun } from "@/lib/pyro-sim/suite";
@@ -315,7 +315,7 @@ function SimulationModule({ simulation, suiteKey }: { simulation: KilnSimulation
           </div>
 
           {/* ---------------- KPI strip ---------------- */}
-          <dl className="ast-kpis sim-kpis">
+          <KpiCards label="Scenario summary" className="sim-kpis">
             <SimKpi
               label="Scenario elapsed"
               value={`+${fmtMin(frame.scenarioMinute)}`}
@@ -339,7 +339,7 @@ function SimulationModule({ simulation, suiteKey }: { simulation: KilnSimulation
               tone={condTone === "good" ? "good" : condTone === "bad" ? "bad" : undefined}
               note={`${frame.condition} · ${p.beyond3s} readings far from expected`}
             />
-          </dl>
+          </KpiCards>
 
           {/* ---------------- primary visual ---------------- */}
           <section className="ast-card" aria-label="Plant response">
@@ -366,7 +366,7 @@ function SimulationModule({ simulation, suiteKey }: { simulation: KilnSimulation
                 >
                   <i style={{ width: `${progressPct}%` }} />
                 </div>
-                <span className="ast-caption ast-num">
+                <span className="ast-caption">
                   +{fmtMin(frame.scenarioMinute)} of +{fmtMin(documented)}
                 </span>
               </div>
@@ -378,7 +378,7 @@ function SimulationModule({ simulation, suiteKey }: { simulation: KilnSimulation
               documented={documented}
               markers={markers}
             />
-            <div className="sim-chart-foot ast-caption ast-num">
+            <div className="sim-chart-foot ast-caption">
               <span>
                 Readings good {p.valid} · may be wrong {p.suspect} · not usable {p.invalid}
               </span>
@@ -395,7 +395,7 @@ function SimulationModule({ simulation, suiteKey }: { simulation: KilnSimulation
                 <h2 className="ast-card-title">
                   Test scenarios <span className="ast-muted ast-num">{scenarios.length}</span>
                 </h2>
-                <span className="ast-caption ast-num">
+                <span className="ast-caption">
                   {summary && suite
                     ? `Background run at ${new Date(suite.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${summary.passed} of ${summary.total} as expected · problems spotted ${pct(summary.detection)} · no false alarm ${pct(summary.noFalseAlarm)} · spotted ${fmtMin(summary.meanLead)} early on average · simulated, not from the real plant`
                     : `Run one scenario live on this ${noun}, or run them all in the background to check each raises the problems it should.`}
@@ -489,13 +489,7 @@ function pct(v: number | null) {
 }
 
 function SimKpi({ label, value, note, tone }: { label: string; value: React.ReactNode; note: string; tone?: "good" | "bad" }) {
-  return (
-    <div className="ast-card ast-kpi sim-kpi" data-tone={tone}>
-      <dt className="ast-kpi-label">{label}</dt>
-      <dd className="ast-kpi-value ast-num">{value}</dd>
-      <span className="ast-caption ast-kpi-foot">{note}</span>
-    </div>
-  );
+  return <KpiCard className="sim-kpi" label={label} value={value} tone={tone} foot={note} footClassName="ast-caption ast-kpi-foot" />;
 }
 
 /* ------------------------------------------------------------------ */

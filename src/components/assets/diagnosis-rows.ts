@@ -12,9 +12,9 @@
  * rule is scored at the sub-assemblies it fired on.
  */
 
-import type { ClearedAlarm } from "@/lib/alarm-journal";
-import type { SimFrame } from "@/lib/kiln-sim/engine";
-import { isConditionRule, type PlantDefs } from "@/lib/plant-defs";
+import type { ClearedAlarm } from "@shared/lib/alarm-journal";
+import type { SimFrame } from "@shared/lib/kiln-sim/engine";
+import { isConditionRule, type PlantDefs } from "@shared/lib/plant-defs";
 import { alarmStateOf, faultModesFromCatalog, type AlarmState, type DxSensor } from "./diagnosis-model";
 import { twoSided } from "./sensor-gauge";
 
@@ -229,13 +229,15 @@ export function diagnosisTotals(
   /** Only rules this keeps (a part's rules); all when omitted. */
   ruleIn: (ruleId: string) => boolean = () => true,
 ) {
-  const states = (frame?.rules ?? []).filter((r) => isConditionRule(r) && ruleIn(r.id)).map((r) => ({ id: r.id, state: alarmStateOf(r) }));
+  const states = (frame?.rules ?? []).filter((r) => isConditionRule(r) && ruleIn(r.id)).map((r) => ({ id: r.id, state: alarmStateOf(r), critical: r.severity === "Critical" }));
   const raised = states.filter((x) => isRaised(x.state));
   const raisedIds = new Set(raised.map((x) => x.id));
   const activeUnacked = raised.filter((x) => !acked.has(x.id)).length;
   const clearedUnacked = Array.from(cleared.keys()).filter((id) => ruleIn(id) && !raisedIds.has(id)).length;
   return {
     active: raised.length,
+    /** Raised problems at Critical: the problem totals read Critical only then, otherwise Alert. */
+    critical: raised.filter((x) => x.critical).length,
     unacked: activeUnacked + clearedUnacked,
     activeUnacked,
     clearedUnacked,

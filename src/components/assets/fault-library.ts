@@ -7,7 +7,7 @@
  */
 import { useApi } from "@/lib/api-cache";
 import { plainWords } from "@/lib/plain-words";
-import type { FaultEntry, FaultLibrary } from "@/server/services/fault-library-service";
+import type { FaultEntry, FaultLibrary } from "@backend/services/fault-library-service";
 
 export type { FaultEntry, FaultLibrary };
 

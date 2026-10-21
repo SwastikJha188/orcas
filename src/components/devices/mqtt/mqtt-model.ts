@@ -1,6 +1,7 @@
 import type { Tone } from "@/components/assets/assets-shell-ui";
-import type { EdgeBroker, EdgeGateway, EdgeRegistry } from "@/types/edge";
-import type { BrokerState, BrokerStatus, LinkState, MqttMetrics, MqttSnapshot } from "@/types/mqtt";
+import { VALIDITY_WORDS } from "@/components/ui/status";
+import type { EdgeBroker, EdgeGateway, EdgeRegistry } from "@shared/types/edge";
+import type { BrokerState, BrokerStatus, LinkState, MqttMetrics, MqttSnapshot } from "@shared/types/mqtt";
 
 /* ==========================================================================
    Devices › MQTT: joins the broker registry (what is configured) with the
@@ -16,7 +17,7 @@ export const BROKER_STATE: Record<BrokerState, [Tone, string]> = {
 };
 
 export const LIVE_LINK_TONE: Record<LinkState, Tone> = { ONLINE: "good", STALE: "warn", OFFLINE: "bad" };
-export const LIVE_LINK_LABEL: Record<LinkState, string> = { ONLINE: "Online", STALE: "Old data", OFFLINE: "Offline" };
+export const LIVE_LINK_LABEL: Record<LinkState, string> = { ONLINE: "Online", STALE: VALIDITY_WORDS.Stale, OFFLINE: "Offline" };
 
 export const nf = new Intl.NumberFormat("en-GB");
 const nf1 = new Intl.NumberFormat("en-GB", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -38,6 +39,26 @@ export function clock(iso: string): string {
 
 export function protocolLabel(v: number | null): string {
   return v === 5 ? "MQTT 5.0" : v === 4 ? "MQTT 3.1.1" : "Auto";
+}
+
+export interface BrokerAddress {
+  host: string;
+  port: number;
+  tls: boolean;
+  /** What was written, not assumed: a scheme ("mqtts") and a ":port". */
+  scheme: string | null;
+  portGiven: boolean;
+}
+
+/** "host", "host:port" or "mqtt(s)://host:port"; plain 1883 unless TLS is asked for. */
+export function parseBroker(text: string): BrokerAddress | null {
+  const m = /^(?:(mqtts?|ssl|tls|tcp):\/\/)?(\[[^\]]+\]|[A-Za-z0-9.-]+)(?::(\d{1,5}))?\/?$/i.exec(text.trim());
+  if (!m) return null;
+  const scheme = m[1]?.toLowerCase() ?? null;
+  const tlsScheme = scheme === "mqtts" || scheme === "ssl" || scheme === "tls";
+  const port = m[3] ? Number(m[3]) : tlsScheme ? 8883 : 1883;
+  if (port < 1 || port > 65535) return null;
+  return { host: m[2], port, tls: tlsScheme || port === 8883, scheme, portGiven: Boolean(m[3]) };
 }
 
 export function brokerUrl(b: Pick<EdgeBroker, "tls" | "host" | "port">): string {
@@ -91,7 +112,7 @@ export function registeredGateway(registry: EdgeRegistry, brokerId: string, code
 /** Header summary: "2 of 3 connected", toned by the worst enabled broker. */
 export function connectionSummary(rows: BrokerRow[]): [Tone, string] {
   const enabled = rows.filter((r) => r.broker.enabled);
-  if (rows.length === 0) return ["idle", "No data connections"];
+  if (rows.length === 0) return ["idle", "No message servers"];
   if (enabled.length === 0) return ["idle", "All switched off"];
   const connected = enabled.filter((r) => r.state === "connected").length;
   const tone: Tone =

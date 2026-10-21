@@ -3,10 +3,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { invalidateApi, revalidateApi, useApi } from "@/lib/api-cache";
 import { useWorkOrderPriorities } from "@/lib/reference-data";
-import type { FindingDto, WorkOrderPriorityDto } from "@/types/monitoring";
-import { isRuleFinding, journalState, raisedAlarms, raisedKey } from "@/lib/alarm-journal";
+import type { FindingDto } from "@shared/types/monitoring";
+import { isRuleFinding, journalState, raisedAlarms, raisedKey } from "@shared/lib/alarm-journal";
 import { acknowledgeFinding } from "@/lib/monitoring-client";
-import { simTimeMs } from "@/lib/kiln-sim/engine";
+import { simTimeMs } from "@shared/lib/kiln-sim/engine";
 import { DISPLAY_MS, useKilnFleet, useKilnSimulation, usePrimaryMachineId } from "@/providers/kiln-simulation-context";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 
@@ -35,6 +35,7 @@ export interface OpsWorkOrder {
   priority: string;
   status: WorkOrderStatus;
   actionKind: WorkOrderKind;
+  /** The priority's due wording, read from work_order_priorities by the server. */
   dueLabel: string | null;
   assignee: string | null;
   notes: string | null;
@@ -113,11 +114,6 @@ const plantIso = (t: number) => new Date(simTimeMs(t)).toISOString();
 type ActionKind = "acknowledge" | "mitigate" | "repair";
 type SimWithActions = { performAction?: (ruleId: string, kind: ActionKind) => unknown };
 
-/** Due label of a work-order priority, as the priority table words it ("Within 4 h", "Next planned outage"); null while priorities load. */
-function dueLabel(priorities: readonly WorkOrderPriorityDto[] | null, id: string): string | null {
-  return priorities?.find((p) => p.id === id)?.description ?? null;
-}
-
 /**
  * The simulated plant restarts healthy on every page load, so work orders still
  * open from an earlier run refer to faults that are no longer on the plant.
@@ -158,8 +154,6 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
   const fleetRef = useRef(fleet);
   fleetRef.current = fleet;
   const priorities = useWorkOrderPriorities();
-  const prioritiesRef = useRef(priorities);
-  prioritiesRef.current = priorities;
   const [workOrders, setWorkOrders] = useState<OpsWorkOrder[]>([]);
   /** Optimistic acknowledgements, `machine|rule@since`: one occurrence, so a recurrence alerts again. */
   const [localAcks, setLocalAcks] = useState<Set<string>>(new Set());
@@ -352,6 +346,8 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
 
   const acknowledge = useCallback((ruleId: string) => acknowledgeAlarm(machineRef.current, ruleId), [acknowledgeAlarm]);
 
+  // Work orders being posted, per rule: a second click while the first is in flight posts nothing.
+  const creatingWo = useRef(new Set<string>());
   const createWorkOrder = useCallback(
     async (ruleId: string, kind?: WorkOrderKind) => {
       const rule = rulesRef.current.find((r) => r.id === ruleId);
@@ -360,6 +356,9 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
       if (existing) {
         return existing;
       }
+      const flightKey = `${machineRef.current}|${ruleId}`;
+      if (creatingWo.current.has(flightKey)) return null;
+      creatingWo.current.add(flightKey);
       const actionKind: WorkOrderKind = kind ?? (rule.severity === "Critical" ? "repair" : "mitigate");
       try {
         const wo = await api<OpsWorkOrder>("/api/work-orders", {
@@ -371,7 +370,6 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
             component: rule.subs.join(", ") || rule.name,
             priority: rule.priority,
             actionKind,
-            dueLabel: dueLabel(prioritiesRef.current, rule.priority),
             assignee: actionKind === "repair" ? "Mechanical crew" : "Control room",
             notes: `${rule.name}. Likely cause: ${rule.cause}.`,
             simTime: tRef.current,
@@ -383,6 +381,8 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
         return wo;
       } catch {
         return null;
+      } finally {
+        creatingWo.current.delete(flightKey);
       }
     },
     [acknowledge],
@@ -449,9 +449,9 @@ export function KilnOpsProvider({ children }: { children: React.ReactNode }) {
             ruleId: a.ruleId,
             title: rule ? (rule.action.length > 120 ? `${rule.action.slice(0, 117)}...` : rule.action) : e.title,
             component: rule ? rule.subs.join(", ") || rule.name : null,
-            priority: rule?.priority ?? "P2",
+            // No rule: the server applies the configured default priority.
+            priority: rule?.priority ?? null,
             actionKind: kind,
-            dueLabel: rule ? dueLabel(prioritiesRef.current, rule.priority) : null,
             assignee: `${kind === "repair" ? "Mechanical crew" : "Control room"}${a.auto ? " (autopilot)" : ""}`,
             notes: e.detail,
             simTime: e.t,

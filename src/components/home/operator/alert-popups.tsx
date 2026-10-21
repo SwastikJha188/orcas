@@ -202,45 +202,39 @@ export function useAlertPopupControl(activeIds: readonly string[]): AlertPopupCo
 export function AlertPopupToggle({ control, activeCount }: { control: AlertPopupControl; activeCount: number }) {
   const closedCount = control.closed.size;
   if (activeCount === 0 && control.show) return null;
+  // One toggle: what it does is its label ("Show messages · 2" / "Hide messages").
+  const icon = (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 5h16v11H9l-5 4z" />
+    </svg>
+  );
   return (
     <div className="opc-zoom-group alp-toggle" role="group" aria-label="Problem messages on the drawing">
-      <span className="alp-toggle-label" aria-hidden="true">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M4 5h16v11H9l-5 4z" />
-        </svg>
-        Messages
-      </span>
-      {control.show ? (
-        <>
-          {closedCount > 0 && (
-            <button
-              type="button"
-              className="opc-zoom-btn"
-              onClick={control.restore}
-              title={`Show the ${closedCount} ${closedCount === 1 ? "message" : "messages"} you closed again`}
-            >
-              Bring back {closedCount}
-            </button>
-          )}
-          <button
-            type="button"
-            className="opc-zoom-btn"
-            onClick={() => control.setShow(false)}
-            aria-pressed={true}
-            title="Hide every problem message on the drawing. The Alarms panel still lists them all."
-          >
-            Hide
-          </button>
-        </>
-      ) : (
+      <button
+        type="button"
+        className="opc-zoom-btn alp-toggle-btn"
+        onClick={() => control.setShow(!control.show)}
+        aria-pressed={control.show}
+        aria-label={control.show ? "Hide messages" : `Show messages${activeCount ? ` (${activeCount})` : ""}`}
+        title={
+          control.show
+            ? "Hide every problem message on the drawing. The Alarms panel still lists them all."
+            : "Show the problem messages on the drawing again"
+        }
+      >
+        {icon}
+        {/* The words drop out where the bar is short (operator-console.css); the count stays. */}
+        <span className="alp-toggle-label">{control.show ? "Hide messages" : `Show messages${activeCount ? " · " : ""}`}</span>
+        {!control.show && activeCount > 0 && <span className="ast-num">{activeCount}</span>}
+      </button>
+      {control.show && closedCount > 0 && (
         <button
           type="button"
           className="opc-zoom-btn"
-          onClick={() => control.setShow(true)}
-          aria-pressed={false}
-          title="Show the problem messages on the drawing again"
+          onClick={control.restore}
+          title={`Show the ${closedCount} ${closedCount === 1 ? "message" : "messages"} you closed again`}
         >
-          Show{activeCount ? ` · ${activeCount}` : ""}
+          Bring back {closedCount}
         </button>
       )}
     </div>

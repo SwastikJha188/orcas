@@ -6,30 +6,14 @@ In particular: support light and dark mode in all UI, use only semantic design t
 
 ## Mandatory Component Styles (Must Be Followed Everywhere)
 
-1. **Navigation Style (Horizontal Pill Tabs)**:
-   - Horizontal flex container with `--corner-pill: 9999px`.
-   - Active: Solid dark graphite pill background (`#2a292c` / `rgba(255, 255, 255, 0.10)`), crisp text (`#ffffff`), `font-weight: 500`, padding `7px 18px`.
-   - Inactive: Background-less, muted text (`#8e8e93`), hover slightly brightens with faint background.
-   - Use everywhere for tabs, segmented controls, sub-nav, and filters.
+ULTRON uses the **Technical Dense Terminal** look defined by the tokens in `src/app/globals.css`. CLAUDE.md is the full reference; in short:
 
-2. **Card Style (Rounded Graphite Cards)**:
-   - Rounded corners with `14px` border radius (`--corner-card: 14px`).
-   - Solid dark graphite surface (`#262528` / `#28272a`), no harsh border.
-   - Internal layout: Top-left icon tile (~20-24px), vertical space (~12-16px), bottom-left title in Inter medium (`#ffffff`), padding `16px 20px`.
-   - Use everywhere for overview cards, equipment tiles, metrics, and summary modules.
+1. **Navigation (`PillNav`, `.nav-pill`)**: segmented tabs, 2px corners (`--radius-sm`), padding `4px 12px`. Active: `--bg-surface-elevated` fill, `--border-hover` border, ink text, weight 600. Inactive: transparent, `--text-muted`, hover `--hover-faint`. Arrow keys move between tabs.
+2. **Cards (`.ast-card`, `.ui-card`)**: solid `--card-bg` with `1px solid --card-border`, 4px corners (`--corner-card`), padding `16px 20px`. No blur, no card inside a card.
+3. **Tables (`Table`, `.ui-table`)**: borderless, `--separator` dividers, muted `--fs-xs` headers, `8px 16px` cells, row highlight `--row-hover-bg` with 2px ends (`--corner-row`); clickable rows via `rowActivate`.
+4. **Buttons (`PillButton`, `.btn-pill`)**: 4px corners (`--radius-md`), padding `8px 12px`. Primary = signal blue (`--btn-primary-bg`), one per view; secondary = `--bg-surface-elevated` with `--border-subtle`; danger confirms in place.
 
-3. **Table Style (Divider List with Capsule Row Hover)**:
-   - Minimalist borderless list-table with subtle horizontal row dividers (`1px solid rgba(255, 255, 255, 0.05)`).
-   - Column headers in muted neutral (`#8e8e93`), `font-size: 12px`, padding `10px 16px`.
-   - Item row: Left icon badge (rounded square ~28-32px, `8px` radius with colored outline icon), title in `#f5f5f7`, metadata in `#8e8e93`.
-   - Hover / selected state: Entire row turns into a rounded capsule/card highlight (`border-radius: 10px`, background `#28272a` / `rgba(255, 255, 255, 0.07)`), showing trailing actions (e.g. `...`).
-   - Use everywhere for data tables, file/asset lists, registers, telemetry, and logs.
-
-4. **Button Style (Pill Buttons)**:
-   - Full capsule pill shape (`border-radius: 9999px` / `--corner-pill: 9999px`).
-   - Primary: Solid crisp white background (`#ffffff`), dark ink text (`#141416`), `font-weight: 500`, padding `8px 18px`. Optional trailing dropdown chevron (`∨`).
-   - Secondary: Dark graphite pill (`#2a292c` / `rgba(255, 255, 255, 0.08)`), white text (`#ffffff`), hover `rgba(255, 255, 255, 0.12)`.
-   - Use everywhere for action buttons, triggers, dropdowns, and form submissions.
+Colour roles: accent / signal blue (`#58a6ff` dark, `#0969da` light) for focus, selection, primary and info only; green (`--status-success`) means Normal and nothing else; amber Alert; red Critical.
 
 ## Machine Diagram Style (Mandatory for every machine, now and future)
 
@@ -55,10 +39,10 @@ Every machine drawing — overview schematics, sub-assembly windows, process sta
 
 ## Shell Structure & Tokens
 
-- Dark-mode shell colors: top bar `#28282d`, primary rail `#28282d`, secondary hierarchy sidebar `#28282d`, workspace `#18181c`, outside canvas `#101013`.
-- Shell proportions: top bar height `52px`, primary rail width `60px`, outer shell radius `16px`, workspace corner intersection `16px` with clipping.
-- Liquid Glass is applied only to floating/navigation UI (navbar, sidebar, bottom bar, dialogs), never primary workspace content, tables, or text-heavy surfaces.
-- For new backend functionality, use Node.js Next.js route handlers in `src/app/api`, move domain logic into `src/server`, and keep client/server module boundaries intact.
+- Shell colours (dark / light): canvas, top bar, rail and workspace `#0c0d0e` / `#f6f8fa`; outside canvas `#090a0b` / `#eaeef2`; surface `#141618` / `#ffffff`; borders `#24282c` / `#d0d7de`.
+- Shell proportions: top bar `48px`, primary rail `56px` (icons; names on hover), info bar `24px`; outer shell radius `4px` (`--corner-shell`), workspace intersection `0`.
+- Surfaces are solid; the `liquid-glass*` classes carry no blur, rim or highlight.
+- For new backend functionality, add a route to the resource's Hono router in `backend/src/routes/` and put domain logic in `backend/src/services`; code both sides need goes in `shared/`. Keep client/server module boundaries intact (the frontend only `import type`s from `@backend/*`).
 
 ## Machine Asset Sub-Pages (Hierarchy Scoper)
 

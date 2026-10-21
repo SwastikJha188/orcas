@@ -1,4 +1,4 @@
-import type { FormatFields, TimestampFormat } from "@/types/edge";
+import type { FormatFields, TimestampFormat } from "@shared/types/edge";
 
 /* ==========================================================================
    Connect gateway · reading the first message. A flat JSON reading such as

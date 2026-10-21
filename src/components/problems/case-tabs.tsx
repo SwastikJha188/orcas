@@ -7,11 +7,11 @@
  * Analysis (possible causes and the checks that test them).
  */
 import React, { useState } from "react";
-import { Dialog, Field, FieldGrid, PillButton, Select, Table, TextArea, TextInput, type Column } from "@/components/ui";
+import { ConfirmAction, Dialog, Field, FieldGrid, PillButton, Select, Table, TextArea, TextInput, type Column } from "@/components/ui";
 import { VALIDITY_WORDS, validityTone, type Validity } from "@/components/ui/status";
 import { StatusTag } from "@/components/assets/assets-shell-ui";
 import { useApi } from "@/lib/api-cache";
-import type { RulItem } from "@/types/insights";
+import type { RulItem } from "@shared/types/insights";
 import { casesApi, type CaseCause, type CaseReading } from "./cases-api";
 import { ReadingChart } from "./case-chart";
 import { CAUSE_TONE, CaseCard, ErrorNote, num, useCase, useSave } from "./case-shared";
@@ -243,7 +243,7 @@ export function PrognosisTab() {
   const row = insights.data?.prognosis?.rul?.find((r) => r.id === c.partId) ?? null;
 
   return (
-    <div className="case-grid case-grid-3">
+    <div className="case-grid">
       <CaseCard title="Is it getting worse?" id="case-worse">
         <span className="case-big" data-tone={c.progression.tone}>
           {c.progression.label}
@@ -268,7 +268,7 @@ export function PrognosisTab() {
         )}
       </CaseCard>
 
-      <CaseCard title="If it gets worse" id="case-affects">
+      <CaseCard title="If it gets worse" id="case-affects" className="case-wide">
         <p className="case-text">{c.rule?.affects ?? (c.origin === "manual" ? "Not known for a case started by hand." : "Not known yet.")}</p>
         <span className="case-label">What to do</span>
         <p className="case-text">{c.rule?.todo ?? c.nextAction ?? <span className="ast-muted">No next step yet.</span>}</p>
@@ -288,7 +288,6 @@ export function AnalysisTab() {
   const save = useSave();
   const [adding, setAdding] = useState(false);
   const [text, setText] = useState("");
-  const [removing, setRemoving] = useState<CaseCause | null>(null);
 
   const add = async () => {
     if (!text.trim()) return save.setError("Type the possible cause.");
@@ -305,15 +304,19 @@ export function AnalysisTab() {
     {
       key: "act",
       header: "",
-      width: "170px",
       render: (x) => (
         <span className="case-row-actions">
           <PillButton variant="secondary" onClick={() => askCheck({ causeId: x.id })}>
             Add a check
           </PillButton>
-          <button type="button" className="case-x" aria-label={`Remove the possible cause: ${x.text}`} title="Remove" onClick={() => setRemoving(x)}>
-            ×
-          </button>
+          <ConfirmAction
+            label="Remove"
+            question={x.checks ? `Remove? Its ${x.checks === 1 ? "check stays" : `${x.checks} checks stay`} on the case.` : "Remove this cause?"}
+            confirmLabel="Remove"
+            keepLabel="Keep it"
+            disabled={save.busy}
+            onConfirm={() => void save.run(() => casesApi.removeCause(c.id, x.id))}
+          />
         </span>
       ),
     },
@@ -338,7 +341,7 @@ export function AnalysisTab() {
               }}
             >
               <span className="case-add-input">
-                <TextInput id="case-new-cause" value={text} onChange={setText} placeholder="For example: The drive end bearing is worn" autoFocus />
+                <TextInput id="case-new-cause" ariaLabel="Possible cause" value={text} onChange={setText} placeholder="For example: The drive end bearing is worn" autoFocus />
               </span>
               <PillButton type="submit" loading={save.busy}>
                 Add
@@ -385,42 +388,6 @@ export function AnalysisTab() {
           </ul>
         </CaseCard>
       )}
-
-      {removing && <RemoveCauseDialog cause={removing} onClose={() => setRemoving(null)} />}
     </div>
-  );
-}
-
-function RemoveCauseDialog({ cause, onClose }: { cause: CaseCause; onClose: () => void }) {
-  const { c } = useCase();
-  const save = useSave();
-  return (
-    <Dialog
-      open
-      onClose={onClose}
-      title="Remove this possible cause?"
-      subtitle={cause.text}
-      width={460}
-      busy={save.busy}
-      footerStart={<ErrorNote error={save.error} />}
-      footer={
-        <>
-          <PillButton variant="secondary" onClick={onClose} disabled={save.busy}>
-            Keep it
-          </PillButton>
-          <PillButton
-            variant="danger"
-            loading={save.busy}
-            onClick={() => void save.run(() => casesApi.removeCause(c.id, cause.id)).then((ok) => ok && onClose())}
-          >
-            Remove
-          </PillButton>
-        </>
-      }
-    >
-      <p className="case-text">
-        {cause.checks ? `Its ${cause.checks === 1 ? "check stays" : `${cause.checks} checks stay`} on the case, but no longer for this cause.` : "It has no checks."}
-      </p>
-    </Dialog>
   );
 }

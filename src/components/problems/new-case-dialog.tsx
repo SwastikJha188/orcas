@@ -62,6 +62,8 @@ export function NewCaseDialog({
   const { machines, users, currentUser } = useIndustrialData();
   const { data: vocab } = useApi<CaseVocabulary>(VOCABULARY_URL);
   const [draft, setDraft] = useState<Draft | null>(null);
+  // What the form opened with, so a stray click does not throw away typed input.
+  const [first, setFirst] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
@@ -73,7 +75,7 @@ export function NewCaseDialog({
     if (!open) return;
     const { preset: p, machines: ms, currentUser: me } = ctx.current;
     const machineId = p?.machineId ?? ms[0]?.id ?? "";
-    setDraft({
+    const fresh: Draft = {
       machineId,
       partId: p?.machineId && p.machineId === machineId ? (p.partId ?? "") : "",
       title: p?.title ?? "",
@@ -82,7 +84,9 @@ export function NewCaseDialog({
       priority: "unassigned",
       runningMode: "unknown",
       runningNote: "",
-    });
+    };
+    setDraft(fresh);
+    setFirst(fresh);
     setError(null);
     setTried(false);
   }, [open]);
@@ -90,6 +94,7 @@ export function NewCaseDialog({
   const machine = machines.find((m) => m.id === draft?.machineId) ?? null;
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft((d) => (d ? { ...d, [k]: v } : d));
   const need = (v: string | undefined, msg: string) => (tried && !v?.trim() ? msg : null);
+  const dirty = Boolean(draft && first && (Object.keys(draft) as (keyof Draft)[]).some((k) => draft[k] !== first[k]));
 
   const machineOptions: SelectOption[] = useMemo(() => {
     const list = machines.map((m) => ({ value: m.id, label: m.name }));
@@ -134,6 +139,7 @@ export function NewCaseDialog({
       subtitle={preset?.guideId ? "From an investigation guide. Write down what was actually seen." : "One problem on one machine, followed until the repair is checked."}
       width={680}
       busy={busy}
+      dirty={dirty}
       onSubmit={() => void save()}
       footerStart={
         error ? (

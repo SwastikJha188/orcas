@@ -10,3 +10,5 @@ export * from "./status-tag";
 export * from "./kpi";
 export * from "./sparkline";
 export * from "./tile";
+export * from "./confirm-action";
+export * from "./more-fields";

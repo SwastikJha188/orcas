@@ -6,14 +6,14 @@
    limit rows, and the calculated values of D5 Table 9.2. No React.
    ========================================================================== */
 
-import type { MachineLivePoint } from "@/types/edge";
-import type { MeasurementDto, MeasurementLimitDto } from "@/types/monitoring";
-import type { SimEvent, SimFrame } from "@/lib/kiln-sim/engine";
+import type { MachineLivePoint } from "@shared/types/edge";
+import type { MeasurementDto, MeasurementLimitDto } from "@shared/types/monitoring";
+import type { SimEvent, SimFrame } from "@shared/lib/kiln-sim/engine";
 import { EQUATION_BY_TARGET } from "@/lib/kiln-sim/relationships";
-import type { DefSignal, PlantDefs } from "@/lib/plant-defs";
-import { PYRO_DEFS } from "@/lib/pyro-sim/defs";
-import { PYRO_SPEC, type PyroSpecEntry } from "@/lib/pyro-sim/spec";
-import { VPC_SPEC } from "@/lib/vpc-sim/signals";
+import type { DefSignal, PlantDefs } from "@shared/lib/plant-defs";
+import { PYRO_DEFS } from "@shared/lib/pyro-sim/defs";
+import { PYRO_SPEC, type PyroSpecEntry } from "@shared/lib/pyro-sim/spec";
+import { VPC_SPEC } from "@shared/lib/vpc-sim/signals";
 import {
   ANALYSERS as PYRO_ANALYSERS,
   BLOWBACK_STUCK_MIN as PYRO_BLOWBACK_STUCK_MIN,
@@ -23,7 +23,7 @@ import {
   NOISY_WINDOW as PYRO_NOISY_WINDOW,
   SCANNER_COVERAGE_TARGET as PYRO_COVERAGE_TARGET,
   VIB_TMP_PAIRS as PYRO_VIB_TMP_PAIRS,
-} from "@/lib/pyro-sim/sensor-meta";
+} from "@shared/lib/pyro-sim/sensor-meta";
 import type { Tone } from "./assets-shell-ui";
 import type { DetailedSensorInfo } from "./machine-sensor-mapping-view";
 import { VALIDITY_WORDS } from "@/components/ui/status";
@@ -603,8 +603,9 @@ export function flaggedSince(events: SimEvent[] | undefined, tag: string): numbe
 
 /**
  * Gateway calculations. The DB decides which tags are calculated (measurement
- * origin) and names them; it holds no formulas yet (`measurement_formulas` is
- * empty), so the formula text and its input tags stay here, keyed by tag.
+ * origin) and names them; it holds no formulas (the never-filled
+ * `measurement_formulas` table was dropped in 048), so the formula text and
+ * its input tags stay here, keyed by tag.
  */
 export interface CalcDef {
   tag: string;

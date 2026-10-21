@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { formatClock } from "@/lib/kiln-sim/engine";
+import { formatClock } from "@shared/lib/kiln-sim/engine";
 import type { HomeAlert } from "../home-widgets";
 import type { Tone } from "@/components/assets/assets-shell-ui";
 import { displayName, nameIds } from "@/lib/display-name";

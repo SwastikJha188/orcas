@@ -1,0 +1,185 @@
+/* ==========================================================================
+   ULTRON · Devices (devices-view.tsx). Prefix dvp-. Frame, bars and section
+   head come from Configure (cfg-*, opc-*); cards and tables from
+   assets-shell.css (ast-*) and ui/page.css (pg-*). Tokens only.
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- gateway facts */
+.dvp-card {
+  padding: 0;
+}
+
+/* Four equal columns, two rows; hairlines between cells, none around the edge. */
+.dvp-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+}
+
+.dvp-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px 20px;
+  border-inline-start: 1px solid var(--separator);
+  border-block-start: 1px solid var(--separator);
+}
+
+.dvp-fact:nth-child(4n + 1) {
+  border-inline-start: 0;
+}
+
+.dvp-fact:nth-child(-n + 4) {
+  border-block-start: 0;
+}
+
+.dvp-fact dt {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.dvp-fact dd {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+}
+
+.dvp-fact-value {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: var(--fs-md);
+  font-weight: 500;
+  color: var(--dx-ink);
+}
+
+.dvp-fact-sub {
+  overflow: hidden;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dvp-clip {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Long free text (hardware notes): two lines, the rest in the tooltip. */
+.dvp-clamp {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.dvp-card-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 20px;
+  border-block-start: 1px solid var(--separator);
+}
+
+/* ---------------------------------------------------------------- text actions */
+.dvp-link {
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-primary);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.dvp-link:hover {
+  text-decoration: underline;
+}
+
+.dvp-link:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: 2px;
+  border-radius: var(--corner-sm);
+}
+
+/* ---------------------------------------------------------------- tables */
+.dvp-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+/* The edit icon shows on row hover or keyboard focus, like the other tables. */
+.dvp-reveal {
+  opacity: 0;
+}
+
+.ui-table tbody tr:hover .dvp-reveal,
+.ui-table tbody tr:focus-within .dvp-reveal,
+.dvp-reveal:focus-visible {
+  opacity: 1;
+}
+
+/* Long names wrap and long second lines end in an ellipsis, instead of widening the table. */
+.dvp-racks .ast-cell-stack {
+  max-inline-size: 220px;
+}
+
+.dvp-table .ast-cell-stack > .ast-cell-title {
+  white-space: normal;
+}
+
+/* Codes never break mid-code. */
+.dvp-table .ast-cell-stack > .ast-cell-title.ast-num {
+  white-space: nowrap;
+}
+
+.dvp-table .ast-cell-stack > .ast-cell-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dvp-value[data-tone="warn"] {
+  color: var(--status-warning);
+}
+
+.dvp-value[data-tone="bad"] {
+  color: var(--status-danger);
+}
+
+.dvp-table tbody tr:hover .pg-chev,
+.dvp-table tbody tr:focus-visible .pg-chev {
+  opacity: 1;
+}
+
+/* ---------------------------------------------------------------- narrow */
+@media (max-width: 1100px) {
+  .dvp-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dvp-fact:nth-child(4n + 1) {
+    border-inline-start: 1px solid var(--separator);
+  }
+
+  .dvp-fact:nth-child(2n + 1) {
+    border-inline-start: 0;
+  }
+
+  .dvp-fact:nth-child(-n + 4) {
+    border-block-start: 1px solid var(--separator);
+  }
+
+  .dvp-fact:nth-child(-n + 2) {
+    border-block-start: 0;
+  }
+}

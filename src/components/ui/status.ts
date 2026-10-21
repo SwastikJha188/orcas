@@ -32,6 +32,9 @@ const CONDITION_SYNONYMS: Record<string, Condition> = {
   cleared: "Normal",
   low: "Normal",
   minor: "Normal",
+  running: "Normal",
+  online: "Normal",
+  quiet: "Normal",
   advisory: "Alert",
   warning: "Alert",
   warn: "Alert",
@@ -66,12 +69,15 @@ const CONDITION_SYNONYMS: Record<string, Condition> = {
   "no live feed": "No data",
   waiting: "No data",
   "n/a": "No data",
+  unknown: "No data",
+  checking: "No data",
 };
 
-/** Any raw condition word (Healthy, Operational, Danger, At risk…) → the one scale. */
+/** Any raw condition word (Healthy, Operational, Danger, At risk…) → the one scale.
+ *  A word we do not know is "No data": an unknown state is never shown as Normal. */
 export function toCondition(raw: string | null | undefined): Condition {
   if (!raw) return "No data";
-  return CONDITION_SYNONYMS[raw.trim().toLowerCase()] ?? "Normal";
+  return CONDITION_SYNONYMS[raw.trim().toLowerCase()] ?? "No data";
 }
 
 export function conditionTone(c: Condition | string | null | undefined): Tone {

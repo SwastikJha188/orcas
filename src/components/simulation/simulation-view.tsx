@@ -14,12 +14,11 @@ import React, { useEffect, useMemo, useState } from "react";
 import { revalidateApi, useApi } from "@/lib/api-cache";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { Field, FieldGrid, NumberInput, PillButton, PillNav, Select, Table, Toggle, type Column } from "@/components/ui";
-import { StatusTag } from "@/components/assets/assets-shell-ui";
 import { formatLocalTime } from "@/lib/time";
 import { syncSimulation } from "@/components/assets/kiln-seals-simulation";
 import { SimulationTry } from "./simulation-try";
-import type { LineSimSettings } from "@/lib/pyro-sim/engine";
-import type { SimCommandDto, SimMachine, SimProfile, SimulationDto } from "@/server/services/simulation-service";
+import type { LineSimSettings } from "@shared/lib/pyro-sim/engine";
+import type { SimCommandDto, SimMachine, SimProfile, SimulationDto } from "@backend/services/simulation-service";
 import "@/components/assets/assets-shell.css";
 import "@/components/ui/page.css";
 import "./simulation.css";
@@ -37,7 +36,7 @@ const PROFILE_LABEL: Record<SimProfile, string> = {
   story: "Faults come and go; the crew fixes them",
 };
 
-const ENGINE_LABEL: Record<SimMachine["engine"], string> = { pyro: "Cement line", kiln: "Kiln seals", vpc: "Casting machine" };
+const ENGINE_LABEL: Record<SimMachine["engine"], string> = { pyro: "Cement line", kiln: "Kiln seals", vpc: "Casting machine", limits: "Readings from its limits" };
 
 const CREEP: Array<{ value: number; label: string }> = [
   { value: 0, label: "Stays the same" },
@@ -85,35 +84,39 @@ function draftOf(d: SimulationDto): Draft {
   };
 }
 
-/** The settings a draft stands for, or the first problem with it. */
-function settingsOf(d: Draft): { settings: Partial<LineSimSettings> } | { error: string } {
-  const num = (v: string, label: string, lo: number, hi: number): number | string => {
-    const n = Number(v);
-    if (v.trim() === "" || !Number.isFinite(n)) return `${label}: enter a number`;
-    if (n < lo || n > hi) return `${label}: use a value from ${lo} to ${hi}`;
+type NumberKey = "eventEvery" | "eventLife" | "eventLead" | "maxEvents" | "sensorShare" | "intensity" | "holdMinutes" | "holdCreep" | "changeGap" | "limitClear" | "noise" | "healthDrift";
+type FieldErrors = Partial<Record<NumberKey, string>>;
+
+/** The settings a draft stands for, or the problem with each field that is wrong. */
+function settingsOf(d: Draft): { settings: Partial<LineSimSettings> } | { errors: FieldErrors } {
+  const num = (v: string, lo: number, hi: number): number | string => {
+    const n = Number(v.replace(",", "."));
+    if (v.trim() === "" || !Number.isFinite(n)) return "Enter a number.";
+    if (n < lo || n > hi) return `Use a value from ${lo} to ${hi}.`;
     return n;
   };
-  const fields: Array<[keyof LineSimSettings, string, string, number, number, (n: number) => number]> = [
-    ["eventEvery", d.eventEvery, "New fault every", 0.5, 120, toSim],
-    ["eventLife", d.eventLife, "Each fault lasts", 0.2, 120, toSim],
-    ["eventLead", d.eventLead, "Builds up over", 0.1, 10, toSim],
-    ["maxEvents", d.maxEvents, "Most at the same time", 0, 6, (n) => Math.round(n)],
-    ["sensorShare", d.sensorShare, "Sensor faults", 0, 100, (n) => n / 100],
-    ["intensity", d.intensity, "How strong", 0.5, 2.5, (n) => n],
-    ["holdMinutes", d.holdMinutes, "Long-running fault stays", 0, 240, toSim],
-    ["holdCreep", d.holdCreep, "Gets worse", 0, 0.5, (n) => n],
-    ["changeGap", d.changeGap, "Time between new faults", 0, 120, toSim],
-    ["limitClear", d.limitClear, "Alarm stays after recovery", 0.05, 60, toSim],
-    ["noise", d.noise, "Sensor noise", 0, 4, (n) => n],
-    ["healthDrift", d.healthDrift, "Health follows normal scatter", 0, 3, (n) => n],
+  const fields: Array<[NumberKey, number, number, (n: number) => number]> = [
+    ["eventEvery", 0.5, 120, toSim],
+    ["eventLife", 0.2, 120, toSim],
+    ["eventLead", 0.1, 10, toSim],
+    ["maxEvents", 0, 6, (n) => Math.round(n)],
+    ["sensorShare", 0, 100, (n) => n / 100],
+    ["intensity", 0.5, 2.5, (n) => n],
+    ["holdMinutes", 0, 240, toSim],
+    ["holdCreep", 0, 0.5, (n) => n],
+    ["changeGap", 0, 120, toSim],
+    ["limitClear", 0.05, 60, toSim],
+    ["noise", 0, 4, (n) => n],
+    ["healthDrift", 0, 3, (n) => n],
   ];
   const out: Partial<LineSimSettings> = { events: d.events, machines: d.machines };
-  for (const [key, raw, label, lo, hi, conv] of fields) {
-    const n = num(raw, label, lo, hi);
-    if (typeof n === "string") return { error: n };
-    (out as Record<string, number>)[key] = conv(n);
+  const errors: FieldErrors = {};
+  for (const [key, lo, hi, conv] of fields) {
+    const n = num(d[key], lo, hi);
+    if (typeof n === "string") errors[key] = n;
+    else (out as Record<string, number>)[key] = conv(n);
   }
-  return { settings: out };
+  return Object.keys(errors).length ? { errors } : { settings: out };
 }
 
 function commandText(c: SimCommandDto, nameOf: (id: string | null) => string, scenarioName: (machineId: string | null, id: string | null) => string): string {
@@ -134,7 +137,10 @@ export function SimulationView() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [baseVersion, setBaseVersion] = useState<number | null>(null);
   const [note, setNote] = useState<{ tone: "good" | "bad" | "info"; text: string } | null>(null);
-  const [busy, setBusy] = useState(false);
+  /** The action being saved (its button shows the spinner), or null. */
+  const [busy, setBusy] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [confirmReset, setConfirmReset] = useState(false);
   const [pick, setPick] = useState<Record<string, string>>({});
   const [tab, setTab] = useState<"try" | "settings">("try");
 
@@ -152,10 +158,15 @@ export function SimulationView() {
   const lineMachines = machines.filter((m) => m.engine === "pyro");
   const nameOf = (id: string | null) => machines.find((m) => m.machineId === id)?.name ?? id ?? "a machine";
   const scenarioName = (machineId: string | null, id: string | null) => machines.find((m) => m.machineId === machineId)?.scenarios.find((s) => s.id === id)?.name ?? id ?? "a fault";
-  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft((d) => (d ? { ...d, [k]: v } : d));
+  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => {
+    setDraft((d) => (d ? { ...d, [k]: v } : d));
+    setFieldErrors((e) => (k in e ? { ...e, [k]: undefined } : e));
+  };
+  /** Props for a button that runs `key`: a spinner on it, the others wait. */
+  const act = (key: string) => ({ loading: busy === key, disabled: busy !== null && busy !== key });
 
-  const call = async (method: string, path: string, body?: unknown): Promise<boolean> => {
-    setBusy(true);
+  const call = async (key: string, method: string, path: string, body?: unknown): Promise<boolean> => {
+    setBusy(key);
     setNote(null);
     try {
       const res = await fetch(path, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -170,33 +181,37 @@ export function SimulationView() {
       setNote({ tone: "bad", text: "Could not reach the server. Try again." });
       return false;
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
   const save = async () => {
     if (!draft || !data) return;
     const s = settingsOf(draft);
-    if ("error" in s) {
-      setNote({ tone: "bad", text: s.error });
+    if ("errors" in s) {
+      setFieldErrors(s.errors);
+      setNote({ tone: "bad", text: "Fix the marked values, then save." });
       return;
     }
+    setFieldErrors({});
     const changedProfiles = Object.fromEntries(Object.entries(draft.profiles).filter(([id, p]) => data.machines.find((m) => m.machineId === id)?.profile !== p));
-    if (await call("PUT", URL_BASE, { settings: s.settings, profiles: changedProfiles })) {
+    if (await call("save", "PUT", URL_BASE, { settings: s.settings, profiles: changedProfiles })) {
       setDraft(null);
       setNote({ tone: "good", text: "Saved. The plant and every open page follow within about 10 seconds." });
     }
   };
 
   const reset = async () => {
-    if (await call("DELETE", URL_BASE)) {
+    setConfirmReset(false);
+    if (await call("reset", "DELETE", URL_BASE)) {
       setDraft(null);
+      setFieldErrors({});
       setNote({ tone: "good", text: "Back to the standard settings." });
     }
   };
 
-  const command = async (body: Record<string, unknown>, done: string): Promise<boolean> => {
-    if (!(await call("POST", `${URL_BASE}/commands`, body))) return false;
+  const command = async (body: Record<string, unknown>, done: string, key = "command"): Promise<boolean> => {
+    if (!(await call(key, "POST", `${URL_BASE}/commands`, body))) return false;
     // This page's own engines take it now; the plant and other open pages within about 10 seconds.
     await syncSimulation();
     setNote({ tone: "good", text: done });
@@ -222,6 +237,7 @@ export function SimulationView() {
         draft && m.profiles.length ? (
           <Select
             id={`sim-profile-${m.machineId}`}
+            ariaLabel={`What ${m.name} does on its own`}
             value={draft.profiles[m.machineId] ?? m.profile ?? ""}
             onChange={(v) => set("profiles", { ...draft.profiles, [m.machineId]: v as SimProfile })}
             options={m.profiles.map((p) => ({ value: p, label: PROFILE_LABEL[p] }))}
@@ -237,7 +253,11 @@ export function SimulationView() {
       render: (m) =>
         m.engine === "pyro" && draft ? (
           <label className="sim-check">
-            <input type="checkbox" checked={draft.machines[m.machineId] !== false} onChange={(e) => set("machines", { ...draft.machines, [m.machineId]: e.target.checked })} />
+            <input
+              type="checkbox"
+              aria-label={`${m.name} gets faults that come and go`}
+              checked={draft.machines[m.machineId] !== false}
+              onChange={(e) => set("machines", { ...draft.machines, [m.machineId]: e.target.checked })} />
             <span>{draft.machines[m.machineId] !== false ? "Yes" : "No"}</span>
           </label>
         ) : (
@@ -253,18 +273,21 @@ export function SimulationView() {
           <span className="sim-start">
             <Select
               id={`sim-fault-${m.machineId}`}
+              ariaLabel={`Fault to start on ${m.name}`}
               value={pick[m.machineId] ?? ""}
               onChange={(v) => setPick((p) => ({ ...p, [m.machineId]: v }))}
               options={[{ value: "", label: "Any machine fault" }, { value: "sensor", label: "Any sensor fault" }, ...m.faults.map((f) => ({ value: f.id, label: `${f.name}${f.kind === "sensor" ? " (sensor)" : ""}` }))]}
             />
             <PillButton
               variant="secondary"
-              disabled={busy}
+              aria-label={`Start the fault on ${m.name}`}
+              {...act(`start:${m.machineId}`)}
               onClick={() => {
                 const v = pick[m.machineId] ?? "";
                 void command(
                   v === "" || v === "sensor" ? { kind: "raise", machineId: m.machineId, faultKind: v === "sensor" ? "sensor" : "fault" } : { kind: "inject", machineId: m.machineId, scenarioId: v },
                   `Fault started on ${m.name}. It shows within about 10 seconds.`,
+                  `start:${m.machineId}`,
                 );
               }}
             >
@@ -283,12 +306,11 @@ export function SimulationView() {
       <header className="ast-head pg-head">
         <div className="ast-head-main">
           <ol className="ast-crumbs" aria-label="Location">
-            <li>Configure</li>
             <li>Simulation</li>
           </ol>
           <div className="ast-title-row">
             <h1 className="ast-title">Simulation</h1>
-            {data && <StatusTag tone={running ? "good" : "idle"} label={running ? "Faults start on their own" : "Faults only when started here"} />}
+            {data && <span className="ast-caption">{running ? "Faults start on their own" : "Faults only when started here"}</span>}
             <PillNav
               ariaLabel="Simulation view"
               items={[
@@ -312,10 +334,22 @@ export function SimulationView() {
           )}
           {tab === "settings" && (
             <>
-              <PillButton variant="secondary" disabled={busy || !data} onClick={() => void reset()}>
-                Back to standard settings
-              </PillButton>
-              <PillButton disabled={busy || !dirty} onClick={() => void save()}>
+              {confirmReset ? (
+                <span className="sim-confirm" role="group" aria-label="Back to standard settings">
+                  <span className="ast-caption">Undo every change on this page?</span>
+                  <PillButton variant="danger" {...act("reset")} onClick={() => void reset()} autoFocus>
+                    Yes, go back
+                  </PillButton>
+                  <PillButton variant="secondary" disabled={busy !== null} onClick={() => setConfirmReset(false)}>
+                    Cancel
+                  </PillButton>
+                </span>
+              ) : (
+                <PillButton variant="secondary" disabled={busy !== null || !data} onClick={() => setConfirmReset(true)}>
+                  Back to standard settings
+                </PillButton>
+              )}
+              <PillButton {...act("save")} disabled={(busy !== null && busy !== "save") || !dirty} onClick={() => void save()}>
                 Save changes
               </PillButton>
             </>
@@ -330,7 +364,7 @@ export function SimulationView() {
         </p>
       )}
 
-      {data && tab === "try" && <SimulationTry machines={lineMachines} busy={busy} note={note} onCommand={command} />}
+      {data && tab === "try" && <SimulationTry machines={lineMachines} busy={busy} note={note} onCommand={command} onClearNote={() => setNote(null)} />}
 
       {draft && data && tab === "settings" && (
         <div className="sim-grid">
@@ -349,21 +383,21 @@ export function SimulationView() {
                   description="Off: nothing new goes wrong unless you start it below."
                 />
                 <FieldGrid>
-                  <Field label="A new fault about every (minutes)" hint="Give or take a fifth.">
-                    {(id) => <NumberInput id={id} value={draft.eventEvery} onChange={(v) => set("eventEvery", v)} min={0.5} max={120} step="any" />}
+                  <Field label="A new fault about every (minutes)" hint="Give or take a fifth." error={fieldErrors.eventEvery}>
+                    {(id, d) => <NumberInput id={id} describedBy={d} value={draft.eventEvery} onChange={(v) => set("eventEvery", v)} min={0.5} max={120} step="any" />}
                   </Field>
-                  <Field label="Each fault lasts about (minutes)" hint="Then it fades and its alarms clear.">
-                    {(id) => <NumberInput id={id} value={draft.eventLife} onChange={(v) => set("eventLife", v)} min={0.2} max={120} step="any" />}
+                  <Field label="Each fault lasts about (minutes)" hint="Then it fades and its alarms clear." error={fieldErrors.eventLife}>
+                    {(id, d) => <NumberInput id={id} describedBy={d} value={draft.eventLife} onChange={(v) => set("eventLife", v)} min={0.2} max={120} step="any" />}
                   </Field>
-                  <Field label="Builds up over (minutes)" hint="How long it takes to reach the alarm level.">
-                    {(id) => <NumberInput id={id} value={draft.eventLead} onChange={(v) => set("eventLead", v)} min={0.1} max={10} step="any" />}
+                  <Field label="Builds up over (minutes)" hint="How long it takes to reach the alarm level." error={fieldErrors.eventLead}>
+                    {(id, d) => <NumberInput id={id} describedBy={d} value={draft.eventLead} onChange={(v) => set("eventLead", v)} min={0.1} max={10} step="any" />}
                   </Field>
-                  <Field label="Most at the same time">{(id) => <NumberInput id={id} value={draft.maxEvents} onChange={(v) => set("maxEvents", v)} min={0} max={6} step={1} />}</Field>
-                  <Field label="Sensor faults (%)" hint="Wrong readings; the rest are real machine faults.">
-                    {(id) => <NumberInput id={id} value={draft.sensorShare} onChange={(v) => set("sensorShare", v)} min={0} max={100} step={5} />}
+                  <Field label="Most at the same time" error={fieldErrors.maxEvents}>{(id, d) => <NumberInput id={id} describedBy={d} value={draft.maxEvents} onChange={(v) => set("maxEvents", v)} min={0} max={6} step={1} />}</Field>
+                  <Field label="Sensor faults (%)" hint="Wrong readings; the rest are real machine faults." error={fieldErrors.sensorShare}>
+                    {(id, d) => <NumberInput id={id} describedBy={d} value={draft.sensorShare} onChange={(v) => set("sensorShare", v)} min={0} max={100} step={5} />}
                   </Field>
-                  <Field label="How strong (×)" hint="1 just reaches the Alert level; higher goes past it.">
-                    {(id) => <NumberInput id={id} value={draft.intensity} onChange={(v) => set("intensity", v)} min={0.5} max={2.5} step={0.05} />}
+                  <Field label="How strong (×)" hint="1 just reaches the Alert level; higher goes past it." error={fieldErrors.intensity}>
+                    {(id, d) => <NumberInput id={id} describedBy={d} value={draft.intensity} onChange={(v) => set("intensity", v)} min={0.5} max={2.5} step={0.05} />}
                   </Field>
                 </FieldGrid>
               </section>
@@ -376,13 +410,14 @@ export function SimulationView() {
                 </div>
                 <p className="sim-help">Machines set to hold an Alert or Critical fault (below) keep one going, then the crew repairs it and the next one starts.</p>
                 <FieldGrid>
-                  <Field label="Each stays about (minutes)" hint="0 keeps it until you change the machine.">
-                    {(id) => <NumberInput id={id} value={draft.holdMinutes} onChange={(v) => set("holdMinutes", v)} min={0} max={240} step="any" />}
+                  <Field label="Each stays about (minutes)" hint="0 keeps it until you change the machine." error={fieldErrors.holdMinutes}>
+                    {(id, d) => <NumberInput id={id} describedBy={d} value={draft.holdMinutes} onChange={(v) => set("holdMinutes", v)} min={0} max={240} step="any" />}
                   </Field>
-                  <Field label="While it lasts, it" hint="Getting worse is what lets the forecasts show time left.">
-                    {(id) => (
+                  <Field label="While it lasts, it" hint="Getting worse is what lets the forecasts show time left." error={fieldErrors.holdCreep}>
+                    {(id, d) => (
                       <Select
                         id={id}
+                        describedBy={d}
                         value={draft.holdCreep}
                         onChange={(v) => set("holdCreep", v)}
                         options={[
@@ -402,11 +437,11 @@ export function SimulationView() {
                   </h2>
                 </div>
                 <FieldGrid>
-                  <Field label="At least this long between new faults (minutes)" hint="Across the whole line; 0 lets them overlap.">
-                    {(id) => <NumberInput id={id} value={draft.changeGap} onChange={(v) => set("changeGap", v)} min={0} max={120} step="any" />}
+                  <Field label="At least this long between new faults (minutes)" hint="Across the whole line; 0 lets them overlap." error={fieldErrors.changeGap}>
+                    {(id, d) => <NumberInput id={id} describedBy={d} value={draft.changeGap} onChange={(v) => set("changeGap", v)} min={0} max={120} step="any" />}
                   </Field>
-                  <Field label="Alarm stays after the reading recovers (minutes)" hint="Stops an alarm blinking on and off.">
-                    {(id) => <NumberInput id={id} value={draft.limitClear} onChange={(v) => set("limitClear", v)} min={0.05} max={60} step="any" />}
+                  <Field label="Alarm stays after the reading recovers (minutes)" hint="Stops an alarm blinking on and off." error={fieldErrors.limitClear}>
+                    {(id, d) => <NumberInput id={id} describedBy={d} value={draft.limitClear} onChange={(v) => set("limitClear", v)} min={0.05} max={60} step="any" />}
                   </Field>
                 </FieldGrid>
               </section>
@@ -418,11 +453,11 @@ export function SimulationView() {
                   </h2>
                 </div>
                 <FieldGrid>
-                  <Field label="Sensor noise (×)" hint="1 is normal scatter; 0 is perfectly smooth.">
-                    {(id) => <NumberInput id={id} value={draft.noise} onChange={(v) => set("noise", v)} min={0} max={4} step={0.1} />}
+                  <Field label="Sensor noise (×)" hint="1 is normal scatter; 0 is perfectly smooth." error={fieldErrors.noise}>
+                    {(id, d) => <NumberInput id={id} describedBy={d} value={draft.noise} onChange={(v) => set("noise", v)} min={0} max={4} step={0.1} />}
                   </Field>
-                  <Field label="Health follows normal scatter (×)" hint="0 keeps health flat while readings are normal.">
-                    {(id) => <NumberInput id={id} value={draft.healthDrift} onChange={(v) => set("healthDrift", v)} min={0} max={3} step={0.1} />}
+                  <Field label="Health follows normal scatter (×)" hint="0 keeps health flat while readings are normal." error={fieldErrors.healthDrift}>
+                    {(id, d) => <NumberInput id={id} describedBy={d} value={draft.healthDrift} onChange={(v) => set("healthDrift", v)} min={0} max={3} step={0.1} />}
                   </Field>
                 </FieldGrid>
               </section>
@@ -436,10 +471,10 @@ export function SimulationView() {
               </h2>
               {lineMachines.length > 0 && (
                 <span className="sim-head-actions">
-                  <PillButton variant="secondary" disabled={busy} onClick={() => void command({ kind: "raise", faultKind: "fault" }, "A machine fault was started on a random machine.")}>
+                  <PillButton variant="secondary" {...act("random")} onClick={() => void command({ kind: "raise", faultKind: "fault" }, "A machine fault was started on a random machine.", "random")}>
                     Start a random fault
                   </PillButton>
-                  <PillButton variant="secondary" disabled={busy} onClick={() => void command({ kind: "clear" }, "The faults that come and go were cleared.")}>
+                  <PillButton variant="secondary" {...act("clear")} onClick={() => void command({ kind: "clear" }, "The faults that come and go were cleared.", "clear")}>
                     Clear the faults that come and go
                   </PillButton>
                 </span>

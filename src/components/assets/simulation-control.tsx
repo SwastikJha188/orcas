@@ -5,12 +5,12 @@ import { Field, KpiCard, KpiCards, NumberInput, PillButton, Select, Sparkline, T
 import { conditionTone, toCondition } from "@/components/ui/status";
 import { StatusTag } from "@/components/ui/status-tag";
 import { useRealtimeKilnFleet } from "@/providers/kiln-simulation-context";
-import { formatClock, type SimFrame, type StoryProfile } from "@/lib/kiln-sim/engine";
-import { PYRO_SCENARIOS, pyroScenario } from "@/lib/pyro-sim/scenarios";
-import { PYRO_MACHINES, PYRO_SIGNALS } from "@/lib/pyro-sim/signals";
-import { VPC_SCENARIOS, vpcScenario } from "@/lib/vpc-sim/scenarios";
-import { VPC_MACHINE_IDS, VPC_MACHINES, VPC_SIGNALS } from "@/lib/vpc-sim/signals";
-import type { Injection, LineSimSettings, SignalFaultSpec } from "@/lib/pyro-sim/engine";
+import { formatClock, type SimFrame, type StoryProfile } from "@shared/lib/kiln-sim/engine";
+import { PYRO_SCENARIOS, pyroScenario } from "@shared/lib/pyro-sim/scenarios";
+import { PYRO_MACHINES, PYRO_SIGNALS } from "@shared/lib/pyro-sim/signals";
+import { VPC_SCENARIOS, vpcScenario } from "@shared/lib/vpc-sim/scenarios";
+import { VPC_MACHINE_IDS, VPC_MACHINES, VPC_SIGNALS } from "@shared/lib/vpc-sim/signals";
+import type { Injection, LineSimSettings, SignalFaultSpec } from "@shared/lib/pyro-sim/engine";
 import type { KilnSimulation } from "./kiln-seals-simulation";
 import { displayName } from "@/lib/display-name";
 import { healthTone, useMachineHealthBands } from "./assets-shell-ui";
@@ -217,7 +217,7 @@ function GeneratorCard({ line, speed }: { line: Line; speed: number }) {
       <div className="ast-card-head sim-card-head-row">
         <div className="sim-card-head-text">
           <h2 className="ast-card-title">Random events and sensors</h2>
-          <span className="ast-caption ast-num">
+          <span className="ast-caption">
             {s.events ? `Next event in ${Math.max(0, line.nextEventAt - line.t)} plant minutes (seconds on screen at ${speed}× speed)` : "Random events off: only faults you start, or hold, will run"}
           </span>
         </div>
@@ -473,7 +473,7 @@ function SignalFaultCard({ line, machines }: { line: Line; machines: KilnSimulat
       <div className="ast-card-head sim-card-head-row">
         <div className="sim-card-head-text">
           <h2 className="ast-card-title">Sensor fault</h2>
-          <span className="ast-caption ast-num" title={def.tag}>
+          <span className="ast-caption" title={def.tag}>
             {displayName(def.name)} now {now?.display ?? "—"} {def.unit} · expected {now?.model !== null && now?.model !== undefined ? now.model.toFixed(def.decimals) : "—"} · usual spread {sigma}
           </span>
         </div>

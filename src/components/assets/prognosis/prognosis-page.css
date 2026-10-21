@@ -84,7 +84,7 @@
 .pg-prog-dot {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   white-space: nowrap;
 }
 
@@ -107,7 +107,7 @@
   display: inline-flex;
   align-items: center;
   flex-wrap: nowrap;
-  gap: 6px;
+  gap: 8px;
 }
 
 /* ---------------------------------------------------------------- log time track */
@@ -339,7 +339,7 @@
   align-items: flex-start;
   gap: 2px;
   min-height: 64px;
-  padding: 6px;
+  padding: 4px;
   background: color-mix(in srgb, var(--text-muted) calc(4% + var(--lvl, 0) * 14%), transparent);
   min-width: 0;
 }
@@ -396,7 +396,7 @@
 .pg-prog-multiple figcaption {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
   font-size: var(--fs-md);
 }
@@ -446,7 +446,7 @@
 }
 
 .pg-prog-multiple[data-tone] {
-  padding: 10px 10px 8px;
+  padding: 8px 8px 8px;
   border-top: 2px solid var(--tone);
   background: color-mix(in srgb, var(--tone) 6%, transparent);
   border-radius: 0 0 var(--corner-sm) var(--corner-sm);
@@ -464,7 +464,7 @@
 .pg-prog-pf {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   --tone: var(--dx-ink);
 }
 
@@ -478,7 +478,7 @@
 
 .pg-prog-pf-track {
   position: relative;
-  margin-top: 14px;
+  margin-top: 16px;
   height: 14px;
   border-bottom: 1px solid var(--separator);
 }
@@ -627,6 +627,7 @@
 
 /* Signal forecasts (prog-signals.tsx): past 6 h | next 30 d trace. Monochrome;
    red only where the median forecast reaches the alarm limit. */
+.pg-sf-count { margin-inline-start: 6px; font-variant-numeric: tabular-nums; color: var(--text-muted); }
 .pg-sf-trace {
   display: block;
   overflow: visible;

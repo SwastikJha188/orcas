@@ -17,11 +17,11 @@ import { useApi } from "@/lib/api-cache";
 import { displayName } from "@/lib/display-name";
 import type { DiagnosisRecord } from "./assets-data";
 import type { CatalogSensorView } from "./use-machine-catalog";
-import type { RuleState, SimFrame } from "@/lib/kiln-sim/engine";
-import { formatDuration } from "@/lib/kiln-sim/engine";
-import { isRelativeLimit, limitPair, type SignalDef } from "@/lib/kiln-sim/signals";
-import type { PlantDefs } from "@/lib/plant-defs";
-import type { WorkOrderPriorityDto } from "@/types/monitoring";
+import type { RuleState, SimFrame } from "@shared/lib/kiln-sim/engine";
+import { formatDuration } from "@shared/lib/kiln-sim/engine";
+import { isRelativeLimit, limitPair, type SignalDef } from "@shared/lib/kiln-sim/signals";
+import type { PlantDefs } from "@shared/lib/plant-defs";
+import type { WorkOrderPriorityDto } from "@shared/types/monitoring";
 import { twoSided, type TwoSided } from "./sensor-gauge";
 import { VALIDITY_WORDS } from "@/components/ui/status";
 

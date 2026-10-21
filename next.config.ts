@@ -1,7 +1,14 @@
 import type { NextConfig } from "next";
 
+/** The ULTRON backend (backend/), which serves every /api route. */
+const API_URL = process.env.ULTRON_API_URL || "http://localhost:4000";
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // The browser keeps calling /api on this origin (same cookies); Next forwards it.
+  async rewrites() {
+    return [{ source: "/api/:path*", destination: `${API_URL}/api/:path*` }];
+  },
   distDir: process.env.NEXT_DIST_DIR || ".next",
   // Dev only: compiled routes nobody has opened for a minute are dropped, so a
   // long-running dev server does not keep every page it ever built in memory.

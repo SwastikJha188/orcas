@@ -15,10 +15,10 @@
  * payload; nothing is estimated here.
  */
 
-import type { RuleState, SimFrame } from "@/lib/kiln-sim/engine";
-import { isConditionRule, type PlantDefs } from "@/lib/plant-defs";
+import type { RuleState, SimFrame } from "@shared/lib/kiln-sim/engine";
+import { isConditionRule, type PlantDefs } from "@shared/lib/plant-defs";
 import { displayName } from "@/lib/display-name";
-import type { CorrelationPair } from "@/server/services/insights-service";
+import type { CorrelationPair } from "@backend/services/insights-service";
 import type { Contribution } from "../health-derive";
 import { failureChance, FAILURE_HORIZONS, type PrognosisData, type RulRow } from "../prognosis/prognosis-derive";
 import type { SignalForecastRow } from "../prognosis/prog-signals";

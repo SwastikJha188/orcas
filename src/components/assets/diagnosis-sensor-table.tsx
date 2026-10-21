@@ -4,18 +4,19 @@ import React from "react";
 import { PillButton, StatusTag, Table, type Column } from "@/components/ui";
 import { ACTION, ALARM_STATE, validityTone } from "@/components/ui/status";
 import type { OpsWorkOrder } from "@/providers/kiln-ops-context";
-import { formatDuration, type SimFrame } from "@/lib/kiln-sim/engine";
+import { formatDuration, type SimFrame } from "@shared/lib/kiln-sim/engine";
 import { HYSTERESIS_SAMPLES, VALIDITY_HELP, VALIDITY_LABEL, type DxSensor } from "./diagnosis-model";
 import { isRaised, type FaultCandidate, type SensorRow } from "./diagnosis-rows";
 import { twoSided, twoSidedValues } from "./sensor-gauge";
-import { FAILURE_CHANCE_HEADER, FailureChance } from "./prognosis/prog-chance";
 
 /* ==========================================================================
    Diagnosis sensor table: one row per mapped sensor, fixed catalog order.
-   Sensor · Where · Validity · Now · Past 6 h · Limit · Possible faults ·
-   In alarm since · Failure chance (Prognosis RUL of the sub-assembly; links to Prognosis).
-   The tag opens Trends; each fault's Why → opens Analysis. A row is red while the sensor is beyond its alarm
-   limit or is evidence for a raised fault; nothing else is coloured.
+   Sensor · Part (hidden while one part is picked) · Reading check · Now · Last 6 h ·
+   Alarm limit · Possible problems · In alarm since · trailing actions (Acknowledge /
+   Create work order, shown on row hover or keyboard focus). Failure chance lives on
+   Prognosis. The tag opens Trends; each fault's See why → opens Analysis. A row is red
+   while the sensor is beyond its alarm limit or is evidence for a raised fault; nothing
+   else is coloured.
    ========================================================================== */
 
 function fmt(v: number): string {
@@ -44,7 +45,7 @@ function sideText(lo: number | undefined, hi: number | undefined): string | null
   return null;
 }
 
-function limitText(s: DxSensor, frame: SimFrame | null): { alarm: string; warn: string | null } | null {
+export function limitText(s: DxSensor, frame: SimFrame | null): { alarm: string; warn: string | null } | null {
   const band = s.band ?? twoSided(frame?.defs.signalByTag[s.tag]?.limit, s.model);
   if (band && twoSidedValues(band).length) {
     const alarm = sideText(band.alarmLo, band.alarmHi);
@@ -111,19 +112,19 @@ function stateText(f: FaultCandidate, fmtClock: (ms: number) => string): string 
   }
 }
 
+/** The fault's open (or in-progress) work order, if any. */
+const openWorkOrder = (workOrders: OpsWorkOrder[] | null, ruleId: string) =>
+  workOrders?.find((w) => w.ruleId === ruleId && (w.status === "open" || w.status === "in_progress")) ?? null;
+
 function FaultList({
   faults,
   fmtClock,
   workOrders,
-  onAcknowledge,
-  onWorkOrder,
   onWhy,
 }: {
   faults: FaultCandidate[];
   fmtClock: (ms: number) => string;
   workOrders: OpsWorkOrder[] | null;
-  onAcknowledge: (ruleId: string) => void;
-  onWorkOrder?: (ruleId: string) => void;
   /** Open the fault's mechanism on Analysis. */
   onWhy: (f: FaultCandidate) => void;
 }) {
@@ -132,9 +133,8 @@ function FaultList({
     <ul className="pg-dx-faults">
       {faults.map((f) => {
         const raised = isRaised(f.state);
-        const wo = workOrders?.find((w) => w.ruleId === f.ruleId && (w.status === "open" || w.status === "in_progress")) ?? null;
+        const wo = openWorkOrder(workOrders, f.ruleId);
         const state = stateText(f, fmtClock);
-        const ackable = (raised || f.cleared) && !f.acknowledged;
         return (
           <li key={f.ruleId} data-raised={raised || undefined}>
             <span className="pg-dx-fault-head">
@@ -154,34 +154,61 @@ function FaultList({
               {[f.where, state].filter(Boolean).join(" · ")}
               {" · "}
               <button type="button" className="pg-diag-inline-link" onClick={() => onWhy(f)}>
-                See why →
+                See why <span aria-hidden="true">→</span>
               </button>
+              {wo && (
+                <span title={`${wo.title} (WO-${wo.id})`}>
+                  {" · "}Work order {wo.id}
+                </span>
+              )}
             </span>
-            {ackable || wo || (raised && onWorkOrder) ? (
-              <span className="pg-dx-fault-actions">
-                {ackable && (
-                  <PillButton variant="secondary" className="pg-diag-sm" onClick={() => onAcknowledge(f.ruleId)}>
-                    {ACTION.acknowledge}
-                  </PillButton>
-                )}
-                {wo ? (
-                  <span className="pg-dx-fault-sub" title={`${wo.title} (WO-${wo.id})`}>
-                    Work order {wo.id}
-                  </span>
-                ) : (
-                  raised &&
-                  onWorkOrder && (
-                    <PillButton variant="secondary" className="pg-diag-sm" onClick={() => onWorkOrder(f.ruleId)}>
-                      {ACTION.workOrder}
-                    </PillButton>
-                  )
-                )}
-              </span>
-            ) : null}
           </li>
         );
       })}
     </ul>
+  );
+}
+
+/**
+ * Trailing row actions: Acknowledge / Create work order per fault that needs one. Hidden
+ * until the row is hovered or holds keyboard focus (always shown on touch); each button
+ * names its fault for screen readers.
+ */
+function FaultActions({
+  faults,
+  workOrders,
+  onAcknowledge,
+  onWorkOrder,
+}: {
+  faults: FaultCandidate[];
+  workOrders: OpsWorkOrder[] | null;
+  onAcknowledge: (ruleId: string) => void;
+  onWorkOrder?: (ruleId: string) => void;
+}) {
+  const items = faults.flatMap((f) => {
+    const raised = isRaised(f.state);
+    const ack = (raised || f.cleared) && !f.acknowledged;
+    const order = raised && Boolean(onWorkOrder) && !openWorkOrder(workOrders, f.ruleId);
+    return ack || order ? [{ f, ack, order }] : [];
+  });
+  if (!items.length) return null;
+  return (
+    <span className="pg-dx-row-actions">
+      {items.map(({ f, ack, order }) => (
+        <span key={f.ruleId} className="pg-dx-fault-actions" role="group" aria-label={f.name}>
+          {ack && (
+            <PillButton variant="secondary" className="pg-diag-sm" title={`${ACTION.acknowledge}: ${f.name}`} onClick={() => onAcknowledge(f.ruleId)}>
+              {ACTION.acknowledge}
+            </PillButton>
+          )}
+          {order && onWorkOrder && (
+            <PillButton variant="secondary" className="pg-diag-sm" title={`${ACTION.workOrder}: ${f.name}`} onClick={() => onWorkOrder(f.ruleId)}>
+              {ACTION.workOrder}
+            </PillButton>
+          )}
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -195,11 +222,19 @@ export function SensorDiagnosisTable({
   onWorkOrder,
   onOpenTrend,
   onWhy,
-  lifeFor,
-  onOpenLife,
+  hidePart = false,
+  frameOf,
+  machineOf,
+  rowKey,
 }: {
   rows: SensorRow[];
   frame: SimFrame | null;
+  /** Full line: each row's own machine frame (else `frame`). */
+  frameOf?: (r: SensorRow) => SimFrame | null;
+  /** Full line: the machine each row belongs to; adds a Machine column. */
+  machineOf?: (r: SensorRow) => string | null;
+  /** Full line: rows from several machines need a key beyond the tag. */
+  rowKey?: (r: SensorRow) => string;
   fmtT: (t: number) => string;
   /** Plant clock (ms) → hh:mm. */
   fmtClock: (ms: number) => string;
@@ -208,10 +243,10 @@ export function SensorDiagnosisTable({
   onWorkOrder?: (ruleId: string) => void;
   onOpenTrend: (tag: string) => void;
   onWhy: (f: FaultCandidate, tag: string) => void;
-  /** Prognosis remaining-life interval of the row's sub-assembly. */
-  lifeFor?: (row: SensorRow) => { band: { lo: number; hi: number }; name: string } | null;
-  onOpenLife?: (subAssembly: string, tag: string) => void;
+  /** One part is picked: every row is that part, so the Part column is left out. */
+  hidePart?: boolean;
 }) {
+  const fr = (r: SensorRow) => (frameOf ? frameOf(r) : frame);
   const cols: Column<SensorRow>[] = [
     {
       key: "sensor",
@@ -225,10 +260,16 @@ export function SensorDiagnosisTable({
             onClick={() => onOpenTrend(r.s.tag)}
             title={`Open the trend chart of this sensor (tag ${r.s.tag})`}
           >
-            {r.s.name} ↗
+            {r.s.name} <span aria-hidden="true">↗</span>
           </button>
         </span>
       ),
+    },
+    {
+      key: "machine",
+      header: "Machine",
+      width: "110px",
+      render: (r) => <span className="ast-cell-text">{machineOf?.(r) ?? "—"}</span>,
     },
     {
       key: "where",
@@ -268,14 +309,14 @@ export function SensorDiagnosisTable({
       key: "past",
       header: "Last 6 hours",
       width: "144px",
-      render: (r) => <PastTrend row={r} frame={frame} />,
+      render: (r) => <PastTrend row={r} frame={fr(r)} />,
     },
     {
       key: "limit",
       header: "Alarm limit",
       width: "150px",
       render: (r) => {
-        const l = limitText(r.s, frame);
+        const l = limitText(r.s, fr(r));
         if (!l) return <span className="ast-muted">—</span>;
         return (
           <span className="ast-cell-stack ast-num pg-dx-limit">
@@ -293,8 +334,6 @@ export function SensorDiagnosisTable({
           faults={r.faults}
           fmtClock={fmtClock}
           workOrders={workOrders}
-          onAcknowledge={onAcknowledge}
-          onWorkOrder={onWorkOrder}
           onWhy={(f) => onWhy(f, r.s.tag)}
         />
       ),
@@ -304,38 +343,30 @@ export function SensorDiagnosisTable({
       header: "In alarm since",
       width: "130px",
       render: (r) =>
-        r.since !== null && frame ? (
+        r.since !== null && fr(r) ? (
           <span className="ast-cell-stack ast-num">
             <span>{fmtT(r.since)}</span>
-            <span className="ast-cell-sub">for {formatDuration(frame.t - r.since)}</span>
+            <span className="ast-cell-sub">for {formatDuration(fr(r)!.t - r.since)}</span>
           </span>
         ) : (
           <span className="ast-muted">—</span>
         ),
     },
     {
-      key: "chance",
-      header: FAILURE_CHANCE_HEADER,
-      width: "150px",
-      render: (r) => {
-        const life = lifeFor?.(r) ?? null;
-        return (
-          <FailureChance
-            band={life?.band ?? null}
-            name={life?.name ?? r.s.subAssembly}
-            onOpen={life && onOpenLife ? () => onOpenLife(life.name, r.s.tag) : undefined}
-            openLabel="Open the remaining-life forecast"
-          />
-        );
-      },
+      key: "actions",
+      header: "",
+      width: "1%",
+      render: (r) => <FaultActions faults={r.faults} workOrders={workOrders} onAcknowledge={onAcknowledge} onWorkOrder={onWorkOrder} />,
     },
   ];
 
   // A column that is empty on every row says nothing: leave it out until a row fills it.
   const filled: Record<string, boolean> = {
+    machine: Boolean(machineOf),
+    where: !hidePart,
     faults: rows.some((r) => r.faults.length > 0),
     since: rows.some((r) => r.since !== null),
-    chance: rows.some((r) => Boolean(lifeFor?.(r)?.band)),
+    actions: rows.some((r) => r.faults.some((f) => isRaised(f.state) || f.cleared)),
   };
-  return <Table className="pg-dx-table" columns={cols.filter((c) => filled[c.key] ?? true)} data={rows} keyExtractor={(r) => r.s.tag} />;
+  return <Table className="pg-dx-table" columns={cols.filter((c) => filled[c.key] ?? true)} data={rows} keyExtractor={rowKey ?? ((r) => r.s.tag)} />;
 }

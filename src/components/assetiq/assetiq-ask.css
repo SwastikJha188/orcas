@@ -8,6 +8,7 @@
 }
 
 .aqk-root {
+  position: relative;
   flex: 1;
   min-inline-size: 0;
   min-block-size: 0;
@@ -20,16 +21,32 @@
 .aqk-side {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   min-block-size: 0;
-  padding: 12px 10px 12px 12px;
+  padding: 12px 8px 12px 12px;
   border-inline-end: 1px solid var(--separator);
 }
+.aqk-side-head { display: flex; align-items: center; gap: var(--space-2); }
+.aqk-side-head .aqk-new { flex: 1; }
+.aqk-side-close {
+  inline-size: 32px;
+  block-size: 32px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--corner-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.aqk-side-close:hover { background: var(--hover-faint); color: var(--page-fg); }
 .aqk-new {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 8px 8px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   background: var(--bg-surface-elevated);
@@ -44,10 +61,10 @@
 .aqk-new:active { transform: scale(0.98); }
 .aqk-new svg { color: var(--text-muted); }
 
-.aqk-side-scroll { flex: 1; min-block-size: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 14px; }
+.aqk-side-scroll { flex: 1; min-block-size: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 16px; }
 .aqk-group h3 {
   margin: 0 0 4px;
-  padding-inline: 10px;
+  padding-inline: 8px;
   font-size: var(--fs-xs);
   font-weight: 500;
   letter-spacing: 0.04em;
@@ -61,7 +78,7 @@
 .aqk-hist {
   flex: 1;
   min-inline-size: 0;
-  padding: 7px 30px 7px 10px;
+  padding: 8px 30px 8px 8px;
   border: none;
   background: transparent;
   color: var(--text-muted);
@@ -91,9 +108,37 @@
   opacity: 0;
 }
 .aqk-group li:hover .aqk-hist-del,
+.aqk-group li.is-active .aqk-hist-del,
+.aqk-group li:focus-within .aqk-hist-del,
 .aqk-hist-del:focus-visible { opacity: 1; }
 .aqk-hist-del:hover { color: var(--page-fg); background: var(--bg-surface-elevated); }
 .aqk-hist-del svg { inline-size: 11px; block-size: 11px; }
+
+/* "Conversation deleted · Undo": under the list, for UNDO_MS. Empty, it takes no room. */
+.aqk-undo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-1) var(--space-1) 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--corner-card);
+  background: var(--bg-surface-elevated);
+  font-size: var(--fs-sm);
+  color: var(--page-fg);
+}
+.aqk-undo:empty { padding: 0; border: 0; margin-block-start: -10px; }
+.aqk-undo-btn {
+  padding: var(--space-1) var(--space-2);
+  border: none;
+  border-radius: var(--corner-sm);
+  background: transparent;
+  color: var(--dx-ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.aqk-undo-btn:hover { background: var(--hover-faint); }
 
 /* ---- Conversation column ---- */
 .aqk-main {
@@ -111,20 +156,9 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: 16px;
   padding: 24px 24px 12vh;
   overflow-y: auto;
-}
-.aqk-mark {
-  inline-size: 48px;
-  block-size: 48px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-surface-elevated);
-  color: var(--accent-primary);
 }
 .aqk-hero-title {
   margin: 0;
@@ -135,7 +169,7 @@
   text-align: center;
 }
 .aqk-context {
-  margin: 0 0 10px;
+  margin: 0 0 12px;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
@@ -148,6 +182,19 @@
 .aqk-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 600; color: var(--dx-ink); }
 .aqk-cond.is-warn { color: var(--status-warning); }
 .aqk-cond.is-crit { color: var(--status-danger); }
+/* "Open in Assets": a quiet text link in the scope line. */
+.aqk-open {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--page-fg);
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--border-hover);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.aqk-open:hover { color: var(--dx-ink); text-decoration-color: currentColor; }
 
 .aqk-hero .aqk-composer,
 .aqk-hero .aqk-suggest { inline-size: min(720px, 100%); }
@@ -170,15 +217,14 @@
 }
 /* Back-to-back answers (insights arriving together) get a rule between them. */
 .aqk-thread > .cp-msg-ai + .cp-msg-ai { padding-block-start: 24px; border-block-start: 1px solid var(--separator); }
-/* Answers read as text on the page, not as bubbles with an avatar. */
-.aqk-thread .cp-msg-ai > .cp-avatar { display: none; }
+/* Answers read as text on the page, not as bubbles. */
 .aqk-thread .cp-text { font-size: var(--fs-lg); line-height: 1.6; max-width: none; }
-.aqk-thread .cp-user-bubble { max-inline-size: 75%; padding: 9px 14px; font-size: var(--fs-lg); border-radius: var(--radius-lg); }
+.aqk-thread .cp-user-bubble { max-inline-size: 75%; padding: 8px 12px; font-size: var(--fs-lg); border-radius: var(--radius-lg); }
 .aqk-thread .cp-spark { max-inline-size: 520px; }
 .aqk-thread .cp-body { gap: 12px; }
 /* Actions sit under the answer as a compact row. */
 .aqk-thread .cp-actions { gap: 4px; }
-.aqk-thread .cp-btn { padding: 5px 10px; font-size: var(--fs-sm); }
+.aqk-thread .cp-btn { padding: 4px 8px; font-size: var(--fs-sm); }
 .aqk-thread .cp-btn-text { padding-inline: 8px; }
 
 .aqk-dock {
@@ -194,15 +240,18 @@
 .aqk-composer {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px 10px 8px 14px;
+  gap: 8px;
+  padding: 8px 8px 8px 12px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   background: var(--card-bg);
   box-shadow: var(--shadow-pop);
   transition: border-color var(--dur-fast) var(--ease-out);
 }
-.aqk-composer:focus-within { border-color: var(--border-hover); }
+.aqk-composer:focus-within {
+  border-color: var(--accent-primary);
+  box-shadow: var(--shadow-pop), 0 0 0 2px color-mix(in srgb, var(--accent-primary) 24%, transparent);
+}
 .aqk-composer textarea {
   resize: none;
   border: none;
@@ -220,40 +269,8 @@
 .aqk-composer textarea:focus-visible { outline: none; }
 .aqk-composer.is-large textarea { min-block-size: 48px; }
 .aqk-composer textarea::placeholder { color: var(--text-muted); }
-.aqk-composer-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.aqk-scope {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-inline-size: 0;
-  max-inline-size: 70%;
-  padding: 4px 6px 4px 8px;
-  border-radius: var(--radius-md);
-  font-size: var(--fs-sm);
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
-}
-.aqk-scope:hover { background: var(--hover-faint); color: var(--page-fg); }
-.aqk-scope-key { flex: none; }
-.aqk-scope select {
-  appearance: none;
-  field-sizing: content;
-  min-inline-size: 0;
-  border: none;
-  background: transparent;
-  color: var(--page-fg);
-  font: inherit;
-  font-weight: 500;
-  padding: 0;
-  cursor: pointer;
-  text-overflow: ellipsis;
-  outline: none;
-}
-.aqk-scope select option { color: initial; }
-.aqk-scope svg { flex: none; }
-.aqk-scope:has(select:focus-visible) { outline: 2px solid var(--accent-primary); outline-offset: 1px; }
+.aqk-composer-bar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.aqk-count { font-size: var(--fs-xs); color: var(--text-muted); }
 .aqk-send {
   inline-size: 32px;
   block-size: 32px;
@@ -272,12 +289,12 @@
 .aqk-send:disabled { opacity: 0.3; cursor: not-allowed; }
 
 /* ---- Suggestions ---- */
-.aqk-suggest { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.aqk-suggest { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
 .aqk-suggest::-webkit-scrollbar { display: none; }
 .aqk-suggest.is-wrap { flex-wrap: wrap; justify-content: center; overflow: visible; }
 .aqk-chip {
   flex: none;
-  padding: 5px 10px;
+  padding: 4px 8px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   background: transparent;
@@ -290,7 +307,7 @@
 }
 .aqk-chip:hover { background: var(--hover-faint); border-color: var(--border-hover); color: var(--page-fg); }
 .aqk-chip:active { transform: scale(0.98); }
-.aqk-alerts { display: inline-flex; align-items: center; gap: 7px; color: var(--status-warning); border-color: color-mix(in srgb, var(--status-warning) 45%, var(--border-subtle)); }
+.aqk-alerts { display: inline-flex; align-items: center; gap: 8px; color: var(--status-warning); border-color: color-mix(in srgb, var(--status-warning) 45%, var(--border-subtle)); }
 .aqk-alerts i { inline-size: 7px; block-size: 7px; border-radius: 50%; background: currentColor; }
 .aqk-alerts.is-crit { color: var(--status-danger); border-color: color-mix(in srgb, var(--status-danger) 45%, var(--border-subtle)); }
 .aqk-alerts:hover { color: var(--page-fg); }
@@ -298,13 +315,50 @@
 .aqk-new:focus-visible,
 .aqk-hist:focus-visible,
 .aqk-hist-del:focus-visible,
+.aqk-side-close:focus-visible,
+.aqk-undo-btn:focus-visible,
+.aqk-open:focus-visible,
+.aqk-convs:focus-visible,
 .aqk-chip:focus-visible,
 .aqk-send:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
 
-/* ---- Narrow screens: the conversation list folds away ---- */
+/* "Conversations" opens the list as a drawer; only narrow screens show it. */
+.aqk-mobile-bar { display: none; }
+.aqk-convs {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--corner-card);
+  background: var(--bg-surface-elevated);
+  color: var(--page-fg);
+  font: inherit;
+  font-size: var(--fs-md);
+  font-weight: 500;
+  cursor: pointer;
+}
+.aqk-convs:hover { background: var(--pill-active-bg); border-color: var(--border-hover); }
+.aqk-convs svg { color: var(--text-muted); }
+.aqk-scrim { display: none; }
+
+/* ---- Narrow screens: the conversation list becomes a drawer ---- */
 @media (max-width: 760px) {
   .aqk-root { grid-template-columns: minmax(0, 1fr); }
   .aqk-side { display: none; }
+  .aqk-side.is-open {
+    display: flex;
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    z-index: 3;
+    inline-size: min(300px, 85%);
+    background: var(--card-bg);
+    border-inline-end: 1px solid var(--card-border);
+    box-shadow: var(--shadow-pop);
+  }
+  .aqk-scrim { display: block; position: absolute; inset: 0; z-index: 2; background: var(--scrim); }
+  .aqk-mobile-bar { display: flex; padding: var(--space-3) var(--space-4) 0; }
   .aqk-hero { padding-inline: 16px; }
   .aqk-hero-title { font-size: var(--fs-5xl); }
   .aqk-thread, .aqk-dock { padding-inline: 16px; }
@@ -318,3 +372,48 @@
 .aiq-hub .opc-stage-tabs::-webkit-scrollbar { display: none; }
 .aiq-hub .opc-stage-tabs .opc-pill-group { flex-wrap: nowrap; max-inline-size: none; }
 .aiq-hub .opc-topbar-right { flex-wrap: nowrap; }
+/* The pill rows scroll and clip: draw focus rings inside the pill. */
+.aiq-hub .aqk-chip:focus-visible,
+.aiq-hub .opc-pill-btn:focus-visible { outline-offset: -2px; }
+
+/* The account's own questions on the empty page (assetiq_questions). */
+.aqk-questions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  inline-size: min(720px, 100%);
+}
+.aqk-question {
+  padding: 8px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary, var(--text-muted));
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: start;
+  cursor: pointer;
+}
+.aqk-question:hover { border-color: var(--border-hover); color: var(--dx-ink); }
+.aqk-question:focus-visible { outline: 2px solid var(--signal-blue); outline-offset: 2px; }
+@media (max-width: 640px) {
+  .aqk-questions { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* While an answer is worked out. */
+.aqk-thinking {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.aqk-thinking i {
+  inline-size: 6px;
+  block-size: 6px;
+  border-radius: 50%;
+  background: var(--signal-blue);
+  animation: aqk-pulse 1s ease-in-out infinite;
+}
+@keyframes aqk-pulse { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .aqk-thinking i { animation: none; } }

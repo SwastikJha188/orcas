@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { formatDuration, type SimFrame } from "@/lib/kiln-sim/engine";
+import { formatDuration, type SimFrame } from "@shared/lib/kiln-sim/engine";
 import { Z_ANOMALY, type ChainNode } from "./an-derive";
 
 const W = 1120;

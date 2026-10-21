@@ -2,13 +2,13 @@
 
 import React, { useMemo, useState } from "react";
 import { PillNav, rowActivate } from "@/components/ui";
-import { planGenerates } from "@/lib/pms";
+import { planGenerates, planKey } from "@shared/lib/pms";
 import { formatLocalTime } from "@/lib/time";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { Empty, KpiStrip, Section } from "@/components/assets/analysis/an-ui";
 import { MaintenanceView } from "@/components/assets/maintenance/maintenance-view";
-import type { ChecklistKind } from "@/types/maintenance";
+import type { ChecklistKind } from "@shared/types/maintenance";
 import type { PmsModel } from "./pms-model";
 import { machineName, useDefaultMachine } from "./pms-model";
 import { useMaintenanceVocabulary } from "./maint-types-model";
@@ -65,7 +65,7 @@ export function PagePreventive({ pms }: { pms: PmsModel }) {
       const r: MachineRow = { id, tasks: 0, done: 0, due: 0, overdue: 0, timed: 0, lastRunAt: null };
       for (const p of data.plans) {
         if (p.machineId !== id || p.kind !== kind || !group.routes.includes(p.route)) continue;
-        const d = dues.get(p.id);
+        const d = dues.get(planKey(p));
         r.tasks += p.tasks.length;
         if (p.intervalHours !== null && planGenerates(p)) r.timed += p.tasks.length;
         if (!d) continue;

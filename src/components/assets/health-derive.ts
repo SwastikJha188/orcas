@@ -24,12 +24,12 @@
  * Other machines read the stored DB catalog: scores and statuses only; no
  * decomposition, history or quality data exist, and the page says so.
  */
-import type { LiveSignal, RuleState, SimFrame } from "@/lib/kiln-sim/engine";
-import { describeLimit, limitNum, type Severity } from "@/lib/kiln-sim/signals";
-import type { DefSignal } from "@/lib/plant-defs";
+import type { LiveSignal, RuleState, SimFrame } from "@shared/lib/kiln-sim/engine";
+import { describeLimit, limitNum, type Severity } from "@shared/lib/kiln-sim/signals";
+import type { DefSignal } from "@shared/lib/plant-defs";
 import type { Tone } from "./assets-shell-ui";
 import type { MachineCatalog } from "./use-machine-catalog";
-import { isConditionRule } from "@/lib/plant-defs";
+import { isConditionRule } from "@shared/lib/plant-defs";
 import type { HealthBands } from "@/lib/reference-data";
 
 export const HEALTH_SECTIONS = {

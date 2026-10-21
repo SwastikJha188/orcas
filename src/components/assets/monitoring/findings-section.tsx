@@ -19,7 +19,7 @@ import {
   useMachineEvents,
   type EntryKind,
 } from "@/lib/monitoring-client";
-import type { FindingDto, MachineEventDto } from "@/types/monitoring";
+import type { FindingDto, MachineEventDto } from "@shared/types/monitoring";
 import { plainWords } from "@/lib/plain-words";
 import "./monitoring.css";
 

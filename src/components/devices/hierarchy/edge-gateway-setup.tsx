@@ -2,16 +2,16 @@
 
 import React, { useState } from "react";
 import { FormNote, PillButton } from "@/components/ui";
-import { templateFilter } from "@/lib/edge-format";
-import type { EdgeBroker, EdgeFormat } from "@/types/edge";
-import type { BrokerStatus } from "@/types/mqtt";
+import { templateFilter } from "@shared/lib/edge-format";
+import type { EdgeBroker, EdgeFormat } from "@shared/types/edge";
+import type { BrokerStatus } from "@shared/types/mqtt";
 
 /* ==========================================================================
    How a gateway reaches ULTRON. Nothing here connects anything: the gateway
    opens its own MQTT connection with its own settings (gateway.env on the
    ULTRON gateway), and ULTRON subscribes to the same broker separately.
 
-     gateway ──publish──▶ broker ◀──subscribe── ULTRON (Devices › MQTT)
+     gateway ──publish──▶ broker ◀──subscribe── ULTRON (Devices page)
 
    This panel writes out the settings the gateway needs so both sides meet.
    ========================================================================== */
@@ -31,8 +31,8 @@ export interface GatewaySetupProps {
 
 /** Connection state of ULTRON's own side, as a note; null when all is well. */
 export function brokerNote(broker: EdgeBroker | null, status: BrokerStatus | null): { tone: "warn" | "bad" | "info"; text: string } | null {
-  if (!broker) return { tone: "warn", text: "No broker selected: ULTRON will not receive anything from this gateway." };
-  if (!broker.enabled) return { tone: "warn", text: `ULTRON is not listening on ${broker.name} because it is switched off. Switch it on under Data connections.` };
+  if (!broker) return { tone: "warn", text: "No message server chosen: ULTRON will not receive anything from this gateway." };
+  if (!broker.enabled) return { tone: "warn", text: `ULTRON is not listening on ${broker.name} because it is switched off. Switch it on in its message server settings.` };
   if (status && status.state !== "connected") {
     return { tone: "bad", text: `ULTRON cannot reach ${broker.name} (${status.state})${status.lastError ? `: ${status.lastError}` : ""}.` };
   }
@@ -41,10 +41,12 @@ export function brokerNote(broker: EdgeBroker | null, status: BrokerStatus | nul
 
 export function GatewaySetup({ code, ipAddress, broker, brokerStatus, format, rackIds }: GatewaySetupProps) {
   const [copied, setCopied] = useState<string | null>(null);
+  // The block whose copy failed (no clipboard access): the text is selected by hand instead.
+  const [copyFailed, setCopyFailed] = useState<string | null>(null);
   const id = code.trim() || "<gateway id>";
 
   if (!broker) {
-    return <p className="dv-setup-lead">Choose a data connection (MQTT broker) to see the settings the data collector needs.</p>;
+    return <p className="dv-setup-lead">Choose a message server (MQTT broker) to see the settings the gateway needs.</p>;
   }
 
   const prefix = broker.topicPrefix.replace(/\/+$/, "");
@@ -72,10 +74,12 @@ export function GatewaySetup({ code, ipAddress, broker, brokerStatus, format, ra
   const copy = async (label: string, text: string) => {
     try {
       await navigator.clipboard.writeText(text);
+      setCopyFailed(null);
       setCopied(label);
       setTimeout(() => setCopied(null), 1800);
     } catch {
       setCopied(null);
+      setCopyFailed(label);
     }
   };
 
@@ -85,7 +89,7 @@ export function GatewaySetup({ code, ipAddress, broker, brokerStatus, format, ra
     <div className="dv-setup">
       <ol className="dv-setup-flow" aria-label="Connection path">
         <li>
-          <span className="dv-setup-k">Data collector</span>
+          <span className="dv-setup-k">Gateway</span>
           <span className="dv-setup-v ast-num">{id}</span>
           <span className="dv-setup-s">sends readings</span>
         </li>
@@ -109,22 +113,22 @@ export function GatewaySetup({ code, ipAddress, broker, brokerStatus, format, ra
         <>
           <div className="dv-setup-block">
             <div className="dv-setup-head">
-              <span>Put this on the data collector · /etc/ultron-gateway/gateway.env</span>
+              <span>Put this on the gateway · /etc/ultron-gateway/gateway.env</span>
               <PillButton variant="secondary" className="dv-setup-copy" onClick={() => void copy("env", env)}>
-                {copied === "env" ? "Copied" : "Copy"}
+                {copied === "env" ? "Copied" : copyFailed === "env" ? "Copy failed — select the text" : "Copy"}
               </PillButton>
             </div>
             <pre className="dv-setup-code">{env}</pre>
             <span className="dv-setup-foot">
-              Then <code>sudo systemctl restart ultron-gateway</code>. Its devices, cards and channels then appear here from its data.
-              {loopback && " This message server address only works on this computer; the data collector needs an address it can reach over the network."}
+              Then <code>sudo systemctl restart ultron-gateway</code>. Its racks, cards and channels then appear here from its data.
+              {loopback && " This message server address only works on this computer; the gateway needs an address it can reach over the network."}
             </span>
           </div>
           <div className="dv-setup-block">
             <div className="dv-setup-head">
               <span>On the message server · user “{id}” with these access rules (ACL)</span>
               <PillButton variant="secondary" className="dv-setup-copy" onClick={() => void copy("acl", acl)}>
-                {copied === "acl" ? "Copied" : "Copy"}
+                {copied === "acl" ? "Copied" : copyFailed === "acl" ? "Copy failed — select the text" : "Copy"}
               </PillButton>
             </div>
             <pre className="dv-setup-code">{acl}</pre>
@@ -133,15 +137,15 @@ export function GatewaySetup({ code, ipAddress, broker, brokerStatus, format, ra
       ) : (
         <div className="dv-setup-block">
           <div className="dv-setup-head">
-            <span>Point the data collector at the message server and send to</span>
+            <span>Point the gateway at the message server and send to</span>
             <PillButton variant="secondary" className="dv-setup-copy" onClick={() => void copy("acl", acl)}>
-              {copied === "acl" ? "Copied" : "Copy"}
+              {copied === "acl" ? "Copied" : copyFailed === "acl" ? "Copy failed — select the text" : "Copy"}
             </PillButton>
           </div>
           <pre className="dv-setup-code">
             {`host   ${host}:${broker.port}${broker.tls ? " (TLS)" : ""}\ntopic  ${format ? templateFilter(format.topic, code.trim() || null) : ""}`}
           </pre>
-          <span className="dv-setup-foot">Payloads are read with the “{format?.name}” format (Devices › Data formats).</span>
+          <span className="dv-setup-foot">Payloads are read with the “{format?.name}” format (open it from the gateway's Message format).</span>
         </div>
       )}
     </div>

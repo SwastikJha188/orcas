@@ -24,11 +24,11 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { PillButton, PillNav } from "@/components/ui";
+import { ACTION, PillButton, PillNav } from "@/components/ui";
 import type { AssetMachine } from "./assets-data";
 import type { AssetsSubPage } from "./assets-view";
 import type { KilnSimulation } from "./kiln-seals-simulation";
-import { simTimeMs } from "@/lib/kiln-sim/engine";
+import { simTimeMs } from "@shared/lib/kiln-sim/engine";
 import { defsFor } from "@/lib/live-defs";
 import { useKilnSimulationFor } from "@/providers/kiln-simulation-context";
 import { useIndustrialData } from "@/providers/industrial-data-context";
@@ -311,7 +311,7 @@ export function TrendsView({ machine, simulation }: TrendsViewProps) {
           ]}
           actions={
             <PillButton variant="secondary" onClick={exportAll} disabled={!canExport} title="Download every reading in this time range as a spreadsheet file (CSV)">
-              Download CSV
+              {ACTION.exportCsv}
             </PillButton>
           }
         />

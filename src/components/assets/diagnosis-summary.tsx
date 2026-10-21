@@ -1,6 +1,6 @@
 "use client";
 
-import type { SimFrame } from "@/lib/kiln-sim/engine";
+import type { SimFrame } from "@shared/lib/kiln-sim/engine";
 import type { Tone } from "./assets-shell-ui";
 import type { KpiItem } from "./analysis/an-ui";
 import { isoBounds, isoZone, toneOf, type DxAlarm, type DxSensor, type Finding } from "./diagnosis-model";

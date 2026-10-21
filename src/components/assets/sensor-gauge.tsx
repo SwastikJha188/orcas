@@ -3,7 +3,7 @@
 import React from "react";
 import type { DetailedSensorInfo } from "./machine-sensor-mapping-view";
 import { severityTone } from "./assets-shell-ui";
-import { isRelativeLimit, resolveLimit, type LimitRule } from "@/lib/kiln-sim/signals";
+import { isRelativeLimit, resolveLimit, type LimitRule } from "@shared/lib/kiln-sim/signals";
 
 /* ==========================================================================
    Sensor limit gauges. A reading drawn against its own warning and alarm

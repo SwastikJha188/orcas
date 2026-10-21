@@ -3,12 +3,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { PillButton, PillNav, rowActivate, type Tone } from "@/components/ui";
 import { useApi } from "@/lib/api-cache";
-import { MAINTENANCE_VOCABULARY_URL } from "@/lib/maintenance";
-import { PLAN_STATE_ORDER, planGenerates, planMode, planStrategy, planTrigger, readinessBlockers } from "@/lib/pms";
+import { MAINTENANCE_VOCABULARY_URL } from "@shared/lib/maintenance";
+import { PLAN_STATE_ORDER, planGenerates, planKey, planMode, planStrategy, planTrigger, readinessBlockers } from "@shared/lib/pms";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { formatLocalTime } from "@/lib/time";
-import type { PlanState, PmsPlan } from "@/types/pms";
-import type { MaintenanceVocabulary } from "@/types/maintenance";
+import type { PlanState, PmsPlan } from "@shared/types/pms";
+import type { MaintenanceVocabulary } from "@shared/types/maintenance";
 import { Empty, KpiStrip, Section } from "@/components/assets/analysis/an-ui";
 import type { Outcome, PmsModel } from "./pms-model";
 import { dueStatus, intervalText, machineName, planName, unitLabel, woRef } from "./pms-model";
@@ -20,7 +20,8 @@ import { DAY, DefList, ItemCell, NoteDialog, Notice, PM_ICON, StateWord, occurre
    month across the line, conflicts to resolve before approval, and the
    controlled plans (calendar intervals, running hours, condition) that
    generate the work. No interval is invented: document starting routes stay
-   provisional until the plant approves them.
+   provisional until the plant approves them. The machine comes from the
+   workspace's machine tabs; People, parts & shutdowns is this tab's second view.
    ========================================================================== */
 
 type Mode = "day" | "week" | "month";
@@ -61,7 +62,6 @@ export function PageCalendar({ pms }: { pms: PmsModel }) {
   const focus = usePmsFocus(["p:"]);
   const [mode, setMode] = useState<Mode>("week");
   const [filter, setFilter] = useState<Filter>("all");
-  const [machine, setMachine] = useState<string>("all");
   const [anchor, setAnchor] = useState(() => now);
   const [planId, setPlanId] = useState<string | null>(focus ? focus.slice(2) : null);
 
@@ -88,12 +88,8 @@ export function PageCalendar({ pms }: { pms: PmsModel }) {
     return { from, to: addDays(from, weeks * 7), days: Array.from({ length: weeks * 7 }, (_, i) => addDays(from, i)) };
   }, [mode, anchor]);
 
-  const inMachine = (id: string) => machine === "all" || id === machine;
-  const all = useMemo(
-    () => (data ? occurrences(data.plans.filter((p) => inMachine(p.machineId)), dues, openWos.filter((w) => inMachine(w.machineId)), range.from, range.to, now) : []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [data, dues, openWos, range, now, machine],
-  );
+  // The model is already narrowed to the machine picked in the workspace tabs.
+  const all = useMemo(() => (data ? occurrences(data.plans, dues, openWos, range.from, range.to, now) : []), [data, dues, openWos, range, now]);
   const shown = useMemo(
     () => all.filter((o) => (filter === "all" ? true : filter === "wo" ? o.kind === "wo" : filter === "sensor" ? o.kind === "plan" && o.sensor : o.kind === "plan" && !o.sensor)),
     [all, filter],
@@ -113,7 +109,7 @@ export function PageCalendar({ pms }: { pms: PmsModel }) {
     const days = new Map<string, Occurrence[]>();
     for (const o of all) {
       if (o.routine || !o.isolate) continue;
-      const p = data.plans.find((x) => x.id === o.ref);
+      const p = data.plans.find((x) => planKey(x) === o.ref);
       const m = p?.machineId ?? openWos.find((w) => String(w.id) === o.ref)?.machineId ?? "";
       const k = `${m}|${startOfDay(o.at)}`;
       days.set(k, [...(days.get(k) ?? []), o]);
@@ -137,12 +133,11 @@ export function PageCalendar({ pms }: { pms: PmsModel }) {
     for (const w of openWos)
       if ((w.stage === "scheduled" || w.stage === "released") && readinessBlockers(w.readiness).length)
         out.push({ key: `rdy${w.id}`, title: `${woRef(w.id)} scheduled with open readiness`, detail: w.title, tone: "bad" });
-    const verify = data.plans.filter((p) => p.state === "Site verify" && inMachine(p.machineId));
+    const verify = data.plans.filter((p) => p.state === "Site verify");
     if (verify.length)
       out.push({ key: "verify", title: `${verify.length} plans wait for site verification`, detail: "Inactive until the installed equipment is confirmed", tone: "idle" });
     return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, all, openWos, machine]);
+  }, [data, all, openWos]);
 
   const go = (o: Occurrence) => {
     if (o.kind === "wo") {
@@ -175,7 +170,7 @@ export function PageCalendar({ pms }: { pms: PmsModel }) {
   const counts = {
     week: weekOcc.length,
     weekIso: weekOcc.filter((o) => o.isolate && !o.routine).length,
-    overdue: data.plans.filter((p) => dues.get(p.id)?.state === "overdue").length,
+    overdue: data.plans.filter((p) => dues.get(planKey(p))?.state === "overdue").length,
     approved: data.plans.filter((p) => p.state === "Approved").length,
     generating: data.plans.filter(planGenerates).length,
     verify: data.plans.filter((p) => p.state === "Site verify").length,
@@ -184,6 +179,9 @@ export function PageCalendar({ pms }: { pms: PmsModel }) {
 
   return (
     <div className="ast-root pg-frame pm-page" style={{ "--pm-side": "440px" } as React.CSSProperties}>
+      <div className="ast-toolbar pm-toolbar">
+        <PillNav ariaLabel="Show" items={[{ id: "all", label: "All work" }, { id: "equipment", label: "Equipment" }, { id: "sensor", label: "Sensors" }, { id: "wo", label: "Work orders" }]} activeId={filter} onChange={(id) => setFilter(id as Filter)} />
+      </div>
       <KpiStrip
         page
         label="Schedule summary"
@@ -195,10 +193,6 @@ export function PageCalendar({ pms }: { pms: PmsModel }) {
         ]}
       />
       <div className="pg-frame-body">
-        <div className="ast-toolbar pm-toolbar">
-          <PillNav ariaLabel="Machine" items={[{ id: "all", label: "All machines" }, ...data.machineIds.map((id) => ({ id, label: machineName(id) }))]} activeId={machine} onChange={setMachine} />
-          <PillNav ariaLabel="Show" items={[{ id: "all", label: "All work" }, { id: "equipment", label: "Equipment" }, { id: "sensor", label: "Sensors" }, { id: "wo", label: "Work orders" }]} activeId={filter} onChange={(id) => setFilter(id as Filter)} />
-        </div>
         <div className="pm-split">
           <Section
             id="pm-calendar"
@@ -223,9 +217,9 @@ export function PageCalendar({ pms }: { pms: PmsModel }) {
             {mode === "day" ? (
               <DayList list={byDay.get(range.from) ?? []} onOpen={go} />
             ) : (
-              <div className={`pm-cal is-${mode}`} role="grid" aria-label={title}>
+              <div className={`pm-cal is-${mode}`} role="group" aria-label={title}>
                 {range.days.slice(0, 7).map((d) => (
-                  <div key={`h${d}`} className="pm-cal-head" role="columnheader">
+                  <div key={`h${d}`} className="pm-cal-head">
                     {WEEKDAY.format(d)}
                     {mode === "week" && <span className="pm-cal-num"> {DAYNUM.format(d)}</span>}
                   </div>
@@ -241,13 +235,12 @@ export function PageCalendar({ pms }: { pms: PmsModel }) {
                     <div
                       key={d}
                       className="pm-cal-day"
-                      role="gridcell"
                       data-today={d === today || undefined}
                       data-out={mode === "month" && new Date(d).getMonth() !== monthOf ? true : undefined}
                       data-past={d < today || undefined}
                     >
                       {mode === "month" && (
-                        <button type="button" className="pm-cal-date" onClick={() => { setAnchor(d); setMode("day"); }}>
+                        <button type="button" className="pm-cal-date" aria-label={`Show ${LONG.format(d)}`} onClick={() => { setAnchor(d); setMode("day"); }}>
                           {DAYNUM.format(d)}
                         </button>
                       )}
@@ -306,7 +299,7 @@ export function PageCalendar({ pms }: { pms: PmsModel }) {
           </Section>
         </div>
 
-        <PlanLibrary pms={pms} machine={machine} filter={filter} selectedId={planId} onSelect={setPlanId} />
+        <PlanLibrary pms={pms} filter={filter} selectedId={planId} onSelect={setPlanId} />
       </div>
     </div>
   );
@@ -350,9 +343,9 @@ function DayList({ list, onOpen }: { list: Occurrence[]; onOpen: (o: Occurrence)
 /** A plan's state in everyday words ("Site verify" is a database value). */
 const planStateLabel = (state: string) => (state === "Site verify" ? "To check on site" : state === "Retired" ? "No longer used" : state);
 
-function PlanLibrary({ pms, machine, filter, selectedId, onSelect }: { pms: PmsModel; machine: string; filter: Filter; selectedId: string | null; onSelect: (id: string) => void }) {
+function PlanLibrary({ pms, filter, selectedId, onSelect }: { pms: PmsModel; filter: Filter; selectedId: string | null; onSelect: (id: string) => void }) {
   const { data, dues, now } = pms;
-  const tz = useSiteTimeZone({ machineId: machine === "all" ? data?.machineIds[0] : machine });
+  const tz = useSiteTimeZone({ machineId: data?.machineIds[0] });
   const owners = useApi<MaintenanceVocabulary>(MAINTENANCE_VOCABULARY_URL).data?.owners ?? null;
   const [ask, setAsk] = useState<{ state: PlanState; title: string } | null>(null);
   const [notice, setNotice] = useState<Outcome | null>(null);
@@ -361,18 +354,18 @@ function PlanLibrary({ pms, machine, filter, selectedId, onSelect }: { pms: PmsM
   const plans = useMemo(() => {
     if (!data) return [];
     return data.plans
-      .filter((p) => (machine === "all" || p.machineId === machine) && (filter === "all" || filter === "wo" || p.kind === filter))
+      .filter((p) => filter === "all" || filter === "wo" || p.kind === filter)
       .slice()
       .sort((a, b) => {
-        const da = dues.get(a.id)?.dueAt ?? Infinity;
-        const db = dues.get(b.id)?.dueAt ?? Infinity;
-        return PLAN_STATE_ORDER[a.state] - PLAN_STATE_ORDER[b.state] || (planGenerates(a) ? da - db : 0) || a.id.localeCompare(b.id);
+        const da = dues.get(planKey(a))?.dueAt ?? Infinity;
+        const db = dues.get(planKey(b))?.dueAt ?? Infinity;
+        return PLAN_STATE_ORDER[a.state] - PLAN_STATE_ORDER[b.state] || (planGenerates(a) ? da - db : 0) || planKey(a).localeCompare(planKey(b));
       });
-  }, [data, machine, filter, dues]);
+  }, [data, filter, dues]);
 
   if (!data) return null;
-  const selected = plans.find((p) => p.id === selectedId) ?? plans[0] ?? null;
-  const due = selected ? dues.get(selected.id) : undefined;
+  const selected = plans.find((p) => planKey(p) === selectedId) ?? plans[0] ?? null;
+  const due = selected ? dues.get(planKey(selected)) : undefined;
   const when = (t: number | string) => formatLocalTime(t, { date: true, seconds: false, timeZone: tz.timeZone });
   const doc = (p: PmsPlan) => (p.kind === "sensor" ? data.documents.sensor : data.documents.equipment);
 
@@ -399,11 +392,11 @@ function PlanLibrary({ pms, machine, filter, selectedId, onSelect }: { pms: PmsM
             </thead>
             <tbody>
               {plans.map((p) => {
-                const st = dueStatus(p, dues.get(p.id));
+                const st = dueStatus(p, dues.get(planKey(p)));
                 return (
-                  <tr key={p.id} className={`is-clickable ${p.id === selected?.id ? "active" : ""}`} {...rowActivate(() => { onSelect(p.id); setNotice(null); })}>
+                  <tr key={planKey(p)} className={`is-clickable ${p === selected ? "active" : ""}`} {...rowActivate(() => { onSelect(planKey(p)); setNotice(null); })}>
                     <td className="pm-grow">
-                      <ItemCell icon={p.kind === "sensor" ? PM_ICON.sensor : PM_ICON.plan} tone={st.tone} title={planName(p)} sub={`${p.tasks.length} tasks`} />
+                      <ItemCell icon={p.kind === "sensor" ? PM_ICON.sensor : PM_ICON.plan} tone={st.tone} title={planName(p)} sub={`${p.unitCode === "GEN" ? "" : `${machineName(p.machineId)} · `}${p.tasks.length} tasks`} />
                     </td>
                     <td className="pm-muted">{intervalText(p)}</td>
                     <td>
@@ -433,7 +426,6 @@ function PlanLibrary({ pms, machine, filter, selectedId, onSelect }: { pms: PmsM
                 tone: selected.state === "Approved" ? undefined : "warn",
                 hint: "Suggested by the documents; the plant approves the real interval.",
               },
-              { label: "Running hours", value: "Not set up · no trusted running-hours meter", hint: "Without a trusted meter, no time estimates are made from running hours." },
               { label: "Counted from", value: "When each task was last done" },
               { label: "Machine state", value: planMode(selected) === "Isolate" ? "Must be stopped and locked off" : planMode(selected) === "Run + stop" ? "Some checks while running, the rest at a shutdown" : "While running" },
               { label: "Who does it", value: (owners && [...new Set(selected.tasks.map((t) => owners[t.owner] ?? t.owner).filter(Boolean))].join(" · ")) || "—" },
@@ -477,6 +469,7 @@ function PlanLibrary({ pms, machine, filter, selectedId, onSelect }: { pms: PmsM
               </PillButton>
             )}
           </div>
+          {selected.state === "Provisional" && !data.canApprove && <p className="ast-caption pm-foot">Your role cannot approve plans</p>}
           <div className="pm-tasks" role="group" aria-label="Tasks in this plan">
             <h4 className="pg-analysis-block-title">Tasks in this plan · {selected.tasks.length}</h4>
             <ul>

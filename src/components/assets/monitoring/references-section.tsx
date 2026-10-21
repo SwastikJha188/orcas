@@ -6,7 +6,7 @@ import type { Tone } from "@/components/ui/status";
 import { formatLocalTime, zonedParts, zoneOffsetMs } from "@/lib/time";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { deriveReference, fmtNumber, reviewReference, useMeasurements, useOperatingStates, useReferenceSets } from "@/lib/monitoring-client";
-import type { MeasurementDto, ReferenceSetDto } from "@/types/monitoring";
+import type { MeasurementDto, ReferenceSetDto } from "@shared/types/monitoring";
 import { Section } from "../analysis/an-ui";
 import { plainWords } from "@/lib/plain-words";
 import "./monitoring.css";

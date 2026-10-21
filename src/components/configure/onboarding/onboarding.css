@@ -15,11 +15,11 @@
 .onb-headcard {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .onb-back {
-  margin-right: 10px;
+  margin-right: 12px;
   padding: 0;
   border: 0;
   background: none;
@@ -98,8 +98,8 @@
 }
 
 .onb-x {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border: 0;
   border-radius: var(--radius-sm);
   background: none;
@@ -115,8 +115,8 @@
 }
 
 .onb-mini {
-  height: 26px;
-  padding: 0 10px;
+  min-height: 28px;
+  padding: 0 8px;
   border: 1px solid var(--separator);
   border-radius: var(--radius-sm);
   background: var(--card-bg);
@@ -131,6 +131,12 @@
   border-color: var(--text-muted);
 }
 
+.onb-x:focus-visible,
+.onb-mini:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
 .onb-mini:disabled {
   opacity: 0.5;
   cursor: default;
@@ -142,7 +148,7 @@
 
 .onb-actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   justify-content: flex-end;
 }
 
@@ -192,7 +198,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .onb-part {
@@ -219,7 +225,7 @@
 .onb-check {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: var(--fs-sm);
   color: var(--text-muted);
 }
@@ -245,8 +251,8 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
-  padding-top: 10px;
+  gap: 12px;
+  padding-top: 8px;
 }
 
 .onb-kpis {
@@ -311,7 +317,7 @@
 }
 
 .onb-gaps-doc {
-  margin: 0 0 6px;
+  margin: 0 0 8px;
   font-size: var(--fs-sm);
   font-weight: 500;
   color: var(--text-primary);
@@ -321,7 +327,7 @@
 .onb-photos {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -375,7 +381,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   font-size: var(--fs-sm);
 }
 
@@ -414,4 +420,95 @@
   color: var(--text-muted);
   max-height: 220px;
   overflow: auto;
+}
+
+/* Step pills with progress ("✓" done, "N to fix"), "Step X of 7" beside them. */
+.onb-steps {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.onb-step-of {
+  margin-inline-start: auto;
+  white-space: nowrap;
+}
+
+.onb-step-done,
+.onb-step-fix {
+  margin-inline-start: var(--space-2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.onb-step-done {
+  color: var(--text-muted);
+}
+
+.onb-step-fix {
+  color: var(--status-warning);
+}
+
+/* Back / Next under every step; the primary sits last. */
+.onb-stepfoot {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* A problem on step 7: jumps to the step that fixes it. */
+.onb-problem {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.onb-problem-step {
+  color: var(--accent-primary);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.onb-problem:hover .onb-problem-step {
+  text-decoration: underline;
+}
+
+/* The plant is created: what was made and where to go next. */
+.onb-done {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.onb-done-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  color: var(--dx-ink);
+}
+
+.onb-done-mark {
+  color: var(--text-muted);
+}
+
+.onb-done-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  flex-wrap: wrap;
 }

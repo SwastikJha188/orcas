@@ -24,11 +24,11 @@ import { rowActivate } from "@/components/ui/row-activate";
 import { PillButton, PillNav } from "@/components/ui";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useKilnSimulationFor, useLiveMachineStatus, useLivePlantStarting } from "@/providers/kiln-simulation-context";
-import { conditionTone, toCondition, validityTone } from "@/components/ui/status";
+import { ALARM_STATE, conditionTone, toCondition, validityTone } from "@/components/ui/status";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { formatLocalTime } from "@/lib/time";
-import { formatDuration, simTimeMs, type RuleState, type SimFrame } from "@/lib/kiln-sim/engine";
-import type { Severity } from "@/lib/kiln-sim/signals";
+import { formatDuration, simTimeMs, type RuleState, type SimFrame } from "@shared/lib/kiln-sim/engine";
+import type { Severity } from "@shared/lib/kiln-sim/signals";
 import {
   SHELL_ALERT,
   SHELL_DA,
@@ -44,7 +44,7 @@ import {
   buildShellMap,
   shellZoneAt,
   type ShellMap,
-} from "@/lib/kiln-sim/shell-map";
+} from "@shared/lib/kiln-sim/shell-map";
 import type { AssetMachine } from "./assets-data";
 import type { AssetsSubPage } from "./assets-view";
 import type { Tone } from "./assets-shell-ui";
@@ -98,11 +98,11 @@ const IDS = {
 /** Trend window, simulated minutes. */
 const TREND_MIN = 180;
 const SHELL_AREA = Math.PI * SHELL_DIA * SHELL_LEN;
-const STATUS_LABEL: Record<Tone, string> = { good: "Normal", warn: "Alert", bad: "Critical", idle: "Hidden", info: "Checking" };
+const STATUS_LABEL: Record<Tone, string> = { good: "Normal", warn: "Alert", bad: "Critical", idle: "No data", info: ALARM_STATE.confirming };
 /** Everyday words for a reading-quality verdict ("Good" stays). */
 const qualityWord = (q: string | null | undefined): string => (q ? ((QUALITY_LABEL as Record<string, string>)[q] ?? q) : "—");
-/** Everyday words for a rule's stage. */
-const STAGE_WORD: Record<string, string> = { Quiet: "Not seen", Confirming: "Checking", Clearing: "Clearing up" };
+/** A rule's stage in the shared alarm words (a quiet rule reads Normal). */
+const STAGE_WORD: Record<string, string> = { Quiet: "Normal", Confirming: ALARM_STATE.confirming, Clearing: ALARM_STATE.clearing };
 
 /** Monochrome by default: status colour only for warning / alarm. */
 const quiet = (t: Tone): Tone => (t === "warn" || t === "bad" ? t : "idle");
@@ -385,7 +385,7 @@ function ThermalPage({ machine, simulation }: { machine: AssetMachine; simulatio
       unit: "°C",
       tone: alarmTone(maxTone),
       bar: <LimitTrack min={150} max={Math.max(480, Math.ceil((map.max + 20) / 20) * 20)} value={map.max} warn={SHELL_ALERT} bad={SHELL_DANGER} />,
-      foot: `${margin >= 0 ? `${fmt0(margin)} °C below` : `${fmt0(-margin)} °C over`} the ${SHELL_ALERT} °C Alert limit${pyro ? " (demo limit)" : ""}${dangerText ? ` · reaches ${SHELL_DANGER} °C in ${dangerText}` : ""}`,
+      foot: `${margin >= 0 ? `${fmt0(margin)} °C below` : `${fmt0(-margin)} °C over`} the ${SHELL_ALERT} °C Alert limit${shellMaxDb?.limit && shellMaxDb.limit.approval !== "approved" ? " (draft limit)" : ""}${dangerText ? ` · reaches ${SHELL_DANGER} °C in ${dangerText}` : ""}`,
     },
     {
       label: "Hotter than expected",
@@ -797,7 +797,7 @@ function ZoneTable({
       header: "Status",
       render: (e) => {
         const t: Tone = Number.isFinite(e.zone.max) ? worst(tempTone(e.zone.max), e.tone === "idle" ? "good" : e.tone) : "idle";
-        return <StatusTag tone={quiet(t)} label={Number.isFinite(e.zone.max) ? STATUS_LABEL[t] : "Hidden"} />;
+        return <StatusTag tone={quiet(t)} label={Number.isFinite(e.zone.max) ? STATUS_LABEL[t] : "No data"} />;
       },
     },
   ];

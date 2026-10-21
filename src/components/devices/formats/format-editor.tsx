@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useMemo, useRef, useState } from "react";
-import { Field, FieldGrid, FieldSection, FormNote, PillButton, Select } from "@/components/ui";
+import { ConfirmAction, Field, FieldGrid, FieldSection, FormNote, PillButton, Select } from "@/components/ui";
 import { StatusTag } from "@/components/assets/assets-shell-ui";
 import { useEdge } from "@/providers/edge-context";
-import { checkFormat, checkTemplate, parsePath, templateFilter } from "@/lib/edge-format";
-import { FORMAT_FIELD_KEYS, type EdgeFormat, type FormatFields, type TimestampFormat } from "@/types/edge";
+import { checkFormat, checkTemplate, parsePath, templateFilter } from "@shared/lib/edge-format";
+import { FORMAT_FIELD_KEYS, type EdgeFormat, type FormatFields, type TimestampFormat } from "@shared/types/edge";
 import { FormatPreview } from "./format-preview";
 import type { JsonPath } from "./json-view";
 import {
@@ -47,7 +47,8 @@ export function FormatEditor({ format, initial, gateways, onClose, onDuplicate }
   const [serverError, setServerError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  // Cancel with unsaved edits asks first.
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [preset, setPreset] = useState<string | null>(null);
   const topicRef = useRef<HTMLInputElement | null>(null);
 
@@ -122,7 +123,6 @@ export function FormatEditor({ format, initial, gateways, onClose, onDuplicate }
       onClose();
     } catch (err) {
       setServerError((err as Error).message);
-      setConfirmDelete(false);
       setBusy(null);
     }
   };
@@ -159,19 +159,16 @@ export function FormatEditor({ format, initial, gateways, onClose, onDuplicate }
           {!readOnly && dirty && <StatusTag tone="warn" label="Unsaved" />}
         </div>
         <div className="pg-actions">
-          {confirmDelete ? (
+          {confirmDiscard ? (
             <>
               <span className="fmt-confirm" role="alert">
-                Delete format?{" "}
-                {gateways.length > 0
-                  ? `${gateways.length} gateway${gateways.length === 1 ? "" : "s"} fall back to the ULTRON contract.`
-                  : "No gateway uses it."}
+                Discard changes?
               </span>
-              <PillButton variant="secondary" className="fmt-danger" onClick={() => void destroy()} disabled={busy !== null}>
-                {busy === "delete" ? "Deleting…" : "Delete"}
+              <PillButton variant="secondary" autoFocus onClick={() => setConfirmDiscard(false)}>
+                Keep editing
               </PillButton>
-              <PillButton variant="secondary" onClick={() => setConfirmDelete(false)} disabled={busy !== null}>
-                Keep
+              <PillButton variant="danger" onClick={onClose}>
+                Discard
               </PillButton>
             </>
           ) : (
@@ -182,11 +179,17 @@ export function FormatEditor({ format, initial, gateways, onClose, onDuplicate }
                 </PillButton>
               )}
               {format && !readOnly && (
-                <PillButton variant="secondary" className="fmt-danger" onClick={() => setConfirmDelete(true)} disabled={busy !== null}>
-                  Delete
-                </PillButton>
+                <ConfirmAction
+                  label="Delete"
+                  question={`Delete format? ${
+                    gateways.length > 0 ? `${gateways.length} gateway${gateways.length === 1 ? " goes" : "s go"} back to the built-in ULTRON format.` : "No gateway uses it."
+                  }`}
+                  onConfirm={() => void destroy()}
+                  busy={busy === "delete"}
+                  disabled={busy !== null}
+                />
               )}
-              <PillButton variant="secondary" onClick={onClose} disabled={busy !== null}>
+              <PillButton variant="secondary" onClick={() => (dirty && !readOnly ? setConfirmDiscard(true) : onClose())} disabled={busy !== null}>
                 {readOnly ? "Close" : "Cancel"}
               </PillButton>
               {!readOnly && (
@@ -245,13 +248,13 @@ export function FormatEditor({ format, initial, gateways, onClose, onDuplicate }
 
           <FieldSection title="Message channel (topic)">
             <Field
-              label={readOnly ? "Channel pattern (after the data connection's channel prefix)" : "Channel pattern (topic)"}
+              label={readOnly ? "Channel pattern (after the message server's channel prefix)" : "Channel pattern (topic)"}
               required
               wide
               error={!readOnly && (tried || draft.topic) && !template.ok ? template.message : null}
               hint={
                 template.ok
-                  ? `Listens on ${templateFilter(draft.topic, null)} ({gateway} becomes each linked data collector)`
+                  ? `Listens on ${templateFilter(draft.topic, null)} ({gateway} becomes each linked gateway)`
                   : "Full topic. One placeholder or + per level; # only last."
               }
             >
@@ -342,7 +345,7 @@ export function FormatEditor({ format, initial, gateways, onClose, onDuplicate }
 
           {format && (
             <p className="ast-caption">
-              {gateways.length === 0 ? "No data collector uses this format." : `Used by ${gateways.join(", ")}.`}
+              {gateways.length === 0 ? "No gateway uses this format." : `Used by ${gateways.join(", ")}.`}
             </p>
           )}
           {!readOnly && problems.length > 0 && (tried || dirty) && <FormNote tone="bad">{problems.join(" ")}</FormNote>}

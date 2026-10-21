@@ -2,12 +2,12 @@
 
 import React, { createContext, use, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { KILN_FLEET_IDS, snapshotSimulation, useKilnFleetSimulation, type KilnSimulation } from "@/components/assets/kiln-seals-simulation";
-import type { SimFrame } from "@/lib/kiln-sim/engine";
+import type { SimFrame } from "@shared/lib/kiln-sim/engine";
 import { isLiveMachineId } from "@/lib/live-defs";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useApi } from "@/lib/api-cache";
-import type { FleetConditionRow } from "@/server/services/monitoring-service";
-import type { SimulationDto } from "@/types/monitoring";
+import type { FleetConditionRow } from "@backend/services/monitoring-service";
+import type { SimulationDto } from "@shared/types/monitoring";
 
 /**
  * The live fleet as pages show it: a snapshot that changes every

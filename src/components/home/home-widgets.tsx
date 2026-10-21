@@ -5,10 +5,11 @@ import { StatusTag } from "@/components/ui/status-tag";
 import { PillButton, PillNav } from "@/components/ui";
 import { healthTone, useMachineHealthBands, type Tone } from "@/components/assets/assets-shell-ui";
 import { smoothPath } from "@/components/ui/sparkline";
-import { HEALTH_STEP_MS, type HealthPoint } from "@/lib/health-recorder";
+import { HEALTH_STEP_MS, type HealthPoint } from "@shared/lib/health-recorder";
 import type { Distribution } from "@/components/assets/hierarchy/hierarchy-model";
 import { useKilnOps } from "@/providers/kiln-ops-context";
-import { conditionTone, worstCondition, type Condition } from "@/components/ui/status";
+import { ACTION, conditionTone, worstCondition, type Condition } from "@/components/ui/status";
+import { woRef } from "@/components/maintenance/pms-model";
 import "@/components/assets/assets-shell.css";
 import "./plant-home.css";
 
@@ -304,6 +305,29 @@ export function AlertsFeed({
 }) {
   const [open, setOpen] = useState<string | null>(null);
   const ops = useKilnOps();
+  // The action being saved ("ack:<rule>" / "wo:<rule>") and the rule whose work order failed.
+  const [busy, setBusy] = useState<string | null>(null);
+  const [woFailed, setWoFailed] = useState<string | null>(null);
+  const runAck = async (ruleId: string) => {
+    if (busy) return;
+    setBusy(`ack:${ruleId}`);
+    try {
+      await ops.acknowledge(ruleId);
+    } finally {
+      setBusy(null);
+    }
+  };
+  const runWorkOrder = async (ruleId: string) => {
+    if (busy) return;
+    setBusy(`wo:${ruleId}`);
+    setWoFailed(null);
+    try {
+      const wo = await ops.createWorkOrder(ruleId);
+      if (!wo) setWoFailed(ruleId);
+    } finally {
+      setBusy(null);
+    }
+  };
   const active = alerts.filter((a) => !a.cleared);
   const shownAlerts = usePresence(alerts, (a) => a.id);
   const shownActivity = usePresence(activity, (e) => e.id);
@@ -320,7 +344,7 @@ export function AlertsFeed({
             </span>
           )}
         </h2>
-        <span className="ast-caption ast-num">
+        <span className="ast-caption">
           {active.length} open · {danger} critical
         </span>
       </div>
@@ -365,7 +389,7 @@ export function AlertsFeed({
                     <div className="ph-alert-more">
                       {a.plainWhat && <p>{a.plainWhat}</p>}
                       <p title={a.plainTodo ? a.recommendation : undefined}>{a.plainTodo ?? a.recommendation}</p>
-                      <span className="ast-caption ast-num">
+                      <span className="ast-caption">
                         {a.raised ? `Started ${a.raised}` : "Start time unknown"}
                         {a.origin ? ` · ${a.origin}` : ""}
                         {a.cleared ? ` · cleared ${a.cleared}` : ""} · {a.machineId}
@@ -379,16 +403,31 @@ export function AlertsFeed({
                           return (
                             <>
                               {!live.acknowledged && (
-                                <PillButton variant="secondary" title="Mark as seen so others know someone is on it" onClick={() => void ops.acknowledge(live.ruleId)}>
-                                  Acknowledge
+                                <PillButton
+                                  variant="secondary"
+                                  title="Mark as seen so others know someone is on it"
+                                  loading={busy === `ack:${live.ruleId}`}
+                                  onClick={() => void runAck(live.ruleId)}
+                                >
+                                  {ACTION.acknowledge}
                                 </PillButton>
                               )}
                               {live.workOrderId === null ? (
-                                <PillButton variant="primary" title="Create a repair job for the maintenance team" onClick={() => void ops.createWorkOrder(live.ruleId)}>
-                                  Create work order
-                                </PillButton>
+                                <>
+                                  <PillButton
+                                    variant="primary"
+                                    title="Create a repair job for the maintenance team"
+                                    loading={busy === `wo:${live.ruleId}`}
+                                    onClick={() => void runWorkOrder(live.ruleId)}
+                                  >
+                                    {ACTION.workOrder}
+                                  </PillButton>
+                                  {woFailed === live.ruleId && busy === null && (
+                                    <span className="ast-caption" role="alert">Could not create the work order. Try again.</span>
+                                  )}
+                                </>
                               ) : (
-                                <span className="ast-caption ast-num">Work order WO-{live.workOrderId} created</span>
+                                <span className="ast-caption">{woRef(live.workOrderId)} created</span>
                               )}
                             </>
                           );

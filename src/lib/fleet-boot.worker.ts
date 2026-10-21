@@ -3,7 +3,7 @@
  * caught up to now, or a fresh warm-up and pre-roll — and posts the engines
  * back one minute short of their first frame (see `fleet-boot.ts`).
  */
-import { loadFleet, type FleetSnapshot } from "./fleet-boot";
+import { loadFleet, type FleetSnapshot } from "@shared/lib/fleet-boot";
 
 export type FleetBootRequest = { nowMs: number; msPerMin: number };
 export type FleetBootResult = { snap: FleetSnapshot; resumed: boolean; savedAt: number | null };

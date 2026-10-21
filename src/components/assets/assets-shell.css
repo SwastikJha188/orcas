@@ -13,6 +13,8 @@
 /* The detail popup's backdrop is absolute; anchor it to the main column so it
    sits below the top bar and rail instead of under them. */
 .ast-modal-host { position: relative; }
+/* The popup itself takes focus on open (so Tab starts inside it); no ring on the whole window. */
+.ast-modal-host .opc-detail-modal:focus { outline: none; }
 
 /* ---------------------------------------------------------------- root */
 .ast-root {
@@ -49,7 +51,7 @@
   color: var(--text-muted);
   font-size: 0.78em;
   font-weight: 400;
-  margin-left: 3px;
+  margin-left: 4px;
 }
 
 /* ---------------------------------------------------------------- card */
@@ -70,10 +72,29 @@
   min-height: 24px;
 }
 
+/* Title with its caption on the line below (captions stay out of the heading). */
+.ast-card-head--stack {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 4px;
+}
+.ast-card-head--stack > .ast-caption {
+  margin: 0;
+}
+
+/* Correlation cell: full ink; strong links bold, weak ones muted (no opacity, keeps contrast). */
+.pyro-corr[data-strength="strong"] {
+  font-weight: 600;
+}
+.pyro-corr[data-strength="weak"] {
+  color: var(--text-muted);
+}
+
 .ast-card-title {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   margin: 0;
   font-size: var(--fs-base);
   font-weight: 600;
@@ -122,7 +143,7 @@
 .ast-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding: 2px 8px;
   border-radius: var(--radius-sm);
   border: 1px solid color-mix(in srgb, var(--tone, var(--text-muted)) 32%, transparent);
@@ -142,7 +163,6 @@
   background: var(--tone, var(--text-muted));
   flex-shrink: 0;
 }
-
 
 /* ---------------------------------------------------------------- ticks */
 .ast-ticks {
@@ -250,7 +270,7 @@
   position: absolute;
   bottom: calc(100% + 4px);
   transform: translateX(-50%);
-  padding: 3px 8px;
+  padding: 4px 8px;
   border-radius: var(--radius-sm);
   background: var(--page-bg);
   border: 1px solid var(--border-hover);
@@ -266,7 +286,7 @@
 .ast-spark-tip em {
   font-style: normal;
   color: var(--text-muted);
-  margin-left: 6px;
+  margin-left: 8px;
 }
 
 /* ---------------------------------------------------------------- search */
@@ -331,21 +351,21 @@
 }
 
 .ast-toolbar .nav-pill {
-  padding: 5px 12px;
+  padding: 4px 12px;
   font-size: var(--fs-md);
 }
 
 .ast-toolbar .nav-pill.active {
-  padding: 5px 12px;
+  padding: 4px 12px;
 }
 
 /* Status toggle chips (aria-pressed) */
 .ast-filter {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   height: 30px;
-  padding: 0 10px;
+  padding: 0 8px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
   background: var(--bg-surface);
@@ -397,7 +417,7 @@
 .ast-kpi {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   min-height: 100px;
 }
 
@@ -505,22 +525,6 @@
   max-width: 240px;
 }
 
-/* focusable row trigger (keyboard access to row selection) */
-.ast-row-btn {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  padding: 0;
-  border: none;
-  background: transparent;
-  font: inherit;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-}
-
 .ast-trail {
   display: flex;
   justify-content: flex-end;
@@ -532,8 +536,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   background: transparent;
@@ -584,7 +588,7 @@
 }
 
 .ast-menu button {
-  padding: 7px 10px;
+  padding: 8px 8px;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -620,7 +624,7 @@
 .ast-tile {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   width: 100%;
   text-align: left;
   font: inherit;
@@ -658,7 +662,7 @@
 .ast-health-cell {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 /* ---------------------------------------------------------------- directory hierarchy */
@@ -666,7 +670,7 @@
 .ast-tile-status {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: var(--fs-sm);
   color: var(--text-muted);
 }
@@ -692,7 +696,7 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   padding: 12px;
   border-bottom: 1px solid var(--separator);
   flex-shrink: 0;
@@ -704,7 +708,7 @@
   justify-content: space-between;
   gap: 8px;
   width: 100%;
-  padding: 6px 8px;
+  padding: 4px 8px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -843,7 +847,7 @@
 .ast-head-main {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -851,7 +855,7 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -862,7 +866,7 @@
 .ast-crumbs li {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .ast-crumbs li + li::before {
@@ -874,7 +878,7 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -888,7 +892,7 @@
 }
 
 .ast-head .btn-pill {
-  padding: 6px 16px;
+  padding: 4px 16px;
   font-size: var(--fs-md);
 }
 
@@ -971,7 +975,7 @@
 }
 
 .ast-sm-table {
-  padding: 8px 8px 10px;
+  padding: 8px 8px 8px;
 }
 
 .ast-sm-reading {
@@ -1031,7 +1035,7 @@
 .ast-dl {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 7px 16px;
+  gap: 8px 16px;
   margin: 0;
   font-size: var(--fs-md);
   border-top: 1px solid var(--separator);
@@ -1059,7 +1063,7 @@
 
 .ast-panel-actions .btn-pill {
   flex: 1;
-  padding: 7px 12px;
+  padding: 8px 12px;
   font-size: var(--fs-md);
 }
 
@@ -1069,7 +1073,7 @@
 .ast-smd {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 
 .ast-smd-head {
@@ -1115,247 +1119,8 @@
   border-radius: var(--corner-row);
 }
 
-.ast-smw-stage {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  width: 100%;
-  min-height: 120px;
-}
-
-/* Fill mode: the stage takes its parent's height and centres the laid-out drawing and cards in it. */
-.ast-smw-stage[data-fill] {
-  flex: 1 1 0;
-  height: 100%;
-  min-height: 0;
-  justify-content: safe center;
-  /* Last resort (very short screens with many channels): scroll, never crop. */
-  overflow-y: auto;
-  scrollbar-width: thin;
-}
-
-.ast-smw-leaders {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 2;
-  overflow: visible;
-}
-
-.ast-smw-leader path {
-  fill: none;
-  stroke: var(--mx-fine);
-  stroke-width: 1;
-  stroke-dasharray: 3 3;
-  opacity: 0.55;
-  transition: stroke var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out), stroke-width var(--dur-fast) var(--ease-out);
-}
-
-.ast-smw-leader[data-detailed] path {
-  stroke: var(--mx-edge);
-  opacity: 0.72;
-}
-
-.ast-smw-leader circle {
-  fill: var(--mx-edge);
-  opacity: 0.75;
-  transition: fill var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
-}
-
-.ast-smw-leader[data-hot] path {
-  stroke: var(--tone, var(--dx-ink));
-  stroke-width: 1.5;
-  stroke-dasharray: none;
-  opacity: 0.95;
-}
-
-.ast-smw-leader[data-hot] circle {
-  fill: var(--tone, var(--dx-ink));
-  opacity: 1;
-}
-
-.ast-smw-band {
-  position: relative;
-  z-index: 3;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.ast-smw-flank-row {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  width: 100%;
-  min-width: 0;
-}
-
-.ast-smw-flank {
-  position: relative;
-  z-index: 3;
-  display: grid;
-  gap: 10px;
-  align-content: center;
-  flex-shrink: 0;
-}
-
-.ast-smw-row-stack {
-  display: grid;
-}
-
-.ast-smw-row-stack > .ast-smw-cluster {
-  grid-area: 1 / 1;
-}
-
-.ast-smw-band.is-top .ast-smw-cluster {
-  align-self: end;
-}
-
-.ast-smw-band.is-bottom .ast-smw-cluster {
-  align-self: start;
-}
-
-.ast-smw-drawing {
-  position: relative;
-  z-index: 1;
-  align-self: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-inline: auto;
-}
-
-.ast-smw-drawing > .dxh-schematic,
-.ast-smw-drawing > svg {
-  width: 100%;
-  height: 100%;
-  background: none;
-}
-
-.ast-smw-drawing .mx-svg,
-.ast-smw-drawing .ast-sch,
-.ast-smw-drawing > .dxh-schematic > svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-.ast-smw-drawing.is-static {
-  width: 100%;
-}
-
-.ast-smw-drawing.is-static .mx-svg,
-.ast-smw-drawing.is-static .ast-sch {
-  height: auto;
-}
-
-/* Cluster: a small technical label over a tight grid of channel cards. */
-.ast-smw-cluster {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  min-width: 0;
-}
-
-.ast-smw-label {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-  padding: 0 2px 5px;
-  border-bottom: 1px solid var(--separator);
-  transition: border-color var(--dur-fast) var(--ease-out);
-}
-
-.ast-smw-label-text {
-  min-width: 0;
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  letter-spacing: 0;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: color var(--dur-fast) var(--ease-out);
-}
-
-.ast-smw-label-meta {
-  flex-shrink: 0;
-  margin-left: auto;
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
-}
-
-.ast-smw-cluster:is([data-tone="warn"], [data-tone="bad"]) .ast-smw-label-meta {
-  color: var(--tone);
-}
-
-.ast-smw-cluster[data-lit] .ast-smw-label {
-  border-bottom-color: var(--dx-ink-2);
-}
-
-.ast-smw-cluster[data-lit] .ast-smw-label-text {
-  color: var(--dx-ink);
-}
-
-.ast-smw-cards {
-  display: grid;
-  gap: 8px;
-}
-
-/* Channel card: crisp 1px border surface. */
-.ast-smw-card {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 0;
-  padding: 9px 12px 8px;
-  font: inherit;
-  color: inherit;
-  text-align: left;
-  background: var(--widget-bg);
-  border: 1px solid var(--card-border);
-  border-radius: var(--corner-card);
-  cursor: pointer;
-  transition:
-    border-color var(--dur-fast) var(--ease-out),
-    opacity var(--dur-fast) var(--ease-out);
-}
-
 .ast-smw-card:is([data-tone="warn"], [data-tone="bad"]) {
   border-color: color-mix(in srgb, var(--tone) 45%, transparent);
-}
-
-.ast-smw-card:hover,
-.ast-smw-card[data-hot] {
-  border-color: var(--border-hover);
-}
-
-.ast-smw-card:active {
-  transform: scale(0.97);
-}
-
-.ast-smw-card[aria-pressed="true"] {
-  border-color: var(--accent-primary);
-}
-
-.ast-smw-card:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 1px;
-}
-
-/* While one channel or component is traced, the rest step back. */
-.ast-smw-stage[data-hot] .ast-smw-card:not([data-hot]),
-.ast-smw-stage:has(.ast-smw-cluster[data-lit]) .ast-smw-cluster:not([data-lit]) .ast-smw-card {
-  opacity: 0.6;
 }
 
 @keyframes ast-smw-in {
@@ -1366,131 +1131,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ast-smw-card {
-    animation: none;
-    transition: none;
-  }
 
   .ast-smw-card:is(:hover, [data-hot]) {
     transform: none;
   }
-}
-
-.ast-smw-card-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 7px;
-  min-width: 0;
-}
-
-.ast-smw-card-head .ast-chip-dot {
-  flex-shrink: 0;
-  margin-top: 4px;
-}
-
-/* Names wrap (up to three lines, not truncated at one) so they read fully; the reserved
-   two-line height keeps every card in a cluster the same size. */
-.ast-smw-name {
-  display: -webkit-box;
-  min-width: 0;
-  min-height: 2.5em;
-  font-size: var(--fs-sm);
-  line-height: 1.25;
-  color: var(--dx-ink-2);
-  overflow: hidden;
-  overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
-}
-
-.ast-smw-card-foot {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  min-width: 0;
-}
-
-.ast-smw-value {
-  font-size: var(--fs-xl);
-  font-weight: 500;
-  line-height: 1.15;
-  color: var(--dx-ink);
-  white-space: nowrap;
-}
-
-.ast-smw-value .ast-unit {
-  margin-left: 3px;
-  font-size: var(--fs-xs);
-  font-weight: 400;
-  color: var(--text-muted);
-}
-
-.ast-smw-card:is([data-tone="warn"], [data-tone="bad"]) .ast-smw-value {
-  color: var(--tone);
-}
-
-.ast-smw-point {
-  flex-shrink: 0;
-  font-size: var(--fs-2xs);
-  font-weight: 500;
-  color: var(--text-muted);
-}
-
-/* Component drawings: larger cards carrying the limit bar. */
-.ast-smw-card[data-detailed] {
-  gap: 7px;
-  padding: 11px 14px 10px;
-  border-radius: var(--corner-card);
-}
-
-.ast-smw-card[data-detailed] .ast-smw-value {
-  font-size: var(--fs-2xl);
-}
-
-/* Compact single-screen mode (default on Overview before Full Screen): fits top cards + drawing + bottom cards in 1 screen. */
-.ast-smw-stage[data-compact] {
-  gap: 8px;
-}
-
-.ast-smw-stage[data-compact] .ast-smw-band {
-  gap: 8px;
-}
-
-.ast-smw-stage[data-compact] .ast-smw-card,
-.ast-smw-stage[data-compact] .ast-smw-card[data-detailed] {
-  gap: 3px;
-  padding: 6px 10px;
-}
-
-.ast-smw-stage[data-compact] .ast-smw-name {
-  min-height: 1.25em;
-  font-size: var(--fs-xs);
-  -webkit-line-clamp: 1;
-  line-clamp: 1;
-}
-
-.ast-smw-stage[data-compact] .ast-smw-value,
-.ast-smw-stage[data-compact] .ast-smw-card[data-detailed] .ast-smw-value {
-  font-size: var(--fs-base);
-}
-
-.ast-smw-note {
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
-}
-
-/* Narrow: drawing on top, clusters filling a responsive multi-column grid below. */
-.ast-smw-flow {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 12px;
-  align-items: stretch;
-}
-
-.ast-smw-flow .ast-smw-cards {
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
 /* ==========================================================================
@@ -1500,7 +1144,7 @@
   position: relative;
   display: block;
   height: 4px;
-  margin: 3px 0 1px;
+  margin: 4px 0 1px;
   border-radius: var(--corner-pill);
   background: var(--dx-track);
 }
@@ -1547,7 +1191,7 @@
 .sg-limits > span {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
 }
 
 .sg-limits i {
@@ -1557,39 +1201,28 @@
   background: var(--tone);
 }
 
-
-/* Assets machine pages: row 2 holds the page's own header (PageHeaderSlot), sized
-   like the Operator view's sheet row so the bars line up page to page. */
-.ast-page-bar > .pg-frame-head {
-  flex: 1 1 auto;
-  /* The Operator view's sheet pills are 32px: the same row height on every page. */
+/* Assets machine pages: one bar (page toggle, the machine's parts, status and popups). The
+   page's own header (PageHeaderSlot) is the first row of the workspace below it. */
+.ast-page-head:empty {
+  display: none;
+}
+.ast-page-head > .pg-frame-head {
   min-height: 32px;
-  gap: 8px 16px;
+  gap: var(--space-2) var(--space-4);
 }
-.ast-page-bar .pg-frame-title {
-  font-size: var(--fs-lg);
-  font-weight: 600;
-  line-height: 28px;
-}
-.ast-page-bar .pg-frame-head-main {
+.ast-page-head .pg-frame-head-main {
   align-items: center;
 }
-.ast-page-bar .pg-frame-actions .btn-pill {
-  height: 28px;
-  padding-block: 0;
-  font-size: var(--fs-xs);
-}
 
-/* The machine's parts lead the page row on one line (scrolling sideways when there are many);
-   the page's own header sits on the line below. */
-.ast-page-bar > .ast-part-bar {
-  order: -1;
-  flex: 1 1 100%;
+/* Bar 2 of a machine page: the parts on one line, scrolling sideways when there are many. */
+.ast-part-row > .ast-part-bar {
+  flex: 1 1 0;
+  min-width: 0;
   flex-wrap: nowrap;
   overflow-x: auto;
   scrollbar-width: none;
 }
-.ast-page-bar > .ast-part-bar::-webkit-scrollbar { display: none; }
+.ast-part-row > .ast-part-bar::-webkit-scrollbar { display: none; }
 .ast-part-bar > .opc-pill-group {
   flex-wrap: nowrap;
   max-width: none;
@@ -1600,6 +1233,60 @@
   position: sticky;
   left: 0;
   z-index: 1;
-  background: var(--card-bg);
-  box-shadow: 6px 0 6px -2px var(--card-bg);
+  background: var(--surface-subtle);
+  box-shadow: var(--space-2) 0 var(--space-2) calc(-1 * var(--space-half)) var(--surface-subtle);
 }
+
+/* Plant map: the clicked building's details dock to the map card's right edge. Same surface
+   as the card with a hairline between, so it reads as one region, not a card on a card. */
+.vpo-inspector {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  z-index: 10;
+  inline-size: 296px;
+  max-inline-size: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  overflow-y: auto;
+  background: var(--card-bg);
+  border-inline-start: 1px solid var(--separator);
+}
+.vpo-inspector-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-2); }
+.vpo-inspector-title { font-size: var(--fs-md); font-weight: 600; color: var(--dx-ink); }
+.vpo-inspector-facts {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  font-size: var(--fs-xs);
+}
+.vpo-inspector-facts dt { color: var(--text-muted); }
+.vpo-inspector-facts dd { margin: 0; font-weight: 600; }
+.vpo-inspector-rows { display: flex; flex-direction: column; border-block-start: 1px solid var(--separator); }
+.vpo-inspector-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  inline-size: 100%;
+  min-block-size: 32px;
+  padding: var(--space-2) 0;
+  border: 0;
+  border-block-end: 1px solid var(--separator);
+  border-radius: 0;
+  background: transparent;
+  color: var(--dx-ink);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.vpo-inspector-row:last-child { border-block-end: 0; }
+.vpo-inspector-row:hover { background: var(--row-hover-bg); }
+.vpo-inspector-row-name { display: inline-flex; align-items: center; gap: var(--space-2); min-inline-size: 0; }
+.vpo-inspector-row-name i { inline-size: 8px; block-size: 8px; border-radius: 50%; flex: none; }
+.vpo-inspector-row-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); font-weight: 500; }
+.vpo-inspector-row-val { display: inline-flex; align-items: center; gap: var(--space-1); flex: none; font-size: var(--fs-xs); font-weight: 600; }
+.vpo-inspector-note { margin: 0; }

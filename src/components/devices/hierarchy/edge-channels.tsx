@@ -1,16 +1,15 @@
 "use client";
 
 import React, { useState } from "react";
-import { FormNote, PillButton, Table, type Column } from "@/components/ui";
+import { ConfirmAction, FormNote, PillButton, Table, type Column } from "@/components/ui";
 import { IconSensor, StatusTag } from "@/components/assets/assets-shell-ui";
 import { Sparkline } from "@/components/ui/sparkline";
 import { useEdge } from "@/providers/edge-context";
 import { isLiveMachine } from "@/providers/kiln-simulation-context";
-import type { LiveSignal } from "@/lib/kiln-sim/engine";
-import { SOURCE_KIND_LABEL, type EdgeGateway } from "@/types/edge";
+import type { LiveSignal } from "@shared/lib/kiln-sim/engine";
+import { SOURCE_KIND_LABEL, type EdgeGateway } from "@shared/types/edge";
 import { type EdgeIndex, LINK_LABEL, LINK_TONE, READING_LABEL, READING_TONE, ago, sep } from "../edge-model";
 import type { DetectedCard, DetectedChannel, Detection } from "./edge-detect";
-import { DeleteConfirm } from "./edge-dialog-parts";
 import { IconRack, SourceKindIcon } from "./edge-icons";
 import type { MapTarget } from "./edge-map-dialog";
 import { fmt, plural } from "./edge-tree-model";
@@ -28,7 +27,7 @@ export function mapTarget(gw: EdgeGateway, ch: DetectedChannel): MapTarget {
 /** "KLN-01 · VIB-KLN-09" — the signal a channel feeds. */
 export function MappingChip({ ch, onClick }: { ch: DetectedChannel; onClick?: () => void }) {
   const p = ch.point!;
-  const text = `${p.machineId ?? "No machine"} · ${p.signalTag ?? p.tag}`;
+  const text = p.machineId ? `${p.machineId} · ${p.tag ?? "?"}` : "No machine";
   if (!onClick) return <span className="dv-chip ast-num">{text}</span>;
   return (
     <button type="button" className="dv-chip ast-num" onClick={onClick} aria-label={`Change which machine channel ${ch.id} feeds: ${text}`} title="Change which machine this feeds">
@@ -126,12 +125,12 @@ export function DetectedSection({ gw, detection, subscription, now, onRegister, 
         <h2 className="ast-section-label">
           Found in the incoming data
           <span className="ast-num">
-            {silent ? "nothing received yet" : `${plural(heard.racks, "device")} · ${plural(heard.cards, "card")} · ${plural(heard.channels, "channel")} found`}
+            {silent ? "nothing received yet" : `${plural(heard.racks, "rack")} · ${plural(heard.cards, "card")} · ${plural(heard.channels, "channel")} found`}
           </span>
         </h2>
         {pending.sources + pending.cards > 0 && (
-          <PillButton variant="primary" onClick={onAddDetected} disabled={adding} aria-label={`Register ${plural(pending.sources, "found device")} and ${plural(pending.cards, "card")}`}>
-            {adding ? "Adding…" : `Add what was found · ${[pending.sources ? plural(pending.sources, "device") : null, pending.cards ? plural(pending.cards, "card") : null].filter(Boolean).join(" · ")}`}
+          <PillButton variant="primary" onClick={onAddDetected} disabled={adding} aria-label={`Register ${plural(pending.sources, "found rack")} and ${plural(pending.cards, "card")}`}>
+            {adding ? "Adding…" : `Add what was found · ${[pending.sources ? plural(pending.sources, "rack") : null, pending.cards ? plural(pending.cards, "card") : null].filter(Boolean).join(" · ")}`}
           </PillButton>
         )}
       </div>
@@ -171,7 +170,7 @@ export function DetectedSection({ gw, detection, subscription, now, onRegister, 
                   ) : (
                     <span className="dv-rack-name">{r.rackId}</span>
                   )}
-                  <span className="ast-caption ast-num">
+                  <span className="ast-caption">
                     {r.source ? SOURCE_KIND_LABEL[r.source.kind] : "Not registered"} · {plural(cards, "card")} · {plural(channels, "channel")}
                     {r.live ? ` · seen ${ago(r.live.lastSeenAt, now)}` : ""}
                   </span>
@@ -181,7 +180,7 @@ export function DetectedSection({ gw, detection, subscription, now, onRegister, 
                   {!r.source && (
                     <>
                       <span className="dv-new">New</span>
-                      <PillButton variant="secondary" onClick={() => onRegister(r.rackId)} aria-label={`Register ${r.rackId} as a device`}>
+                      <PillButton variant="secondary" onClick={() => onRegister(r.rackId)} aria-label={`Register ${r.rackId} as a rack`}>
                         Register
                       </PillButton>
                     </>
@@ -189,7 +188,7 @@ export function DetectedSection({ gw, detection, subscription, now, onRegister, 
                 </span>
               </div>
               {r.cards.length === 0 ? (
-                <span className="ast-caption">Device status received; no channel readings yet.</span>
+                <span className="ast-caption">Rack status received; no channel readings yet.</span>
               ) : (
                 <div className="dv-tiles">
                   {r.cards.map((c) => (
@@ -212,8 +211,8 @@ const SIM_TONE: Record<LiveSignal["status"], "good" | "warn" | "bad"> = { Normal
  * no MQTT reading, shown as "Simulated" and never as an MQTT value.
  */
 export function simulatedSignal(ch: DetectedChannel, signals: Record<string, LiveSignal> | null | undefined): LiveSignal | null {
-  if (!signals || ch.status !== "nodata" || !ch.point?.signalTag || !isLiveMachine(ch.point.machineId)) return null;
-  const s = signals[ch.point.signalTag];
+  if (!signals || ch.status !== "nodata" || !ch.point?.tag || !isLiveMachine(ch.point.machineId)) return null;
+  const s = signals[ch.point.tag];
   return s && s.value !== null ? s : null;
 }
 
@@ -295,12 +294,13 @@ export function ChannelTable({
       },
     },
     {
+      // The thresholds the gateway reports with the reading; the machine sensor's own limits live on its measurement.
       key: "limits",
-      header: "Warning and alarm limits",
+      header: "Gateway alarm limits",
       render: (ch) => {
-        const a = ch.point ? ch.point.alertLimit : ch.measurement?.alertThreshold ?? null;
-        const d = ch.point ? ch.point.dangerLimit : ch.measurement?.dangerThreshold ?? null;
-        if (a === null && d === null) return <span className="ast-muted">Not set</span>;
+        const a = ch.measurement?.alertThreshold ?? null;
+        const d = ch.measurement?.dangerThreshold ?? null;
+        if (a === null && d === null) return <span className="ast-muted">Not sent</span>;
         return (
           <span className="ast-num">
             {fmt(a)} / {fmt(d)}
@@ -339,10 +339,10 @@ export function ChannelTable({
             {ch.point ? "Change link" : "Link to machine"}
           </PillButton>
           <span className="dv-reveal" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-            <DeleteConfirm
+            <ConfirmAction
               label="Delete"
               question={ch.point ? `Delete ${ch.card} and its machine link?` : `Delete ${ch.card}?`}
-              onDelete={() => void doDelete(ch)}
+              onConfirm={() => void doDelete(ch)}
               disabled={deleting !== null}
             />
           </span>

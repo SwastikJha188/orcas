@@ -1,14 +1,14 @@
 "use client";
 
 import React, { useState } from "react";
-import { Dialog, Field, FieldGrid, FieldSection, FormNote, PillButton, Select, TextArea, TextInput, Toggle } from "@/components/ui";
+import { ConfirmAction, Dialog, Field, FieldGrid, FieldSection, FormNote, PillButton, Select, TextArea, TextInput, Toggle } from "@/components/ui";
 import { useEdge } from "@/providers/edge-context";
-import type { EdgeGateway } from "@/types/edge";
-import { ULTRON_FORMAT, ULTRON_FORMAT_ID } from "@/lib/edge-format";
+import type { EdgeGateway } from "@shared/types/edge";
+import { ULTRON_FORMAT, ULTRON_FORMAT_ID } from "@shared/lib/edge-format";
 import { type EdgeIndex, gatewayPoints, sourcesOf } from "../edge-model";
 import { subscriptionFor } from "./edge-detect";
 import { GatewaySetup } from "./edge-gateway-setup";
-import { CODE_RULE, CODE_RULE_TEXT, DeleteConfirm, str, textOrNull } from "./edge-dialog-parts";
+import { CODE_RULE, CODE_RULE_TEXT, MoreFields, str, textOrNull } from "./edge-dialog-parts";
 import { type Selection, plural, siteOptions } from "./edge-tree-model";
 
 /* ==========================================================================
@@ -43,7 +43,7 @@ export function GatewayDialog({ open, ix, gateway, prefill, onClose, onSaved }: 
   const onlyBroker = registry.brokers.length === 1 ? registry.brokers[0].id : "";
 
   const [code, setCode] = useState(gateway?.code ?? prefill?.code ?? "");
-  const [name, setName] = useState(gateway?.name ?? (prefill?.code ? `${prefill.code} edge gateway` : ""));
+  const [name, setName] = useState(gateway?.name ?? (prefill?.code ? `${prefill.code} gateway` : ""));
   const [brokerId, setBrokerId] = useState(str(gateway ? gateway.brokerId : prefill?.brokerId ?? onlyBroker));
   const [formatId, setFormatId] = useState(gateway?.formatId ?? ULTRON_FORMAT_ID);
   const [siteNodeId, setSiteNodeId] = useState(str(gateway?.siteNodeId ?? prefill?.siteNodeId));
@@ -55,6 +55,8 @@ export function GatewayDialog({ open, ix, gateway, prefill, onClose, onSaved }: 
   const [notes, setNotes] = useState(str(gateway?.notes));
   const racks = prefill?.racks ?? [];
   const [withRacks, setWithRacks] = useState(racks.length > 0);
+  // Setup panel and hardware fields fold away; open from the start when any hardware field has a value.
+  const [moreOpen, setMoreOpen] = useState(() => [ipAddress, location, model, firmware, notes].some((v) => v.trim() !== ""));
 
   const [errors, setErrors] = useState<Errors>({});
   const [busy, setBusy] = useState(false);
@@ -64,7 +66,7 @@ export function GatewayDialog({ open, ix, gateway, prefill, onClose, onSaved }: 
 
   const validate = (): boolean => {
     const e: Errors = {};
-    if (!code.trim()) e.code = "Gateway ID is required";
+    if (!code.trim()) e.code = "Enter the gateway ID";
     else if (!CODE_RULE.test(code.trim())) e.code = CODE_RULE_TEXT;
     if (!name.trim()) e.name = "Name is required";
     setErrors(e);
@@ -105,7 +107,7 @@ export function GatewayDialog({ open, ix, gateway, prefill, onClose, onSaved }: 
           }
         }
         if (failed.length > 0) {
-          setPartial({ id: saved.id, text: `Data collector registered. Not added: ${failed.join("; ")}` });
+          setPartial({ id: saved.id, text: `Gateway registered. Not added: ${failed.join("; ")}` });
           setBusy(false);
           return;
         }
@@ -143,7 +145,7 @@ export function GatewayDialog({ open, ix, gateway, prefill, onClose, onSaved }: 
   const nSources = gateway ? sourcesOf(ix, gateway.id).length : 0;
   const nPoints = gateway ? gatewayPoints(ix, gateway.id).length : 0;
   const question =
-    nSources === 0 ? "Delete this data collector?" : `Delete this data collector and its ${plural(nSources, "device")}${nPoints ? `, ${plural(nPoints, "reading point")}` : ""}?`;
+    nSources === 0 ? "Delete this gateway?" : `Delete this gateway and its ${plural(nSources, "rack")}${nPoints ? `, ${plural(nPoints, "channel")}` : ""}?`;
 
   return (
     <Dialog
@@ -152,13 +154,13 @@ export function GatewayDialog({ open, ix, gateway, prefill, onClose, onSaved }: 
       busy={busy}
       onSubmit={submit}
       width={620}
-      title={editing ? "Edit data collector" : prefill?.code ? "Register data collector" : "Add data collector"}
+      title={editing ? "Edit gateway" : prefill?.code ? "Register gateway" : "Add gateway"}
       subtitle={
         editing
           ? `${gateway!.name} · ${gateway!.code}`
-          : "Registers a gateway so ULTRON recognises its data. The gateway connects to the broker itself, with the settings below."
+          : "Adds a gateway so ULTRON recognises its readings. It connects to the message server itself, with the settings below."
       }
-      footerStart={editing && !partial ? <DeleteConfirm label="Delete data collector" question={question} onDelete={doDelete} disabled={busy} /> : undefined}
+      footerStart={editing && !partial ? <ConfirmAction label="Delete gateway" question={question} onConfirm={doDelete} disabled={busy} /> : undefined}
       footer={
         partial ? (
           <PillButton type="submit" variant="primary">
@@ -170,7 +172,7 @@ export function GatewayDialog({ open, ix, gateway, prefill, onClose, onSaved }: 
               Cancel
             </PillButton>
             <PillButton type="submit" variant="primary" disabled={busy}>
-              {busy ? "Saving…" : editing ? "Save" : prefill?.code ? "Register" : "Add data collector"}
+              {busy ? "Saving…" : editing ? "Save" : prefill?.code ? "Register" : "Add gateway"}
             </PillButton>
           </>
         )
@@ -178,11 +180,11 @@ export function GatewayDialog({ open, ix, gateway, prefill, onClose, onSaved }: 
     >
       <FieldSection title="Identity">
         <FieldGrid>
-          <Field label="Data collector ID" required error={errors.code} hint="GATEWAY_ID set on the data collector; also its user name on the message server">
+          <Field label="Gateway ID" required error={errors.code} hint="GATEWAY_ID set on the gateway; also its user name on the message server">
             {(id, d) => <TextInput id={id} describedBy={d} value={code} onChange={setCode} mono placeholder="ULTRON-EDGE-01" autoFocus={!editing} disabled={busy} />}
           </Field>
           <Field label="Name" required error={errors.name}>
-            {(id, d) => <TextInput id={id} describedBy={d} value={name} onChange={setName} placeholder="Kiln line edge gateway" disabled={busy} />}
+            {(id, d) => <TextInput id={id} describedBy={d} value={name} onChange={setName} placeholder="Kiln line gateway" disabled={busy} />}
           </Field>
           <Field label="Site">
             {(id, d) => <Select id={id} describedBy={d} value={siteNodeId} onChange={setSiteNodeId} disabled={busy} options={[{ value: "", label: "No site" }, ...siteOptions(registry)]} />}
@@ -192,7 +194,7 @@ export function GatewayDialog({ open, ix, gateway, prefill, onClose, onSaved }: 
 
       <FieldSection title="Connection">
         <FieldGrid>
-          <Field label="Data connection (MQTT broker)" hint={registry.brokers.length === 0 ? "Add a data connection under Data connections first" : "The message server this data collector sends to"}>
+          <Field label="Message server (MQTT broker)" hint={registry.brokers.length === 0 ? "No message server yet: add one first" : "The message server this gateway sends to"}>
             {(id, d) => (
               <Select
                 id={id}
@@ -204,7 +206,7 @@ export function GatewayDialog({ open, ix, gateway, prefill, onClose, onSaved }: 
               />
             )}
           </Field>
-          <Field label="Message format" hint="How this data collector's channels and messages are read">
+          <Field label="Message format" hint="How this gateway's channels and messages are read">
             {(id, d) => <Select id={id} describedBy={d} value={formatId} onChange={setFormatId} disabled={busy} options={formatOptions} />}
           </Field>
           <Field label="ULTRON listens on" wide>
@@ -217,40 +219,42 @@ export function GatewayDialog({ open, ix, gateway, prefill, onClose, onSaved }: 
         </FieldGrid>
       </FieldSection>
 
-      <FieldSection title="Settings for the data collector">
-        <GatewaySetup code={code} ipAddress={ipAddress} broker={broker} brokerStatus={brokerStatus} format={format} rackIds={rackIds} />
-      </FieldSection>
-
-      <FieldSection title="Hardware">
-        <FieldGrid>
-          <Field label="IP address">
-            {(id, d) => <TextInput id={id} describedBy={d} value={ipAddress} onChange={setIpAddress} mono placeholder="10.14.22.80" disabled={busy} />}
-          </Field>
-          <Field label="Location">
-            {(id, d) => <TextInput id={id} describedBy={d} value={location} onChange={setLocation} placeholder="MCC room, cabinet 3" disabled={busy} />}
-          </Field>
-          <Field label="Model">
-            {(id, d) => <TextInput id={id} describedBy={d} value={model} onChange={setModel} disabled={busy} />}
-          </Field>
-          <Field label="Firmware">
-            {(id, d) => <TextInput id={id} describedBy={d} value={firmware} onChange={setFirmware} disabled={busy} />}
-          </Field>
-          <Field label="Notes" wide>
-            {(id, d) => <TextArea id={id} describedBy={d} value={notes} onChange={setNotes} rows={2} disabled={busy} />}
-          </Field>
-        </FieldGrid>
-      </FieldSection>
-
-      <Toggle checked={enabled} onChange={setEnabled} disabled={busy} label="Switched on" description="When off, the data collector is kept but its messages are not shown as live" />
+      <Toggle checked={enabled} onChange={setEnabled} disabled={busy} label="Switched on" description="When off, the gateway is kept but its messages are not shown as live" />
       {!editing && racks.length > 0 && (
         <Toggle
           checked={withRacks}
           onChange={setWithRacks}
           disabled={busy || Boolean(partial)}
-          label={`Also register its ${plural(racks.length, "rack")} as devices`}
+          label={`Also add the ${plural(racks.length, "rack")} it reports`}
           description={`${racks.join(", ")} · kind DAQ rack, protocol Backplane`}
         />
       )}
+
+      <MoreFields label="Setup and hardware" open={moreOpen} onToggle={setMoreOpen}>
+        <FieldSection title="Settings for the gateway">
+          <GatewaySetup code={code} ipAddress={ipAddress} broker={broker} brokerStatus={brokerStatus} format={format} rackIds={rackIds} />
+        </FieldSection>
+
+        <FieldSection title="Hardware">
+          <FieldGrid>
+            <Field label="IP address">
+              {(id, d) => <TextInput id={id} describedBy={d} value={ipAddress} onChange={setIpAddress} mono placeholder="10.14.22.80" disabled={busy} />}
+            </Field>
+            <Field label="Location">
+              {(id, d) => <TextInput id={id} describedBy={d} value={location} onChange={setLocation} placeholder="MCC room, cabinet 3" disabled={busy} />}
+            </Field>
+            <Field label="Model">
+              {(id, d) => <TextInput id={id} describedBy={d} value={model} onChange={setModel} disabled={busy} />}
+            </Field>
+            <Field label="Firmware">
+              {(id, d) => <TextInput id={id} describedBy={d} value={firmware} onChange={setFirmware} disabled={busy} />}
+            </Field>
+            <Field label="Notes" wide>
+              {(id, d) => <TextArea id={id} describedBy={d} value={notes} onChange={setNotes} rows={2} disabled={busy} />}
+            </Field>
+          </FieldGrid>
+        </FieldSection>
+      </MoreFields>
 
       {failure && <FormNote tone="bad">{failure}</FormNote>}
       {partial && <FormNote tone="warn">{partial.text}</FormNote>}

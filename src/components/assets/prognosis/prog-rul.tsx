@@ -6,7 +6,6 @@ import { defsFor } from "@/lib/live-defs";
 import { logPos, rangeText, roundHours, type RulRow } from "./prognosis-derive";
 import { buildRecs, type Rec } from "./prog-maintenance";
 import { useWorkOrderPriorities } from "@/lib/reference-data";
-import { FAILURE_CHANCE_HEADER, FailureChance } from "./prog-chance";
 import { TimeTicks, toneFor, type ProgSectionProps } from "./prog-ui";
 
 const MAX_H = 8760 * 1.1;
@@ -19,8 +18,8 @@ const LABELS = [
 
 const quiet = (t: ReturnType<typeof toneFor>) => (t === "warn" || t === "bad" ? t : undefined);
 
-/** Remaining life per sub-assembly (fixed order): estimate and interval, 1 h–1 y graph, failure chance, recommended action, links. */
-export function ProgRul({ machine, focusedComponent, data, analysis, rows, mode, setMode, onSeeReason, onSeeDiagnosis }: ProgSectionProps) {
+/** Remaining life per sub-assembly (fixed order): estimate and interval, 1 h–1 y graph, recommended action, links. The page KPI carries the failure chance. */
+export function ProgRul({ machine, focusedComponent, data, analysis, rows, onSeeReason, onSeeDiagnosis }: ProgSectionProps) {
   // Fixed order (the machine's sub-assembly definitions), never re-sorted by live values.
   const sorted = useMemo(() => {
     const at = new Map((defsFor(machine.id)?.subassemblies ?? []).map((sa, i) => [sa.id, i]));
@@ -36,8 +35,10 @@ export function ProgRul({ machine, focusedComponent, data, analysis, rows, mode,
   // Parts with nothing ahead (no limit, nothing to do) fold into one line; the picked part always shows.
   const [showAll, setShowAll] = useState(false);
   const needs = (r: RulRow) => r.hours !== null || r.status !== "Normal" || Boolean(recFor(r)) || r.id === focused?.id;
-  const shown = showAll ? sorted : sorted.filter(needs);
-  const rest = sorted.length - sorted.filter(needs).length;
+  // One part picked: its own row always shows, whatever it holds.
+  const one = sorted.length === 1;
+  const shown = showAll || one ? sorted : sorted.filter(needs);
+  const rest = one ? 0 : sorted.length - sorted.filter(needs).length;
   const riskFor = (r: RulRow) =>
     data.risks.find((k) => !k.id.startsWith("base-") && k.component.toLowerCase().includes(r.name.toLowerCase())) ??
     data.risks.find((k) => k.id === `base-${r.id}` || k.component.toLowerCase().includes(r.name.toLowerCase())) ??
@@ -50,10 +51,9 @@ export function ProgRul({ machine, focusedComponent, data, analysis, rows, mode,
       width: "210px",
       render: (r) => {
         const k = riskFor(r);
-        const isFocused = Boolean(mode && k && mode.id === k.id);
         return (
           <span className="ast-cell-stack">
-            <strong style={{ textDecoration: isFocused ? "underline" : undefined }}>{r.name}</strong>
+            <strong>{r.name}</strong>
             {k && !k.id.startsWith("base-") && (
               <span className="ast-cell-sub" title={k.id}>
                 {k.fault}
@@ -81,12 +81,6 @@ export function ProgRul({ machine, focusedComponent, data, analysis, rows, mode,
         ),
     },
     {
-      key: "chance",
-      header: FAILURE_CHANCE_HEADER,
-      width: "190px",
-      render: (r) => <FailureChance band={r.band} name={r.name} />,
-    },
-    {
       key: "horizon",
       header: "Time left, 1 hour to 1 year",
       width: "220px",
@@ -109,21 +103,21 @@ export function ProgRul({ machine, focusedComponent, data, analysis, rows, mode,
     },
     {
       key: "layers",
-      header: "",
+      header: "Open",
       width: "195px",
       render: (r) => {
         const k = riskFor(r);
         const ruleId = k && !k.id.startsWith("base-") ? k.id : null;
         return (
-          <span style={{ display: "inline-flex", gap: 8, flexWrap: "wrap" }} onClick={(e) => e.stopPropagation()}>
+          <span style={{ display: "inline-flex", gap: 8, flexWrap: "wrap" }}>
             {onSeeReason && (
               <button type="button" className="pg-diag-inline-link" onClick={() => onSeeReason(ruleId, r.name, null)}>
-                See why →
+                See why <span aria-hidden="true">→</span>
               </button>
             )}
             {onSeeDiagnosis && (
               <button type="button" className="pg-diag-inline-link" onClick={() => onSeeDiagnosis(ruleId, r.name, null)}>
-                See sensors →
+                See sensors <span aria-hidden="true">→</span>
               </button>
             )}
           </span>
@@ -140,10 +134,6 @@ export function ProgRul({ machine, focusedComponent, data, analysis, rows, mode,
           data={shown}
           keyExtractor={(r) => r.id}
           selectedKey={focused?.id}
-          onRowClick={(r) => {
-            const k = riskFor(r);
-            if (k) setMode(k.id);
-          }}
         />
       )}
       {rest > 0 && (

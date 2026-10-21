@@ -8,10 +8,10 @@
  * and never touch the live fleet.
  */
 
-import { createSim, setScenario, stepSim, type SimFrame } from "./engine";
-import { RULES, RULE_BY_ID } from "./rules";
-import { KILN_SCENARIOS, registerScenario, type EffectShape, type EffectTarget, type KilnScenario, type ScenarioEffect } from "./scenarios";
-import { SIGNALS, SIGNAL_BY_TAG, SYSTEMS, type SystemId } from "./signals";
+import { createSim, setScenario, stepSim, type SimFrame } from "@shared/lib/kiln-sim/engine";
+import { RULES, RULE_BY_ID } from "@shared/lib/kiln-sim/rules";
+import { KILN_SCENARIOS, registerScenario, type EffectShape, type EffectTarget, type KilnScenario, type ScenarioEffect } from "@shared/lib/kiln-sim/scenarios";
+import { SIGNALS, SIGNAL_BY_TAG, SYSTEMS, type SystemId } from "@shared/lib/kiln-sim/signals";
 import { AMBIENT, EQUATIONS, SPEC_LINKS } from "./relationships";
 
 /* ------------------------------------------------------------------ */

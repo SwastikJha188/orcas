@@ -5,9 +5,9 @@ import { invalidateApi } from "@/lib/api-cache";
 import { useMqttLive, type StreamState } from "@/providers/use-mqtt-live";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { edgeScope, scopeRegistry, scopeSnapshot, scopeTraffic } from "@/lib/edge-scope";
-import type { ApiResponse } from "@/types/api";
-import type { BrokerTestResult, EdgeCommissionInput, EdgeCommissionResult, EdgeEntityByKind, EdgeKind, EdgeMapInput, EdgeMapResult, EdgeRegistry, RawSample } from "@/types/edge";
-import type { MqttSnapshot, MqttTrafficEntry } from "@/types/mqtt";
+import type { ApiResponse } from "@shared/types/api";
+import type { BrokerTestResult, EdgeCommissionInput, EdgeCommissionResult, EdgeEntityByKind, EdgeKind, EdgeMapInput, EdgeMapResult, EdgeRegistry, RawSample } from "@shared/types/edge";
+import type { MqttSnapshot, MqttTrafficEntry } from "@shared/types/mqtt";
 
 /* ==========================================================================
    Devices data: the edge registry (what is configured, from /api/edge) and

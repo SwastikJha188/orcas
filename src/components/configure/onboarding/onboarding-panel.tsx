@@ -14,7 +14,7 @@
  * The draft saves itself; while uploads wait it refreshes every 30 s.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Field, FieldGrid, FormNote, PillButton, PillNav, Select, StatusTag, TextArea, TextInput, type PillNavItem } from "@/components/ui";
+import { ConfirmAction, Field, FieldGrid, FormNote, PillButton, PillNav, Select, StatusTag, TextArea, TextInput, normalizeNumberText, rowActivate, type PillNavItem } from "@/components/ui";
 import type { Tone } from "@/components/assets/assets-shell-ui";
 import { DIAGRAM_SHEETS } from "@/components/assets/diagrams";
 import { KIT_MODELS } from "@/components/home/twin/models";
@@ -26,12 +26,42 @@ import {
   type OnboardingFile,
   type OnboardingPackage,
   type OnboardingStatus,
-} from "@/types/onboarding";
+} from "@shared/types/onboarding";
 import { invalidateApi } from "@/lib/api-cache";
+import { useIndustrialData } from "@/providers/industrial-data-context";
+import { formatLocalTime } from "@/lib/time";
 import "./onboarding.css";
 
 type Step = "files" | "plant" | "areas" | "people" | "machines" | "sensors" | "check";
 type Pkg = OnboardingPackage & { problems: string[] };
+/** A draft change; `removed` names what it takes out, so it can be undone for 10 s. */
+type Edit = (fn: (d: OnboardingDraft) => void, removed?: string) => void;
+/** What "Create the plant" wrote. */
+interface Created {
+  plantId: string;
+  machines: number;
+  points: number;
+  users: number;
+}
+
+const STEP_ORDER: Step[] = ["files", "plant", "areas", "people", "machines", "sensors", "check"];
+const STEP_NAME: Record<Step, string> = {
+  files: "Documents & photos",
+  plant: "Plant",
+  areas: "Areas",
+  people: "People",
+  machines: "Machines",
+  sensors: "Sensors",
+  check: "Check & create",
+};
+/** The step that fixes a problem the server lists, from its opening words (draftProblems); anything else stays on Check & create. */
+function problemStep(problem: string): Step {
+  if (/^The plant\b/.test(problem)) return "plant";
+  if (/^(A machine|Machine|Two machines)\b/.test(problem)) return "machines";
+  if (/^Sensor\b/.test(problem)) return "sensors";
+  if (/^User\b/.test(problem)) return "people";
+  return "check";
+}
 interface ListRow {
   id: string;
   name: string;
@@ -96,7 +126,13 @@ const json = (method: string, body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 });
 const key = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
-const num = (v: string) => (v.trim() === "" || Number.isNaN(Number(v)) ? null : Number(v));
+/** Typed number → value: "85,5" reads as 85.5, empty is null, anything else is undefined (not a number). */
+const num = (v: string): number | null | undefined => {
+  const t = normalizeNumberText(v.trim());
+  if (t === "") return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : undefined;
+};
 const txt = (v: string) => (v.trim() === "" ? null : v);
 const fmtSize = (b: number) => (b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} kB`);
 
@@ -155,7 +191,7 @@ export function OnboardingPanel({ onCommitted }: { onCommitted?: () => void }) {
       <div className="ast-card-head">
         <h2 className="ast-card-title">
           Onboardings
-          {rows && rows.length > 0 && <span className="ast-caption ast-num">{rows.length}</span>}
+          {rows && rows.length > 0 && <span className="ast-caption">{rows.length}</span>}
         </h2>
         <form
           className="onb-start"
@@ -164,7 +200,7 @@ export function OnboardingPanel({ onCommitted }: { onCommitted?: () => void }) {
             if (newName.trim()) void start();
           }}
         >
-          <TextInput id="onb-new-name" value={newName} onChange={setNewName} placeholder="Plant name, e.g. Lusaka cement plant" />
+          <TextInput id="onb-new-name" ariaLabel="Name of the new plant" value={newName} onChange={setNewName} placeholder="Plant name, e.g. Lusaka cement plant" />
           <PillButton variant="primary" type="submit" disabled={!newName.trim() || busy}>
             + Start onboarding
           </PillButton>
@@ -190,7 +226,7 @@ export function OnboardingPanel({ onCommitted }: { onCommitted?: () => void }) {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="onb-row-link" tabIndex={0} onClick={() => setOpenId(r.id)} onKeyDown={(e) => e.key === "Enter" && setOpenId(r.id)}>
+                <tr key={r.id} className="onb-row-link" {...rowActivate(() => setOpenId(r.id))}>
                   <td>
                     <span className="ast-cell-title">{r.name}</span>
                   </td>
@@ -200,7 +236,7 @@ export function OnboardingPanel({ onCommitted }: { onCommitted?: () => void }) {
                   <td className="onb-num">{r.files}</td>
                   <td className="onb-num">{r.machines}</td>
                   <td className="onb-num">{r.points}</td>
-                  <td className="ast-cell-text">{new Date(r.updatedAt).toLocaleString()}</td>
+                  <td className="ast-cell-text">{formatLocalTime(r.updatedAt, { date: true, seconds: false })}</td>
                 </tr>
               ))}
             </tbody>
@@ -220,16 +256,27 @@ function OnboardingEditor({ id, onBack, onCommitted }: { id: string; onBack: () 
   const [stored, setStored] = useState<Array<{ diagramType: string; kind: "2d" | "3d"; name: string }>>([]);
   const [step, setStep] = useState<Step>("files");
   const [error, setError] = useState<string | null>(null);
-  const [saveState, setSaveState] = useState<"saved" | "saving" | "unsaved">("saved");
+  const [saveState, setSaveState] = useState<"saved" | "saving" | "unsaved" | "failed">("saved");
+  // Bumped by "Retry save" to run the save again after a failure.
+  const [saveTry, setSaveTry] = useState(0);
   const dirty = useRef(false);
   const committed = pkg?.status === "committed";
+  // The draft before the last removal, kept 10 s for Undo.
+  const [undo, setUndo] = useState<{ label: string; draft: OnboardingDraft } | null>(null);
+  // What "Create the plant" wrote (counts for the completion block).
+  const [created, setCreated] = useState<Created | null>(null);
+  const headRef = useRef<HTMLElement | null>(null);
 
   const load = useCallback(
     async (replaceDraft: boolean) => {
       try {
         const p = await call<Pkg>(`/api/onboarding/${id}`);
         setPkg(p);
-        if (replaceDraft || !dirty.current) setDraft(p.draft);
+        if (replaceDraft || !dirty.current) {
+          setDraft(p.draft);
+          // A draft from the server replaces the one Undo would bring back.
+          setUndo(null);
+        }
         setError(null);
       } catch (e) {
         setError((e as Error).message);
@@ -309,11 +356,23 @@ function OnboardingEditor({ id, onBack, onCommitted }: { id: string; onBack: () 
         setSaveState("saved");
       } catch (e) {
         setError((e as Error).message);
-        setSaveState("unsaved");
+        setSaveState("failed");
       }
     }, 1200);
     return () => clearTimeout(t);
-  }, [draft, id, committed]);
+  }, [draft, id, committed, saveTry]);
+
+  // Leaving the page with changes not saved yet: the browser asks first.
+  const unsaved = !committed && saveState !== "saved";
+  useEffect(() => {
+    if (!unsaved) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [unsaved]);
 
   const edit = useCallback((fn: (d: OnboardingDraft) => void) => {
     setDraft((d) => {
@@ -324,6 +383,35 @@ function OnboardingEditor({ id, onBack, onCommitted }: { id: string; onBack: () 
       return next;
     });
   }, []);
+
+  // Every step edits through this: a removal keeps the draft before it for Undo; any other change drops it.
+  const draftRef = useRef<OnboardingDraft | null>(null);
+  draftRef.current = draft;
+  const change = useCallback<Edit>(
+    (fn, removed) => {
+      const before = draftRef.current;
+      setUndo(removed && before ? { label: removed, draft: before } : null);
+      edit(fn);
+    },
+    [edit],
+  );
+  useEffect(() => {
+    if (!undo) return;
+    const t = window.setTimeout(() => setUndo(null), 10_000);
+    return () => window.clearTimeout(t);
+  }, [undo]);
+  /** Puts the removed item back; the autosave stores the restored draft. */
+  const undoRemove = () => {
+    if (!undo) return;
+    dirty.current = true;
+    setDraft(undo.draft);
+    setUndo(null);
+  };
+
+  // A created plant opens on its completion block.
+  useEffect(() => {
+    if (committed) setStep("check");
+  }, [committed]);
 
   const drawingOptions = useMemo(() => {
     const kinds = new Map<string, { label: string; has2d: boolean; has3d: boolean }>();
@@ -360,22 +448,51 @@ function OnboardingEditor({ id, onBack, onCommitted }: { id: string; onBack: () 
       </section>
     );
 
-  const steps: PillNavItem<Step>[] = [
-    { id: "files", label: `1 Documents & photos (${pkg.files.length})` },
-    { id: "plant", label: "2 Plant" },
-    { id: "areas", label: `3 Areas (${draft.areas.length})` },
-    { id: "people", label: `4 People (${draft.users.length})` },
-    { id: "machines", label: `5 Machines (${draft.machines.length})` },
-    { id: "sensors", label: `6 Sensors (${draft.points.length})` },
-    {
-      id: "check",
-      label: `7 Check & create${pkg.problems.length ? ` (${pkg.problems.length} to fix)` : ""}`,
-    },
-  ];
+  // Progress per step: problems the server found, mapped to the step that fixes them.
+  const toFix = new Map<Step, number>();
+  for (const p of pkg.problems) toFix.set(problemStep(p), (toFix.get(problemStep(p)) ?? 0) + 1);
+  const done: Record<Step, boolean> = {
+    files: pkg.files.length > 0 && !pkg.files.some((f) => f.status === "waiting"),
+    plant: !toFix.has("plant"),
+    areas: draft.areas.length > 0 && draft.areas.every((a) => a.name.trim() !== ""),
+    people: draft.users.length > 0 && !toFix.has("people"),
+    machines: draft.machines.length > 0 && !toFix.has("machines"),
+    sensors: draft.points.length > 0 && !toFix.has("sensors"),
+    check: committed,
+  };
+  const progress = (s: Step): React.ReactNode => {
+    const n = toFix.get(s) ?? 0;
+    if (n > 0) return <span className="onb-step-fix">{n} to fix</span>;
+    if (!done[s]) return null;
+    return (
+      <span className="onb-step-done">
+        <span aria-hidden="true">✓</span>
+        <span className="sr-only">done</span>
+      </span>
+    );
+  };
+  const counts: Partial<Record<Step, number>> = {
+    files: pkg.files.length,
+    areas: draft.areas.length,
+    people: draft.users.length,
+    machines: draft.machines.length,
+    sensors: draft.points.length,
+  };
+  const steps: PillNavItem<Step>[] = STEP_ORDER.map((s, i) => ({
+    id: s,
+    label: `${i + 1} ${STEP_NAME[s]}${counts[s] !== undefined ? ` (${counts[s]})` : ""}`,
+    suffix: progress(s),
+  }));
+  const at = STEP_ORDER.indexOf(step);
+  /** Back / Next and the problem links: show the step from its top. */
+  const go = (s: Step) => {
+    setStep(s);
+    headRef.current?.scrollIntoView({ block: "nearest" });
+  };
 
   return (
     <div className="onb-editor">
-      <section className="ast-card onb-headcard" aria-label="Onboarding">
+      <section ref={headRef} className="ast-card onb-headcard" aria-label="Onboarding">
         <div className="ast-card-head">
           <h2 className="ast-card-title">
             <button type="button" className="onb-back" onClick={onBack} aria-label="Back to all onboardings">
@@ -384,11 +501,27 @@ function OnboardingEditor({ id, onBack, onCommitted }: { id: string; onBack: () 
             {draft.plant.name || pkg.name}
             <span className="ast-caption">
               <StatusTag tone={STATUS[pkg.status].tone} label={STATUS[pkg.status].label} />{" "}
-              {committed ? "Read-only" : saveState === "saved" ? "All changes saved" : saveState === "saving" ? "Saving…" : "Not saved yet"}
+              {committed ? "Read-only" : saveState === "saved" ? "All changes saved" : saveState === "saving" ? "Saving…" : saveState === "failed" ? "Could not save" : "Not saved yet"}
+              {undo && !committed && ` · Removed ${undo.label}`}
             </span>
+            {undo && !committed && (
+              <button type="button" className="onb-mini" onClick={undoRemove}>
+                Undo
+              </button>
+            )}
+            {!committed && saveState === "failed" && (
+              <button type="button" className="onb-mini" onClick={() => setSaveTry((n) => n + 1)}>
+                Retry save
+              </button>
+            )}
           </h2>
         </div>
-        <PillNav items={steps} activeId={step} onChange={setStep} ariaLabel="Onboarding steps" wrap />
+        <div className="onb-steps">
+          <PillNav items={steps} activeId={step} onChange={setStep} ariaLabel="Onboarding steps" wrap />
+          <span className="ast-caption onb-step-of">
+            Step {at + 1} of {STEP_ORDER.length}
+          </span>
+        </div>
         {error && <FormNote tone="bad">{error}</FormNote>}
       </section>
 
@@ -403,27 +536,58 @@ function OnboardingEditor({ id, onBack, onCommitted }: { id: string; onBack: () 
             reader={<ReaderCard pkgId={pkg.id} proc={proc} waiting={pkg.files.filter((f) => f.status === "waiting").length} onStart={startReading} onStop={stopReading} />}
           />
         )}
-        {step === "plant" && <PlantStep draft={draft} edit={edit} />}
-        {step === "areas" && <AreasStep id={id} files={pkg.files} draft={draft} edit={edit} onUploaded={() => void afterUpload()} setError={setError} />}
-        {step === "people" && <PeopleStep draft={draft} edit={edit} roles={ref?.roles ?? []} />}
+        {step === "plant" && <PlantStep draft={draft} edit={change} />}
+        {step === "areas" && <AreasStep id={id} files={pkg.files} draft={draft} edit={change} onUploaded={() => void afterUpload()} setError={setError} />}
+        {step === "people" && <PeopleStep draft={draft} edit={change} roles={ref?.roles ?? []} />}
         {step === "machines" && (
-          <MachinesStep id={id} files={pkg.files} draft={draft} edit={edit} drawingOptions={drawingOptions} onUploaded={() => void afterUpload()} setError={setError} />
+          <MachinesStep id={id} files={pkg.files} draft={draft} edit={change} drawingOptions={drawingOptions} onUploaded={() => void afterUpload()} setError={setError} />
         )}
-        {step === "sensors" && <SensorsStep draft={draft} edit={edit} reference={ref} />}
+        {step === "sensors" && <SensorsStep draft={draft} edit={change} reference={ref} />}
       </fieldset>
-      {step === "check" && (
+      {step === "check" ? (
         <CheckStep
           id={id}
           pkg={pkg}
           draft={draft}
           saving={saveState !== "saved"}
-          onCommitted={() => {
+          created={created}
+          onGo={go}
+          onBack={onBack}
+          onCommitted={(r) => {
+            setCreated(r);
             void load(true);
             onCommitted();
           }}
         />
+      ) : (
+        // While files wait on the first step, reading them is the step's one primary action; Next goes quiet.
+        <StepFooter at={at} onGo={go} quietNext={STEP_ORDER[at] === "files" && waiting} />
       )}
     </div>
+  );
+}
+
+/**
+ * Back / Next under every step; Next is the one primary action and names the
+ * step it opens. The last step passes its own primary ("Create the plant").
+ */
+function StepFooter({ at, onGo, primary, quietNext = false }: { at: number; onGo: (s: Step) => void; primary?: React.ReactNode; quietNext?: boolean }) {
+  const prev = STEP_ORDER[at - 1];
+  const next = STEP_ORDER[at + 1];
+  return (
+    <nav className="onb-stepfoot" aria-label="Previous or next step">
+      {prev && (
+        <PillButton variant="secondary" type="button" onClick={() => onGo(prev)}>
+          ‹ Back
+        </PillButton>
+      )}
+      {primary ??
+        (next && (
+          <PillButton variant={quietNext ? "secondary" : "primary"} type="button" onClick={() => onGo(next)}>
+            Next: {STEP_NAME[next]} ›
+          </PillButton>
+        ))}
+    </nav>
   );
 }
 
@@ -448,7 +612,13 @@ function FilesStep({
   const [uploading, setUploading] = useState(0);
   const [over, setOver] = useState(false);
   const upload = async (files: FileList | File[]) => {
-    for (const f of Array.from(files)) {
+    // Only PDFs are read here (photos go on their machine or area); anything else is named and left out.
+    const all = Array.from(files);
+    const pdfs = all.filter((f) => f.type === "application/pdf" || /\.pdf$/i.test(f.name));
+    const skipped = all.filter((f) => !pdfs.includes(f));
+    if (skipped.length) setError(skipped.map((f) => `${f.name}: only PDF files are read here.`).join(" "));
+    if (!pdfs.length) return;
+    for (const f of pdfs) {
       setUploading((n) => n + 1);
       const form = new FormData();
       form.append("file", f);
@@ -538,9 +708,10 @@ function FilesStep({
                   <td className="ast-cell-text">{f.summary ?? f.note ?? "—"}</td>
                   <td className="onb-num">{fmtSize(f.sizeBytes)}</td>
                   <td>
-                    <button type="button" className="onb-x" onClick={() => void remove(f)} aria-label={`Remove ${f.fileName}`}>
-                      ×
-                    </button>
+                    {/* Uploads are deleted on the server, so they ask first (draft rows offer Undo instead). */}
+                    <span className="onb-actions">
+                      <ConfirmAction label="Remove" ariaLabel={`Remove ${f.fileName}`} question={`Remove ${f.fileName}?`} confirmLabel="Remove" onConfirm={() => void remove(f)} />
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -730,7 +901,7 @@ function PhotoStrip({
 
 /* ==================================================================== 2 plant */
 
-function PlantStep({ draft, edit }: { draft: OnboardingDraft; edit: (fn: (d: OnboardingDraft) => void) => void }) {
+function PlantStep({ draft, edit }: { draft: OnboardingDraft; edit: Edit }) {
   const zones = useMemo(() => {
     try {
       return (Intl as unknown as { supportedValuesOf: (k: string) => string[] }).supportedValuesOf("timeZone");
@@ -805,7 +976,7 @@ function AreasStep({
   id: string;
   files: OnboardingFile[];
   draft: OnboardingDraft;
-  edit: (fn: (d: OnboardingDraft) => void) => void;
+  edit: Edit;
   onUploaded: () => void;
   setError: (e: string | null) => void;
 }) {
@@ -840,7 +1011,7 @@ function AreasStep({
                   <td>
                     <input
                       className="ui-input onb-in"
-                      aria-label="Area name"
+                      aria-label={a.name ? `Name of area ${a.name}` : "Name of new area"}
                       value={a.name}
                       onChange={(e) => edit((d) => void (d.areas[i].name = e.target.value))}
                     />
@@ -848,6 +1019,7 @@ function AreasStep({
                   <td>
                     <Select
                       id={`area-parent-${a.key}`}
+                      ariaLabel={`What ${a.name || "new area"} is inside`}
                       value={a.parentKey ?? ""}
                       onChange={(v) => edit((d) => void (d.areas[i].parentKey = v || null))}
                       options={[
@@ -884,7 +1056,7 @@ function AreasStep({
                           d.areas.splice(i, 1);
                           for (const x of d.areas) if (x.parentKey === a.key) x.parentKey = null;
                           for (const m of d.machines) if (m.areaKey === a.key) m.areaKey = null;
-                        })
+                        }, `area ${a.name || "(unnamed)"}`)
                       }
                     >
                       ×
@@ -902,7 +1074,7 @@ function AreasStep({
 
 /* ==================================================================== 4 people */
 
-function PeopleStep({ draft, edit, roles }: { draft: OnboardingDraft; edit: (fn: (d: OnboardingDraft) => void) => void; roles: Reference["roles"] }) {
+function PeopleStep({ draft, edit, roles }: { draft: OnboardingDraft; edit: Edit; roles: Reference["roles"] }) {
   return (
     <section className="ast-card pg-table-card" aria-label="People">
       <div className="ast-card-head">
@@ -952,7 +1124,7 @@ function PeopleStep({ draft, edit, roles }: { draft: OnboardingDraft; edit: (fn:
                   <td>
                     <input
                       className="ui-input onb-in"
-                      aria-label="Name"
+                      aria-label={u.fullName ? `Name of ${u.fullName}` : "Name of new person"}
                       value={u.fullName}
                       onChange={(e) => edit((d) => void (d.users[i].fullName = e.target.value))}
                     />
@@ -961,15 +1133,21 @@ function PeopleStep({ draft, edit, roles }: { draft: OnboardingDraft; edit: (fn:
                     <input
                       className="ui-input onb-in"
                       type="email"
-                      aria-label="Email"
+                      inputMode="email"
+                      autoCapitalize="none"
+                      aria-label={`Email of ${u.fullName || "new person"}`}
                       value={u.email}
                       onChange={(e) => edit((d) => void (d.users[i].email = e.target.value))}
+                      onBlur={(e) => {
+                        const v = e.target.value.trim().toLowerCase();
+                        if (v !== u.email) edit((d) => void (d.users[i].email = v));
+                      }}
                     />
                   </td>
                   <td>
                     <input
                       className="ui-input onb-in"
-                      aria-label="Job title"
+                      aria-label={`Job title of ${u.fullName || "new person"}`}
                       value={u.title ?? ""}
                       onChange={(e) => edit((d) => void (d.users[i].title = txt(e.target.value)))}
                     />
@@ -977,6 +1155,7 @@ function PeopleStep({ draft, edit, roles }: { draft: OnboardingDraft; edit: (fn:
                   <td>
                     <Select
                       id={`role-${u.key}`}
+                      ariaLabel={`Role of ${u.fullName || "new person"}`}
                       value={u.roleId}
                       onChange={(v) => edit((d) => void (d.users[i].roleId = v))}
                       options={[{ value: "", label: "Choose…" }, ...roles.map((r) => ({ value: r.id, label: r.name }))]}
@@ -985,6 +1164,7 @@ function PeopleStep({ draft, edit, roles }: { draft: OnboardingDraft; edit: (fn:
                   <td>
                     <Select
                       id={`access-${u.key}`}
+                      ariaLabel={`Access of ${u.fullName || "new person"}`}
                       value={u.access}
                       onChange={(v) => edit((d) => void (d.users[i].access = v as typeof u.access))}
                       options={[
@@ -995,7 +1175,12 @@ function PeopleStep({ draft, edit, roles }: { draft: OnboardingDraft; edit: (fn:
                     />
                   </td>
                   <td>
-                    <button type="button" className="onb-x" aria-label={`Remove ${u.fullName}`} onClick={() => edit((d) => void d.users.splice(i, 1))}>
+                    <button
+                      type="button"
+                      className="onb-x"
+                      aria-label={`Remove ${u.fullName}`}
+                      onClick={() => edit((d) => void d.users.splice(i, 1), u.fullName || u.email || "a person")}
+                    >
                       ×
                     </button>
                   </td>
@@ -1023,7 +1208,7 @@ function MachinesStep({
   id: string;
   files: OnboardingFile[];
   draft: OnboardingDraft;
-  edit: (fn: (d: OnboardingDraft) => void) => void;
+  edit: Edit;
   drawingOptions: Array<{ value: string; label: string }>;
   onUploaded: () => void;
   setError: (e: string | null) => void;
@@ -1091,7 +1276,7 @@ function MachinesStep({
                     <td>
                       <input
                         className="ui-input onb-in onb-in-code"
-                        aria-label="Machine code"
+                        aria-label={`Code of ${m.name || "new machine"}`}
                         value={m.code}
                         onChange={(e) => edit((d) => void (d.machines[i].code = e.target.value.toUpperCase()))}
                       />
@@ -1099,7 +1284,7 @@ function MachinesStep({
                     <td>
                       <input
                         className="ui-input onb-in"
-                        aria-label="Machine name"
+                        aria-label={m.code ? `Name of machine ${m.code}` : "Name of new machine"}
                         value={m.name}
                         onChange={(e) => edit((d) => void (d.machines[i].name = e.target.value))}
                       />
@@ -1107,6 +1292,7 @@ function MachinesStep({
                     <td>
                       <Select
                         id={`m-area-${m.key}`}
+                        ariaLabel={`Area of ${m.name || "new machine"}`}
                         value={m.areaKey ?? ""}
                         onChange={(v) => edit((d) => void (d.machines[i].areaKey = v || null))}
                         options={[
@@ -1121,6 +1307,7 @@ function MachinesStep({
                     <td>
                       <Select
                         id={`m-crit-${m.key}`}
+                        ariaLabel={`How critical ${m.name || "new machine"} is`}
                         value={m.criticality}
                         onChange={(v) => edit((d) => void (d.machines[i].criticality = v as DraftMachine["criticality"]))}
                         options={CRITICALITY.map((c) => ({
@@ -1132,6 +1319,7 @@ function MachinesStep({
                     <td>
                       <Select
                         id={`m-dt-${m.key}`}
+                        ariaLabel={`Drawing of ${m.name || "new machine"}`}
                         value={m.diagramType ?? ""}
                         onChange={(v) => edit((d) => void (d.machines[i].diagramType = v || null))}
                         options={drawingOptions}
@@ -1200,7 +1388,7 @@ function MachineDetail({
 }: {
   m: DraftMachine;
   i: number;
-  edit: (fn: (d: OnboardingDraft) => void) => void;
+  edit: Edit;
   sensors: number;
   photos: React.ReactNode;
 }) {
@@ -1224,7 +1412,7 @@ function MachineDetail({
           <span key={c.key} className="onb-part">
             <input
               className="ui-input onb-in"
-              aria-label="Part name"
+              aria-label={`Name of part ${ci + 1} of ${m.name || "new machine"}`}
               value={c.name}
               onChange={(e) => edit((d) => void (d.machines[i].components[ci].name = e.target.value))}
             />
@@ -1236,7 +1424,7 @@ function MachineDetail({
                 edit((d) => {
                   d.machines[i].components.splice(ci, 1);
                   for (const p of d.points) if (p.componentKey === c.key) p.componentKey = null;
-                })
+                }, `part ${c.name || "(unnamed)"}`)
               }
             >
               ×
@@ -1258,7 +1446,7 @@ function MachineDetail({
                 p.machineKey = null;
                 p.componentKey = null;
               }
-          })
+          }, `machine ${m.code || m.name || "(unnamed)"}`)
         }
       >
         Remove machine
@@ -1270,7 +1458,7 @@ function MachineDetail({
 
 /* ==================================================================== 6 sensors */
 
-function SensorsStep({ draft, edit, reference }: { draft: OnboardingDraft; edit: (fn: (d: OnboardingDraft) => void) => void; reference: Reference | null }) {
+function SensorsStep({ draft, edit, reference }: { draft: OnboardingDraft; edit: Edit; reference: Reference | null }) {
   const [machineKey, setMachineKey] = useState<string>("all");
   const [onlyOpen, setOnlyOpen] = useState(false);
   const [page, setPage] = useState(0);
@@ -1288,18 +1476,35 @@ function SensorsStep({ draft, edit, reference }: { draft: OnboardingDraft; edit:
   const pages = Math.max(1, Math.ceil(rows.length / PAGE));
   const shown = rows.slice(page * PAGE, page * PAGE + PAGE);
   const setP = (i: number, fn: (p: DraftPoint) => void) => edit((d) => fn(d.points[i]));
-  const numCell = (i: number, p: DraftPoint, k: "rangeLo" | "rangeHi" | "ll" | "l" | "h" | "hh", label: string) => (
-    <input
-      className="ui-input onb-in onb-in-num"
-      aria-label={`${p.tag} ${label}`}
-      inputMode="decimal"
-      defaultValue={p[k] ?? ""}
-      onBlur={(e) => {
-        const v = num(e.target.value);
-        if (v !== p[k]) setP(i, (x) => void (x[k] = v));
-      }}
-    />
-  );
+  // Cells whose typed text is not a number: the stored value is kept and the cell is marked.
+  const [badCells, setBadCells] = useState<ReadonlySet<string>>(new Set());
+  const numCell = (i: number, p: DraftPoint, k: "rangeLo" | "rangeHi" | "ll" | "l" | "h" | "hh", label: string) => {
+    const cell = `${p.key}:${k}`;
+    return (
+      <input
+        // Keyed on the stored value, so a reload or a fix elsewhere shows here.
+        key={`${cell}:${p[k] ?? ""}`}
+        className="ui-input onb-in onb-in-num"
+        aria-label={`${p.tag} ${label}`}
+        aria-invalid={badCells.has(cell) || undefined}
+        title={badCells.has(cell) ? "Not a number: the value before it is kept" : undefined}
+        inputMode="decimal"
+        defaultValue={p[k] ?? ""}
+        onBlur={(e) => {
+          const v = num(e.target.value);
+          const bad = v === undefined;
+          if (bad !== badCells.has(cell))
+            setBadCells((prev) => {
+              const next = new Set(prev);
+              if (bad) next.add(cell);
+              else next.delete(cell);
+              return next;
+            });
+          if (v !== undefined && v !== p[k]) setP(i, (x) => void (x[k] = v));
+        }}
+      />
+    );
+  };
   return (
     <section className="ast-card pg-table-card" aria-label="Sensors">
       <div className="ast-card-head">
@@ -1310,6 +1515,7 @@ function SensorsStep({ draft, edit, reference }: { draft: OnboardingDraft; edit:
         <div className="onb-tools">
           <Select
             id="onb-sensor-machine"
+            ariaLabel="Show sensors of"
             value={machineKey}
             onChange={(v) => {
               setMachineKey(v);
@@ -1401,7 +1607,7 @@ function SensorsStep({ draft, edit, reference }: { draft: OnboardingDraft; edit:
                       <td>
                         <input
                           className="ui-input onb-in onb-in-code"
-                          aria-label="Tag"
+                          aria-label={p.name ? `Tag of ${p.name}` : "Tag of new sensor"}
                           value={p.tag}
                           onChange={(e) => setP(i, (x) => void (x.tag = e.target.value.trim()))}
                         />
@@ -1417,6 +1623,7 @@ function SensorsStep({ draft, edit, reference }: { draft: OnboardingDraft; edit:
                       <td>
                         <Select
                           id={`p-m-${p.key}`}
+                          ariaLabel={`Machine of ${p.tag || "new sensor"}`}
                           value={p.machineKey ?? ""}
                           onChange={(v) => setP(i, (x) => ((x.machineKey = v || null), (x.componentKey = null)))}
                           options={[
@@ -1431,6 +1638,7 @@ function SensorsStep({ draft, edit, reference }: { draft: OnboardingDraft; edit:
                       <td>
                         <Select
                           id={`p-c-${p.key}`}
+                          ariaLabel={`Part of ${p.tag || "new sensor"}`}
                           value={p.componentKey ?? ""}
                           onChange={(v) => setP(i, (x) => void (x.componentKey = v || null))}
                           options={[
@@ -1448,6 +1656,7 @@ function SensorsStep({ draft, edit, reference }: { draft: OnboardingDraft; edit:
                       <td>
                         <Select
                           id={`p-q-${p.key}`}
+                          ariaLabel={`What ${p.tag || "new sensor"} measures`}
                           value={p.quantity ?? ""}
                           onChange={(v) => setP(i, (x) => ((x.quantity = v || null), (x.valueKind = v === "state" ? "state" : "analog")))}
                           options={quantityOptions}
@@ -1483,7 +1692,7 @@ function SensorsStep({ draft, edit, reference }: { draft: OnboardingDraft; edit:
                         {[p.rangeText, p.limitsText].filter(Boolean).join(" · ") || "—"}
                       </td>
                       <td>
-                        <button type="button" className="onb-x" aria-label={`Remove ${p.tag}`} onClick={() => edit((d) => void d.points.splice(i, 1))}>
+                        <button type="button" className="onb-x" aria-label={`Remove ${p.tag}`} onClick={() => edit((d) => void d.points.splice(i, 1), `sensor ${p.tag || "(no tag)"}`)}>
                           ×
                         </button>
                       </td>
@@ -1521,42 +1730,54 @@ function SensorsStep({ draft, edit, reference }: { draft: OnboardingDraft; edit:
 
 /* ==================================================================== 7 check */
 
-function CheckStep({ id, pkg, draft, saving, onCommitted }: { id: string; pkg: Pkg; draft: OnboardingDraft; saving: boolean; onCommitted: () => void }) {
+function CheckStep({
+  id,
+  pkg,
+  draft,
+  saving,
+  created,
+  onGo,
+  onBack,
+  onCommitted,
+}: {
+  id: string;
+  pkg: Pkg;
+  draft: OnboardingDraft;
+  saving: boolean;
+  /** What this session's "Create the plant" wrote; null when the plant was created earlier. */
+  created: Created | null;
+  onGo: (s: Step) => void;
+  onBack: () => void;
+  onCommitted: (r: Created) => void;
+}) {
+  const { setSelectedPlantId, setActiveTab } = useIndustrialData();
+  const doneTitleId = React.useId();
   const [result, setResult] = useState<{
     tone: "good" | "bad" | "info";
     text: string;
   } | null>(null);
   const [busy, setBusy] = useState<"check" | "create" | null>(null);
-  const [confirm, setConfirm] = useState(false);
   const run = async (dryRun: boolean) => {
     setBusy(dryRun ? "check" : "create");
     setResult(null);
     try {
-      const r = await call<{
-        plantId: string;
-        machines: number;
-        points: number;
-        users: number;
-      }>(`/api/onboarding/${id}/commit`, json("POST", { dryRun }));
+      const r = await call<Created>(`/api/onboarding/${id}/commit`, json("POST", { dryRun }));
       if (dryRun)
         setResult({
           tone: "good",
           text: `Everything fits: ${r.machines} machines, ${r.points} sensors and ${r.users} people can be created. Nothing was written.`,
         });
-      else {
-        setResult({
-          tone: "good",
-          text: `Plant created with ${r.machines} machines, ${r.points} sensors and ${r.users} people. Open it from the plant switcher.`,
-        });
-        onCommitted();
-      }
+      else onCommitted(r);
     } catch (e) {
       setResult({ tone: "bad", text: (e as Error).message });
     } finally {
       setBusy(null);
-      setConfirm(false);
     }
   };
+  // Created here: the completion shows at once, before the reloaded onboarding says so.
+  const committed = pkg.status === "committed" || created !== null;
+  const plantName = draft.plant.name || pkg.name;
+  const plantId = created?.plantId ?? pkg.plantId;
   const withLimits = draft.points.filter((p) => [p.ll, p.l, p.h, p.hh].some((v) => v !== null)).length;
   const tiles: Array<[string, number | string]> = [
     ["Machines", draft.machines.length],
@@ -1564,59 +1785,111 @@ function CheckStep({ id, pkg, draft, saving, onCommitted }: { id: string; pkg: P
     ["Sensors with alarm limits", withLimits],
     ["People", draft.users.length],
   ];
+  // Counts from the create response when it ran here; the draft holds the same rows otherwise.
+  const createdTiles: Array<[string, number]> = [
+    ["Areas", draft.areas.length],
+    ["Machines", created?.machines ?? draft.machines.length],
+    ["Sensors", created?.points ?? draft.points.length],
+    ["People", created?.users ?? draft.users.length],
+  ];
   return (
     <>
-      <section className="ast-card" aria-label="Summary">
-        <div className="onb-kpis">
-          {tiles.map(([label, v]) => (
-            <div key={label} className="onb-kpi">
-              <span className="onb-kpi-label">{label}</span>
-              <span className="onb-kpi-value">{v}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-      <section className="ast-card" aria-label="Before the plant can be created">
-        <div className="ast-card-head">
-          <h2 className="ast-card-title">
-            {pkg.problems.length ? `${pkg.problems.length} things to settle first` : "Ready to create the plant"}
-            <span className="ast-caption">
-              Creating writes the plant, its areas, people, machines, parts, sensors, ranges and limits. Limits start as provisional.
+      {committed ? (
+        <section className="ast-card onb-done" aria-labelledby={doneTitleId}>
+          <h2 id={doneTitleId} className="onb-done-title">
+            <span className="onb-done-mark" aria-hidden="true">
+              ✓
             </span>
+            {plantName} is created
           </h2>
-          {pkg.status !== "committed" && (
-            <div className="onb-tools">
-              <PillButton variant="secondary" type="button" disabled={!!busy || saving || pkg.problems.length > 0} onClick={() => void run(true)}>
-                Check against the database
-              </PillButton>
-              {confirm ? (
-                <PillButton variant="primary" type="button" disabled={!!busy} onClick={() => void run(false)}>
-                  Yes, create {draft.plant.name || "the plant"}
-                </PillButton>
-              ) : (
-                <PillButton variant="primary" type="button" disabled={!!busy || saving || pkg.problems.length > 0} onClick={() => setConfirm(true)}>
-                  Create plant
-                </PillButton>
-              )}
-            </div>
-          )}
-        </div>
-        {busy && (
-          <FormNote tone="info">
-            {busy === "check"
-              ? `Checking ${draft.points.length} sensors on ${draft.machines.length} machines against the database…`
-              : `Creating ${draft.plant.name || "the plant"}: ${draft.machines.length} machines and ${draft.points.length} sensors…`}
-          </FormNote>
-        )}
-        {result && <FormNote tone={result.tone}>{result.text}</FormNote>}
-        {pkg.problems.length > 0 && (
-          <ul className="onb-list">
-            {pkg.problems.map((p) => (
-              <li key={p}>{p}</li>
+          <p className="ast-caption">
+            {pkg.committedAt ? `Created ${formatLocalTime(pkg.committedAt, { date: true, seconds: false })}. ` : ""}
+            Its machines, parts, sensors, ranges and alarm limits are in ULTRON now; limits start as provisional.
+          </p>
+          <div className="onb-kpis">
+            {createdTiles.map(([label, v]) => (
+              <div key={label} className="onb-kpi">
+                <span className="onb-kpi-label">{label}</span>
+                <span className="onb-kpi-value">{v}</span>
+              </div>
             ))}
-          </ul>
-        )}
-      </section>
+          </div>
+          <div className="onb-done-actions">
+            <PillButton variant="secondary" type="button" onClick={onBack}>
+              Back to all onboardings
+            </PillButton>
+            {plantId && (
+              <PillButton
+                variant="primary"
+                type="button"
+                onClick={() => {
+                  setSelectedPlantId(plantId);
+                  setActiveTab("home");
+                }}
+              >
+                Open {plantName}
+              </PillButton>
+            )}
+          </div>
+        </section>
+      ) : (
+        <>
+          <section className="ast-card" aria-label="Summary">
+            <div className="onb-kpis">
+              {tiles.map(([label, v]) => (
+                <div key={label} className="onb-kpi">
+                  <span className="onb-kpi-label">{label}</span>
+                  <span className="onb-kpi-value">{v}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+          <section className="ast-card" aria-label="Before the plant can be created">
+            <div className="ast-card-head">
+              <h2 className="ast-card-title">
+                {pkg.problems.length ? `${pkg.problems.length} things to settle first` : "Ready to create the plant"}
+                <span className="ast-caption">
+                  Creating writes the plant, its areas, people, machines, parts, sensors, ranges and limits. Limits start as provisional.
+                </span>
+              </h2>
+              <div className="onb-tools">
+                <PillButton variant="secondary" type="button" disabled={!!busy || saving || pkg.problems.length > 0} onClick={() => void run(true)}>
+                  Check against the database
+                </PillButton>
+              </div>
+            </div>
+            {busy && (
+              <FormNote tone="info">
+                {busy === "check"
+                  ? `Checking ${draft.points.length} sensors on ${draft.machines.length} machines against the database…`
+                  : `Creating ${plantName}: ${draft.machines.length} machines and ${draft.points.length} sensors…`}
+              </FormNote>
+            )}
+            {result && <FormNote tone={result.tone}>{result.text}</FormNote>}
+            {pkg.problems.length > 0 && (
+              <ul className="onb-list">
+                {pkg.problems.map((p) => {
+                  const s = problemStep(p);
+                  return (
+                    <li key={p}>
+                      {s === "check" ? (
+                        p
+                      ) : (
+                        <button type="button" className="onb-problem" onClick={() => onGo(s)}>
+                          {p}
+                          <span className="onb-problem-step">
+                            Step {STEP_ORDER.indexOf(s) + 1} · {STEP_NAME[s]} <span aria-hidden="true">›</span>
+                          </span>
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        </>
+      )}
       {draft.gaps.length > 0 && (
         <section className="ast-card" aria-label="What the documents leave open">
           <div className="ast-card-head">
@@ -1640,6 +1913,24 @@ function CheckStep({ id, pkg, draft, saving, onCommitted }: { id: string; pkg: P
           ))}
         </section>
       )}
+      <StepFooter
+        at={STEP_ORDER.indexOf("check")}
+        onGo={onGo}
+        primary={
+          committed ? undefined : (
+            <ConfirmAction
+              label="Create the plant"
+              question={`Create ${plantName} with ${draft.machines.length} machines, ${draft.points.length} sensors and ${draft.users.length} people?`}
+              confirmLabel="Yes, create"
+              keepLabel="Keep editing"
+              tone="primary"
+              busy={busy === "create"}
+              disabled={!!busy || saving || pkg.problems.length > 0}
+              onConfirm={() => void run(false)}
+            />
+          )
+        }
+      />
     </>
   );
 }

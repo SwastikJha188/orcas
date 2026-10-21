@@ -1,14 +1,14 @@
 /* Case page (src/components/problems/case-view.tsx and case-*.tsx). Prefix: case-. */
 
 .case-root {
-  gap: 14px;
+  gap: 16px;
 }
 
 /* ---------------------------------------------------------------- header */
 .case-back {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
   flex-wrap: wrap;
 }
 .case-head {
@@ -17,7 +17,7 @@
 .case-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 .case-context {
   margin: 2px 0 0;
@@ -41,7 +41,7 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
-  padding: 8px 10px 8px 0;
+  padding: 8px 8px 8px 0;
   border-top: 2px solid var(--dx-track);
   color: var(--text-muted);
   font-size: var(--fs-sm);
@@ -90,7 +90,7 @@
 .case-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
-  gap: 14px;
+  gap: 16px;
   align-items: start;
 }
 @media (max-width: 1200px) {
@@ -102,7 +102,7 @@
 .case-side {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   min-width: 0;
 }
 
@@ -110,18 +110,14 @@
 .case-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 16px;
   align-items: stretch;
-}
-.case-grid-3 {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .case-wide {
   grid-column: 1 / -1;
 }
 @media (max-width: 900px) {
-  .case-grid,
-  .case-grid-3 {
+  .case-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -141,11 +137,11 @@
   margin-left: auto;
 }
 .case-card .btn-pill {
-  padding: 5px 14px;
+  padding: 4px 12px;
   font-size: var(--fs-sm);
 }
 .case-pad {
-  padding: 4px 16px 10px;
+  padding: 4px 16px 8px;
 }
 
 /* ---------------------------------------------------------------- text */
@@ -230,7 +226,7 @@
   flex-direction: column;
   gap: 2px;
   border-top: 1px solid var(--separator);
-  padding-top: 10px;
+  padding-top: 8px;
   margin: 4px 12px 0;
   padding-left: 4px;
   padding-right: 4px;
@@ -262,27 +258,9 @@
 .case-row-actions {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   justify-content: flex-end;
   width: 100%;
-}
-.case-x {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: 0;
-  border-radius: var(--corner-pill, 9999px);
-  background: transparent;
-  color: var(--text-muted);
-  font-size: var(--fs-xl);
-  line-height: 1;
-  cursor: pointer;
-}
-.case-x:hover {
-  background: var(--dx-track);
-  color: var(--status-danger);
 }
 .case-add {
   display: flex;
@@ -313,8 +291,8 @@
 .case-list-row {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 9px 0;
+  gap: 4px;
+  padding: 8px 0;
   border-top: 1px solid var(--separator);
 }
 .case-item:first-child,
@@ -338,7 +316,7 @@
 .case-buttons {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   margin-top: 4px;
 }
 .case-found {
@@ -353,6 +331,24 @@
 }
 .case-more {
   display: none;
+}
+/* The next step heads the Checks card; hand-recorded alarms head History. */
+.case-next,
+.case-alarms {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--separator);
+}
+.case-next > .case-label,
+.case-alarms > .case-label {
+  margin-top: 0;
+}
+/* Header "More" menu (Download, Print): anchors the .ast-menu pop-up. */
+.case-menu {
+  position: relative;
+  display: inline-flex;
 }
 .case-file-pick {
   margin-top: 8px;
@@ -449,8 +445,7 @@
   .case-root button,
   .case-root input[type="file"],
   .case-card-actions,
-  .case-buttons,
-  .case-x {
+  .case-buttons {
     display: none !important;
   }
   .app-shell,
@@ -495,14 +490,13 @@
     background: #000 !important;
   }
   .case-layout,
-  .case-grid,
-  .case-grid-3 {
+  .case-grid {
     display: block !important;
   }
   .case-main > *,
   .case-side > *,
   .case-grid > * {
-    margin-bottom: 10px;
+    margin-bottom: 12px;
   }
   .case-more {
     display: flex;

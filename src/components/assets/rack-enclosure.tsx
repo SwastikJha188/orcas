@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import type { CabinetModule, MachineRackInfo } from "./rack-data";
+import type { CabinetModule, MachineRackInfo } from "@shared/lib/rack-data";
 import { Bolt, MachineDefs, kitStyle, useKitId } from "./machine-kit/machine-kit";
 import {
   EurocardModule,

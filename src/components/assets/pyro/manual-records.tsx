@@ -8,10 +8,10 @@
 
 import React from "react";
 import { Table, type Column } from "@/components/ui";
-import { simTimeMs } from "@/lib/kiln-sim/engine";
+import { simTimeMs } from "@shared/lib/kiln-sim/engine";
 import { formatLocalTime } from "@/lib/time";
-import type { ManualRecord } from "@/lib/plant-defs";
-import { PYRO_SIGNAL_BY_TAG } from "@/lib/pyro-sim/signals";
+import type { ManualRecord } from "@shared/lib/plant-defs";
+import { PYRO_SIGNAL_BY_TAG } from "@shared/lib/pyro-sim/signals";
 import { displayName } from "@/lib/display-name";
 
 export function ManualRecords({ records, timeZone }: { records: ManualRecord[]; timeZone?: string | null }) {
@@ -68,7 +68,7 @@ export function ManualRecords({ records, timeZone }: { records: ManualRecord[]; 
       <div className="ast-card-head">
         <h2 className="ast-card-title">
           Readings typed in by hand
-          <span className="ast-caption ast-num">{records.length} dated records (D4 Table 6.4) · never replaced by a live sensor</span>
+          <span className="ast-caption">{records.length} dated records (D4 Table 6.4) · never replaced by a live sensor</span>
         </h2>
       </div>
       <Table columns={cols} data={records} keyExtractor={(r) => r.id} />

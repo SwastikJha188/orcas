@@ -2,13 +2,13 @@
 
 import { useCallback } from "react";
 import { useApi } from "@/lib/api-cache";
-import { simMinuteMs } from "@/lib/kiln-sim/engine";
-import { runningHours, serviceUsedUnits } from "@/lib/pyro-sim/service-life";
-import { MAINTENANCE_VOCABULARY_URL } from "@/lib/maintenance";
+import { simMinuteMs } from "@shared/lib/kiln-sim/engine";
+import { runningHours, serviceUsedUnits } from "@shared/lib/pyro-sim/service-life";
+import { MAINTENANCE_VOCABULARY_URL } from "@shared/lib/maintenance";
 import { useKilnFleet } from "@/providers/kiln-simulation-context";
 import type { Tone } from "@/components/ui";
-import type { MaintenanceVocabulary } from "@/types/maintenance";
-import type { AlertCheck, ServicePartRecord, TrendLife } from "@/types/maintenance-types";
+import type { MaintenanceVocabulary } from "@shared/types/maintenance";
+import type { AlertCheck, ServicePartRecord, TrendLife } from "@shared/types/maintenance-types";
 
 /* ==========================================================================
    Maintenance by type: the checks alarms raised (predictive), part service

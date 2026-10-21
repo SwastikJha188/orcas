@@ -1,6 +1,7 @@
 import type { Tone } from "@/components/assets/assets-shell-ui";
-import type { EdgeBroker, EdgeGateway, EdgePoint, EdgeRegistry, EdgeSource } from "@/types/edge";
-import type { MqttGateway, MqttMeasurement, MqttRack, MqttSnapshot } from "@/types/mqtt";
+import { VALIDITY_WORDS } from "@/components/ui/status";
+import type { EdgeBroker, EdgeGateway, EdgePoint, EdgeRegistry, EdgeSource } from "@shared/types/edge";
+import type { MqttGateway, MqttMeasurement, MqttRack, MqttSnapshot } from "@shared/types/mqtt";
 
 /* ==========================================================================
    Edge model: joins what is configured (registry) with what the brokers
@@ -26,7 +27,7 @@ export const LINK_TONE: Record<LinkStatus, Tone> = {
 
 export const LINK_LABEL: Record<LinkStatus, string> = {
   online: "Online",
-  stale: "Old data",
+  stale: VALIDITY_WORDS.Stale,
   offline: "Offline",
   waiting: "No data",
   disabled: "Switched off",
@@ -56,7 +57,7 @@ export const READING_LABEL: Record<ReadingStatus, string> = {
   normal: "Normal",
   alert: "Alert",
   danger: "Critical",
-  stale: "Old data",
+  stale: VALIDITY_WORDS.Stale,
   nodata: "No data",
   disabled: "Switched off",
 };
@@ -142,9 +143,9 @@ const fromLive = (s: "ONLINE" | "STALE" | "OFFLINE"): LinkStatus => (s === "ONLI
 
 /** Why nothing can arrive for a gateway, before looking at live data. */
 function blocked(ix: EdgeIndex, gw: EdgeGateway): string | null {
-  if (!gw.brokerId) return "Not linked to a data connection";
+  if (!gw.brokerId) return "No message server chosen";
   const broker = ix.brokers.get(gw.brokerId);
-  if (!broker) return "Its data connection was removed";
+  if (!broker) return "Its message server was removed";
   if (!broker.enabled) return `${broker.name} is switched off`;
   const state = ix.brokerState.get(broker.id)?.state;
   if (state && state !== "connected") return `${broker.name} is ${state === "disabled" ? "switched off" : "not connected"}`;
@@ -152,32 +153,32 @@ function blocked(ix: EdgeIndex, gw: EdgeGateway): string | null {
 }
 
 export function gatewayLink(ix: EdgeIndex, gw: EdgeGateway): LinkState {
-  if (!gw.enabled) return { status: "disabled", reason: "Data collector switched off", lastSeenAt: null };
+  if (!gw.enabled) return { status: "disabled", reason: "Gateway switched off", lastSeenAt: null };
   const live = liveGateway(ix, gw);
   if (live) {
     const why = blocked(ix, gw);
     // A broker that dropped keeps the last state; say so rather than show green.
     if (why && live.state === "ONLINE") return { status: "stale", reason: why, lastSeenAt: live.lastSeenAt };
-    return { status: fromLive(live.state), reason: live.state === "ONLINE" ? null : "No message for too long", lastSeenAt: live.lastSeenAt };
+    return { status: fromLive(live.state), reason: live.state === "ONLINE" ? null : "No readings for too long", lastSeenAt: live.lastSeenAt };
   }
-  return { status: "waiting", reason: blocked(ix, gw) ?? "Nothing sent yet", lastSeenAt: null };
+  return { status: "waiting", reason: blocked(ix, gw) ?? "No readings yet", lastSeenAt: null };
 }
 
 export function sourceLink(ix: EdgeIndex, src: EdgeSource): LinkState {
   const gw = ix.gateways.get(src.gatewayId);
-  if (!src.enabled) return { status: "disabled", reason: "Device switched off", lastSeenAt: null };
-  if (!gw) return { status: "waiting", reason: "Its data collector was removed", lastSeenAt: null };
+  if (!src.enabled) return { status: "disabled", reason: "Rack switched off", lastSeenAt: null };
+  if (!gw) return { status: "waiting", reason: "Its gateway was removed", lastSeenAt: null };
   const parent = gatewayLink(ix, gw);
   if (parent.status === "disabled") return { status: "disabled", reason: parent.reason, lastSeenAt: null };
   const rack = liveRack(ix, src);
   if (!rack) {
-    const reason = parent.status === "waiting" ? parent.reason : `${gw.code} is not sending data from ${src.code}`;
+    const reason = parent.status === "waiting" ? parent.reason : "The gateway is not sending readings from this rack";
     return { status: "waiting", reason, lastSeenAt: null };
   }
   // A rack cannot be fresher than the gateway it is reached through.
   const own = fromLive(rack.state);
   const status = LINK_RANK[parent.status] > LINK_RANK[own] && parent.status !== "waiting" ? parent.status : own;
-  return { status, reason: rack.reason ?? (rack.dataCurrent ? null : "Data is out of date"), lastSeenAt: rack.lastSeenAt };
+  return { status, reason: rack.reason ?? (rack.dataCurrent ? null : "Readings are out of date"), lastSeenAt: rack.lastSeenAt };
 }
 
 export function pointReading(ix: EdgeIndex, point: EdgePoint): PointReading {
@@ -186,10 +187,9 @@ export function pointReading(ix: EdgeIndex, point: EdgePoint): PointReading {
   if (!point.enabled || (src && sourceLink(ix, src).status === "disabled")) return { status: "disabled", ...empty };
   const m = liveMeasurement(ix, point);
   if (!m) return { status: "nodata", ...empty };
-  // Payload flags when the gateway sends them, else the point's own limits.
-  const over = (limit: number | null) => limit !== null && m.value !== null && m.value >= limit;
-  const status: ReadingStatus =
-    !m.valid || !m.fresh ? "stale" : m.dangerActive || over(point.dangerLimit) ? "danger" : m.alertActive || over(point.alertLimit) ? "alert" : "normal";
+  // The gateway's own alarm flags. The machine sensor's limits (measurement_limits)
+  // are judged on the server and shown on the machine's pages.
+  const status: ReadingStatus = !m.valid || !m.fresh ? "stale" : m.dangerActive ? "danger" : m.alertActive ? "alert" : "normal";
   return { status, value: m.value, display: m.display, unit: m.unit || point.unit, updatedAt: m.updatedAt, measurement: m };
 }
 

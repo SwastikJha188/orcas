@@ -1,11 +1,12 @@
 "use client";
 
 import { useComponentScope } from "./component-scope";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import { PillButton } from "@/components/ui";
 import { conditionTone } from "@/components/ui/status";
 import { AssetHierarchyPage } from "./hierarchy/asset-hierarchy-page";
-import { subtreeMachines } from "./hierarchy/hierarchy-model";
+import { machineCondition, nodeTone, subtreeMachines } from "./hierarchy/hierarchy-model";
+import { displayName } from "@/lib/display-name";
 import { useHierarchyData } from "./hierarchy/use-hierarchy-data";
 import { MachineSensorMappingView } from "./machine-sensor-mapping-view";
 import { MachineAnalysisPage } from "./analysis/analysis-page";
@@ -15,8 +16,6 @@ import { TrendsView } from "./trends-view";
 import { MachineRackTab } from "./acquisition/acquisition-view";
 import { useOverviewDigest } from "./overview-digest";
 import { PageHeaderSlot } from "./analysis/an-ui";
-import { displayName } from "@/lib/display-name";
-import { machineCondition, nodeTone } from "./hierarchy/hierarchy-model";
 import type { AssetMachine } from "./assets-data";
 import { useKilnSimulationFor, usePlantEngineOf } from "@/providers/kiln-simulation-context";
 import { useIndustrialData } from "@/providers/industrial-data-context";
@@ -28,13 +27,16 @@ import {
   StatusSummary,
   machineTabs,
   plantKindOf,
-  type MachineTab,
   usePlantStatus,
   type MachinePageId,
+  type MachineTab,
 } from "@/components/home/operator/machine-nav";
 import type { MapView } from "@/components/home/plant-home";
 import { SimulationView } from "./simulation-view";
 import { ThermalView } from "./thermal-view";
+import { LineDiagnosis } from "./line/line-diagnosis";
+import { LinePrognosis } from "./line/line-prognosis";
+import { LineAnalysis } from "./line/line-analysis";
 import "./assets-shell.css";
 import "@/components/home/operator/operator-console.css";
 
@@ -48,8 +50,8 @@ export type AssetsSubPage = "overview" | "health" | "diagnosis" | "analysis" | "
  *   Assets (this file)    asset directory, then a machine's Diagnosis, Prognosis,
  *                         Analysis and Sensors pages (Trends, Rack, Thermal and
  *                         Simulation open as popups over them).
- * Both draw the same bars (machine-nav.tsx): the plant's machines and the view
- * toggle, then the machine's status, popups and page toggle. `navigateToMachine`
+ * Both draw the same three bars (machine-nav.tsx): the plant's machines and the view toggle,
+ * then the machine's parts, then its status, quick views and page tabs at the right end. `navigateToMachine`
  * sends each page to its workspace, so every link, tab and toggle follows the
  * same rule. "health" stays a page id for old links (Diagnosis).
  */
@@ -74,8 +76,13 @@ function showHomeView(view: "operator" | "twin") {
   window.dispatchEvent(new CustomEvent("ultron:set-home-view", { detail: view }));
 }
 
-/** Row 2: the machine's status and quick-look popups (as in the Operator view), then the page toggle. */
-function AssetsContextBar({
+/**
+ * Bars 2 and 3 of a machine page, laid out exactly as in the Operator view so nothing moves when
+ * you switch between Home and Assets: bar 2 the machine's parts; bar 3 its status on the left, then
+ * the quick-look popups and the page tabs (Overview · Diagnosis · Prognosis · Analysis · Sensors)
+ * at the right end.
+ */
+function AssetsMachineBar({
   machine,
   label,
   page,
@@ -94,39 +101,45 @@ function AssetsContextBar({
   const tone = conditionTone(d.conditionLabel);
   const offNormal = d.counts.Alert + d.counts.Critical;
   return (
-    <div className="opc-context-bar" role="region" aria-label="Machine status, popups and pages">
-      <div className="opc-context-left">
-        <StatusSummary
-          tone={tone}
-          label={label}
-          health={hasData ? d.overall : null}
-          offNormal={offNormal > 0 ? `${offNormal} ${offNormal === 1 ? "sensor needs" : "sensors need"} attention` : null}
-        />
+    <>
+      <div className="opc-subbar ast-part-row" role="region" aria-label="Machine parts">
+        <PartBar machine={machine} />
       </div>
-      <div className="opc-context-right">
-        <div className="opc-pill-group opc-subassembly-pills" role="group" aria-label="Open a detail window">
+      <div className="opc-context-bar" role="region" aria-label="Machine status, quick views and pages">
+        <div className="opc-context-left">
+          <StatusSummary
+            tone={tone}
+            label={label}
+            health={hasData ? d.overall : null}
+            offNormal={offNormal > 0 ? `${offNormal} ${offNormal === 1 ? "sensor needs" : "sensors need"} attention` : null}
+          />
+        </div>
+        <div className="opc-context-right">
+        <div className="opc-pill-group opc-subassembly-pills" role="group" aria-label="Quick views">
           {defsFor(machine.id)?.hasShell && (
             <button type="button" className="opc-pill-btn" onClick={() => onPopup("thermal")} title="Kiln shell temperature map">
-              Shell temperature ↗
+              Shell temperature <span aria-hidden="true">↗</span>
             </button>
           )}
           <button type="button" className="opc-pill-btn" onClick={() => onPopup("trends")} title="Sensor readings over time">
-            Trends ↗
+            Trends <span aria-hidden="true">↗</span>
           </button>
           <button type="button" className="opc-pill-btn" onClick={() => onPopup("rack")} title="Which input card and channel each sensor is wired to">
-            Rack ↗
+            Rack <span aria-hidden="true">↗</span>
           </button>
         </div>
-        <span className="opc-bar-sep" aria-hidden="true" />
-        <MachinePageToggle alarms={d.findings.active.length} active={page} onSelect={onPage} />
+          <span className="opc-bar-sep" aria-hidden="true" />
+          <MachinePageToggle alarms={d.findings.active.length} active={page} onSelect={onPage} />
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
 /**
- * Row 2 on the asset directory: the plant's machines with their condition and health,
- * as on the Operator view's Full line. A machine opens its Diagnosis here in Assets.
+ * Bar 2 on the asset directory, as on the Operator view's Full line: "All" and each machine with its
+ * condition and health, so the bar below (status and page tabs) sits where it does on every page.
+ * A machine opens its own pages here in Assets.
  */
 function DirectoryMachineBar({
   tabs,
@@ -139,30 +152,21 @@ function DirectoryMachineBar({
   lookup: ReturnType<typeof useHierarchyData>["lookup"];
   onOpen: (machineId: string) => void;
 }) {
-  // The top row's machines and short labels, with each machine's hierarchy node for its condition.
   const units = tabs.flatMap((t) => {
     const node = t.machineId ? status.machines.find((m) => m.machineId === t.machineId) : undefined;
     return node ? [{ tab: t, node }] : [];
   });
   return (
-    <div className="opc-subbar" role="region" aria-label="Line equipment">
+    <div className="opc-subbar" role="region" aria-label="Machines on the line">
       <div className="opc-stage-tabs">
-        <div className="opc-pill-group" role="tablist" aria-label="Line equipment">
-          <button type="button" role="tab" aria-selected className="opc-pill-btn" data-active>
+        <div className="opc-pill-group opc-subassembly-pills" role="group" aria-label="Machines on the line">
+          <button type="button" className="opc-pill-btn" data-active aria-current="page">
             All
           </button>
           {units.map(({ tab, node }) => {
             const health = machineCondition(node, lookup).health;
             return (
-              <button
-                key={tab.key}
-                type="button"
-                role="tab"
-                aria-selected={false}
-                className="opc-pill-btn"
-                title={displayName(node.name)}
-                onClick={() => onOpen(tab.machineId!)}
-              >
+              <button key={tab.key} type="button" className="opc-pill-btn" title={displayName(node.name)} onClick={() => onOpen(tab.machineId!)}>
                 <span className="ph-unit-dot" data-tone={nodeTone(node, lookup)} aria-hidden="true" />
                 <span>{tab.label}</span>
                 <span className="opc-app-count">{health !== null ? `${Math.round(health)}%` : "—"}</span>
@@ -176,7 +180,7 @@ function DirectoryMachineBar({
 }
 
 /**
- * The parts (sub-assemblies) of the machine as pills in row 2: "Whole machine" or one part,
+ * The parts (sub-assemblies) of the machine as pills in bar 2: "Whole machine" or one part,
  * which gives Diagnosis, Prognosis, Analysis and Sensors for that part alone. Each pill
  * carries the part's health dot and score.
  */
@@ -192,10 +196,10 @@ function PartBar({ machine }: { machine: AssetMachine }) {
     else el.querySelector<HTMLElement>("[data-active]")?.scrollIntoView({ block: "nearest", inline: "center" });
   }, [selectedId]);
   if (options.length < 2) return null;
-  const toneOf = (status: string) => (status === "Critical" ? "bad" : status === "Alert" ? "warn" : "good");
   return (
     <div className="opc-stage-tabs ast-part-bar" ref={bar}>
-      <div className="opc-pill-group" role="tablist" aria-label="Parts">
+      {/* Same pill size as the Operator view's part row, so the bars line up between Home and Assets. */}
+      <div className="opc-pill-group opc-subassembly-pills" role="tablist" aria-label="Parts">
         <button type="button" role="tab" aria-selected={!selected} className="opc-pill-btn" data-active={!selected || undefined} onClick={() => select(null)}>
           Whole machine
         </button>
@@ -212,7 +216,7 @@ function PartBar({ machine }: { machine: AssetMachine }) {
               title={`${o.name}: its own diagnosis, prognosis, analysis and sensors (${o.tags.length} sensors)`}
               onClick={() => select(o.id)}
             >
-              <span className="ph-unit-dot" data-tone={toneOf(o.status)} aria-hidden="true" />
+              <span className="ph-unit-dot" data-tone={conditionTone(o.status)} aria-hidden="true" />
               <span>{o.name}</span>
               <span className="opc-app-count">{o.health !== null ? `${o.health}%` : "—"}</span>
             </button>
@@ -233,21 +237,57 @@ export function AssetsView() {
     selectedPlantId,
     navigateToMachine,
     navigateToAssetsHome,
+    navigateToLine,
+    currentUser,
   } = useIndustrialData();
   const { roots, lookup } = useHierarchyData();
 
-  // Row 2 of a machine page: the page's own header renders here (PageHeaderSlot).
+  // A machine page's own header renders here, first below the machine bar (PageHeaderSlot).
   const [headerSlot, setHeaderSlot] = useState<HTMLDivElement | null>(null);
 
   const [detailModal, setDetailModal] = useState<"diagnosis" | "prognosis" | "analysis" | "thermal" | "trends" | "rack" | "simulation" | null>(null);
+  const isModalOpen = detailModal !== null;
   useEffect(() => {
-    if (!detailModal) return;
+    if (!isModalOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setDetailModal(null);
+      // Esc belongs to whatever is on top: an inner dialog or menu handles it first.
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (document.querySelector("dialog[open]")) return;
+      setDetailModal(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [detailModal]);
+  }, [isModalOpen]);
+
+  // The pop-up takes focus when it opens and hands it back to the control that opened it.
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const modalTitleId = useId();
+  useEffect(() => {
+    if (!isModalOpen) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    modalRef.current?.focus();
+    return () => {
+      if (opener?.isConnected) opener.focus();
+    };
+  }, [isModalOpen]);
+  /** Tab stays inside the pop-up: past the last control it wraps to the first, and back. */
+  const trapTab = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Tab" || !modalRef.current) return;
+    const items = Array.from(
+      modalRef.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'),
+    ).filter((el) => el.offsetParent !== null);
+    if (items.length === 0) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || active === modalRef.current)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
 
   // Selected machine comes only from PostgreSQL (data context); no static fallback.
   const selectedMachine = selectedMachineId && contextMachine?.id === selectedMachineId ? contextMachine : null;
@@ -256,13 +296,17 @@ export function AssetsView() {
   // Row 1: the same machine pills as the Operator view, for the plant in the top bar.
   const plant = roots.find((p) => p.id === selectedPlantId) ?? roots[0];
   const engine = usePlantEngineOf(plant?.id);
-  const tabs = useMemo(() => {
-    const units = (plant ? subtreeMachines(plant) : []).flatMap((n) => {
-      const m = n.machineId ? lookup.get(n.machineId)?.machine : undefined;
-      return m ? [m] : [];
-    });
-    return machineTabs(plantKindOf(engine, units), units);
-  }, [plant, lookup, engine]);
+  const units = useMemo(
+    () =>
+      (plant ? subtreeMachines(plant) : []).flatMap((n) => {
+        const m = n.machineId ? lookup.get(n.machineId)?.machine : undefined;
+        return m ? [m] : [];
+      }),
+    [plant, lookup],
+  );
+  const tabs = useMemo(() => machineTabs(plantKindOf(engine, units), units), [units, engine]);
+  // The short names the machine pills use ("Feed", "Rotary kiln"), for the Full line tables.
+  const shortNames = useMemo(() => Object.fromEntries(tabs.flatMap((t) => (t.machineId ? [[t.machineId, t.label]] : []))) as Record<string, string>, [tabs]);
   const activeTab = machineId ? tabs.find((t) => t.machineId === machineId) : tabs[0];
   const plantStatus = usePlantStatus(plant, lookup);
 
@@ -285,6 +329,10 @@ export function AssetsView() {
   }, [activeSubPage, machineId, navigateToMachine, setActiveSubPage]);
 
   const activeLayer = layerOf(activeSubPage);
+  // Practice faults (simulation) belong to the Oswar super administrator alone.
+  const canSimulate = Boolean(currentUser?.role.allPlants);
+  // Full line pages: Diagnosis, Prognosis and Analysis of the whole line (no machine picked).
+  const linePage = !machineId && activeSubPage !== "overview" && activeLayer !== "sensors" ? activeLayer : null;
 
   const selectAssetLayer = (layer: AssetLayerId) => {
     setDetailModal(null);
@@ -295,14 +343,6 @@ export function AssetsView() {
     if (machineId) navigateToMachine(machineId, "overview");
   };
   const selectPage = (page: MachinePageId) => (page === "overview" ? openOverview() : selectAssetLayer(page));
-
-  /** Full line: Overview is the plant in the Operator view; the other pages open on the machine needing attention. */
-  const selectPlantPage = (page: MachinePageId) => {
-    if (page === "overview") {
-      setActiveTab("home");
-      showHomeView("operator");
-    } else if (plantStatus.focusMachineId) navigateToMachine(plantStatus.focusMachineId, page);
-  };
 
   const changeView = (view: MapView) => {
     if (view === "assets") return;
@@ -331,7 +371,12 @@ export function AssetsView() {
         <MachineTopbar
           tabs={tabs}
           activeKey={activeTab?.key ?? null}
-          onSelect={(t) => (t.machineId ? navigateToMachine(t.machineId, activeLayer) : navigateToAssetsHome())}
+          onSelect={(t) => {
+            if (t.machineId) return navigateToMachine(t.machineId, activeLayer);
+            // Full line keeps the page you are on when the line has one.
+            if (activeSubPage !== "overview" && activeLayer !== "sensors") navigateToLine(activeLayer);
+            else navigateToAssetsHome();
+          }}
           view="assets"
           onChangeView={changeView}
         />
@@ -341,23 +386,51 @@ export function AssetsView() {
             {!selectedMachine ? (
               // Full line: the plant's status and pages, then the asset directory.
               <>
-                <DirectoryMachineBar tabs={tabs} status={plantStatus} lookup={lookup} onOpen={(id) => navigateToMachine(id, "diagnosis")} />
-                <PlantStatusBar label="Full line" status={plantStatus} active={null} onSelect={selectPlantPage} />
-                <AssetHierarchyPage />
+                {/* Bars 2 and 3 as on Home's Full line: the machines, then the plant's status with the page tabs at the right. */}
+                <DirectoryMachineBar tabs={tabs} status={plantStatus} lookup={lookup} onOpen={(id) => navigateToMachine(id, linePage ?? "diagnosis")} />
+                <PlantStatusBar
+                  label="Full line"
+                  status={plantStatus}
+                  active={linePage ?? "overview"}
+                  onSelect={(p) => {
+                    if (p === "overview") navigateToAssetsHome();
+                    else if (p === "sensors") {
+                      // Sensors stay a machine page: the machine needing attention most.
+                      if (plantStatus.focusMachineId) navigateToMachine(plantStatus.focusMachineId, p);
+                    } else navigateToLine(p);
+                  }}
+                />
+                {linePage ? (
+                  <section className="assets-machine-workspace" data-subpage={linePage} aria-label={`Full line ${linePage}`}>
+                    <div className="ast-page-head" ref={setHeaderSlot} />
+                    <PageHeaderSlot.Provider value={headerSlot}>
+                      <section className="subpage-content" aria-label={`Full line ${linePage}`}>
+                        {linePage === "diagnosis" ? (
+                          <LineDiagnosis units={units} names={shortNames} health={plantStatus.score} />
+                        ) : linePage === "prognosis" ? (
+                          <LinePrognosis units={units} names={shortNames} />
+                        ) : (
+                          <LineAnalysis units={units} names={shortNames} />
+                        )}
+                      </section>
+                    </PageHeaderSlot.Provider>
+                  </section>
+                ) : (
+                  <AssetHierarchyPage />
+                )}
               </>
             ) : (
               <>
-                <div className="opc-subbar ast-page-bar" ref={setHeaderSlot} role="region" aria-label="Page">
-                  <PartBar machine={selectedMachine} />
-                </div>
-                <AssetsContextBar
+                <AssetsMachineBar
                   machine={selectedMachine}
                   label={activeTab?.label ?? selectedMachine.name}
                   page={activeLayer}
                   onPage={selectPage}
                   onPopup={setDetailModal}
                 />
-                <main className="assets-machine-workspace" data-subpage={activeLayer} aria-label={selectedMachine.name}>
+                <section className="assets-machine-workspace" data-subpage={activeLayer} aria-label={selectedMachine.name}>
+                  {/* The page's header row (title = the tab's name) is the first thing below the bar. */}
+                  <div className="ast-page-head" ref={setHeaderSlot} />
                   <PageHeaderSlot.Provider value={headerSlot}>
                     {activeLayer === "diagnosis" && (
                       <section className="subpage-content" aria-label="Diagnosis">
@@ -419,17 +492,22 @@ export function AssetsView() {
                   {detailModal && (
                     <div
                       className="opc-trend-modal-backdrop"
-                      role="dialog"
-                      aria-modal="true"
-                      aria-label="Detail window"
                       onClick={(e) => {
                         if (e.target === e.currentTarget) setDetailModal(null);
                       }}
                     >
-                      <div className="opc-detail-modal">
+                      <div
+                        className="opc-detail-modal"
+                        ref={modalRef}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby={modalTitleId}
+                        tabIndex={-1}
+                        onKeyDown={trapTab}
+                      >
                         <div className="opc-detail-modal-head">
                           <div className="opc-detail-modal-title-wrap">
-                            <strong className="opc-detail-modal-title">
+                            <strong className="opc-detail-modal-title" id={modalTitleId}>
                               {detailModal === "diagnosis" && "Diagnosis: what is wrong now"}
                               {detailModal === "prognosis" && "Prognosis: what will happen next"}
                               {detailModal === "analysis" && "Analysis: why it is happening"}
@@ -450,11 +528,11 @@ export function AssetsView() {
                                   selectAssetLayer(target);
                                 }}
                               >
-                                Open the full page →
+                                Open the full page <span aria-hidden="true">→</span>
                               </PillButton>
                             )}
                             <PillButton variant="secondary" onClick={() => setDetailModal(null)}>
-                              Close ×
+                              Close <span aria-hidden="true">×</span>
                             </PillButton>
                           </div>
                         </div>
@@ -527,12 +605,12 @@ export function AssetsView() {
                             />
                           )}
                           {detailModal === "rack" && <MachineRackTab key={selectedMachine.id} machine={selectedMachine} simulation={kilnSimulation} />}
-                          {detailModal === "simulation" && <SimulationView simulation={kilnSimulation ?? null} />}
+                          {detailModal === "simulation" && canSimulate && <SimulationView simulation={kilnSimulation ?? null} />}
                         </div>
                       </div>
                     </div>
                   )}
-                </main>
+                </section>
               </>
             )}
           </div>

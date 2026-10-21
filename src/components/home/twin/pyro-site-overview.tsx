@@ -9,20 +9,20 @@ import { twinHint, usePersistedNavMode, type TwinNavMode, type TwinNudgeAction }
 import { StatusTag } from "@/components/ui/status-tag";
 import { type Condition, type Tone, conditionTone, toCondition, worstCondition } from "@/components/ui/status";
 import { IconChevron, IconClose } from "@/components/assets/assets-shell-ui";
-import { type SimFrame, formatDuration } from "@/lib/kiln-sim/engine";
-import { PYRO_MACHINE_BY_ID } from "@/lib/pyro-sim/signals";
+import { type SimFrame, formatDuration } from "@shared/lib/kiln-sim/engine";
+import { PYRO_MACHINE_BY_ID } from "@shared/lib/pyro-sim/signals";
 import { useApi } from "@/lib/api-cache";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useKilnFleet, usePrimaryMachineId } from "@/providers/kiln-simulation-context";
-import type { MeasurementDto } from "@/types/monitoring";
+import type { MeasurementDto } from "@shared/types/monitoring";
 import type { TwinInset } from "./plant-twin-canvas";
 import { hasWebGL } from "./plant-twin";
 import { createInfiniteGrid } from "./infinite-grid";
 import { readUiZoom } from "./use-ui-zoom";
 import "./pyro-site-overview.css";
 import { INFRA, LINE, applyKitPalette, buildSite, createKitMats, readPalette, type InfraKey, type MachineKey, type NodeKey, type V3 } from "./pyro-plant-model";
-import { isConditionRule } from "@/lib/plant-defs";
-import type { EdgeRegistry, MachineAcquisition } from "@/types/edge";
+import { isConditionRule } from "@shared/lib/plant-defs";
+import type { EdgeRegistry, MachineAcquisition } from "@shared/types/edge";
 
 /* ==========================================================================
    Pyro line site overview (Home, pyro plant only). One cement plant, one

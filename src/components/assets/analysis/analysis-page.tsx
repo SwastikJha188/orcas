@@ -7,8 +7,9 @@
  *   Header → four KPIs (faults now, failures predicted within 6 months,
  *   first deviation, unexplained deviations) → one issue at a time, picked
  *   from a fixed-order list of the faults Diagnosis shows and the failures
- *   Prognosis predicts → Why it is happening / Why it will happen → What it
- *   affects → Past episodes → Unexplained deviations.
+ *   Prognosis predicts → Why it is happening / Why it will happen (a fault
+ *   that also shortens a part's life links to its time left on Prognosis) →
+ *   What it affects → Past episodes → Unexplained deviations.
  *
  * Diagnosis says what is wrong, Prognosis what will happen; both link here
  * ("Why →") with the rule or sub-assembly, and this page opens on it.
@@ -21,12 +22,15 @@ import { useKilnSimulationFor, useLiveMachineStatus } from "@/providers/kiln-sim
 import { conditionTone, toCondition } from "@/components/ui/status";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { formatLocalTime } from "@/lib/time";
-import { formatDuration, simTimeMs } from "@/lib/kiln-sim/engine";
+import { formatDuration, simTimeMs } from "@shared/lib/kiln-sim/engine";
 import { defsFor } from "@/lib/live-defs";
 import type { AssetMachine } from "../assets-data";
 import type { AssetsSubPage } from "../assets-view";
 import { useMachineInsights } from "../use-machine-insights";
 import { useMachineCatalog } from "../use-machine-catalog";
+import { dxSensorsFromFrame, toDxSensors } from "../diagnosis-model";
+import { inDefinitionOrder } from "../diagnosis-rows";
+import { ReadingsAgainstExpected } from "./an-readings";
 import { kilnHealthModel } from "../health-derive";
 import { rulRows } from "../prognosis/prognosis-derive";
 import { signalForecastRows } from "../prognosis/prog-signals";
@@ -52,6 +56,7 @@ export const AN_SECTIONS = {
   impact: "an-impact",
   episodes: "an-episodes",
   unexplained: "an-unexplained",
+  readings: "an-readings",
 } as const;
 
 export interface MachineAnalysisPageProps {
@@ -100,6 +105,11 @@ export function MachineAnalysisPage({
     return scope ? all.filter((i) => i.subIds.includes(scope.id) || i.life.some((r) => r.id === scope.id)) : all;
   }, [frame, rul, defs, scope]);
   const contributions = useMemo(() => (frame ? kilnHealthModel(frame, catalog).contributions : null), [frame, catalog]);
+  // Every sensor of the machine (or picked part) in definition order, as Diagnosis reads them.
+  const readings = useMemo(() => {
+    const list = catalog.sensors.length === 0 && frame ? dxSensorsFromFrame(frame) : toDxSensors(catalog.sensors, frame?.defs ?? null);
+    return inDefinitionOrder(list, defs).filter((x) => !compTags || compTags.has(x.tag));
+  }, [catalog.sensors, frame, defs, compTags]);
   const unknown = useMemo(() => (frame ? unexplained(frame) : []).filter((u) => !compTags || compTags.has(u.tag)), [frame, compTags]);
   const chain = useMemo(
     () => (frame ? deviationOrder(frame).sort((a, b) => b.minutesAgo - a.minutesAgo) : []).filter((c) => !compTags || c.tags.some((t) => compTags.has(t))),
@@ -179,7 +189,13 @@ export function MachineAnalysisPage({
       label: "Problems now",
       value: frame ? String(faults.length) : "—",
       foot: frame ? `${faults.length - confirming} confirmed · ${confirming} being checked` : "No live data for this machine",
-      tone: faults.length - confirming > 0 ? "bad" : undefined,
+      // Critical only when a confirmed problem is Critical; otherwise Alert.
+      tone:
+        faults.length - confirming > 0
+          ? faults.some((i) => i.rule?.status !== "PENDING" && i.rule?.severity === "Critical")
+            ? "bad"
+            : "warn"
+          : undefined,
     },
     {
       label: "Parts that may fail in 6 months",
@@ -228,7 +244,7 @@ export function MachineAnalysisPage({
   return (
     <div className="ast-root pg-frame pg-analysis" aria-label="Analysis">
       <PageHeader
-        title="Why it is happening"
+        title="Analysis"
         status={{ label: condition, tone: conditionTone(condition) }}
         meta={[
           { label: "Checks", value: frame ? `${checks} known problems watched` : insights.data ? "Saved snapshot" : "—" },
@@ -270,9 +286,17 @@ export function MachineAnalysisPage({
                 id={AN_SECTIONS.why}
                 title={issue.kind === "fault" ? "Why it is happening" : "Why it will happen"}
                 right={
-                  <button type="button" className="pg-diag-inline-link" onClick={issue.kind === "fault" ? toDiagnosis : toPrognosis}>
-                    {issue.kind === "fault" ? "See its sensors →" : "See time left →"}
-                  </button>
+                  <span className="pg-analysis-links">
+                    <button type="button" className="pg-diag-inline-link" onClick={issue.kind === "fault" ? toDiagnosis : toPrognosis}>
+                      {issue.kind === "fault" ? "See its sensors" : "See time left"} <span aria-hidden="true">→</span>
+                    </button>
+                    {/* A problem now that also shortens a part's life: where it is heading is on Prognosis. */}
+                    {issue.kind === "fault" && data && issue.life.length > 0 && (
+                      <button type="button" className="pg-diag-inline-link" onClick={toPrognosis}>
+                        See time left <span aria-hidden="true">→</span>
+                      </button>
+                    )}
+                  </span>
                 }
               >
                 {issue.kind === "fault" && frame ? (
@@ -283,12 +307,6 @@ export function MachineAnalysisPage({
                   <Empty title="No forecast is available for this machine." />
                 )}
               </Section>
-
-              {issue.kind === "fault" && data && issue.life.length > 0 && (
-                <Section id="an-heading" title="Where it is heading">
-                  <WhyWillHappen issue={issue} data={data} forecastRows={forecastRows} onOpenTrend={openTrend} />
-                </Section>
-              )}
 
               <Section id={AN_SECTIONS.impact} title={issue.kind === "fault" ? "What it affects" : "What it will affect"}>
                 <WhatItAffects issue={issue} frame={frame} impact={impact} library={library} />
@@ -301,15 +319,23 @@ export function MachineAnalysisPage({
               )}
             </>
           ) : (
-            <section className="ast-card pg-analysis-section">
+            // No problem to explain: the evidence that nothing is wrong, sensor by sensor.
+            <Section
+              id={AN_SECTIONS.readings}
+              title="Readings against what is expected"
+              right={readings.length ? <span className="ast-num pg-diag-muted">{readings.length} sensors</span> : undefined}
+            >
               <Empty
                 title={
-                  scope
-                    ? `Nothing to explain for ${scope.name}: no problem has been found on it, and no failure is expected in the next 6 months.`
-                    : "Nothing to explain: no problem has been found, and no failure is expected in the next 6 months."
+                  readings.length === 0 && !catalog.isLoading
+                    ? `${scope ? scope.name : machine.name} has no sensors yet, so nothing on it can be checked or explained.`
+                    : scope
+                    ? `No problem has been found on ${scope.name}, and no failure is expected in the next 6 months.`
+                    : "No problem has been found, and no failure is expected in the next 6 months."
                 }
               />
-            </section>
+              {readings.length > 0 && <ReadingsAgainstExpected sensors={readings} frame={frame} onOpenTrend={openTrend} />}
+            </Section>
           )}
 
           {unknown.length > 0 && (

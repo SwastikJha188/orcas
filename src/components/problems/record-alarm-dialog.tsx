@@ -42,6 +42,8 @@ export function RecordAlarmDialog({
   onClose: () => void;
 }) {
   const [draft, setDraft] = useState<Draft | null>(null);
+  // What the form opened with, so a stray click does not throw away typed input.
+  const [first, setFirst] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
@@ -51,7 +53,7 @@ export function RecordAlarmDialog({
   // A fresh form each time the dialog opens (not on every new `machines` array).
   useEffect(() => {
     if (!open) return;
-    setDraft({
+    const fresh: Draft = {
       machineId: machineId ?? machinesRef.current[0]?.id ?? "",
       title: "",
       severity: "alert",
@@ -60,7 +62,9 @@ export function RecordAlarmDialog({
       limitText: "",
       observedAt: localNow(),
       source: "",
-    });
+    };
+    setDraft(fresh);
+    setFirst(fresh);
     setError(null);
     setTried(false);
   }, [open, machineId]);
@@ -69,11 +73,13 @@ export function RecordAlarmDialog({
   const need = (v: string | undefined, msg: string) => (tried && !v?.trim() ? msg : null);
   const at = draft?.observedAt ? new Date(draft.observedAt) : null;
   const atBad = !at || Number.isNaN(at.getTime());
+  const atLater = !atBad && at!.getTime() > Date.now();
+  const dirty = Boolean(draft && first && (Object.keys(draft) as (keyof Draft)[]).some((k) => draft[k] !== first[k]));
 
   const save = async () => {
     if (!draft) return;
     setTried(true);
-    if (!draft.machineId || !draft.title.trim() || !draft.location.trim() || !draft.source.trim() || atBad) return;
+    if (!draft.machineId || !draft.title.trim() || !draft.location.trim() || !draft.source.trim() || atBad || atLater) return;
     setBusy(true);
     setError(null);
     try {
@@ -105,6 +111,7 @@ export function RecordAlarmDialog({
       subtitle={caseId ? "It is added to this case and to the machine's open alarms." : "It is added to the machine's open alarms."}
       width={620}
       busy={busy}
+      dirty={dirty}
       onSubmit={() => void save()}
       footerStart={
         error ? (
@@ -128,11 +135,13 @@ export function RecordAlarmDialog({
         <>
           <p className="prb-dialog-note">Use this for an alarm someone saw on site or on another system. It is recorded here; it does not raise a live alarm.</p>
           <FieldGrid>
-            <Field label="Machine" required error={tried && !draft.machineId ? "Choose the machine" : null}>
+            <Field label="Machine" required hint={caseId ? "The case's machine." : undefined} error={tried && !draft.machineId ? "Choose the machine" : null}>
               {(id, d) => (
                 <Select
                   id={id}
                   describedBy={d}
+                  // A case is about one machine: its alarms stay on that machine.
+                  disabled={Boolean(caseId)}
                   value={draft.machineId}
                   onChange={(v) => set("machineId", v)}
                   options={[...(draft.machineId ? [] : [{ value: "", label: "Choose a machine" }]), ...machines.map((m) => ({ value: m.id, label: m.name }))]}
@@ -165,7 +174,7 @@ export function RecordAlarmDialog({
             <Field label="The limit it passed" hint="Optional.">
               {(id, d) => <TextInput id={id} describedBy={d} value={draft.limitText} onChange={(v) => set("limitText", v)} placeholder="For example: normally below 80 °C" />}
             </Field>
-            <Field label="When it was seen" required hint="Your own time zone." error={tried && atBad ? "Enter the date and time" : null}>
+            <Field label="When it was seen" required hint="Your own time zone." error={tried && atBad ? "Enter the date and time" : tried && atLater ? "Can't be later than now" : null}>
               {(id, d) => (
                 <input id={id} aria-describedby={d} className="ui-input" type="datetime-local" value={draft.observedAt} onChange={(e) => set("observedAt", e.target.value)} />
               )}

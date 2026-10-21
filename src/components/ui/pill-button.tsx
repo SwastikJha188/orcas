@@ -26,6 +26,7 @@ export function PillButton({
   loading = false,
   state = "default",
   disabled,
+  onClick,
   ...props
 }: PillButtonProps) {
   const variantClass = variant === "primary" ? "btn-pill-primary" : variant === "danger" ? "btn-pill-secondary btn-pill-danger" : "btn-pill-secondary";
@@ -38,7 +39,10 @@ export function PillButton({
       aria-busy={loading || undefined}
       data-loading={loading ? "true" : undefined}
       data-state={state !== "default" ? state : undefined}
-      disabled={disabled || loading}
+      // While loading the button keeps focus (aria-disabled, not disabled) but ignores clicks.
+      disabled={disabled}
+      aria-disabled={loading || undefined}
+      onClick={loading ? (e) => e.preventDefault() : onClick}
       {...props}
     >
       {loading ? (
@@ -59,6 +63,7 @@ export function PillButton({
           strokeLinecap="round"
           strokeLinejoin="round"
           style={{ marginLeft: 2 }}
+          aria-hidden="true"
         >
           <polyline points="6 9 12 15 18 9" />
         </svg>

@@ -2,14 +2,20 @@
   "name": "ultron",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "backend"
+  ],
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "next dev --turbopack",
+    "dev:api": "npm run dev -w backend",
     "dev:webpack": "next dev",
-    "build": "next build",
+    "build": "next build && npm run build -w backend",
     "start": "next start",
+    "start:api": "npm run start -w backend",
     "preview": "next build && next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && npm run typecheck -w backend",
     "mqtt:broker": "node scripts/mqtt-dev-broker.mjs",
     "mqtt:sim": "node scripts/mqtt-gateway-sim.mjs",
     "db:migrate": "node --env-file=.env.local scripts/db-migrate.mjs",

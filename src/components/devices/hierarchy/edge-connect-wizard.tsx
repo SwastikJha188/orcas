@@ -3,9 +3,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, Field, FieldGrid, FormNote, PillButton, Table, TextInput, type Column } from "@/components/ui";
 import { useEdge } from "@/providers/edge-context";
-import type { ApiResponse } from "@/types/api";
-import { FORMAT_FIELD_KEYS, type EdgeBroker, type EdgeFormat, type EdgeGateway, type RawSample, type SourceKind } from "@/types/edge";
+import type { ApiResponse } from "@shared/types/api";
+import { FORMAT_FIELD_KEYS, type EdgeBroker, type EdgeFormat, type EdgeGateway, type RawSample, type SourceKind } from "@shared/types/edge";
 import { type EdgeIndex, ago } from "../edge-model";
+import { parseBroker } from "../mqtt/mqtt-model";
 import { coverFilter, detectFormat } from "./edge-connect-detect";
 import { isRegistered } from "./edge-connect-find";
 import { CODE_RULE } from "./edge-dialog-parts";
@@ -35,23 +36,6 @@ export interface ConnectWizardProps {
   onClose: () => void;
   /** Called once the gateway exists, to select it. */
   onCommissioned: (gatewayId: string) => void;
-}
-
-interface BrokerAddress {
-  host: string;
-  port: number;
-  tls: boolean;
-}
-
-/** "host", "host:port" or "mqtt(s)://host:port"; plain 1883 unless TLS is asked for. */
-function parseBroker(text: string): BrokerAddress | null {
-  const m = /^(?:(mqtts?|ssl|tls|tcp):\/\/)?(\[[^\]]+\]|[A-Za-z0-9.-]+)(?::(\d{1,5}))?\/?$/i.exec(text.trim());
-  if (!m) return null;
-  const scheme = m[1]?.toLowerCase();
-  const tlsScheme = scheme === "mqtts" || scheme === "ssl" || scheme === "tls";
-  const port = m[3] ? Number(m[3]) : tlsScheme ? 8883 : 1883;
-  if (port < 1 || port > 65535) return null;
-  return { host: m[2], port, tls: tlsScheme || port === 8883 };
 }
 
 const addressOf = (b: EdgeBroker) => `${b.host}:${b.port}`;
@@ -297,7 +281,7 @@ export function ConnectWizard({ open, ix, now, onClose, onCommissioned }: Connec
       busy={busy}
       onSubmit={gateway ? onClose : connect}
       width={720}
-      title="Connect a data collector"
+      title="Connect a gateway"
       subtitle={gateway ? `${gateway.code} on ${broker ? addressOf(broker) : "message server"}` : "Where its messages arrive (MQTT broker) and on which channels (topics)"}
       footer={
         gateway ? (
@@ -332,6 +316,8 @@ export function ConnectWizard({ open, ix, now, onClose, onCommissioned }: Connec
               <div key={i} className="dv-topic-row" data-invalid={errors.topics?.[i] ? true : undefined}>
                 <TextInput
                   id={`connect-topic-${i}`}
+                  ariaLabel={`Message channel ${i + 1}`}
+                  aria-invalid={errors.topics?.[i] ? true : undefined}
                   describedBy={errors.topics?.[i] ? `connect-topic-${i}-note` : undefined}
                   value={t}
                   onChange={(v) => setTopic(i, v)}
@@ -366,14 +352,14 @@ export function ConnectWizard({ open, ix, now, onClose, onCommissioned }: Connec
             <span className="ast-caption">{status}</span>
           </div>
           {shape === "raw" && !failure && (
-            <p className="ast-caption">These messages are not one reading each (they have no device and value fields), so they are kept as they arrive. Pick a message format so the data collector&apos;s readings can be read.</p>
+            <p className="ast-caption">These messages are not one reading each (they have no rack and value fields), so they are kept as they arrive. Pick a message format so the gateway&apos;s readings can be read.</p>
           )}
           {racks.length > 0 && (
-            <ul className="dv-connect-racks" aria-label="Devices and cards found">
+            <ul className="dv-connect-racks" aria-label="Racks and cards found">
               {racks.map((r) => (
                 <li key={r.code}>
                   <span className="ast-cell-title">{r.name}</span>
-                  <span className="ast-caption ast-num">
+                  <span className="ast-caption">
                     {r.kind ? `${KIND_LABEL[r.kind]} ` : ""}
                     {r.name !== r.code ? `${r.code} · ` : ""}
                     {plural(r.cards.length, "card")}: {r.cards.join(", ")}
@@ -383,7 +369,7 @@ export function ConnectWizard({ open, ix, now, onClose, onCommissioned }: Connec
             </ul>
           )}
           {shown.length > 0 && <Table className="ast-table" columns={columns} data={shown} keyExtractor={(s) => s.topic} />}
-          {live?.lastError && <p className="ast-caption">If the broker needs a user name, password or certificate, add them to {broker?.name} on the MQTT page.</p>}
+          {live?.lastError && <p className="ast-caption">If the broker needs a user name, password or certificate, add them to {broker?.name} in its message server settings (open the gateway on the Devices page).</p>}
         </>
       )}
       {failure && <FormNote tone="bad">{failure}</FormNote>}

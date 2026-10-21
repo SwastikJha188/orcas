@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { PillButton } from "@/components/ui";
 import { MX, MachineDefs, PAINT, kitStyle, useKitId } from "@/components/assets/machine-kit/machine-kit";
 import type { AssetMachine, HierarchyNode } from "../assets-data";
 import type { AssetsSubPage } from "../assets-view";
@@ -21,7 +22,7 @@ import {
   type TwinCallout,
 } from "@/components/home/twin/plant-twin-model";
 import { useKilnFleet } from "@/providers/kiln-simulation-context";
-import { VPC_MACHINE_ID } from "@/lib/vpc-sim/signals";
+import { VPC_MACHINE_ID } from "@shared/lib/vpc-sim/signals";
 import { focusSensorOn } from "../sensor-focus";
 import { lineSheetsForMachine } from "./line-sheets";
 import { LineSheet, lineSheetCaption, lineSheetHeading } from "./line-sheets/line-sheet";
@@ -32,12 +33,12 @@ const H = 480;
 const toneLabel = (t: Tone) => (t === "bad" ? "Critical" : t === "warn" ? "Alert" : t === "idle" ? "Standby" : "Normal");
 const toneColor = (t: Tone) =>
   t === "bad"
-    ? "var(--status-danger, #dc2626)"
+    ? "var(--status-danger)"
     : t === "warn"
-      ? "var(--status-warning, #d97706)"
+      ? "var(--status-warning)"
       : t === "good"
-        ? "var(--status-success, #059669)"
-        : "var(--text-muted, #6b7280)";
+        ? "var(--status-success)"
+        : "var(--text-muted)";
 
 /**
  * Maps 3D yard coordinates (b.x, b.z) from `buildPlantScene(plant)` into 2D
@@ -85,8 +86,8 @@ function UtilityBuilding2D({
         width={bw + pad * 2}
         height={bh + pad * 2}
         rx={3}
-        fill="var(--surface-raised, #f8fafc)"
-        stroke={selected ? "var(--signal-blue, #2563eb)" : rimColor}
+        fill="var(--bg-surface-elevated)"
+        stroke={selected ? "var(--signal-blue)" : rimColor}
         strokeWidth={selected ? 2.4 : 1.8}
       />
       <rect
@@ -158,8 +159,8 @@ function PowerHouse2D({
         width={bw + pad * 2}
         height={bh + pad * 2}
         rx={3}
-        fill="var(--surface-raised, #f8fafc)"
-        stroke={selected ? "var(--signal-blue, #2563eb)" : rimColor}
+        fill="var(--bg-surface-elevated)"
+        stroke={selected ? "var(--signal-blue)" : rimColor}
         strokeWidth={selected ? 2.4 : 1.6}
       />
       <rect
@@ -303,7 +304,7 @@ export function VpcPlantOverview({
                   key={c.id}
                   d={d}
                   fill="none"
-                  stroke={isNet ? "var(--status-success, #10b981)" : "var(--text-muted, #64748b)"}
+                  stroke={isNet ? "var(--status-success)" : "var(--text-muted)"}
                   strokeWidth={1.8}
                   strokeDasharray={isNet ? "6 5" : "10 6"}
                   opacity={0.85}
@@ -319,7 +320,7 @@ export function VpcPlantOverview({
             const [bx, by] = entry.pt;
             const callout = callouts[b.id];
             const tone: Tone = b.areaId && callout ? callout.tone : "idle";
-            const rim = b.areaId ? toneColor(tone) : "var(--border-subtle, #94a3b8)";
+            const rim = b.areaId ? toneColor(tone) : "var(--border-subtle)";
             const isSel = selectedId === b.id;
 
             // Callout card positioned directly above the building plinth, matching the homepage twin
@@ -379,7 +380,7 @@ export function VpcPlantOverview({
                   y1={by - 34}
                   x2={bx}
                   y2={cardY + cardH}
-                  stroke={isSel ? "var(--signal-blue, #2563eb)" : MX.fine}
+                  stroke={isSel ? "var(--signal-blue)" : MX.fine}
                   strokeWidth={1}
                 />
 
@@ -391,8 +392,8 @@ export function VpcPlantOverview({
                     width={cardW}
                     height={cardH}
                     rx={6}
-                    fill="var(--card-bg, #ffffff)"
-                    stroke={isSel ? "var(--signal-blue, #2563eb)" : "var(--border-subtle, #cbd5e1)"}
+                    fill="var(--card-bg)"
+                    stroke={isSel ? "var(--signal-blue)" : "var(--border-subtle)"}
                     strokeWidth={isSel ? 1.6 : 1}
                   />
                   {/* Status dot */}
@@ -404,7 +405,7 @@ export function VpcPlantOverview({
                     fontFamily="var(--font-sans, system-ui, sans-serif)"
                     fontSize={12}
                     fontWeight={600}
-                    fill="var(--dx-ink, #0f172a)"
+                    fill="var(--dx-ink)"
                   >
                     {b.name}
                   </text>
@@ -429,7 +430,7 @@ export function VpcPlantOverview({
                           fontFamily="var(--font-mono, monospace)"
                           fontSize={12}
                           fontWeight={700}
-                          fill="var(--dx-ink, #0f172a)"
+                          fill="var(--dx-ink)"
                           style={{ fontFeatureSettings: '"tnum"' }}
                         >
                           {callout.health}/100
@@ -442,7 +443,7 @@ export function VpcPlantOverview({
                       y={40}
                       fontFamily="var(--font-mono, monospace)"
                       fontSize={11.5}
-                      fill="var(--text-muted, #64748b)"
+                      fill="var(--text-muted)"
                     >
                       Site infrastructure
                     </text>
@@ -469,49 +470,34 @@ export function VpcPlantOverview({
           aria-label="Legend"
         >
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <i style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--status-success, #059669)", display: "inline-block" }} />
+            <i style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--status-success)", display: "inline-block" }} />
             Normal
           </span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <i style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--status-warning, #d97706)", display: "inline-block" }} />
+            <i style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--status-warning)", display: "inline-block" }} />
             Alert
           </span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <i style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--status-danger, #dc2626)", display: "inline-block" }} />
+            <i style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--status-danger)", display: "inline-block" }} />
             Critical
           </span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <b style={{ width: 14, height: 0, borderTop: "2px dashed var(--text-muted, #64748b)", display: "inline-block" }} />
+            <b style={{ width: 14, height: 0, borderTop: "2px dashed var(--text-muted)", display: "inline-block" }} />
             Power
           </span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <b style={{ width: 14, height: 0, borderTop: "2px dashed var(--status-success, #10b981)", display: "inline-block" }} />
+            <b style={{ width: 14, height: 0, borderTop: "2px dashed var(--status-success)", display: "inline-block" }} />
             Network
           </span>
         </div>
 
-        {/* Inspector drawer when a building is clicked (matching PlantTwin inspector) */}
+        {/* Details of the clicked building: a side panel of the map card (one surface, a hairline
+            between), not a second card floating on it (Common region). */}
         {selected && (
-          <aside
-            className="ast-card"
-            aria-label={`${selected.name} details`}
-            style={{
-              position: "absolute",
-              top: 12,
-              right: 12,
-              width: 280,
-              maxWidth: "calc(100% - 24px)",
-              padding: 14,
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
-              boxShadow: "var(--shadow-pop)",
-              zIndex: 10,
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+          <aside className="vpo-inspector" aria-label={`${selected.name} details`}>
+            <div className="vpo-inspector-head">
               <div>
-                <div style={{ fontWeight: 600, fontSize: "var(--fs-sm)", color: "var(--dx-ink)" }}>{selected.name}</div>
+                <div className="vpo-inspector-title">{selected.name}</div>
                 <div className="ast-caption">
                   {selectedArea ? "Area" : "Site infrastructure"} · {PLANT_MODELS[selected.model].name}
                 </div>
@@ -530,18 +516,19 @@ export function VpcPlantOverview({
                 <div>
                   <StatusTag tone={selectedCallout.tone} label={selectedCallout.status} />
                 </div>
-                <dl style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "4px 12px", margin: 0, fontSize: "var(--fs-xs)" }}>
-                  <dt style={{ color: "var(--text-muted)" }}>Health</dt>
-                  <dd className="ast-num" style={{ margin: 0, fontWeight: 600 }}>
+                <dl className="vpo-inspector-facts">
+                  <dt>Health</dt>
+                  <dd className="ast-num">
                     {selectedCallout.health ?? "—"}
                     <span className="ast-unit">/100</span>
                   </dd>
-                  <dt style={{ color: "var(--text-muted)" }}>Machines</dt>
-                  <dd className="ast-num" style={{ margin: 0, fontWeight: 600 }}>{selectedCallout.machines}</dd>
-                  <dt style={{ color: "var(--text-muted)" }}>Running</dt>
-                  <dd className="ast-num" style={{ margin: 0, fontWeight: 600 }}>{selectedCallout.running}</dd>
+                  <dt>Machines</dt>
+                  <dd className="ast-num">{selectedCallout.machines}</dd>
+                  <dt>Running</dt>
+                  <dd className="ast-num">{selectedCallout.running}</dd>
                 </dl>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, borderTop: "1px solid var(--border-subtle)", paddingTop: 8 }}>
+                {/* Plain rows divided by hairlines: no boxes inside the panel. */}
+                <div className="vpo-inspector-rows">
                   {subtreeMachines(selectedArea).map((m) => {
                     const c = machineCondition(m, lookup);
                     const mTone = machineTone(c.status);
@@ -549,31 +536,14 @@ export function VpcPlantOverview({
                       <button
                         key={m.id}
                         type="button"
-                        className="hx-crumb"
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 8,
-                          padding: "6px 8px",
-                          borderRadius: "var(--radius-sm)",
-                          border: "1px solid var(--border-subtle)",
-                          background: "var(--bg-canvas)",
-                          width: "100%",
-                          textAlign: "left",
-                        }}
+                        className="vpo-inspector-row"
                         onClick={() => m.machineId && onOpenMachine(m.machineId, landingSubPage(mTone))}
                       >
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                          <i
-                            aria-hidden="true"
-                            style={{ width: 7, height: 7, borderRadius: "50%", background: toneColor(mTone), flexShrink: 0 }}
-                          />
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "var(--fs-xs)", color: "var(--dx-ink)", fontWeight: 500 }}>
-                            {m.name}
-                          </span>
+                        <span className="vpo-inspector-row-name">
+                          <i aria-hidden="true" style={{ background: toneColor(mTone) }} />
+                          <span>{m.name}</span>
                         </span>
-                        <span className="ast-num" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: "var(--fs-xs)", fontWeight: 600, color: "var(--dx-ink)", flexShrink: 0 }}>
+                        <span className="ast-num vpo-inspector-row-val">
                           {c.health ?? "—"}
                           <IconChevron size={10} />
                         </span>
@@ -581,9 +551,12 @@ export function VpcPlantOverview({
                     );
                   })}
                 </div>
+                <PillButton variant="secondary" onClick={() => onSelectNode(selectedArea)}>
+                  Open {selectedArea.name}
+                </PillButton>
               </>
             ) : (
-              <p className="ast-caption" style={{ margin: 0 }}>
+              <p className="ast-caption vpo-inspector-note">
                 Shared site service. Every area draws power from the electrical house and reports through the gateway house; neither carries monitored machines.
               </p>
             )}

@@ -2,13 +2,14 @@
 
 import React, { useMemo } from "react";
 import { Table, type Column } from "@/components/ui";
-import type { ForecastSeries } from "@/server/services/insights-service";
-import type { PlantDefs } from "@/lib/plant-defs";
+import type { ForecastSeries } from "@backend/services/insights-service";
+import type { PlantDefs } from "@shared/lib/plant-defs";
 import { fmt, limitIsHigh, roundHours, type PrognosisData } from "./prognosis-derive";
 import { displayName } from "@/lib/display-name";
 
 /* ==========================================================================
-   Prognosis · Signal forecasts: every forecast sensor in fixed definition
+   Prognosis · Signal forecasts: every forecast sensor, the ones whose forecast
+   reaches the alarm limit on top (soonest first), the rest in fixed definition
    order. Reading now, the last 6 h and the next 30 d in one trace (forecast
    with its interval), the 30 d value, the alarm limit and when the forecast
    reaches it. Red only where the median forecast reaches the alarm limit.
@@ -48,7 +49,8 @@ export function signalForecastRows(data: PrognosisData, defs: PlantDefs | null):
   const at = (t: string) => idx.get(t) ?? Number.MAX_SAFE_INTEGER;
   return Object.keys(data.forecasts)
     .map((tag) => ({ tag, s: data.forecasts[tag]?.[h.id] }))
-    .filter((x): x is { tag: string; s: ForecastSeries } => !!x.s && x.s.confidence !== null && x.s.confidence > 0)
+    // A steady forecast (no trend found, confidence 0) is still a forecast: the reading stays where it is.
+    .filter((x): x is { tag: string; s: ForecastSeries } => !!x.s && x.s.confidence !== null)
     .sort((a, b) => at(a.tag) - at(b.tag) || a.tag.localeCompare(b.tag))
     .map(({ tag, s }) => {
       const high = s.alarm !== null && limitIsHigh(s, s.alarm);
@@ -62,6 +64,15 @@ export function signalForecastRows(data: PrognosisData, defs: PlantDefs | null):
         alarmLate: crossing(s, h.hours, s.forecast),
       };
     });
+}
+
+/** The forecast reaches the alarm limit within the horizon (the rows shown red). */
+export const reachesAlarm = (r: SignalForecastRow) => r.alarmLate !== null;
+
+/** Alarm rows first, soonest (already past) on top; other rows keep their order. */
+export function alarmFirst(rows: SignalForecastRow[]): SignalForecastRow[] {
+  const at = (r: SignalForecastRow) => (reachesAlarm(r) ? (r.alarmLate as number) : Number.POSITIVE_INFINITY);
+  return rows.map((r, i) => ({ r, i })).sort((a, b) => at(a.r) - at(b.r) || a.i - b.i).map((x) => x.r);
 }
 
 const unitOf = (u: string) => (u && u !== "state" ? u : "");
@@ -95,7 +106,7 @@ function ForecastTrace({ row }: { row: SignalForecastRow }) {
     s.upper.map((v, i) => `L${xf(i).toFixed(1)},${y(v).toFixed(1)}`).join("") +
     [...s.lower].reverse().map((v, j) => `L${xf(s.lower.length - 1 - j).toFixed(1)},${y(v).toFixed(1)}`).join("") +
     "Z";
-  const reaches = row.alarmLate !== null;
+  const reaches = reachesAlarm(row);
   return (
     <svg
       className="pg-sf-trace"
@@ -137,11 +148,11 @@ export function SignalForecastTable({
         header: "Sensor",
         width: "220px",
         render: (r) => {
-          const hit = r.alarmLate !== null;
+          const hit = reachesAlarm(r);
           return (
             <span className="ast-cell-stack pg-sf-sensor" data-alarm={hit || undefined}>
               <button type="button" className="ast-cell-title pg-dx-tag" onClick={() => onOpenTrend(r.tag)} title={`Open the trend chart for this sensor (${r.tag})`}>
-                {r.name} ↗
+                {r.name} <span aria-hidden="true">↗</span>
               </button>
             </span>
           );
@@ -191,7 +202,7 @@ export function SignalForecastTable({
         key: "reach",
         header: "Reaches alarm limit",
         render: (r) => {
-          const hit = r.alarmLate !== null;
+          const hit = reachesAlarm(r);
           return (
             <span className="ast-num pg-sf-reach" data-alarm={hit || undefined}>
               {alarmText(r)}
@@ -202,5 +213,6 @@ export function SignalForecastTable({
     ],
     [onOpenTrend],
   );
-  return <Table className="pg-sf-table" columns={cols} data={rows} keyExtractor={(r) => r.tag} />;
+  const sorted = useMemo(() => alarmFirst(rows), [rows]);
+  return <Table className="pg-sf-table" columns={cols} data={sorted} keyExtractor={(r) => r.tag} />;
 }

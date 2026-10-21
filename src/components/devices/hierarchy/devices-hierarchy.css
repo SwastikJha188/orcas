@@ -29,7 +29,7 @@
 .dv-new {
   display: inline-flex;
   align-items: center;
-  padding: 0 7px;
+  padding: 0 8px;
   border-radius: var(--corner-pill);
   background: color-mix(in srgb, var(--signal-blue) 14%, transparent);
   color: var(--signal-blue);
@@ -62,7 +62,7 @@
 .dv-code {
   align-self: flex-start;
   max-width: 100%;
-  padding: 1px 6px;
+  padding: 1px 4px;
   border-radius: var(--corner-sm);
   background: var(--active-faint);
   color: var(--dx-ink);
@@ -74,7 +74,7 @@
 
 /* Small text action inside a KPI card ("Open" machine). */
 .dv-link {
-  padding: 2px 10px;
+  padding: 2px 8px;
   border: none;
   border-radius: var(--corner-pill);
   background: var(--active-faint);
@@ -121,7 +121,7 @@
 }
 
 .dv-action .btn-pill {
-  padding: 5px 14px;
+  padding: 4px 12px;
   font-size: var(--fs-md);
 }
 
@@ -144,7 +144,7 @@
 .ui-table tbody tr:hover .dv-reveal,
 .ui-table tbody tr:focus-within .dv-reveal,
 .dv-reveal:focus-visible,
-.dv-reveal:has([data-armed]) {
+.dv-reveal:has(.ui-confirm) {
   opacity: 1;
 }
 
@@ -155,14 +155,6 @@
 }
 
 /* ---------------------------------------------------------------- dialogs */
-.btn-pill.dv-danger {
-  color: var(--status-danger);
-}
-
-.btn-pill.dv-danger[data-armed] {
-  background: color-mix(in srgb, var(--status-danger) 14%, transparent);
-}
-
 @media (max-width: 640px) {
   .dv-summary {
     grid-template-columns: 1fr;
@@ -200,7 +192,7 @@ button.dv-chip:hover {
 }
 
 .dv-map-btn {
-  padding: 1px 10px;
+  padding: 1px 8px;
   border: none;
   border-radius: var(--corner-pill);
   background: var(--active-faint);
@@ -219,7 +211,7 @@ button.dv-chip:hover {
 .dv-listening {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
 }
 
 .dv-pulse {
@@ -287,7 +279,7 @@ button.dv-rack-name:hover {
 }
 
 .dv-rack-tail .btn-pill {
-  padding: 5px 14px;
+  padding: 4px 12px;
   font-size: var(--fs-md);
 }
 
@@ -316,7 +308,7 @@ button.dv-rack-name:hover {
   column-gap: 8px;
   row-gap: 1px;
   width: 100%;
-  padding: 8px 10px;
+  padding: 8px 8px;
   border: none;
   border-bottom: 1px solid var(--separator);
   background: transparent;
@@ -374,7 +366,7 @@ button.dv-tile-head:hover {
   grid-template-columns: minmax(28px, auto) minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 8px;
-  padding: 4px 10px;
+  padding: 4px 8px;
   font-size: var(--fs-sm);
 }
 
@@ -414,15 +406,15 @@ button.dv-tile-head:hover {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px 12px;
-  padding: 10px 14px;
+  gap: 8px 12px;
+  padding: 8px 12px;
   border-radius: var(--corner-row);
   background: var(--active-faint);
 }
 
 .dv-sub-preview {
   display: block;
-  padding: 7px 10px;
+  padding: 8px 8px;
   border-radius: var(--corner-sm);
   background: var(--active-faint);
   color: var(--dx-ink);
@@ -441,7 +433,7 @@ button.dv-tile-head:hover {
 }
 
 .dv-cardnav .nav-pill.active {
-  padding: 4px 14px;
+  padding: 4px 12px;
 }
 
 .dv-row[data-kind="card"] .ast-tree-name {
@@ -477,7 +469,7 @@ button.dv-tile-head:hover {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border-radius: var(--corner-row);
   border: 1px solid var(--border-subtle);
   background: var(--surface-bg);
@@ -505,7 +497,7 @@ button.dv-tile-head:hover {
 .dv-setup-block {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -513,7 +505,7 @@ button.dv-tile-head:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   font-size: var(--fs-sm);
   font-weight: 500;
   color: var(--text-muted);
@@ -526,7 +518,7 @@ button.dv-tile-head:hover {
 
 .dv-setup-code {
   margin: 0;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border-radius: var(--corner-row);
   border: 1px solid var(--separator);
   background: var(--workspace-bg);
@@ -567,19 +559,19 @@ button.dv-tile-head:hover {
 }
 
 .dv-section-head .btn-pill {
-  padding: 6px 16px;
+  padding: 4px 16px;
   font-size: var(--fs-md);
 }
 
 .dv-tile-name .dv-new {
-  margin-left: 6px;
+  margin-left: 8px;
 }
 
 .dv-topic-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px 8px;
+  gap: 8px 8px;
 }
 
 .dv-topic-row > .ui-input {
@@ -610,21 +602,21 @@ button.dv-tile-head:hover {
   padding: 0;
   list-style: none;
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
 
 .dv-connect-racks li {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: 4px 10px;
+  gap: 4px 12px;
   padding: 8px 12px;
   border-radius: var(--corner-row);
   background: var(--active-faint);
 }
 
 .dv-listening-compact {
-  gap: 10px;
+  gap: 12px;
 }
 
 /* Found gateways: a divider list of selectable rows. */
@@ -647,7 +639,7 @@ button.dv-tile-head:hover {
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border: none;
   border-radius: var(--corner-row);
   background: transparent;
@@ -714,7 +706,7 @@ button.dv-tile-head:hover {
 
 .hx-topic-detail {
   margin: 4px 12px 8px;
-  padding: 12px 14px;
+  padding: 12px 12px;
   border-radius: var(--corner-row);
   background: var(--active-faint);
   display: flex;
@@ -747,7 +739,7 @@ button.dv-tile-head:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px 6px;
+  padding: 8px 12px 4px;
 }
 
 .hx-topic-add .ui-input {

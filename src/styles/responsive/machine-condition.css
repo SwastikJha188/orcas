@@ -1,26 +1,4 @@
-/* Responsive layer — machine Diagnosis, Trends. See foundation.css for tiers and the :root prefix rule.
 
-   The shared frame (header, KPI strip, section index, section padding, frame
-   gap) belongs to machine-diagnostics.css. This file only re-arranges the
-   content inside the Diagnosis (pg-diag) and Trends (pg-trends) sections. Diagnosis alarms / evidence and the Trends signals,
-   compare and excursions sections are tile grids that reflow on their own;
-   only the remaining tables need rules here.
-
-   Tables
-     phone   Trends event/state tables turn every row into a stacked
-             two-line row (CSS grid on the <tr>). No table scrolls sideways
-             on a phone.
-     tablet  low-priority columns drop out.
-   Layout
-     wide    short sections pair up side by side (Trends signal | compare,
-             excursions | states).
-
-   Column indices below are the <th> order of each table (see the TSX). */
-
-/* ---- Phone: the evidence card head's pipe list wraps with a row gap. */
-@media (max-width: 599px) {
-  :root .pg-diag .pg-diag-card-head .pg-diag-pipe { row-gap: 4px; }
-}
 
 /* =====================================================================
    TRENDS
@@ -44,7 +22,7 @@
     display: none;
   }
   :root .pg-trends .pg-trends-table .ui-table td.pg-trends-msg { min-width: 220px; }
-  :root .pg-trends .pg-trends-table .ui-table :is(th, td) { padding-left: 10px; padding-right: 10px; }
+  :root .pg-trends .pg-trends-table .ui-table :is(th, td) { padding-left: 8px; padding-right: 8px; }
   :root .pg-trends .pg-trends-table .ui-table :is(td, th).pg-trends-strip-col { min-width: 160px; }
   :root .pg-trends .pg-trends-strip { min-width: 140px; }
 }

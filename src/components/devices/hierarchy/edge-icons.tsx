@@ -1,5 +1,5 @@
 import React from "react";
-import type { SourceKind } from "@/types/edge";
+import type { SourceKind } from "@shared/types/edge";
 
 /* ==========================================================================
    Device hierarchy icons: one outline glyph per level and source kind, drawn

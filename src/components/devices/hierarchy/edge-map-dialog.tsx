@@ -1,20 +1,22 @@
 "use client";
 
 import React, { useEffect, useId, useState } from "react";
-import { Dialog, Field, FieldGrid, FieldSection, FormNote, NumberInput, PillButton, Select, TextInput } from "@/components/ui";
+import { ConfirmAction, Dialog, Field, FieldGrid, FieldSection, FormNote, NumberInput, PillButton, Select, TextInput } from "@/components/ui";
 import { StatusTag } from "@/components/assets/assets-shell-ui";
 import { useEdge } from "@/providers/edge-context";
 import { useIndustrialData } from "@/providers/industrial-data-context";
-import { SOURCE_KINDS, SOURCE_KIND_LABEL, type EdgeMapResult, type EdgePoint, type SourceKind } from "@/types/edge";
-import type { MqttMeasurement } from "@/types/mqtt";
+import { SOURCE_KINDS, SOURCE_KIND_LABEL, type EdgeMapResult, type EdgePoint, type SourceKind } from "@shared/types/edge";
+import type { MqttMeasurement } from "@shared/types/mqtt";
 import { type EdgeIndex, READING_LABEL, READING_TONE, type ReadingStatus, sourcesOf } from "../edge-model";
-import { DeleteConfirm, machineOptions, numberOrNull, str } from "./edge-dialog-parts";
-import { fmt } from "./edge-tree-model";
+import { machineOptions, numberOrNull, str } from "./edge-dialog-parts";
+import { fmt, pointLabel } from "./edge-tree-model";
 
 /* ==========================================================================
    Map one channel (gateway › rack › card · channel) to a machine signal.
    The server creates the source if the rack is new, creates or updates the
-   point, and adds the tag to the machine's sensor list when it is new.
+   point, and adds the tag to the machine's sensor list when it is new. Name,
+   unit and limits are asked only for a new sensor: an existing one keeps its
+   own (the point stores only the link).
    ========================================================================== */
 
 export interface MapTarget {
@@ -27,11 +29,14 @@ export interface MapTarget {
   status: ReadingStatus;
 }
 
-interface MachineSensor {
+export interface MachineSensor {
   tag: string;
   name: string;
   unit: string;
 }
+
+/** Tags match whatever the case or stray spaces ("bt-101 " is BT-101). */
+export const sameTag = (a: string, b: string) => a.trim().toUpperCase() === b.trim().toUpperCase();
 
 type Errors = Partial<Record<"machineId" | "tag" | "name" | "alertLimit" | "dangerLimit" | "subassemblyId", string>>;
 
@@ -49,7 +54,7 @@ interface MachineComponent {
 }
 
 /** The machine's existing signal tags (for the tag picker) and its components (for a new sensor). */
-function useMachineSensors(machineId: string): { sensors: MachineSensor[]; components: MachineComponent[]; failed: boolean } {
+export function useMachineSensors(machineId: string): { sensors: MachineSensor[]; components: MachineComponent[]; failed: boolean } {
   const [state, setState] = useState<{ id: string; sensors: MachineSensor[]; components: MachineComponent[]; failed: boolean }>({ id: "", sensors: [], components: [], failed: false });
   useEffect(() => {
     if (!machineId) return;
@@ -87,11 +92,12 @@ export function MapDialog({ open, ix, target, onClose }: MapDialogProps) {
   const p = target.point;
 
   const [machineId, setMachineId] = useState(str(p?.machineId ?? source?.machineId));
-  const [tag, setTag] = useState(p?.signalTag ?? p?.tag ?? (m?.sensor ? toTag(m.sensor) : `${target.rack}-${target.card}-${target.channel}`));
+  const [tag, setTag] = useState(p?.tag ?? (m?.sensor ? toTag(m.sensor) : `${target.rack}-${target.card}-${target.channel}`));
   const [name, setName] = useState(p?.name ?? m?.sensor ?? `${target.rack} card ${target.card} ch ${target.channel}`);
   const [unit, setUnit] = useState(str(p?.unit ?? m?.unit));
-  const [alertLimit, setAlertLimit] = useState(str(p ? p.alertLimit : m?.alertThreshold));
-  const [dangerLimit, setDangerLimit] = useState(str(p ? p.dangerLimit : m?.dangerThreshold));
+  // A new sensor starts from the thresholds the gateway reports, when it sends them.
+  const [alertLimit, setAlertLimit] = useState(str(m?.alertThreshold));
+  const [dangerLimit, setDangerLimit] = useState(str(m?.dangerThreshold));
   const [kind, setKind] = useState<SourceKind>("rack");
 
   const [errors, setErrors] = useState<Errors>({});
@@ -99,14 +105,14 @@ export function MapDialog({ open, ix, target, onClose }: MapDialogProps) {
   const [failure, setFailure] = useState<string | null>(null);
   const [result, setResult] = useState<EdgeMapResult | null>(null);
   const { sensors, components, failed } = useMachineSensors(machineId);
-  const existing = sensors.find((s) => s.tag === tag.trim());
+  const existing = sensors.find((s) => sameTag(s.tag, tag));
   const [subassemblyId, setSubassemblyId] = useState("");
   const needsComponent = Boolean(machineId) && !existing && components.length > 1;
 
   const pickTag = (v: string) => {
-    setTag(v);
-    // Linking an existing signal takes its name and unit.
-    const hit = sensors.find((s) => s.tag === v.trim());
+    // Linking an existing signal takes its tag as stored, its name and its unit.
+    const hit = sensors.find((s) => sameTag(s.tag, v));
+    setTag(hit ? hit.tag : v);
     if (hit) {
       setName(hit.name);
       if (hit.unit) setUnit(hit.unit);
@@ -117,9 +123,11 @@ export function MapDialog({ open, ix, target, onClose }: MapDialogProps) {
     const e: Errors = {};
     if (!machineId) e.machineId = "Pick the machine this channel measures";
     if (!tag.trim()) e.tag = "Enter the sensor tag";
-    if (!name.trim()) e.name = "Enter a name";
-    if (Number.isNaN(numberOrNull(alertLimit))) e.alertLimit = "Must be a number";
-    if (Number.isNaN(numberOrNull(dangerLimit))) e.dangerLimit = "Must be a number";
+    if (!existing) {
+      if (!name.trim()) e.name = "Enter a name";
+      if (Number.isNaN(numberOrNull(alertLimit))) e.alertLimit = "Must be a number";
+      if (Number.isNaN(numberOrNull(dangerLimit))) e.dangerLimit = "Must be a number";
+    }
     if (needsComponent && !subassemblyId) e.subassemblyId = "Pick the component the new sensor sits on";
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -140,11 +148,8 @@ export function MapDialog({ open, ix, target, onClose }: MapDialogProps) {
         card: target.card,
         channel: target.channel,
         machineId,
-        tag: tag.trim(),
-        name: name.trim(),
-        unit: unit.trim() || null,
-        alertLimit: numberOrNull(alertLimit),
-        dangerLimit: numberOrNull(dangerLimit),
+        tag: existing?.tag ?? tag.trim(),
+        ...(existing ? {} : { name: name.trim(), unit: unit.trim() || null, alertLimit: numberOrNull(alertLimit), dangerLimit: numberOrNull(dangerLimit) }),
         ...(source ? {} : { sourceKind: kind }),
         ...(needsComponent ? { subassemblyId } : {}),
       });
@@ -185,7 +190,7 @@ export function MapDialog({ open, ix, target, onClose }: MapDialogProps) {
       width={600}
       title={p ? "Change machine link" : "Link channel to a machine"}
       subtitle={path}
-      footerStart={p && !result ? <DeleteConfirm label="Remove link" question={`Remove reading point ${p.tag}? The machine keeps its sensor.`} onDelete={unmap} disabled={busy} /> : undefined}
+      footerStart={p && !result ? <ConfirmAction label="Remove link" question={`Remove the link for channel ${pointLabel(p)}? The machine keeps its sensor.`} confirmLabel="Remove" onConfirm={unmap} disabled={busy} /> : undefined}
       footer={
         result ? (
           <>
@@ -240,7 +245,7 @@ export function MapDialog({ open, ix, target, onClose }: MapDialogProps) {
                 : failed
                   ? "Could not load the machine's tags; a typed tag still works"
                   : existing
-                    ? `Links to the existing sensor ${existing.tag}`
+                    ? `Links to the existing sensor ${existing.tag}${existing.name ? ` · ${existing.name}` : ""}; its name, unit and limits stay as they are`
                     : `New sensor; it is added to the machine's ${sensors.length} sensors`
             }
           >
@@ -283,20 +288,24 @@ export function MapDialog({ open, ix, target, onClose }: MapDialogProps) {
               )}
             </Field>
           )}
-          <Field label="Name" required error={errors.name}>
-            {(id, d) => <TextInput id={id} describedBy={d} value={name} onChange={setName} disabled={busy || Boolean(result)} />}
-          </Field>
-          <Field label="Unit">
-            {(id, d) => <TextInput id={id} describedBy={d} value={unit} onChange={setUnit} placeholder="mm/s" disabled={busy || Boolean(result)} />}
-          </Field>
-          <Field label={`Warning limit${unitSuffix}`} error={errors.alertLimit}>
-            {(id, d) => <NumberInput id={id} describedBy={d} value={alertLimit} onChange={setAlertLimit} step="any" disabled={busy || Boolean(result)} />}
-          </Field>
-          <Field label={`Alarm limit${unitSuffix}`} error={errors.dangerLimit}>
-            {(id, d) => <NumberInput id={id} describedBy={d} value={dangerLimit} onChange={setDangerLimit} step="any" disabled={busy || Boolean(result)} />}
-          </Field>
+          {!existing && (
+            <>
+              <Field label="Name" required error={errors.name}>
+                {(id, d) => <TextInput id={id} describedBy={d} value={name} onChange={setName} disabled={busy || Boolean(result)} />}
+              </Field>
+              <Field label="Unit">
+                {(id, d) => <TextInput id={id} describedBy={d} value={unit} onChange={setUnit} placeholder="mm/s" disabled={busy || Boolean(result)} />}
+              </Field>
+              <Field label={`Alert limit${unitSuffix}`} error={errors.alertLimit}>
+                {(id, d) => <NumberInput id={id} describedBy={d} value={alertLimit} onChange={setAlertLimit} step="any" disabled={busy || Boolean(result)} />}
+              </Field>
+              <Field label={`Critical limit${unitSuffix}`} error={errors.dangerLimit}>
+                {(id, d) => <NumberInput id={id} describedBy={d} value={dangerLimit} onChange={setDangerLimit} step="any" disabled={busy || Boolean(result)} />}
+              </Field>
+            </>
+          )}
           {!source && (
-            <Field label="Device type" hint={`${target.rack} is not registered yet; it is added as this type`} wide>
+            <Field label="Rack type" hint={`${target.rack} is not registered yet; it is added as this type`} wide>
               {(id, d) => (
                 <Select
                   id={id}
@@ -315,7 +324,7 @@ export function MapDialog({ open, ix, target, onClose }: MapDialogProps) {
       {failure && <FormNote tone="bad">{failure}</FormNote>}
       {result && (
         <FormNote tone="good">
-          Mapped to {result.point.machineId ?? machineId} · {result.point.signalTag ?? result.point.tag}
+          Mapped to {result.point.machineId ?? machineId} · {result.point.tag ?? tag}
           {notes.length ? ` (${notes.join("; ")})` : ""}
         </FormNote>
       )}

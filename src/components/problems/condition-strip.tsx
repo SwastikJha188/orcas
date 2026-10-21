@@ -11,6 +11,7 @@ import { revalidateApi, useApi } from "@/lib/api-cache";
 import { formatLocalTime } from "@/lib/time";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { conditionTone } from "@/components/ui/status";
+import { PillButton, PillNav } from "@/components/ui";
 import { StatusTag } from "@/components/assets/assets-shell-ui";
 import { CASES_CHANGED_EVENT, CaseApiError, VOCABULARY_URL, casesApi, conditionUrl, type CaseVocabulary, type ConditionStrip as ConditionData } from "./cases-api";
 import "./problems.css";
@@ -174,26 +175,26 @@ export function ConditionStrip({ plantId, machineId, onRecordAlarm }: { plantId:
               )}
             </div>
             <div className="prb-pop-filters">
-              <span className="prb-seg" role="group" aria-label="How serious">
-                {(["all", "Alert", "Critical"] as const).map((s) => (
-                  <button key={s} type="button" aria-pressed={severity === s} onClick={() => setSeverity(s)}>
-                    {s === "all" ? "All" : s}
-                  </button>
-                ))}
-              </span>
-              <span className="prb-seg" role="group" aria-label="Seen by someone">
-                {(
-                  [
-                    ["all", "All"],
-                    ["open", "Not acknowledged"],
-                    ["acked", "Acknowledged"],
-                  ] as const
-                ).map(([v, l]) => (
-                  <button key={v} type="button" aria-pressed={seen === v} onClick={() => setSeen(v)}>
-                    {l}
-                  </button>
-                ))}
-              </span>
+              <PillNav<SeverityFilter>
+                ariaLabel="How serious"
+                items={[
+                  { id: "all", label: "All" },
+                  { id: "Alert", label: "Alert" },
+                  { id: "Critical", label: "Critical" },
+                ]}
+                activeId={severity}
+                onChange={setSeverity}
+              />
+              <PillNav<SeenFilter>
+                ariaLabel="Seen by someone"
+                items={[
+                  { id: "all", label: "All" },
+                  { id: "open", label: "Not acknowledged" },
+                  { id: "acked", label: "Acknowledged" },
+                ]}
+                activeId={seen}
+                onChange={setSeen}
+              />
             </div>
             <p className="prb-pop-note">Acknowledging does not clear an alarm; it shows someone has seen it.</p>
             {ackError && (
@@ -233,9 +234,9 @@ export function ConditionStrip({ plantId, machineId, onRecordAlarm }: { plantId:
                               {time(a.ackedAt)}
                             </span>
                           ) : (
-                            <button type="button" className="prb-small-btn" disabled={busyKey === a.key} onClick={() => void acknowledge(a.kind, a.id, a.key)}>
-                              {busyKey === a.key ? "Saving…" : "Acknowledge"}
-                            </button>
+                            <PillButton variant="secondary" loading={busyKey === a.key} onClick={() => void acknowledge(a.kind, a.id, a.key)}>
+                              Acknowledge
+                            </PillButton>
                           )}
                         </td>
                       </tr>

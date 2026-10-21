@@ -9,7 +9,7 @@
  */
 import { invalidateApi, useApi } from "@/lib/api-cache";
 import { DISPLAY_MS } from "@/providers/kiln-simulation-context";
-import type { FindingDto, MachineEventDto, MeasurementDto, ReferenceSetDto } from "@/types/monitoring";
+import type { FindingDto, MachineEventDto, MeasurementDto, ReferenceSetDto } from "@shared/types/monitoring";
 
 type Envelope<T> = { data?: T; error?: { code: string; message: string } };
 

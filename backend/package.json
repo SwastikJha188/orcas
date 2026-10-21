@@ -1,0 +1,27 @@
+{
+  "name": "ultron-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../.env.local --clear-screen=false src/index.ts",
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --packages=external --sourcemap --outfile=dist/index.js",
+    "start": "node --env-file-if-exists=../.env.local --enable-source-maps dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.5",
+    "hono": "^4.13.13",
+    "mqtt": "^5.16.0",
+    "nodemailer": "^10.1.7",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "@types/nodemailer": "^8.0.2",
+    "@types/pg": "^8.23.1",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
+    "typescript": "^5.8.3"
+  }
+}

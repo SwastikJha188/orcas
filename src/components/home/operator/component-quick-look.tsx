@@ -15,7 +15,7 @@ import type { AssetsSubPage } from "@/components/assets/assets-view";
 import { KpiStrip, Section, type KpiItem } from "@/components/assets/analysis/an-ui";
 import { LINE_SHEET_BY_ID, lineSheetsForTags } from "@/components/assets/pyro/line-sheets";
 import { useKilnSimulationFor } from "@/providers/kiln-simulation-context";
-import { isConditionRule } from "@/lib/plant-defs";
+import { isConditionRule } from "@shared/lib/plant-defs";
 import { defsFor } from "@/lib/live-defs";
 import { displayName, nameIds } from "@/lib/display-name";
 import "./machine-quick-look.css";

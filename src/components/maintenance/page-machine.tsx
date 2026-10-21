@@ -2,19 +2,20 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { PillNav, conditionTone, rowActivate, toCondition, type Tone } from "@/components/ui";
-import { isConditionRule } from "@/lib/plant-defs";
-import { STAGE_LABEL, isOpenStage, planGenerates } from "@/lib/pms";
+import { isConditionRule } from "@shared/lib/plant-defs";
+import { STAGE_LABEL, isOpenStage, planGenerates, planKey } from "@shared/lib/pms";
 import { LINE_SHEET_ART, LINE_SHEET_BY_ID, LINE_SHEET_OF_TAG, lineSheetTags, lineSheetsForMachine } from "@/components/assets/pyro/line-sheets";
 import { LineSheet } from "@/components/assets/pyro/line-sheets/line-sheet";
 import { useKilnFleet } from "@/providers/kiln-simulation-context";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { formatLocalTime } from "@/lib/time";
-import type { PmsPlan, PlanTask } from "@/types/pms";
+import type { PmsPlan, PlanTask } from "@shared/types/pms";
 import { Empty, KpiStrip, Section } from "@/components/assets/analysis/an-ui";
 import type { PmsModel } from "./pms-model";
 import { dueStatus, machineName, planName, prognosisText, stageTone, useDefaultMachine, woRef } from "./pms-model";
 import { nameIds } from "@/lib/display-name";
 import { Loading } from "./page-overview";
+import { PlanJobDialog, type PlanJobDraft } from "./plan-job-dialog";
 import { StateWord, setPmsFocus, usePmsFocus, usePmsNav } from "./pms-ui";
 
 /* ==========================================================================
@@ -65,6 +66,8 @@ export function PageMachine({ pms, machineId: picked, onMachineChange }: { pms: 
   const [own, setOwn] = useState<string | null>(focus ? focus.slice(2) : null);
   const [part, setPart] = useState<string | null>(null);
   const [tag, setTag] = useState<string | null>(null);
+  // "Plan maintenance" on a fault: the plan-job form, prefilled from the fault.
+  const [planning, setPlanning] = useState<PlanJobDraft | null>(null);
   const controlled = Boolean(onMachineChange);
   const machineId = controlled ? (picked ?? own) : own;
   const setMachineId = (m: string) => (onMachineChange ? onMachineChange(m) : setOwn(m));
@@ -122,6 +125,8 @@ export function PageMachine({ pms, machineId: picked, onMachineChange }: { pms: 
   const taskIds = comp?.taskIds ?? new Set(plans.flatMap((p) => p.tasks.map((t) => t.id)));
   const relatedPlans = plans.filter((p) => p.tasks.some((t) => taskIds.has(t.id)));
   const records = data.records.filter((r) => r.machineId === id && taskIds.has(r.taskId)).slice(0, 8);
+  // Task names from the plans; the code stays in the tooltip.
+  const taskName = new Map(plans.flatMap((p) => p.tasks.map((t) => [t.id, t.component] as const)));
   const ruleIds = new Set(faults.map((r) => r.id));
   const allRuleTags = new Map((frame?.rules ?? []).map((r) => [r.id, r.tags]));
   const wos = data.workOrders.filter(
@@ -144,7 +149,7 @@ export function PageMachine({ pms, machineId: picked, onMachineChange }: { pms: 
   const cond = active ? toCondition(comp?.worst ?? null) : toCondition(frame?.condition ?? null);
   const nextDue = relatedPlans
     .filter(planGenerates)
-    .map((p) => ({ p, d: dues.get(p.id) }))
+    .map((p) => ({ p, d: dues.get(planKey(p)) }))
     .filter((x) => x.d?.dueAt)
     .sort((a, b) => a.d!.dueAt! - b.d!.dueAt!)[0];
   const when = (t: number | string) => formatLocalTime(t, { date: true, seconds: false, timeZone: tz.timeZone });
@@ -230,23 +235,40 @@ export function PageMachine({ pms, machineId: picked, onMachineChange }: { pms: 
             {faults.length === 0 && points.length > 0 && <p className="ast-caption pm-nofault">No active problem{active ? " on this part" : " on this machine"}.</p>}
             {faults.length > 0 && (
               <ul className="pm-list pm-faults">
-                {faults.map((r) => (
-                  <li key={r.id}>
-                    <StateWord label={r.plainTitle || r.name} tone={r.severity === "Critical" ? "bad" : "warn"} />
-                    <span className="ast-caption" title={`${r.name} (${r.id}) · ${r.evidence}`}>
-                      {nameIds(r.evidence, frame?.defs)} · {prognosisText(r.timeToLimit)}
-                    </span>
-                    <button
-                      type="button"
-                      className="pm-link pm-small"
-                      onClick={() => {
-                        nav("predictive");
-                      }}
-                    >
-                      Plan maintenance ›
-                    </button>
-                  </li>
-                ))}
+                {faults.map((r) => {
+                  // A fault that already has open work links to it instead of planning a second job.
+                  const linked = pms.openWos.find((w) => w.machineId === id && w.ruleId === r.id) ?? null;
+                  return (
+                    <li key={r.id}>
+                      <StateWord label={r.plainTitle || r.name} tone={r.severity === "Critical" ? "bad" : "warn"} />
+                      <span className="ast-caption" title={`${r.name} (${r.id}) · ${r.evidence}`}>
+                        {nameIds(r.evidence, frame?.defs)} · {prognosisText(r.timeToLimit)}
+                      </span>
+                      {linked ? (
+                        <button type="button" className="pm-link pm-small" onClick={() => { setPmsFocus(`w:${linked.id}`); nav("work"); }}>
+                          {woRef(linked.id)} ›
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="pm-link pm-small"
+                          onClick={() =>
+                            setPlanning({
+                              type: "predictive",
+                              machineId: id,
+                              ruleId: r.id,
+                              title: r.plainTodo || r.action,
+                              component: r.subs.join(", ") || active?.title || null,
+                              notes: [`${r.plainTitle || r.name}.`, `Evidence: ${nameIds(r.evidence, frame?.defs)}.`, r.cause ? `Likely cause: ${r.cause}.` : null].filter(Boolean).join(" "),
+                            })
+                          }
+                        >
+                          Plan maintenance ›
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
             {points.length > 0 ? (
@@ -294,12 +316,12 @@ export function PageMachine({ pms, machineId: picked, onMachineChange }: { pms: 
               ) : (
                 <ul className="pm-rows">
                   {relatedPlans.slice(0, 6).map((p: PmsPlan) => {
-                    const st = dueStatus(p, dues.get(p.id));
-                    const d = dues.get(p.id);
+                    const st = dueStatus(p, dues.get(planKey(p)));
+                    const d = dues.get(planKey(p));
                     const n = p.tasks.filter((t) => taskIds.has(t.id)).length;
                     return (
                       <li key={p.id}>
-                        <button type="button" className="pm-link" onClick={() => { setPmsFocus(`p:${p.id}`); nav("calendar"); }}>
+                        <button type="button" className="pm-link" onClick={() => { setPmsFocus(`p:${planKey(p)}`); nav("calendar"); }}>
                           {planName(p)}
                         </button>
                         <span className="ast-caption">{n} tasks</span>
@@ -310,7 +332,7 @@ export function PageMachine({ pms, machineId: picked, onMachineChange }: { pms: 
                 </ul>
               )}
               {relatedPlans.length > 6 && (
-                <button type="button" className="pm-link pm-small pm-more-link" onClick={() => { setPmsFocus(`p:${relatedPlans[6].id}`); nav("calendar"); }}>
+                <button type="button" className="pm-link pm-small pm-more-link" onClick={() => { setPmsFocus(`p:${planKey(relatedPlans[6])}`); nav("calendar"); }}>
                   {relatedPlans.length - 6} more rounds in Calendar ›
                 </button>
               )}
@@ -341,8 +363,8 @@ export function PageMachine({ pms, machineId: picked, onMachineChange }: { pms: 
                 <ul className="pm-rows">
                   {records.map((r) => (
                     <li key={r.id}>
-                      <span className="pm-row-title">
-                        {r.taskId} · {r.result === "NA" ? "Not applicable" : r.result === "Hold" ? "Needs follow-up" : r.result}
+                      <span className="pm-row-title" title={r.taskId}>
+                        {taskName.get(r.taskId) ?? r.taskId} · {r.result === "NA" ? "Not applicable" : r.result === "Hold" ? "Needs follow-up" : r.result}
                         {r.note ? <span className="ast-caption"> · {r.note}</span> : null}
                       </span>
                       <span className="ast-caption">{r.inspector ?? ""}</span>
@@ -355,6 +377,15 @@ export function PageMachine({ pms, machineId: picked, onMachineChange }: { pms: 
           </Section>
         </div>
       </div>
+
+      <PlanJobDialog
+        open={planning !== null}
+        draft={planning}
+        machineIds={data.machineIds}
+        title="Plan maintenance"
+        onClose={() => setPlanning(null)}
+        onPropose={pms.propose}
+      />
     </div>
   );
 }

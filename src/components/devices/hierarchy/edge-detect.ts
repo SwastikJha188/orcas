@@ -1,7 +1,7 @@
 import type { Tone } from "@/components/assets/assets-shell-ui";
-import { ULTRON_FORMAT_ID, naturalCompare, templateFilter } from "@/lib/edge-format";
-import type { EdgeCard, EdgeCommissionInput, EdgeFormat, EdgeGateway, EdgePoint, EdgeSource, SourceKind } from "@/types/edge";
-import type { MqttCard, MqttMeasurement, MqttRack } from "@/types/mqtt";
+import { ULTRON_FORMAT_ID, naturalCompare, templateFilter } from "@shared/lib/edge-format";
+import type { EdgeCard, EdgeCommissionInput, EdgeFormat, EdgeGateway, EdgePoint, EdgeSource, SourceKind } from "@shared/types/edge";
+import type { MqttCard, MqttMeasurement, MqttRack } from "@shared/types/mqtt";
 import {
   type EdgeIndex,
   type ReadingStatus,

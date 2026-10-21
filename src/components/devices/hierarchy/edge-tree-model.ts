@@ -1,7 +1,7 @@
 import type { Tone } from "@/components/assets/assets-shell-ui";
 import { shortName } from "@/components/assets/hierarchy/hierarchy-model";
-import { naturalCompare } from "@/lib/edge-format";
-import type { EdgeGateway, EdgePoint, EdgeRegistry, EdgeSource, SourceKind } from "@/types/edge";
+import { naturalCompare } from "@shared/lib/edge-format";
+import type { EdgeGateway, EdgePoint, EdgeRegistry, EdgeSource, SourceKind } from "@shared/types/edge";
 import {
   type DiscoveredGateway,
   type EdgeIndex,
@@ -119,7 +119,7 @@ export const KIND_PLURAL: Record<SourceKind, [string, string]> = {
 export function sourceMatches(ix: EdgeIndex, src: EdgeSource, q: string): boolean {
   if (!q) return true;
   if (has(q, src.code, src.name, src.kind, KIND_PLURAL[src.kind][0], src.protocol, src.endpoint)) return true;
-  return pointsOf(ix, src.id).some((p) => has(q, p.tag, p.name));
+  return pointsOf(ix, src.id).some((p) => has(q, p.tag, p.name, p.sourceTag));
 }
 
 export function gatewayMatches(gw: EdgeGateway, q: string): boolean {
@@ -149,7 +149,7 @@ export function sortGateways(list: EdgeGateway[]): EdgeGateway[] {
 }
 
 export function sortPoints(list: EdgePoint[]): EdgePoint[] {
-  return [...list].sort((a, b) => naturalCompare(a.slot, b.slot) || naturalCompare(a.channel, b.channel) || a.tag.localeCompare(b.tag));
+  return [...list].sort((a, b) => naturalCompare(a.slot, b.slot) || naturalCompare(a.channel, b.channel) || pointLabel(a).localeCompare(pointLabel(b)));
 }
 
 // ---------------------------------------------------------------- summaries
@@ -205,7 +205,7 @@ export function fmt(n: number | null | undefined): string {
   return n === null || n === undefined || !Number.isFinite(n) ? "—" : nf.format(n);
 }
 
-export function limitText(p: EdgePoint): string | null {
-  if (p.alertLimit === null && p.dangerLimit === null) return null;
-  return `${fmt(p.alertLimit)} / ${fmt(p.dangerLimit)}`;
+/** A point's name in lists: its measurement's tag, else its plant tag, else its card and channel. */
+export function pointLabel(p: EdgePoint): string {
+  return p.tag ?? p.sourceTag ?? `Card ${p.slot} · Ch ${p.channel}`;
 }

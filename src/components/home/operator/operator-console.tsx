@@ -34,8 +34,11 @@ import { useMachineComponents, type Component as MachineComponent } from "@/comp
 import { KilnSubAssemblyArt } from "@/components/assets/kiln-component-diagrams";
 import { useContentBox } from "@/components/assets/use-content-box";
 import { calloutElbowPath, calloutLeaderPath, layoutSensorCallouts } from "@/components/assets/sensor-callout-layout";
-import { usePxPerUnit, useStageLayout } from "@/components/assets/pyro/line-sheets/stage-callouts";
+import { stageMetrics, usePxPerUnit, useStageLayout } from "@/components/assets/pyro/line-sheets/stage-callouts";
+import { useArtBusyMap } from "@/components/assets/art-busy-map";
+import { PartBlock, blockMetrics, clusterPads, layoutPartBlocks, linkColor, rowLeader, type PartGroup } from "./part-blocks";
 import { MachineHealthShade, useSheetBox } from "@/components/assets/pyro/line-sheets/line-sheet";
+import { HealthOutline, type OutlineOwner } from "@/components/assets/pyro/line-sheets/health-outline";
 import { MX, MachinePad, MachineSvg } from "@/components/assets/machine-kit/machine-kit";
 import {
   LINE_SHEET_ART,
@@ -49,21 +52,21 @@ import { KpiStrip, Section, scrollToSection, type KpiItem } from "@/components/a
 import { useOverviewDigest, type OverviewDigest } from "@/components/assets/overview-digest";
 import { OV_SECTIONS, OVERVIEW_SECTION_KEY, OvAreasSection, OvOperatingSection, areaRows } from "@/components/assets/overview-sections";
 import type { KilnSimulation } from "@/components/assets/kiln-seals-simulation";
-import { formatClock, type LiveSignal, type SimFrame } from "@/lib/kiln-sim/engine";
+import { formatClock, type LiveSignal, type SimFrame } from "@shared/lib/kiln-sim/engine";
 import { OperatorAlarmLog, OperatorTrendPanel, rateFromSamples, useLatchedAlarms } from "./operator-telemetry";
-import { ValuePill, pillContentWidth, type PillContent, type RunState } from "./value-pill";
+import { ValuePill, pillContentWidth, stateWords, type PillContent, type RunState } from "./value-pill";
 import { hmiLabel } from "@/lib/hmi-label";
 import { LineHealthLayer, LineHealthTint, type LineHealthCell } from "./line-health-layer";
 import { AlertPopupLayer, AlertPopupToggle, useAlertPopupControl, type AlertPopupControl } from "./alert-popups";
 import { ComponentQuickLook } from "./component-quick-look";
 import { componentOptions, type ComponentOption } from "@/components/assets/component-scope";
 import { MachineQuickLook } from "./machine-quick-look";
-import type { HealthPoint } from "@/lib/health-recorder";
+import type { HealthPoint } from "@shared/lib/health-recorder";
 import { isLiveMachine, useKilnFleet, useKilnSimulationFor, usePlantEngineOf, usePrimaryMachineId } from "@/providers/kiln-simulation-context";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { defsFor } from "@/lib/live-defs";
 import { useHealthModels, type HealthBands } from "@/lib/reference-data";
-import { isConditionRule } from "@/lib/plant-defs";
+import { isConditionRule } from "@shared/lib/plant-defs";
 import { conditionSummary, HEALTH_TARGET, type HomeActivity, type HomeAlert } from "../home-widgets";
 import type { MapView } from "../plant-home";
 import { focusLayer, focusSensorOn } from "@/components/assets/sensor-focus";
@@ -243,6 +246,8 @@ interface ResolvedTag {
   sp: string | null;
   /** Run state of the drive this point is the run feedback of; null for every other point. */
   run: RunState | null;
+  /** Sub-assembly the point measures (id unique across machines, name from the machine's defs); null when unknown. */
+  part: { id: string; name: string } | null;
 }
 
 /** Run feedback point of each unit: its motor current / power, else its speed, else its first point. */
@@ -370,6 +375,13 @@ function useTagResolver(activeMachineId: string | null, activeFrame: SimFrame | 
         bandPct,
         ownerId: ownerId ?? otherId ?? null,
         short: hmiLabel(def?.name ?? catalog?.name ?? ""),
+        part: (() => {
+          const sub = def && "sub" in def && typeof def.sub === "string" ? def.sub : null;
+          if (!sub) return null;
+          const owner = ownerId ?? otherId ?? null;
+          const name = (srcFrame?.defs ?? defsFor(owner))?.subassemblies.find((x) => x.id === sub)?.name ?? sub;
+          return { id: `${owner}:${sub}`, name };
+        })(),
         sp: live && spVal !== null && Number.isFinite(spVal) ? spVal.toFixed(spDec) : null,
         run: runStateOf(srcFrame, tag),
       };
@@ -434,8 +446,13 @@ export function OperatorConsole({
   let contextMachines: AssetMachine[] | undefined;
   let selectComponent: (machineId: string, subId: string | null) => void = () => undefined;
   let contextSelectedComponentId: string | null = null;
+  let navigateToLine: ((page: "diagnosis" | "prognosis" | "analysis") => void) | undefined;
+  // Practice faults (simulation) belong to the Oswar super administrator alone.
+  let canSimulate = false;
   try {
     const dataContext = useIndustrialData();
+    navigateToLine = dataContext.navigateToLine;
+    canSimulate = Boolean(dataContext.currentUser?.role.allPlants);
     contextSubPage = dataContext.activeSubPage;
     contextSetSubPage = dataContext.setActiveSubPage;
     contextSelectedMachineId = dataContext.selectedMachineId;
@@ -1291,6 +1308,19 @@ export function OperatorConsole({
     resetZoom();
   };
 
+  // The top bar's logo: back to the Full line, closing whatever unit, sheet or popup was open.
+  const openFullLineRef = useRef<() => void>(() => undefined);
+  openFullLineRef.current = () => {
+    if (focusMachine) return;
+    setTrendModalTag(null);
+    handleSelectUnitById(null);
+  };
+  useEffect(() => {
+    const onOpenFullLine = () => openFullLineRef.current();
+    window.addEventListener("ultron:open-full-line", onOpenFullLine);
+    return () => window.removeEventListener("ultron:open-full-line", onOpenFullLine);
+  }, []);
+
   /* ------------------------------------------------------ key figures (for Sub-assembly / Operating point / Status by area) */
   const hasDigestData = digestSensors.length > 0 || digestGroups.rows.length > 0 || isLiveHealth;
   const offNormalCount = digestCounts.Alert + digestCounts.Critical;
@@ -1490,6 +1520,54 @@ export function OperatorConsole({
     effectiveMainPage === "overview" &&
     effectiveSubpage === "machine";
 
+  // Navbar 2's pills scroll sideways when the row runs short: keep the active one in view.
+  const subbarRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    subbarRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [detailSheetId, detailPartId, activeMachineId, isFullLine]);
+
+  // The sheet's key and its controls (messages, zoom, full screen) sit at the right end of navbar 2, off the
+  // drawing; in full screen, where the navbars are hidden, they float on the drawing's bottom edge instead.
+  const drawingTools = (
+    <>
+      {activeSheetId && !isFullLine && <SheetKey />}
+      <div className="opc-stage-toggles opc-canvas-controls" role="toolbar" aria-label="Drawing controls">
+        {activeSheetId && <AlertPopupToggle control={popupControl} activeCount={viewAlertCount} />}
+        <div className="opc-zoom-group" role="group" aria-label="Drawing zoom">
+          <button
+            type="button"
+            className="opc-zoom-btn"
+            onClick={() => setZoom((z) => clampZoom(z - 0.15))}
+            aria-label="Zoom out"
+          >
+            −
+          </button>
+          <button
+            type="button"
+            className="opc-zoom-btn opc-zoom-pct ast-num"
+            onClick={resetZoom}
+            title="Back to normal size"
+          >
+            {Math.round(zoom * 100)}%
+          </button>
+          <button
+            type="button"
+            className="opc-zoom-btn"
+            onClick={() => setZoom((z) => clampZoom(z + 0.15))}
+            aria-label="Zoom in"
+          >
+            +
+          </button>
+          <button type="button" className="opc-zoom-btn" onClick={toggleFullscreen} aria-label="Full screen" title="Full screen (press Esc to leave)">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
+              <path d="M1 4.5V1h3.5M7.5 1H11v3.5M11 7.5V11H7.5M4.5 11H1V7.5" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </>
+  );
+
   return (
     <div
       className="opc-shell"
@@ -1528,7 +1606,7 @@ export function OperatorConsole({
                   Left: Sub-assembly pill buttons + `1/N ‹ ›` stepper (no dropdowns)
                   Right: Next/Prev Layer buttons (on subpages) or Canvas Zoom (`− 100% +`)
                   ============================================================ */}
-              <div className="opc-subbar" role="region" aria-label="Machine parts and drawing controls">
+              <div ref={subbarRef} className="opc-subbar" role="region" aria-label="Machine parts and drawing controls">
                 <div className="opc-stage-tabs">
                   {!isFullLine && unitSheets.length > 1 ? (
                     <>
@@ -1669,7 +1747,7 @@ export function OperatorConsole({
                       )}
                     </>
                   ) : (
-                    <div className="opc-pill-group" role="tablist" aria-label="Machines on the line">
+                    <div className="opc-pill-group opc-subassembly-pills" role="tablist" aria-label="Machines on the line">
                       <button
                         type="button"
                         role="tab"
@@ -1701,41 +1779,7 @@ export function OperatorConsole({
                     </div>
                   )}
                 </div>
-
-                <div className="opc-stage-toggles">
-                  {activeSheetId && <AlertPopupToggle control={popupControl} activeCount={viewAlertCount} />}
-                  <div className="opc-zoom-group" role="group" aria-label="Drawing zoom">
-                    <button
-                      type="button"
-                      className="opc-zoom-btn"
-                      onClick={() => setZoom((z) => clampZoom(z - 0.15))}
-                      aria-label="Zoom out"
-                    >
-                      −
-                    </button>
-                    <button
-                      type="button"
-                      className="opc-zoom-btn opc-zoom-pct ast-num"
-                      onClick={resetZoom}
-                      title="Back to normal size"
-                    >
-                      {Math.round(zoom * 100)}%
-                    </button>
-                    <button
-                      type="button"
-                      className="opc-zoom-btn"
-                      onClick={() => setZoom((z) => clampZoom(z + 0.15))}
-                      aria-label="Zoom in"
-                    >
-                      +
-                    </button>
-                    <button type="button" className="opc-zoom-btn" onClick={toggleFullscreen} aria-label="Full screen" title="Full screen (press Esc to leave)">
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
-                        <path d="M1 4.5V1h3.5M7.5 1H11v3.5M11 7.5V11H7.5M4.5 11H1V7.5" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
+                {!paneFullscreen && <div className="opc-subbar-tools">{drawingTools}</div>}
               </div>
 
               {/* ============================================================
@@ -1744,14 +1788,18 @@ export function OperatorConsole({
                   health summary and all direct popup (`↗`) & page-link (`→`)
                   buttons fit comfortably across their own row without clipping.
                   ============================================================ */}
-              {/* Full line: the plant's status and the page toggle (pages open on the machine needing attention). */}
+              {/* Full line: the plant's status and the page toggle. Diagnosis, Prognosis and Analysis open the
+                  whole line's pages in Assets; Sensors stays a machine page (the machine needing attention most). */}
               {isFullLine && !focusMachine && (
                 <PlantStatusBar
                   label="Full line"
                   status={plantStatus}
                   active="overview"
                   onSelect={(page) => {
-                    if (page !== "overview" && plantStatus.focusMachineId) onNavigateToMachine(plantStatus.focusMachineId, page);
+                    if (page === "overview") return;
+                    if (page === "sensors") {
+                      if (plantStatus.focusMachineId) onNavigateToMachine(plantStatus.focusMachineId, page);
+                    } else navigateToLine?.(page);
                   }}
                 />
               )}
@@ -1861,6 +1909,7 @@ export function OperatorConsole({
                       </button>
                     )}
 
+                    {paneFullscreen && drawingTools}
                     {activeSheetId ? (
                       <SheetMimicCanvas
                         sheetId={activeSheetId}
@@ -2271,7 +2320,7 @@ export function OperatorConsole({
                 />
               )}
 
-              {activeDetailModal === "simulation" && (
+              {activeDetailModal === "simulation" && canSimulate && (
                 <SimulationView simulation={kilnSimulation ?? null} />
               )}
             </div>
@@ -2700,14 +2749,33 @@ function UnifiedGroupList({
 function pillContentOf(res: ResolvedTag, mode: PointLabelMode): PillContent {
   return {
     label: mode === "tag-value" ? displayName(res.name) : res.short,
-    value: `${res.display}${res.available && res.unit ? ` ${res.unit}` : ""}`,
+    value: res.isState ? stateWords(res.display) : `${res.display}${res.available && res.unit ? ` ${res.unit}` : ""}`,
     sp: res.sp ? `${res.sp}` : null,
     run: res.run,
+    state: res.isState,
   };
 }
 
 /** One value block for several points (the sheet's `averages`): their mean, the worst member status, the members' mean trend. */
 function averageResolved(key: string, label: string, members: ResolvedTag[]): ResolvedTag {
+  // A block of on/off states (six spray circuits) shows their one shared state; the canvas expands it back
+  // into its members as soon as one differs or is abnormal (stateBlockSplits), so a mean is never needed.
+  if (members.length && members.every((m) => m.isState)) {
+    const first = members[0];
+    const status = members.some((m) => m.status === "Critical") ? "Critical" : members.some((m) => m.status === "Alert") ? "Alert" : "Normal";
+    const available = members.every((m) => m.available);
+    return {
+      ...first,
+      tag: key,
+      available,
+      name: `${label.charAt(0)}${label.slice(1).toLowerCase()} (${members.length} points)`,
+      status,
+      tone: !available ? "idle" : status === "Critical" ? "bad" : status === "Alert" ? "warn" : "good",
+      short: label,
+      sp: null,
+      run: null,
+    };
+  }
   const live = members.filter((m) => m.available && m.numValue !== null);
   const first = members[0];
   const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
@@ -2746,6 +2814,55 @@ function averageResolved(key: string, label: string, members: ResolvedTag[]): Re
     sp: null,
     run: null,
   };
+}
+
+/**
+ * What the marks on a machine sheet mean, in the sheet's corner (Recognition over recall): a measuring
+ * point is a quiet ring while Normal and fills in its status colour when not; a drive's run dot is filled
+ * while it runs and hollow when stopped.
+ */
+function SheetKey() {
+  return (
+    <div className="opc-sheet-key" role="note" aria-label="What the marks mean">
+      <span>
+        <svg viewBox="0 0 12 12" aria-hidden="true">
+          <circle cx="6" cy="6" r="3.6" fill="none" stroke="var(--mx-label)" strokeWidth="1.4" />
+        </svg>
+        Normal
+      </span>
+      <span>
+        <svg viewBox="0 0 12 12" aria-hidden="true">
+          <circle cx="6" cy="6" r="4.2" fill="var(--status-warning)" />
+        </svg>
+        Alert
+      </span>
+      <span>
+        <svg viewBox="0 0 12 12" aria-hidden="true">
+          <circle cx="6" cy="6" r="4.2" fill="var(--status-danger)" />
+        </svg>
+        Critical
+      </span>
+      <span className="opc-sheet-key-sep" aria-hidden="true" />
+      <span>
+        <svg viewBox="0 0 12 12" aria-hidden="true">
+          <circle cx="6" cy="6" r="3.4" fill="var(--dx-ink)" />
+        </svg>
+        Running
+      </span>
+      <span>
+        <svg viewBox="0 0 12 12" aria-hidden="true">
+          <circle cx="6" cy="6" r="3.2" fill="none" stroke="var(--dx-ink)" strokeWidth="1.2" />
+        </svg>
+        Stopped
+      </span>
+    </div>
+  );
+}
+
+/** A block of states splits into its members when they disagree or any is not Normal; numeric blocks never split. */
+function stateBlockSplits(members: ResolvedTag[]): boolean {
+  if (!members.length || !members.every((m) => m.isState)) return false;
+  return members.some((m) => m.status !== "Normal") || new Set(members.map((m) => m.display)).size > 1;
 }
 
 const NO_CLOSED: ReadonlySet<string> = new Set();
@@ -2798,6 +2915,8 @@ function SheetMimicCanvas({
   const art = LINE_SHEET_ART[sheetId];
   const meta = LINE_SHEET_BY_ID[sheetId];
   const [hoverTag, setHoverTag] = useState<string | null>(null);
+  /** Readout block whose header is hovered: its part is outlined on the drawing. */
+  const [hoverPart, setHoverPart] = useState<string | null>(null);
   const [panning, setPanning] = useState(false);
   const dragRef = React.useRef<{ x: number; y: number; px: number; py: number } | null>(null);
 
@@ -2817,9 +2936,24 @@ function SheetMimicCanvas({
     () => new Map(Object.entries(averages ?? {}).flatMap(([key, a]) => a.tags.map((t) => [t, key] as const))),
     [averages],
   );
+  // A block of states stays one plate only while every member agrees and is Normal (Miller); otherwise its
+  // members show on their own pads, so the odd one out is where it is (progressive disclosure on anomaly).
+  const splitKey = useMemo(
+    () =>
+      Object.entries(averages ?? {})
+        .filter(([, a]) => stateBlockSplits(a.tags.map(resolveMember)))
+        .map(([key]) => key)
+        .join("|"),
+    [averages, resolveMember],
+  );
+  const split = useMemo(() => new Set(splitKey ? splitKey.split("|") : []), [splitKey]);
+  const blockFor = useCallback((t: string) => {
+    const k = blockOf.get(t);
+    return k && !split.has(k) ? k : null;
+  }, [blockOf, split]);
   const visibleTags = useMemo(
-    () => [...new Set(sheetTags.map((t) => blockOf.get(t) ?? t))].filter((t) => Boolean(activePads[t])),
-    [sheetTags, blockOf, activePads],
+    () => [...new Set(sheetTags.map((t) => blockFor(t) ?? t))].filter((t) => Boolean(activePads[t])),
+    [sheetTags, blockFor, activePads],
   );
   const resolveTag = useCallback(
     (tag: string): ResolvedTag => {
@@ -2828,17 +2962,79 @@ function SheetMimicCanvas({
     },
     [averages, resolveMember],
   );
-  /** A block opens its first member; a member selected elsewhere lights its block. */
-  const selectTag = (tag: string) => onSelectTag(averages?.[tag]?.tags[0] ?? tag);
-  const selectedKey = selectedTag ? blockOf.get(selectedTag) ?? selectedTag : null;
   // Stage and part sheets with authored slots: readings embedded as plates on their pads, text at a readable on-screen size.
   const isStage = Boolean(art?.callouts) && meta?.kind !== "line";
   const [pxPerUnit, wrapRef, canvasAspect] = usePxPerUnit(artBox);
+
+  /** A block opens its first member; a member selected elsewhere lights its block. */
+  const selectTag = (tag: string) => onSelectTag(averages?.[tag]?.tags[0] ?? tag);
+  const selectedKey = selectedTag ? blockFor(selectedTag) ?? selectedTag : null;
   const stageWidth = useCallback(
     (tag: string, sz: number) => pillContentWidth(pillContentOf(resolveTag(tag), pointLabelMode), sz),
     [resolveTag, pointLabelMode],
   );
-  const stage = useStageLayout(art, isStage ? visibleTags : [], artBox, pxPerUnit, stageWidth, canvasAspect);
+  // Stage sheets show their readings as one readout block per part (part-blocks.tsx), so the layout of
+  // single plates runs only for the other sheet kinds.
+  const stage = useStageLayout(art, [], artBox, pxPerUnit, stageWidth, canvasAspect);
+  const sheetW = art?.width ?? 1654;
+  const sheetH = art?.height ?? 774;
+  const busy = useArtBusyMap(art && isStage ? `art:v3:${art.id}` : null, art?.Art, sheetW, sheetH);
+  const bm = useMemo(() => blockMetrics(stageMetrics(pxPerUnit, sheetW, visibleTags.length).fontSz), [pxPerUnit, sheetW, visibleTags.length]);
+  const blockSpace = useMemo<[number, number, number, number]>(() => {
+    const [x, y, w, h] = artBox;
+    if (!canvasAspect) return [x, y, w, h];
+    const W = Math.max(w, h * canvasAspect);
+    const H = Math.max(h, w / canvasAspect);
+    const pad = bm.rowH * 0.6;
+    return [x - (W - w) / 2 + pad, y - (H - h) / 2 + pad, W - 2 * pad, H - 2 * pad];
+  }, [artBox, canvasAspect, bm.rowH]);
+  const blockLayout = useMemo(() => {
+    if (!isStage || !art) return null;
+    const pads = art.pads;
+    const points = visibleTags
+      .filter((t) => pads[t])
+      .map((tag) => {
+        const res = resolveTag(tag);
+        const c = pillContentOf(res, pointLabelMode);
+        return { tag, px: pads[tag][0], py: pads[tag][1], part: res.part, row: { tag, label: c.label, value: c.value, tone: res.tone, run: res.run, state: Boolean(c.state), sp: c.sp } };
+      })
+      // "Alerts only" keeps the rows that need a look.
+      .filter((p) => pointLabelMode !== "alerts" || p.row.tone === "warn" || p.row.tone === "bad");
+    const byPart = new Map<string, typeof points>();
+    for (const p of points) {
+      const key = p.part?.id ?? `tag:${p.tag}`;
+      byPart.set(key, [...(byPart.get(key) ?? []), p]);
+    }
+    const groups: PartGroup[] = [];
+    for (const [key, pts] of byPart) {
+      // A part spread over the sheet (a tyre on the shell and its station plan below) gets one block per cluster.
+      clusterPads(pts, sheetW / 11).forEach((cluster, k) => {
+        groups.push({ id: `${key}#${k}`, name: cluster[0].part?.name ?? "", rows: cluster.map((p) => p.row), pads: cluster.map((p) => [p.px, p.py]) });
+      });
+    }
+    return layoutPartBlocks(groups, artBox, blockSpace, bm, busy, points.map((p) => [p.px, p.py]));
+  }, [isStage, art, visibleTags, resolveTag, pointLabelMode, sheetW, artBox, blockSpace, bm, busy]);
+  const blockOfTag = useMemo(() => {
+    const map = new Map<string, (typeof blockLayout extends null ? never : NonNullable<typeof blockLayout>)["blocks"][number]>();
+    for (const b of blockLayout?.blocks ?? []) for (const r of b.group.rows) map.set(r.tag, b);
+    return map;
+  }, [blockLayout]);
+  // Stage sheets carry no part areas, so the hovered part is the equipment around its own pads: the traced
+  // outline within a square about each pad, in the part's worst status colour.
+  const hotBlock = hoverPart ? blockLayout?.blocks.find((b) => b.group.id === hoverPart) ?? null : null;
+  const hotOwners = useMemo<OutlineOwner[]>(() => {
+    if (!hotBlock) return [];
+    const rows = hotBlock.group.rows;
+    const tone = rows.some((r) => r.tone === "bad") ? "bad" : rows.some((r) => r.tone === "warn") ? "warn" : rows.some((r) => r.tone === "good") ? "good" : null;
+    const r = (60 * sheetW) / 1654;
+    return hotBlock.group.pads.map(([x, y]) => ({ box: [x - r, y - r, 2 * r, 2 * r], tone }));
+  }, [hotBlock, sheetW]);
+  const titleOf = (tag: string) => {
+    const res = resolveTag(tag);
+    return `${displayName(res.name)}: ${res.display} ${res.unit} (normal ${res.normalBand}; changing ${res.rocMinDisplay})`;
+  };
+  /** Pads of a stage sheet: every visible point on its authored pad. */
+  const stagePads = useMemo(() => (isStage && art ? visibleTags.filter((t) => art.pads[t]).map((tag) => ({ tag, px: art.pads[tag][0], py: art.pads[tag][1] })) : []), [isStage, art, visibleTags]);
   const isDenseLine = visibleTags.length > 80 && !isStage;
   const isDetailSheet = meta?.kind === "detail";
   // The line sheet carries few points over a wide drawing: larger blocks, read across the room.
@@ -2872,7 +3068,8 @@ function SheetMimicCanvas({
       { cardH, padR, gapX: isDetailSheet ? 6 : 4, gapY: isDetailSheet ? 4.5 : 3 },
     );
   }, [isStage, visibleTags, activePads, artBox, resolveTag, pointLabelMode, fontSz, padW, cardH, padR, isDetailSheet]);
-  const { callouts, viewBox: vb } = auto ?? stage;
+  const { callouts, viewBox: stageVb } = auto ?? stage;
+  const vb = blockLayout?.viewBox ?? stageVb;
 
   if (!art || !meta) return null;
   const Art = art.Art;
@@ -2907,7 +3104,7 @@ function SheetMimicCanvas({
     if (Math.abs(next - 1) < 0.05) onChangePan({ x: 0, y: 0 });
   };
 
-  const padLayer = callouts.map((c) => {
+  const padLayer = (isStage ? stagePads : callouts).map((c) => {
             const res = resolveTag(c.tag);
             const isSel = selectedKey === c.tag;
             const isHot = isSel || hoverTag === c.tag;
@@ -2933,7 +3130,7 @@ function SheetMimicCanvas({
                 <g transform={`translate(${c.px} ${c.py})`}>
                   <circle r={isDenseLine ? 8 : isDetailSheet ? 14 : 10} fill="transparent" />
                   {res.available ? (
-                    <MachinePad x={0} y={0} status={res.status} selected={isHot} scale={padScale} />
+                    <MachinePad x={0} y={0} status={res.status} selected={isHot} scale={padScale} quiet />
                   ) : (
                     <circle r={isDenseLine ? 3.2 : isDetailSheet ? 5.5 : 4.2} fill={MX.padPanel} stroke={MX.fine} strokeWidth={1.3} />
                   )}
@@ -3031,6 +3228,66 @@ function SheetMimicCanvas({
 
           {/* Sensor pads (stage sheets: on top of their embedded plates) */}
           {!isStage && padLayer}
+
+          {/* Stage sheets: one readout block per part, beside its pads; the hovered or selected row is linked to its pad. */}
+          {blockLayout && (
+            <g className="opc-part-blocks">
+              {blockLayout.blocks.map((b) => (
+                <PartBlock
+                  key={b.group.id}
+                  block={b}
+                  m={bm}
+                  hoverTag={hoverTag}
+                  selectedTag={selectedKey}
+                  partHot={hoverPart === b.group.id}
+                  dimmed={Boolean(hotBlock) && hotBlock !== b}
+                  onHover={setHoverTag}
+                  onHoverPart={setHoverPart}
+                  onSelect={selectTag}
+                  titleOf={titleOf}
+                />
+              ))}
+              {/* Hovered block header: the other blocks fade back and its part is outlined and its pads ringed above
+                  them, so no block hides it; a copy of the hovered block sits on top (the original keeps the pointer).
+                  The trace stays mounted so the hover is instant. */}
+              <g style={{ ["--mx-health-w" as string]: 1.8 }}>
+                <HealthOutline art={art} owners={hotOwners} mute={false} />
+              </g>
+              {hotBlock && (
+                <g pointerEvents="none" aria-hidden="true">
+                  {hotBlock.group.pads.map(([x, y], i) => (
+                    <circle key={i} cx={x} cy={y} r={bm.fontSz * 0.95} fill="none" stroke={linkColor(hotBlock.group.rows[i]?.tone ?? "idle")} strokeWidth={bm.fontSz * 0.24} />
+                  ))}
+                  <PartBlock block={hotBlock} m={bm} hoverTag={hoverTag} selectedTag={selectedKey} partHot dimmed={false} onHover={() => {}} onHoverPart={() => {}} onSelect={() => {}} titleOf={titleOf} />
+                </g>
+              )}
+              {/* The link, above the blocks and the drawing, in the reading's status colour (Normal green, Alert amber,
+                  Critical red): a line on a halo, a dot at the row, a ring on the pad. */}
+              {(hoverTag ?? selectedKey) &&
+                (() => {
+                  const tag = hoverTag ?? selectedKey!;
+                  const b = blockOfTag.get(tag);
+                  const pad = art.pads[tag];
+                  if (!b || !pad) return null;
+                  const link = rowLeader(b, tag, pad, bm);
+                  const w = bm.fontSz * 0.2;
+                  const color = linkColor(resolveTag(tag).tone);
+                  return (
+                    <g pointerEvents="none" aria-hidden="true">
+                      {link && (
+                        <>
+                          <path d={link.d} fill="none" stroke={MX.padPanel} strokeWidth={w * 3.2} strokeLinejoin="round" strokeLinecap="round" />
+                          <path d={link.d} fill="none" stroke={color} strokeWidth={w} strokeLinejoin="round" strokeLinecap="round" />
+                          <circle cx={link.start[0]} cy={link.start[1]} r={w * 1.6} fill={color} />
+                        </>
+                      )}
+                      <circle cx={pad[0]} cy={pad[1]} r={bm.fontSz * 0.95} fill="none" stroke={MX.padPanel} strokeWidth={w * 3} />
+                      <circle cx={pad[0]} cy={pad[1]} r={bm.fontSz * 0.95} fill="none" stroke={color} strokeWidth={w * 1.2} />
+                    </g>
+                  );
+                })()}
+            </g>
+          )}
 
           {/* Sensor Value Pills Directly On Top of Mapped Dots */}
           {[...callouts]

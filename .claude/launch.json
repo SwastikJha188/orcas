@@ -2,6 +2,17 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "ultron-api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "-w",
+        "backend"
+      ],
+      "port": 4000
+    },
+    {
       "name": "ultron-dev",
       "runtimeExecutable": "npx",
       "runtimeArgs": [

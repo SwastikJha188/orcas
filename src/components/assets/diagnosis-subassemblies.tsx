@@ -63,8 +63,7 @@ export function SubassemblyHealthTable({
     {
       key: "health",
       header: "Health",
-      // Fixed, so the count sits next to the bar and wide screens leave their spare room at the row's end.
-      width: "560px",
+      // Takes the row's spare room, never narrower than 240px (min-width in diagnosis-page.css).
       render: (r) =>
         r.sub.scored && r.sub.health !== null ? (
           <span className="pg-dx-health">
@@ -80,6 +79,7 @@ export function SubassemblyHealthTable({
     {
       key: "alarm",
       header: "Sensors out of range",
+      width: "160px",
       render: (r) => (
         <span className="ast-num" data-alarm={r.inAlarm > 0 || undefined}>
           {r.inAlarm} <span className="ast-muted">of {r.sensors}</span>

@@ -5,8 +5,8 @@
  * transport), the same drawing the machine Overview shows.
  */
 import type { PyroDrawing } from "./pyro-drawing-types";
-import { PYRO_MACHINES } from "@/lib/pyro-sim/signals";
-import { VPC_MACHINES } from "@/lib/vpc-sim/signals";
+import { PYRO_MACHINES } from "@shared/lib/pyro-sim/signals";
+import { VPC_MACHINES } from "@shared/lib/vpc-sim/signals";
 import { LINE_SHEETS, LINE_SHEET_ART } from "./line-sheets";
 import { PYRO_LAYOUT } from "./pyro-layout";
 import { DIAGRAM_SHEETS } from "../diagrams";

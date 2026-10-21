@@ -41,7 +41,7 @@ export function StartCaseButton({
     setBusy(true);
     setError(null);
     try {
-      const id = await casesApi.create({ machineId, partId: partId ?? null, ruleCode: ruleCode ?? null, title, observation, ownerUserId: currentUserId, runningMode: "running" });
+      const id = await casesApi.create({ machineId, partId: partId ?? null, ruleCode: ruleCode ?? null, title, observation, ownerUserId: currentUserId, runningMode: "unknown" });
       openCase(id, setActiveTab);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not start the case");
