@@ -132,7 +132,9 @@ export function MaintenanceWorkspace() {
   }, [nav]);
 
   // Planned sections only where the plant has maintenance documents; Problems everywhere.
-  const planned = (pms.data?.machineIds.length ?? 0) > 0;
+  // Until the plans have loaded the sections stay, so a slow answer never reads as "no plans".
+  const known = pms.data !== undefined || Boolean(pms.error);
+  const planned = !known || (pms.data?.machineIds.length ?? 0) > 0;
   const tabs = PMS_TABS.filter((t) => planned || !t.planned);
   const tab = pmsTabOf(page);
   const shownPage: PmsPage = tabs.includes(tab) ? page : "problems";
@@ -143,7 +145,7 @@ export function MaintenanceWorkspace() {
   const plantTabs = usePlantMachineTabs();
   const machinePills = useMemo(() => {
     const ids = pms.data?.machineIds ?? [];
-    const all = shownTab.planned === false;
+    const all = shownTab.planned === false || !pms.data;
     const pills = plantTabs.flatMap((t) =>
       t.machineId === null ? [{ id: FULL_LINE, label: t.label }] : all || ids.includes(t.machineId) ? [{ id: t.machineId, label: t.label }] : [],
     );

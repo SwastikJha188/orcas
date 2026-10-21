@@ -6,6 +6,7 @@ import { StatusTag } from "@/components/assets/assets-shell-ui";
 import { conditionTone, type Condition } from "@/components/ui/status";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useKilnOps } from "@/providers/kiln-ops-context";
+import { useLivePlantStarting } from "@/providers/kiln-simulation-context";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { useHealthBands } from "@/lib/reference-data";
 import { formatLocalTime } from "@/lib/time";
@@ -68,6 +69,7 @@ export function LineDiagnosis({ units, names, health }: { units: AssetMachine[];
   };
 
   const live = machines.filter((lm) => lm.frame);
+  const starting = useLivePlantStarting();
   const totalSensors = sum(machines, (lm) => lm.sensors.length);
   const active = sum(machines, (lm) => lm.totals.active);
   const critical = sum(machines, (lm) => lm.totals.critical);
@@ -76,9 +78,12 @@ export function LineDiagnosis({ units, names, health }: { units: AssetMachine[];
   const below = bands ? machines.filter((lm) => lm.health !== null && lm.health < bands.advisory).length : null;
   const band = health === null ? null : bandOf(health, bands);
 
+  // While the live plant is still starting, its numbers wait instead of reading "—".
+  const waiting = starting && live.length === 0;
   const kpis: KpiItem[] = [
     {
       label: "Line health",
+      loading: waiting && health === null,
       value: health === null ? "—" : String(health),
       unit: health === null ? undefined : "/100",
       bar: health ?? undefined,
@@ -87,12 +92,14 @@ export function LineDiagnosis({ units, names, health }: { units: AssetMachine[];
     },
     {
       label: "Problems found",
+      loading: waiting,
       value: live.length ? String(active) : "—",
       foot: live.length ? `${sum(machines, (lm) => lm.totals.confirming)} being confirmed` : "No live checks",
       tone: active ? (critical ? "bad" : "warn") : undefined,
     },
     {
       label: "Not acknowledged",
+      loading: waiting,
       value: live.length ? String(unacked) : "—",
       foot: live.length
         ? `${sum(machines, (lm) => lm.totals.activeUnacked)} still on · ${sum(machines, (lm) => lm.totals.clearedUnacked)} back to normal`
@@ -101,6 +108,7 @@ export function LineDiagnosis({ units, names, health }: { units: AssetMachine[];
     },
     {
       label: "Doubtful readings",
+      loading: waiting,
       value: String(invalid),
       unit: `of ${totalSensors}`,
       foot: `${sum(machines, (lm) => lm.totals.stale)} not updating · ${sum(machines, (lm) => lm.totals.suspect)} may be wrong`,

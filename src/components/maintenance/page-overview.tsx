@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { conditionTone, rowActivate, toCondition, type Tone } from "@/components/ui";
+import { conditionTone, rowActivate, toCondition, type Tone, Loading as LoadingState } from "@/components/ui";
 import { isOpenStage, planKey } from "@shared/lib/pms";
 import { useKilnFleet } from "@/providers/kiln-simulation-context";
 import { Empty, KpiStrip, Section } from "@/components/assets/analysis/an-ui";
@@ -125,6 +125,9 @@ export function PageOverview({ pms }: { pms: PmsModel }) {
   };
 
   if (!data) return <Loading pms={pms} what="planned maintenance" />;
+  // The alarm checks and part lives load on their own; until they arrive their numbers wait.
+  const checksWait = checksApi.data === undefined && !checksApi.error;
+  const partsWait = partsApi.data === undefined && !partsApi.error;
 
   return (
     <div className="ast-root pg-frame pm-page" style={{ "--pm-side": "340px" } as React.CSSProperties}>
@@ -140,12 +143,14 @@ export function PageOverview({ pms }: { pms: PmsModel }) {
           },
           {
             label: "Checks from alarms",
+            loading: checksWait,
             value: `${checks.length}`,
             tone: checks.some((c) => checkState(c, now).overdue) ? "bad" : checks.length ? "warn" : undefined,
             foot: checks.length ? `${checks.filter((c) => checkState(c, now).overdue).length} past their response time` : "every alarm has been checked",
           },
           {
             label: "Parts due for replacement",
+            loading: partsWait,
             value: `${partsDue.length}`,
             tone: partsDue.some((l) => l.state === "over") ? "bad" : partsDue.length ? "warn" : undefined,
             foot: partsDue.length ? partsDue.map((l) => l.part.name).slice(0, 2).join(" · ") : "every part within its service life",
@@ -156,7 +161,9 @@ export function PageOverview({ pms }: { pms: PmsModel }) {
       <div className="pg-frame-body">
         <div className="pm-split">
           <Section id="pm-queue" title="Priority queue" right={<span className="ast-caption">Sorted by safety, importance, due date and readiness</span>}>
-            {queue.length === 0 ? (
+            {checksWait ? (
+              <LoadingState label="Loading the priority queue…" rows={5} />
+            ) : queue.length === 0 ? (
               <Empty title="Nothing waiting: no problems, no open work and no rounds due." />
             ) : (
               <div className="ui-table-container ast-table pm-table">
@@ -261,6 +268,12 @@ export function PageOverview({ pms }: { pms: PmsModel }) {
 
 /** Loading / unavailable line for a page. */
 export function Loading({ pms, what }: { pms: PmsModel; what: string }) {
+  if (pms.loading)
+    return (
+      <section className="ast-card">
+        <LoadingState label={`Loading ${what}…`} rows={5} />
+      </section>
+    );
   return (
     <section className="ast-card">
       {/* Nothing loaded and no error means this plant has no maintenance plans yet — say that, not "could not be loaded". */}

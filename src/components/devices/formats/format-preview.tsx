@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FormNote, PillButton, PillNav, Table, type Column } from "@/components/ui";
+import { FormNote, PillButton, PillNav, Table, type Column, Loading } from "@/components/ui";
 import { SearchPill, StatusTag } from "@/components/assets/assets-shell-ui";
 import { useEdge } from "@/providers/edge-context";
 import { naturalCompare, parseMessage } from "@shared/lib/edge-format";
@@ -183,7 +183,7 @@ export function FormatPreview({
           {loadError ? (
             <FormNote tone="bad">Recorded messages could not be loaded. Try again.</FormNote>
           ) : samples === null ? (
-            <p className="fmt-muted">Loading recorded messages…</p>
+            <Loading label="Loading recorded messages…" rows={4} inline />
           ) : filtered.length === 0 ? (
             <p className="fmt-muted">
               {samples.length === 0

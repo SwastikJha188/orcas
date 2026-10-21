@@ -14,7 +14,7 @@
  * engines at once instead of waiting for its next read).
  */
 import React, { useMemo, useState } from "react";
-import { Field, FieldGrid, NumberInput, PillButton, PillNav, Select, Toggle } from "@/components/ui";
+import { Field, FieldGrid, NumberInput, PillButton, PillNav, Select, Toggle, Loading } from "@/components/ui";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useKilnFleet } from "@/providers/kiln-simulation-context";
 import { DiagnosisView } from "@/components/assets/diagnosis-view";
@@ -225,7 +225,7 @@ export function SimulationTry({
 
       <div className="assets-machine-workspace sim-workspace" data-subpage={view}>
         {!asset ? (
-          <p className="ast-muted">Loading {current.name}…</p>
+          <Loading label={`Loading ${current.name}…`} rows={4} />
         ) : view === "diagnosis" ? (
           <section className="subpage-content" aria-label="Diagnosis">
             <DiagnosisView key={asset.id} machine={asset} onNavigateToTrends={go("sensors")} onNavigateToAnalysis={go("analysis")} onNavigateToPrognosis={go("prognosis")} />

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { Dialog, Field, FieldGrid, FormNote, PillButton, Select, Table, TextArea, TextInput, Toggle, type Column } from "@/components/ui";
+import { Dialog, Field, FieldGrid, FormNote, PillButton, Select, Table, TextArea, TextInput, Toggle, type Column, Loading } from "@/components/ui";
 import { StatusTag, type Tone } from "@/components/assets/assets-shell-ui";
 import { invalidateApi, useApi } from "@/lib/api-cache";
 import { formatLocalTime } from "@/lib/time";
@@ -84,7 +84,7 @@ export function SupportSection({ raiseOpen, onRaiseClose }: { raiseOpen: boolean
           </h2>
         </div>
         {!tickets.data ? (
-          <div className="ast-empty">{tickets.error ? "The tickets could not be loaded. Try again." : "Loading tickets…"}</div>
+          <div className="ast-empty">{tickets.error ? "The tickets could not be loaded. Try again." : <Loading label="Loading tickets…" rows={4} inline />}</div>
         ) : tickets.data.length === 0 ? (
           <div className="ast-empty">
             {superAdmin ? "No plant has raised a ticket yet." : "No tickets yet. Raise one when you need help from the Oswar Teck support team."}

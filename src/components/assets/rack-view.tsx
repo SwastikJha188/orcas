@@ -24,7 +24,7 @@ import { Empty, KpiStrip, PageHeader, Section, SectionIndex, type KpiItem, type 
 import type { Tone } from "./assets-shell-ui";
 import { focusSensorOn } from "./sensor-focus";
 import { D4_REQUIRED_TARGET_PCT, requiredAvailability } from "./sensors-model";
-import { PillButton } from "@/components/ui";
+import { PillButton, Loading } from "@/components/ui";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { isKilnMachine, useKilnSimulationFor } from "@/providers/kiln-simulation-context";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
@@ -176,7 +176,7 @@ export function RackView({ machine, simulation }: RackViewProps) {
       <div className="ast-root pg-frame pg-analysis pg-rack" aria-label="Rack">
         {header()}
         <section className="ast-card" role="status" aria-live="polite">
-          <Empty title={`Loading the rack for ${machine.name}…`} />
+          <Loading label={`Loading the rack for ${machine.name}…`} rows={6} />
         </section>
       </div>
     );

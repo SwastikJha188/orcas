@@ -1,4 +1,5 @@
 import React from "react";
+import { Skel } from "./loading";
 import type { Tone } from "./status";
 
 /*
@@ -27,6 +28,8 @@ export interface KpiItem {
   text?: boolean;
   /** Page strip only: a 0–100 fill for the thin bar under the value, or a custom bar node (e.g. a limit bar). */
   bar?: number | React.ReactNode;
+  /** The value's data has not arrived yet: a placeholder stands in for value, unit, bar and foot. */
+  loading?: boolean;
 }
 
 /**
@@ -47,18 +50,18 @@ export function KpiStrip({ items, label, page = false }: { items: KpiItem[]; lab
                 {t && <span className="ast-chip-dot" aria-hidden="true" />}
                 {k.label}
               </span>
-              <span className={`pg-frame-kpi-value ast-num ${k.text ? "is-text" : ""}`} title={k.text ? k.value : undefined}>
-                {k.value}
-                {k.unit && <span className="pg-frame-kpi-unit">{k.unit}</span>}
+              <span className={`pg-frame-kpi-value ast-num ${k.text ? "is-text" : ""}`} title={k.text && !k.loading ? k.value : undefined}>
+                {k.loading ? <Skel width="2.5ch" label={`Loading ${k.label}`} /> : k.value}
+                {k.unit && !k.loading && <span className="pg-frame-kpi-unit">{k.unit}</span>}
               </span>
-              {typeof k.bar === "number" ? (
+              {k.loading ? null : typeof k.bar === "number" ? (
                 <span className="pg-frame-kpi-bar" aria-hidden="true">
                   <i style={{ width: `${Math.max(0, Math.min(100, k.bar))}%` }} />
                 </span>
               ) : (
                 k.bar ?? null
               )}
-              {k.foot !== undefined && k.foot !== "" && (
+              {!k.loading && k.foot !== undefined && k.foot !== "" && (
                 <span className="pg-frame-kpi-foot" title={typeof k.foot === "string" ? k.foot : undefined}>
                   {k.foot}
                 </span>
@@ -72,7 +75,14 @@ export function KpiStrip({ items, label, page = false }: { items: KpiItem[]; lab
   return (
     <div className="pg-analysis-kpis" role="group" aria-label={label}>
       {items.slice(0, 4).map((k) => (
-        <Fact key={k.label} label={k.label} value={k.text ? <span className="pg-analysis-fact-text">{k.value}</span> : k.value} unit={k.unit} foot={k.foot} tone={k.tone} />
+        <Fact
+          key={k.label}
+          label={k.label}
+          value={k.loading ? <Skel width="2.5ch" label={`Loading ${k.label}`} /> : k.text ? <span className="pg-analysis-fact-text">{k.value}</span> : k.value}
+          unit={k.loading ? undefined : k.unit}
+          foot={k.loading ? undefined : k.foot}
+          tone={k.loading ? undefined : k.tone}
+        />
       ))}
     </div>
   );

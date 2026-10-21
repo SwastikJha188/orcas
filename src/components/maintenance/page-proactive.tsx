@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { PillButton, PillNav, rowActivate, type Tone } from "@/components/ui";
+import { PillButton, PillNav, rowActivate, type Tone, Loading as LoadingState } from "@/components/ui";
 import { isOpenStage } from "@shared/lib/pms";
 import { formatLocalTime } from "@/lib/time";
 import { useIndustrialData } from "@/providers/industrial-data-context";
@@ -134,9 +134,9 @@ export function PageProactive({ pms }: { pms: PmsModel }) {
         page
         label="Remaining life"
         items={[
-          { label: "Parts with a service life", value: `${parts.length}`, foot: `${rows.length - parts.length} more heading to a limit by trend` },
-          { label: "Due for replacement", value: `${due.length}`, tone: over ? "bad" : due.length ? "warn" : undefined, foot: over ? `${over} past their life` : "past the share of life where replacement is planned" },
-          { label: "Next to act on", value: next ? (nextNow ? "Now" : short(next.actBy)) : "—", text: true, foot: next ? `${next.name} · ${machineName(next.machineId)}` : "nothing ahead" },
+          { label: "Parts with a service life", loading, value: `${parts.length}`, foot: `${rows.length - parts.length} more heading to a limit by trend` },
+          { label: "Due for replacement", loading, value: `${due.length}`, tone: over ? "bad" : due.length ? "warn" : undefined, foot: over ? `${over} past their life` : "past the share of life where replacement is planned" },
+          { label: "Next to act on", loading, value: next ? (nextNow ? "Now" : short(next.actBy)) : "—", text: true, foot: next ? `${next.name} · ${machineName(next.machineId)}` : "nothing ahead" },
           { label: "Replacements planned", value: `${proactiveJobs.length}`, foot: "open jobs in Work orders and the Calendar" },
         ]}
       />
@@ -148,7 +148,7 @@ export function PageProactive({ pms }: { pms: PmsModel }) {
             right={<PillNav ariaLabel="Show" items={[{ id: "all", label: "All" }, { id: "parts", label: "Service life" }, { id: "trends", label: "Sensor trends" }]} activeId={filter} onChange={(id) => setFilter(id as Filter)} />}
           >
             {loading ? (
-              <Empty title="Loading remaining life…" />
+              <LoadingState label="Loading remaining life…" rows={6} />
             ) : list.length === 0 ? (
               <Empty title={filter === "trends" ? "No reading is moving toward its alarm limit." : "No part service lives recorded for this plant."}>{partsApi.error ?? trendsApi.error ?? undefined}</Empty>
             ) : (

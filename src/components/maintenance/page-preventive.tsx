@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { PillNav, rowActivate } from "@/components/ui";
+import { PillNav, rowActivate, Loading as LoadingState } from "@/components/ui";
 import { planGenerates, planKey } from "@shared/lib/pms";
 import { formatLocalTime } from "@/lib/time";
 import { useIndustrialData } from "@/providers/industrial-data-context";
@@ -83,7 +83,11 @@ export function PagePreventive({ pms }: { pms: PmsModel }) {
     return (
       <div className="ast-root pg-frame pm-page">
         <section className="ast-card">
-          <Empty title={vocabApi.isLoading ? "Loading the rounds…" : "No preventive rounds defined."}>{vocabApi.error ?? undefined}</Empty>
+          {vocabApi.data === undefined && !vocabApi.error ? (
+            <LoadingState label="Loading the rounds…" rows={5} />
+          ) : (
+            <Empty title="No preventive rounds defined.">{vocabApi.error ?? undefined}</Empty>
+          )}
         </section>
       </div>
     );

@@ -13,7 +13,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { revalidateApi, useApi } from "@/lib/api-cache";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
-import { Dialog, Field, FieldGrid, PillButton, PillNav, Select, TextArea, TextInput } from "@/components/ui";
+import { Dialog, Field, FieldGrid, PillButton, PillNav, Select, TextArea, TextInput, Loading } from "@/components/ui";
 import { IconBack, StatusTag } from "@/components/assets/assets-shell-ui";
 import { useMenuFocus } from "@/components/assets/use-menu-focus";
 import { CASES_CHANGED_EVENT, STAGE_TONE, VOCABULARY_URL, casesApi, caseUrl, exportUrl, type CaseDetail, type CaseVocabulary } from "./cases-api";
@@ -80,7 +80,7 @@ export function CaseView({ caseId, onBack }: { caseId: number; onBack: () => voi
     return (
       <div className="pg-root ast-root case-root">
         <BackRow onBack={onBack} caseId={caseId} />
-        {isLoading && <p className="ast-muted">Loading the case…</p>}
+        {isLoading && <Loading label="Loading the case…" rows={6} />}
         {error && (
           <p className="pg-note" data-tone="bad" role="alert">
             Could not load this case. It may have been removed. Go back to all cases and try again.

@@ -34,7 +34,7 @@ import { ReadingsAgainstExpected } from "./an-readings";
 import { kilnHealthModel } from "../health-derive";
 import { rulRows } from "../prognosis/prognosis-derive";
 import { signalForecastRows } from "../prognosis/prog-signals";
-import { PillNav } from "@/components/ui";
+import { PillNav, Loading } from "@/components/ui";
 import { focusLayer, focusSensorOn, LAYER_FOCUS_EVENT, readLayerFocus, type LayerFocusPayload } from "../sensor-focus";
 import { Empty, KpiStrip, PageHeader, Section, scrollToSection, type AnalysisModuleId, type KpiItem } from "./an-ui";
 import { useFeedbackLabels } from "./an-actions";
@@ -256,7 +256,7 @@ export function MachineAnalysisPage({
 
       {insights.isLoading && !insights.data && !frame ? (
         <section className="ast-card pg-analysis-section" role="status" aria-live="polite">
-          <Empty title="Loading analysis…" />
+          <Loading label="Loading the analysis…" rows={6} />
         </section>
       ) : (
         <>

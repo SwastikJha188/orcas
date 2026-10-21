@@ -7,7 +7,7 @@
  * Analysis (possible causes and the checks that test them).
  */
 import React, { useState } from "react";
-import { ConfirmAction, Dialog, Field, FieldGrid, PillButton, Select, Table, TextArea, TextInput, type Column } from "@/components/ui";
+import { ConfirmAction, Dialog, Field, FieldGrid, PillButton, Select, Table, TextArea, TextInput, type Column, Loading } from "@/components/ui";
 import { VALIDITY_WORDS, validityTone, type Validity } from "@/components/ui/status";
 import { StatusTag } from "@/components/assets/assets-shell-ui";
 import { useApi } from "@/lib/api-cache";
@@ -255,7 +255,7 @@ export function PrognosisTab() {
         {!c.partId ? (
           <p className="ast-muted">Pick a part in Details to see its time left.</p>
         ) : insights.isLoading && !insights.data ? (
-          <p className="ast-muted">Working out the time left…</p>
+          <Loading label="Working out the time left…" inline />
         ) : insights.error && !insights.data ? (
           <p className="ast-muted">Could not work out the time left. Reload the page to try again.</p>
         ) : (

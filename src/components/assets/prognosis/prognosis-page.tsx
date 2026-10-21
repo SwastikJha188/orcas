@@ -13,7 +13,7 @@
 
 import { useComponentScope, type ComponentScope } from "../component-scope";
 import React, { useEffect, useMemo, useState } from "react";
-import { PillButton, PillNav } from "@/components/ui";
+import { PillButton, PillNav, Loading } from "@/components/ui";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useHealthBands } from "@/lib/reference-data";
 import { useKilnSimulationFor, useLiveMachineStatus } from "@/providers/kiln-simulation-context";
@@ -252,7 +252,7 @@ export function MachinePrognosisPage({
 
       {insights.isLoading && !data ? (
         <section className="ast-card" role="status" aria-live="polite">
-          <Empty title="Loading the forecast…" />
+          <Loading label="Loading the forecast…" rows={6} />
         </section>
       ) : insights.isError && !data ? (
         <section className="ast-card" role="alert">

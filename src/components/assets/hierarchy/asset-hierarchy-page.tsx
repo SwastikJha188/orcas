@@ -11,6 +11,7 @@ import { useIndustrialData } from "@/providers/industrial-data-context";
 import type { AssetsSubPage } from "../assets-view";
 import "../assets-shell.css";
 import "./hierarchy.css";
+import { Loading } from "@/components/ui";
 
 const SELECTED_KEY = "ultron.hierarchy.selected";
 
@@ -63,7 +64,7 @@ export function AssetHierarchyPage({ viewSwitcher }: { viewSwitcher?: React.Reac
         <div className="assets-directory-workspace ast-root">
           <div className="ast-card ast-empty">
             {isLoading ? (
-              <strong className="hx-empty-title">Loading the plant&apos;s equipment…</strong>
+              <Loading label="Loading the plant's equipment…" rows={5} inline />
             ) : loadError ? (
               <>
                 <strong className="hx-empty-title">Could not load the plant&apos;s equipment</strong>

@@ -14,11 +14,12 @@ import { EdgeProvider } from "@/providers/edge-context";
 import { CopilotProvider } from "@/components/copilot/copilot-provider";
 import { AuthChecking, SignInScreen } from "@/components/auth/sign-in";
 import { homeActive } from "@/components/home/home-active";
+import { Loading } from "@/components/ui";
 
 // Home (the operator overview) is the landing tab; the other workspaces load on first visit.
 // While a tab's code loads it shows one quiet line instead of an empty workspace.
 function TabLoading() {
-  return <div className="ast-empty" role="status">Loading…</div>;
+  return <Loading label="Loading…" rows={4} />;
 }
 const AssetsView = dynamic(() => import("@/components/assets/assets-view").then((m) => m.AssetsView), { loading: TabLoading });
 const IndustrialDevicesView = dynamic(() => import("@/components/devices/devices-view").then((m) => m.IndustrialDevicesView), { loading: TabLoading });

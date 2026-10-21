@@ -26,6 +26,7 @@ import {
   TextArea,
   TextInput,
   type Column,
+  Loading,
 } from "@/components/ui";
 import { IconChevron, StatusTag, type Tone } from "@/components/assets/assets-shell-ui";
 import type { HierarchyNode } from "@/components/assets/assets-data";
@@ -995,7 +996,7 @@ export function ConfigureView() {
                   />
                 ) : (
                   <div className="ast-empty">
-                    {hasLoaded ? "No plants yet. Add one, or bring one in from its documents." : "Loading plants…"}
+                    {hasLoaded ? "No plants yet. Add one, or bring one in from its documents." : <Loading label="Loading plants…" rows={4} inline />}
                     {hasLoaded && (canAddPlants || canAdminister) && (
                       <div className="cfg-empty-actions">
                         {canAddPlants && (
@@ -1062,7 +1063,7 @@ export function ConfigureView() {
                 {scopedUsers.length ? (
                   <Table className="ast-table cfg-edit-table cfg-users-table" columns={userColumns} data={scopedUsers} keyExtractor={(u) => u.id} />
                 ) : (
-                  <div className="ast-empty">{hasLoaded ? "No users yet." : "Loading users…"}</div>
+                  <div className="ast-empty">{hasLoaded ? "No users yet." : <Loading label="Loading users…" rows={4} inline />}</div>
                 )}
               </section>
 
@@ -1083,7 +1084,7 @@ export function ConfigureView() {
           {section === "monitoring" && (
             <section className="ast-card pg-table-card" aria-label="Monitoring settings">
               {!settings.data ? (
-                <div className="ast-empty">{settings.error ? "The settings could not be loaded. Try again." : "Loading settings…"}</div>
+                <div className="ast-empty">{settings.error ? "The settings could not be loaded. Try again." : <Loading label="Loading settings…" rows={4} inline />}</div>
               ) : (
                 <div className="cfg-settings">
                   {settingGroups.map((g) => (

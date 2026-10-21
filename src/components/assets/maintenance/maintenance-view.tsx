@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { AssetMachine } from "../assets-data";
-import { Dialog, Field, FieldGrid, FormNote, PillButton, PillNav, Select, StatusTag, TextArea, TextInput, type Tone } from "@/components/ui";
+import { Dialog, Field, FieldGrid, FormNote, PillButton, PillNav, Select, StatusTag, TextArea, TextInput, type Tone, Loading } from "@/components/ui";
 import { invalidateApi, useApi } from "@/lib/api-cache";
 import { formatLocalTime } from "@/lib/time";
 import {
@@ -643,7 +643,7 @@ export function MaintenanceView({ machine, kind, routes, bare }: { machine: Asse
   if (bare)
     return (
       <div className="ast-root mt-page mt-bare" aria-label={title}>
-        {body || (api.isLoading && !data ? <Empty title="Loading checklist…" /> : <Empty title="Checklist unavailable.">{api.error ?? vocabApi.error ?? "No maintenance checklist for this machine."}</Empty>)}
+        {body || (api.isLoading && !data ? <Loading label="Loading checklist…" rows={6} /> : <Empty title="Checklist unavailable.">{api.error ?? vocabApi.error ?? "No maintenance checklist for this machine."}</Empty>)}
       </div>
     );
 
@@ -664,7 +664,7 @@ export function MaintenanceView({ machine, kind, routes, bare }: { machine: Asse
 
       {(api.isLoading && !data) || (data && !vocab && vocabApi.isLoading) ? (
         <section className="ast-card" role="status" aria-live="polite">
-          <Empty title="Loading checklist…" />
+          <Loading label="Loading checklist…" rows={6} />
         </section>
       ) : !data || !vocab ? (
         <section className="ast-card">

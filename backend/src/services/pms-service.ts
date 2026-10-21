@@ -1,4 +1,5 @@
 import { query } from "@backend/db";
+import type { Scope } from "@backend/services/access-service";
 import { createWorkOrder, isPriority, listWorkOrders, resolvePriority } from "@backend/services/ops-service";
 import {
   RECORD_SELECT,
@@ -517,11 +518,19 @@ export async function getPms(machineId: string, userId: string | null, approveKn
   };
 }
 
-/** Every machine with planned maintenance in the signed-in user's plant scope, for the Maintenance workspace. */
-export async function getPmsLine(userId: string | null): Promise<PmsLine> {
+/**
+ * Every machine with planned maintenance the signed-in user may see, for the
+ * Maintenance workspace. With the request's scope, an account limited to single
+ * machines (user_machine_access) sees only those.
+ */
+export async function getPmsLine(userId: string | null, scope?: Scope): Promise<PmsLine> {
   await ensureTables();
   const approve = await canApprove(userId);
   const all = await maintenanceMachineIds();
+  if (scope) {
+    const ids = scope.all ? all : all.filter((id) => scope.machines.has(id));
+    return { snapshots: await Promise.all(ids.map((id) => getPms(id, userId, approve))), canApprove: approve };
+  }
   let targetIds = all;
   const allPlants = userId
     ? Boolean((await query<{ all_plants: boolean }>("SELECT r.all_plants FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = $1", [userId])).rows[0]?.all_plants)

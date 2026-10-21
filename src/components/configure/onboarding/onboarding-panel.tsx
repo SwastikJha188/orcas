@@ -14,7 +14,7 @@
  * The draft saves itself; while uploads wait it refreshes every 30 s.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ConfirmAction, Field, FieldGrid, FormNote, PillButton, PillNav, Select, StatusTag, TextArea, TextInput, normalizeNumberText, rowActivate, type PillNavItem } from "@/components/ui";
+import { ConfirmAction, Field, FieldGrid, FormNote, PillButton, PillNav, Select, StatusTag, TextArea, TextInput, normalizeNumberText, rowActivate, type PillNavItem, Loading } from "@/components/ui";
 import type { Tone } from "@/components/assets/assets-shell-ui";
 import { DIAGRAM_SHEETS } from "@/components/assets/diagrams";
 import { KIT_MODELS } from "@/components/home/twin/models";
@@ -208,7 +208,7 @@ export function OnboardingPanel({ onCommitted }: { onCommitted?: () => void }) {
       </div>
       {error && <FormNote tone="bad">{error}</FormNote>}
       {rows === null ? (
-        <div className="ast-empty">Loading…</div>
+        <Loading label="Loading the onboardings…" rows={4} />
       ) : rows.length === 0 ? (
         <div className="ast-empty">No onboardings yet. Name the plant above to start one.</div>
       ) : (
@@ -444,7 +444,7 @@ function OnboardingEditor({ id, onBack, onCommitted }: { id: string; onBack: () 
   if (!pkg || !draft)
     return (
       <section className="ast-card">
-        <div className="ast-empty">{error ?? "Loading the onboarding…"}</div>
+        <div className="ast-empty">{error ?? <Loading label="Loading the onboarding…" rows={5} inline />}</div>
       </section>
     );
 

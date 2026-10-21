@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Dialog, Field, PillButton, PillNav, TextArea, TextInput, rowActivate } from "@/components/ui";
+import { Dialog, Field, PillButton, PillNav, TextArea, TextInput, rowActivate, Loading as LoadingState } from "@/components/ui";
 import { STAGE_LABEL, isOpenStage } from "@shared/lib/pms";
 import { formatLocalTime } from "@/lib/time";
 import { invalidateApi } from "@/lib/api-cache";
@@ -73,6 +73,7 @@ export function PagePredictive({ pms }: { pms: PmsModel }) {
   );
 
   if (!data) return <Loading pms={pms} what="the checks" />;
+  const checksWait = checksApi.data === undefined && !checksApi.error;
 
   const open = checks.filter((c) => checkState(c, now).open);
   const overdue = open.filter((c) => checkState(c, now).overdue).length;
@@ -110,9 +111,9 @@ export function PagePredictive({ pms }: { pms: PmsModel }) {
         page
         label="Checks and planned jobs"
         items={[
-          { label: "Checks to do", value: `${open.length}`, tone: overdue ? "bad" : open.length ? "warn" : undefined, foot: overdue ? `${overdue} past their response time` : open.length ? "raised by alarms, not checked yet" : "every alarm has been checked" },
-          { label: "Problems found", value: `${problems}`, tone: problems ? "warn" : undefined, foot: "last 30 days · turned into repair requests" },
-          { label: "Nothing wrong found", value: `${fine}`, foot: "last 30 days · alarm checked on site" },
+          { label: "Checks to do", loading: checksWait, value: `${open.length}`, tone: overdue ? "bad" : open.length ? "warn" : undefined, foot: overdue ? `${overdue} past their response time` : open.length ? "raised by alarms, not checked yet" : "every alarm has been checked" },
+          { label: "Problems found", loading: checksWait, value: `${problems}`, tone: problems ? "warn" : undefined, foot: "last 30 days · turned into repair requests" },
+          { label: "Nothing wrong found", loading: checksWait, value: `${fine}`, foot: "last 30 days · alarm checked on site" },
           { label: "Planned jobs", value: `${openJobs.length}`, foot: nextJob ? `next ${when(nextJob.plannedStart)}` : "none coming up" },
         ]}
       />
@@ -125,7 +126,7 @@ export function PagePredictive({ pms }: { pms: PmsModel }) {
               right={<PillNav ariaLabel="Show" items={[{ id: "open", label: "To do" }, { id: "done", label: "Done" }, { id: "all", label: "All" }]} activeId={filter} onChange={(id) => setFilter(id as Filter)} />}
             >
               {checksApi.isLoading && !checksApi.data ? (
-                <Empty title="Loading the checks…" />
+                <LoadingState label="Loading the checks…" rows={5} />
               ) : list.length === 0 ? (
                 <Empty title={filter === "open" ? "Nothing to check: every alarm has been looked at." : "No checks in the last 30 days."}>{checksApi.error ?? undefined}</Empty>
               ) : (

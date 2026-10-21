@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { PillButton } from "@/components/ui";
+import { PillButton, Loading } from "@/components/ui";
 import type { AssetMachine } from "./assets-data";
 import type { AssetsSubPage } from "./assets-view";
 import { useIndustrialData } from "@/providers/industrial-data-context";
@@ -376,7 +376,8 @@ export function DiagnosisView({
         preset={{ machineId: machine.id, partId: subFilter }}
       />
 
-      <KpiStrip page items={kpis} label="Diagnosis totals" />
+      {/* Until the machine's sensors load, its totals wait instead of reading 0. */}
+      <KpiStrip page items={loading ? kpis.map((k) => ({ ...k, loading: true })) : kpis} label="Diagnosis totals" />
 
       {subRows.length > 0 && !subFilter && (
         <Section id="dx-health" title="Parts">
@@ -386,7 +387,7 @@ export function DiagnosisView({
 
       <Section id="dx-diagnosis" title="Sensors" right={tableRight}>
         {loading ? (
-          <p className="pg-diag-missing">Loading sensors…</p>
+          <Loading label="Loading sensors…" rows={6} />
         ) : sensors.length === 0 ? (
           <p className="pg-diag-missing">No sensors are linked to this machine yet.</p>
         ) : shown.length === 0 ? (

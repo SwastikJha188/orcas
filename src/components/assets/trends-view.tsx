@@ -24,7 +24,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ACTION, PillButton, PillNav } from "@/components/ui";
+import { ACTION, PillButton, PillNav, Loading } from "@/components/ui";
 import type { AssetMachine } from "./assets-data";
 import type { AssetsSubPage } from "./assets-view";
 import type { KilnSimulation } from "./kiln-seals-simulation";
@@ -37,7 +37,7 @@ import { useMachineCatalog } from "./use-machine-catalog";
 import { useMachineHistory } from "./use-machine-history";
 import { TrendTimeZoneContext, type TrendSample } from "./sensor-trend-graph";
 import { clearTrendsFocus, peekTrendsFocus, syncTrendsFocusUrl } from "./trends-focus";
-import { Empty, PageHeader, SectionIndex, scrollToSection, type SectionIndexItem } from "./analysis/an-ui";
+import { PageHeader, SectionIndex, scrollToSection, type SectionIndexItem } from "./analysis/an-ui";
 import { createCrosshair } from "./trends-chart";
 import {
   TREND_GROUP,
@@ -322,7 +322,7 @@ export function TrendsView({ machine, simulation }: TrendsViewProps) {
 
         {loading ? (
           <section className="ast-card" role="status" aria-live="polite">
-            <Empty title="Loading trends…" />
+            <Loading label="Loading trends…" rows={5} />
           </section>
         ) : channels.length === 0 && states.length === 0 && events.length === 0 ? (
           <p className="pg-trends-muted">No saved readings for {machine.name} yet.</p>

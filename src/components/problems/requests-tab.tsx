@@ -8,7 +8,7 @@ import React from "react";
 import { useApi } from "@/lib/api-cache";
 import { formatLocalTime } from "@/lib/time";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
-import { Table, type Column } from "@/components/ui";
+import { Table, type Column, Loading } from "@/components/ui";
 import { woRef } from "@/components/maintenance/pms-model";
 import { requestsUrl, type CaseRequest } from "./cases-api";
 import { useRefreshOnCaseChange } from "./condition-strip";
@@ -76,7 +76,7 @@ export function RequestsTab({ plantId, onOpenCase }: { plantId: string | null; o
       <div className="prb-toolbar">
         <p className="prb-intro">Requests sent from cases. Each one created a work order in Maintenance.</p>
       </div>
-      {isLoading && !data && <p className="ast-muted">Loading the maintenance requests…</p>}
+      {isLoading && !data && <Loading label="Loading the maintenance requests…" rows={5} />}
       {error && !data && (
         <p className="pg-note" data-tone="bad" role="alert">
           Could not load the maintenance requests. Reload the page to try again.

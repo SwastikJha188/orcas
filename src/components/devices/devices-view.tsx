@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { PillButton } from "@/components/ui";
+import { PillButton, Loading } from "@/components/ui";
 import { EdgeProvider, useEdge } from "@/providers/edge-context";
 import { useKilnFleet } from "@/providers/kiln-simulation-context";
 import { ULTRON_FORMAT, ULTRON_FORMAT_ID } from "@shared/lib/edge-format";
@@ -234,9 +234,9 @@ function DevicesShell() {
   let body: React.ReactNode;
   if (!ix) {
     body = (
-      <div className="ast-card ast-empty" role={error ? "alert" : "status"}>
+      <div className="ast-card ast-empty" role={error && !loading ? "alert" : undefined}>
         {loading || !error ? (
-          "Loading gateways…"
+          <Loading label="Loading gateways…" rows={5} inline />
         ) : (
           <>
             The gateways could not be loaded. Try again.

@@ -12,3 +12,4 @@ export * from "./sparkline";
 export * from "./tile";
 export * from "./confirm-action";
 export * from "./more-fields";
+export * from "./loading";

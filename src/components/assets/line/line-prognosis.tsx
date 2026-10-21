@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { PillNav, Table, type Column } from "@/components/ui";
+import { PillNav, Table, type Column, Loading } from "@/components/ui";
 import { StatusTag } from "@/components/assets/assets-shell-ui";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useHealthBands } from "@/lib/reference-data";
@@ -176,7 +176,7 @@ export function LinePrognosis({ units, names }: { units: AssetMachine[]; names: 
 
       {loadingText ? (
         <section className="ast-card">
-          <p className="pg-analysis-empty">{loadingText}</p>
+          <Loading label={loadingText} rows={6} />
         </section>
       ) : (
         <>

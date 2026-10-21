@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useMemo, useState } from "react";
-import { Dialog, Field, FormNote, PillButton, PillNav, Select, StatusTag, Table, TextArea, TextInput, Toggle, type Column } from "@/components/ui";
+import { Dialog, Field, FormNote, PillButton, PillNav, Select, StatusTag, Table, TextArea, TextInput, Toggle, type Column, Loading } from "@/components/ui";
 import { ACTION, ALARM_STATE, conditionTone, validityTone } from "@/components/ui/status";
 import { Section } from "../analysis/an-ui";
 import { formatLocalTime } from "@/lib/time";
@@ -222,7 +222,11 @@ export function FindingsSection({ machineId }: { machineId: string }) {
       {view === "events" ? (
         <EventsTable state={events} fmt={fmt} />
       ) : rows.length === 0 ? (
-        <p className="pg-diag-missing">{state.isLoading ? "Loading findings…" : state.error ? `Findings unavailable: ${state.error}` : view === "open" ? "No open findings." : "No findings recorded."}</p>
+        state.isLoading ? (
+          <Loading label="Loading findings…" rows={5} />
+        ) : (
+        <p className="pg-diag-missing">{state.error ? `Findings unavailable: ${state.error}` : view === "open" ? "No open findings." : "No findings recorded."}</p>
+        )
       ) : (
         <Table
           className="pg-dx-table mon-table"
@@ -243,7 +247,7 @@ export function FindingsSection({ machineId }: { machineId: string }) {
 function EventsTable({ state, fmt }: { state: ReturnType<typeof useMachineEvents>; fmt: Fmt }) {
   const rows = state.data ?? [];
   if (rows.length === 0)
-    return <p className="pg-diag-missing">{state.isLoading ? "Loading events…" : state.error ? `Events unavailable: ${state.error}` : "No events recorded."}</p>;
+    return state.isLoading ? <Loading label="Loading events…" rows={5} /> : <p className="pg-diag-missing">{state.error ? `Events unavailable: ${state.error}` : "No events recorded."}</p>;
   const cols: Column<MachineEventDto>[] = [
     {
       key: "at",

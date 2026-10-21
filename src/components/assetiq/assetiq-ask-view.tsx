@@ -6,6 +6,7 @@ import { AssistantMessage, CheckIcon, CloseIcon, SendIcon, UserMessage } from "@
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { zonedParts } from "@/lib/time";
 import "./assetiq-ask.css";
+import { Loading } from "@/components/ui";
 
 /* ==========================================================================
    AssetIQ · Ask — the conversation with the engine. Conversations on the
@@ -412,9 +413,13 @@ export function AskTab() {
         <div className="aqk-main">
           <div className="aqk-hero">
             <h1 className="aqk-hero-title">AssetIQ</h1>
-            <p className="aqk-context" role="status">
-              {late ? "Live data has not arrived yet. Questions can be asked as soon as the plant's readings load." : "Waiting for live data from the plant…"}
-            </p>
+            {late ? (
+              <p className="aqk-context" role="status">
+                Live data has not arrived yet. Questions can be asked as soon as the plant&apos;s readings load.
+              </p>
+            ) : (
+              <Loading label="Loading the plant's live data…" inline />
+            )}
           </div>
         </div>
       </div>

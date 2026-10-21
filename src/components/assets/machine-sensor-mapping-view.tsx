@@ -3,7 +3,7 @@
 import { useComponentScope } from "./component-scope";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { AssetMachine } from "./assets-data";
-import { PillButton } from "@/components/ui";
+import { PillButton, Loading } from "@/components/ui";
 import type { KilnSimulation } from "./kiln-seals-simulation";
 import type { KilnSealsSensorData } from "./kiln-seals-types";
 import { ruleInputsOf, useMachineCatalog, useMachineMeasurements, type CatalogSensorView } from "./use-machine-catalog";
@@ -540,8 +540,8 @@ export function MachineSensorMappingView({
       />
 
       {loading ? (
-        <section className="ast-card" role="status" aria-live="polite">
-          <Empty title="Loading sensors…" />
+        <section className="ast-card">
+          <Loading label="Loading sensors…" rows={6} />
         </section>
       ) : allRows.length === 0 ? (
         <section className="ast-card">

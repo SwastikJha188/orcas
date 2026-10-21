@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { Dialog, Field, FieldGrid, FormNote, PillButton, Select, StatusTag, Table, TextInput, type Column } from "@/components/ui";
+import { Dialog, Field, FieldGrid, FormNote, PillButton, Select, StatusTag, Table, TextInput, type Column, Loading } from "@/components/ui";
 import type { Tone } from "@/components/ui/status";
 import { formatLocalTime, zonedParts, zoneOffsetMs } from "@/lib/time";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
@@ -153,7 +153,11 @@ export function ReferencesSection({ machineId, index, tags = null }: { machineId
         </p>
       )}
       {list.length === 0 ? (
-        <p className="pg-diag-missing">{sets.isLoading ? "Loading normal values…" : sets.error ? `Normal values could not load: ${sets.error}` : "No normal values saved yet."}</p>
+        sets.isLoading ? (
+          <Loading label="Loading normal values…" rows={5} />
+        ) : (
+          <p className="pg-diag-missing">{sets.error ? `Normal values could not load: ${sets.error}` : "No normal values saved yet."}</p>
+        )
       ) : (
         <Table
           className="pg-dx-table mon-table"

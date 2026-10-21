@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { PillNav, Table, type Column } from "@/components/ui";
+import { PillNav, Table, type Column, Loading } from "@/components/ui";
 import { StatusTag } from "@/components/assets/assets-shell-ui";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { defsFor } from "@/lib/live-defs";
@@ -16,6 +16,7 @@ import { useLineInsights } from "./line-insights";
 import { useLineMachines } from "./line-model";
 import "../analysis/analysis-page.css";
 import "../prognosis/prognosis-page.css";
+import { useLivePlantStarting } from "@/providers/kiln-simulation-context";
 
 /* ==========================================================================
    Full line · Analysis — "why is it happening, and where on the line".
@@ -83,9 +84,11 @@ export function LineAnalysis({ units, names }: { units: AssetMachine[]; names: R
   const live = machines.some((lm) => lm.frame);
   const shown = view === "all" ? issues : issues.filter((x) => x.issue.kind === view);
 
+  const starting = useLivePlantStarting();
   const kpis: KpiItem[] = [
     {
       label: "Problems now",
+      loading: starting && !live,
       value: live ? String(faults.length) : "—",
       foot: live ? `${faults.length - confirming} confirmed · ${confirming} being checked` : "No live data for this line",
       tone:
@@ -97,6 +100,8 @@ export function LineAnalysis({ units, names }: { units: AssetMachine[]; names: R
     },
     {
       label: "Parts that may fail in 6 months",
+      // Forecasts arrive per machine; until the first one, the count waits.
+      loading: ins.loading === units.length,
       value: String(predicted.length),
       unit: "parts",
       foot: predicted[0] ? `First: ${predicted[0].issue.where} on ${names[predicted[0].machine.id] ?? predicted[0].machine.name}` : "None apart from the problems now",
@@ -112,6 +117,7 @@ export function LineAnalysis({ units, names }: { units: AssetMachine[]; names: R
     },
     {
       label: "Unusual readings, cause unknown",
+      loading: starting && !live,
       value: live ? String(unknown.length) : "—",
       unit: "sensors",
       foot: "Off expected, and no known problem explains them",
@@ -212,9 +218,11 @@ export function LineAnalysis({ units, names }: { units: AssetMachine[]; names: R
       >
         {shown.length ? (
           <Table className="pg-dx-subs pg-an-line" columns={issueCols} data={shown} keyExtractor={(x) => x.key} onRowClick={openIssue} />
+        ) : ins.loading && view !== "fault" ? (
+          <Loading label="Loading the forecasts…" rows={5} />
         ) : (
           <p className="pg-analysis-empty">
-            {ins.loading && view !== "fault" ? "Loading the forecasts…" : view === "fault" ? "No problem is happening on the line now." : "No problem found on the line."}
+            {view === "fault" ? "No problem is happening on the line now." : "No problem found on the line."}
           </p>
         )}
       </Section>

@@ -7,7 +7,7 @@
  */
 import React, { useMemo, useState } from "react";
 import { useApi } from "@/lib/api-cache";
-import { PillButton, PillNav } from "@/components/ui";
+import { PillButton, PillNav, Loading } from "@/components/ui";
 import { guidesUrl, type Guide } from "./cases-api";
 import { useRefreshOnCaseChange } from "./condition-strip";
 import type { NewCasePreset } from "./new-case-dialog";
@@ -67,7 +67,7 @@ export function GuidesTab({ plantId, onStartCase }: { plantId: string | null; on
         )}
       </div>
 
-      {isLoading && !data && <p className="ast-muted">Loading the investigation guides…</p>}
+      {isLoading && !data && <Loading label="Loading the investigation guides…" rows={5} />}
       {error && !data && (
         <p className="pg-note" data-tone="bad" role="alert">
           Could not load the investigation guides. Reload the page to try again.

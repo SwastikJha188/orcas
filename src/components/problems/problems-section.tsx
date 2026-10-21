@@ -12,7 +12,7 @@ import { useApi } from "@/lib/api-cache";
 import { formatLocalTime } from "@/lib/time";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
-import { Select, Table, type Column, type SelectOption } from "@/components/ui";
+import { Select, Table, type Column, type SelectOption, Loading } from "@/components/ui";
 import { SearchPill, StatusTag, type Tone } from "@/components/assets/assets-shell-ui";
 import { STAGE_TONE, VOCABULARY_URL, casesUrl, type CaseList, type CaseSummary, type CaseVocabulary } from "./cases-api";
 import { CaseView } from "./case-view";
@@ -116,7 +116,7 @@ function CaseList({ plantId, machineId, onOpen }: { plantId: string | null; mach
         </div>
       </div>
 
-      {isLoading && !data && <div className="ast-empty">Loading the cases…</div>}
+      {isLoading && !data && <Loading label="Loading the cases…" rows={6} />}
       {error && !data && (
         <div className="ast-empty" role="alert">
           The cases could not be loaded. Reload the page to try again.

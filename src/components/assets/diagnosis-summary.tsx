@@ -44,7 +44,7 @@ export function diagnosisKpis({
         foot: [lead.name !== lead.ruleId ? lead.name : null, lead.priority].filter(Boolean).join(" · "),
         tone: lead.state === "confirming" || lead.state === "matching" ? undefined : toneOf(lead.severity),
       }
-    : { label: "Lead finding", value: loading ? "…" : "None", text: true, foot: loading ? "Loading findings…" : "No pattern matches" };
+    : { label: "Lead finding", loading, value: "None", text: true, foot: "No pattern matches" };
 
   if (frame) {
     const raised = alarms.filter((a) => a.state !== "confirming");

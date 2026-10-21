@@ -11,7 +11,7 @@ import { revalidateApi, useApi } from "@/lib/api-cache";
 import { formatLocalTime } from "@/lib/time";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { conditionTone } from "@/components/ui/status";
-import { PillButton, PillNav } from "@/components/ui";
+import { PillButton, PillNav, Skel } from "@/components/ui";
 import { StatusTag } from "@/components/assets/assets-shell-ui";
 import { CASES_CHANGED_EVENT, CaseApiError, VOCABULARY_URL, casesApi, conditionUrl, type CaseVocabulary, type ConditionStrip as ConditionData } from "./cases-api";
 import "./problems.css";
@@ -103,9 +103,11 @@ export function ConditionStrip({ plantId, machineId, onRecordAlarm }: { plantId:
     }
   };
 
+  // Until the first answer, each value shows a placeholder (an error shows "Not available").
+  const wait = error ? "Not available" : <Skel width="4ch" label="Loading" />;
   const running = data?.running ?? [];
   const runningText = (() => {
-    if (!data) return "—";
+    if (!data) return wait;
     if (running.length === 0) return "Not recorded";
     if (running.length === 1) return modeWord(running[0].mode);
     const byMode = new Map<string, number>();
@@ -124,7 +126,7 @@ export function ConditionStrip({ plantId, machineId, onRecordAlarm }: { plantId:
       {/* Scope */}
       <div className="prb-cell">
         <span className="prb-cell-label">Showing</span>
-        <span className="prb-cell-value">{data?.scope ?? (isLoading ? "Loading…" : "—")}</span>
+        <span className="prb-cell-value">{data?.scope ?? (isLoading ? <Skel width="10ch" label="Loading" /> : "—")}</span>
       </div>
 
       {/* Machine condition */}
@@ -133,7 +135,7 @@ export function ConditionStrip({ plantId, machineId, onRecordAlarm }: { plantId:
           <span className="prb-cell-label">
             Machine condition <Caret open={panel === "condition"} />
           </span>
-          <span className="prb-cell-value">{data ? <StatusTag tone={conditionTone(word)} label={word} /> : error ? "Not available" : "—"}</span>
+          <span className="prb-cell-value">{data ? <StatusTag tone={conditionTone(word)} label={word} /> : wait}</span>
         </button>
         {panel === "condition" && data && (
           <div className="prb-pop" role="dialog" aria-label="How the condition is decided">
@@ -154,7 +156,7 @@ export function ConditionStrip({ plantId, machineId, onRecordAlarm }: { plantId:
             Open alarms <Caret open={panel === "alarms"} />
           </span>
           <span className="prb-cell-value" data-tone={alarms.some((a) => a.severity === "Critical") ? "bad" : alarms.length ? "warn" : undefined}>
-            {data ? alarms.length : "—"}
+            {data ? alarms.length : wait}
           </span>
         </button>
         {panel === "alarms" && data && (
@@ -255,7 +257,7 @@ export function ConditionStrip({ plantId, machineId, onRecordAlarm }: { plantId:
       <div className="prb-cell">
         <span className="prb-cell-label">Not acknowledged</span>
         <span className="prb-cell-value" data-tone={notAcked ? "warn" : undefined}>
-          {data ? notAcked : "—"}
+          {data ? notAcked : wait}
         </span>
       </div>
 
@@ -266,7 +268,7 @@ export function ConditionStrip({ plantId, machineId, onRecordAlarm }: { plantId:
             Data coming in <Caret open={panel === "data"} />
           </span>
           <span className="prb-cell-value" data-tone={data && data.data.fresh < data.data.total ? "warn" : undefined}>
-            {data ? `${data.data.fresh} of ${plural(data.data.total, "sensor", "sensors")}` : "—"}
+            {data ? `${data.data.fresh} of ${plural(data.data.total, "sensor", "sensors")}` : wait}
           </span>
         </button>
         {panel === "data" && data && (

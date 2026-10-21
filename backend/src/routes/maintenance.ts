@@ -154,7 +154,7 @@ maintenance.post("/items/restore", async (c) => {
 maintenance.get("/pms/line", async (c) => {
   const request = c.req.raw;
   try {
-    return Response.json({ data: await getPmsLine(await currentUser(request)) });
+    return Response.json({ data: await getPmsLine(await currentUser(request), await requestScope(request)) });
   } catch (error) {
     return pmsFail(error, "PMS_ERROR", "Failed to load planned maintenance");
   }

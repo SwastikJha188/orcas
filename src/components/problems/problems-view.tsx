@@ -10,7 +10,7 @@ import { useApi } from "@/lib/api-cache";
 import { formatLocalTime } from "@/lib/time";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
-import { PillButton, PillNav, Select, Table, type Column, type PillNavItem, type SelectOption } from "@/components/ui";
+import { PillButton, PillNav, Select, Table, type Column, type PillNavItem, type SelectOption, Loading } from "@/components/ui";
 import { SearchPill, StatusTag, type Tone } from "@/components/assets/assets-shell-ui";
 import { OPEN_CASE_EVENT, STAGE_TONE, VOCABULARY_URL, casesUrl, takeCaseToOpen, type CaseList, type CaseSummary, type CaseVocabulary } from "./cases-api";
 import { CaseView } from "./case-view";
@@ -128,7 +128,7 @@ function CasesTab({ plantId, onOpen }: { plantId: string | null; onOpen: (id: nu
         </div>
       </div>
 
-      {isLoading && !data && <p className="ast-muted">Loading the cases…</p>}
+      {isLoading && !data && <Loading label="Loading the cases…" rows={6} />}
       {error && !data && (
         <p className="pg-note" data-tone="bad" role="alert">
           Could not load the cases. Reload the page to try again.

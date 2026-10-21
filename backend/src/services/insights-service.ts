@@ -148,9 +148,10 @@ async function partLives(machineId: string) {
     r_basis: "h" | "d" | null;
     r_used: string | null;
     r_shape: number | null;
+    r_source: string | null;
   }>(
     `SELECT ms.id AS sa_id, k.label, k.life_h AS k_life, k.weibull_shape AS k_shape,
-            c.life AS r_life, c.basis AS r_basis, c.used AS r_used, c.weibull_shape AS r_shape
+            c.life AS r_life, c.basis AS r_basis, c.used AS r_used, c.weibull_shape AS r_shape, c.record_source AS r_source
        FROM machine_subassemblies ms JOIN machine_systems sy ON sy.id = ms.machine_system_ref_id
        CROSS JOIN LATERAL (SELECT * FROM part_kind_lives WHERE ms.name ~* name_pattern ORDER BY sort_order LIMIT 1) k
        LEFT JOIN LATERAL (SELECT * FROM component_service_lives c WHERE c.subassembly_ref_id = ms.id ORDER BY c.sort_order LIMIT 1) c ON true
@@ -411,6 +412,8 @@ export async function getMachineInsights(machineId: string): Promise<InsightsRes
     const lf = sa ? lifeBy.get(sa.id) : undefined;
     if (!lf) continue;
     const recorded = lf.r_life !== null && lf.r_used !== null;
+    // A record estimated from the typical life of its kind of part (migration 057) says so.
+    const typical = !recorded || /^Estimated from the typical life/i.test(lf.r_source ?? "");
     const unit = lf.r_basis === "d" ? 24 : 1;
     const eta = recorded ? Number(lf.r_life) * unit : Number(lf.k_life);
     const beta = Number((recorded ? lf.r_shape : null) ?? lf.k_shape);
@@ -425,8 +428,8 @@ export async function getMachineInsights(machineId: string): Promise<InsightsRes
     const hours = weibullLeft(eta, beta, age, 0.5);
     r.hours = Math.max(1, Math.round(hours));
     r.days = Math.round(hours / 24);
-    r.dueLabel = recorded ? `From its recorded life, ${Math.round(share * 100)} % used` : `From the typical life for a ${lf.label}`;
-    r.life = { source: recorded ? "recorded" : "typical", kind: lf.label, lifeH: eta, shape: beta, ageH: round(age, 1), usedPct: Math.round(share * 100) };
+    r.dueLabel = typical ? `From the typical life for a ${lf.label}, ${Math.round(share * 100)} % used` : `From its part record, ${Math.round(share * 100)} % used`;
+    r.life = { source: typical ? "typical" : "recorded", kind: lf.label, lifeH: eta, shape: beta, ageH: round(age, 1), usedPct: Math.round(share * 100) };
   }
   rul.sort((a, b) => (a.hours ?? Infinity) - (b.hours ?? Infinity));
 

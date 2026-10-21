@@ -13,7 +13,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { revalidateApi, useApi } from "@/lib/api-cache";
 import { useIndustrialData } from "@/providers/industrial-data-context";
-import { Field, FieldGrid, NumberInput, PillButton, PillNav, Select, Table, Toggle, type Column } from "@/components/ui";
+import { Field, FieldGrid, NumberInput, PillButton, PillNav, Select, Table, Toggle, type Column, Loading } from "@/components/ui";
 import { formatLocalTime } from "@/lib/time";
 import { syncSimulation } from "@/components/assets/kiln-seals-simulation";
 import { SimulationTry } from "./simulation-try";
@@ -357,7 +357,7 @@ export function SimulationView() {
         </div>
       </header>
 
-      {isLoading && !data && <p className="ast-muted">Loading the simulation settings…</p>}
+      {isLoading && !data && <Loading label="Loading the simulation settings…" rows={4} />}
       {error && !data && (
         <p className="pg-note" data-tone="bad" role="alert">
           Could not load the simulation settings. Reload the page to try again.
