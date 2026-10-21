@@ -8,6 +8,7 @@
 
 import React from "react";
 import { rowActivate } from "@/components/ui/row-activate";
+import { Loading } from "@/components/ui/loading";
 import type { AssetMachine } from "./assets-data";
 import type { AssetsSubPage } from "./assets-view";
 import { Chevron, Section, splitCause } from "./analysis/an-ui";
@@ -53,7 +54,14 @@ export function StateCell({ tone, label }: { tone: Tone; label: string }) {
 
 export function OvOperatingSection({ d }: OvSectionProps) {
   const { operating } = d;
-  if (operating.rows.length === 0) return null;
+  if (operating.rows.length === 0) {
+    // Still loading the machine's record: hold the section's place instead of leaving a gap.
+    return d.catalog.isLoading ? (
+      <Section id={OV_SECTIONS.operating} title="Running conditions">
+        <Loading label="Loading the running conditions…" rows={3} />
+      </Section>
+    ) : null;
+  }
   const live = operating.source === "live";
 
   return (
@@ -312,7 +320,13 @@ export function areaRows({ d }: Pick<OvSectionProps, "machine" | "d">): AreaRow[
 
 export function OvAreasSection({ machine, d, go }: OvSectionProps) {
   const rows = areaRows({ machine, d });
-  if (rows.length === 0) return null;
+  if (rows.length === 0) {
+    return d.catalog.isLoading ? (
+      <Section id={OV_SECTIONS.areas} title="Status by area">
+        <Loading label="Loading the areas…" rows={3} />
+      </Section>
+    ) : null;
+  }
 
   return (
     <Section id={OV_SECTIONS.areas} title="Status by area">

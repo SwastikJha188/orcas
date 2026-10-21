@@ -7,14 +7,14 @@
  * from the live frame; links to its sheet on the machine and to Diagnosis.
  */
 import React, { useEffect, useMemo } from "react";
-import { PillButton } from "@/components/ui";
+import { Loading, PillButton } from "@/components/ui";
 import { StatusTag } from "@/components/ui/status-tag";
 import { conditionTone, toCondition, type Tone } from "@/components/ui/status";
 import type { AssetMachine } from "@/components/assets/assets-data";
 import type { AssetsSubPage } from "@/components/assets/assets-view";
 import { KpiStrip, Section, type KpiItem } from "@/components/assets/analysis/an-ui";
 import { LINE_SHEET_BY_ID, lineSheetsForTags } from "@/components/assets/pyro/line-sheets";
-import { useKilnSimulationFor } from "@/providers/kiln-simulation-context";
+import { useKilnSimulationFor, useLivePlantStarting } from "@/providers/kiln-simulation-context";
 import { isConditionRule } from "@shared/lib/plant-defs";
 import { defsFor } from "@/lib/live-defs";
 import { displayName, nameIds } from "@/lib/display-name";
@@ -66,10 +66,12 @@ export function ComponentQuickLook({
   );
 
   const health = cell ? Math.round(cell.health) : null;
+  // The live plant still starting: its checks and readings are on their way.
+  const starting = useLivePlantStarting() && !frame;
   const kpis: KpiItem[] = [
-    { label: "Health", value: health === null ? "—" : String(health), unit: health === null ? undefined : "/100", bar: health ?? undefined, tone: sevTone(cell?.status), foot: condition },
-    { label: "Problems found", value: frame ? String(alarms.length) : "—", tone: alarms.length ? "bad" : undefined, foot: frame ? "By the system's automatic checks" : "No live checks on this machine" },
-    { label: "Sensors out of range", value: String(inAlarm), unit: `/ ${rows.length}`, tone: inAlarm ? "bad" : undefined, foot: `${notGood} ${notGood === 1 ? "sensor" : "sensors"} with bad readings` },
+    { label: "Health", value: health === null ? "—" : String(health), unit: health === null ? undefined : "/100", bar: health ?? undefined, tone: sevTone(cell?.status), foot: condition, loading: health === null && starting },
+    { label: "Problems found", value: frame ? String(alarms.length) : "—", tone: alarms.length ? "bad" : undefined, foot: frame ? "By the system's automatic checks" : "No live checks on this machine", loading: starting },
+    { label: "Sensors out of range", value: String(inAlarm), unit: `/ ${rows.length}`, tone: inAlarm ? "bad" : undefined, foot: `${notGood} ${notGood === 1 ? "sensor" : "sensors"} with bad readings`, loading: starting },
   ];
 
   // The shared component selection (set by onOpenPage's caller) filters Diagnosis.
@@ -141,7 +143,7 @@ export function ComponentQuickLook({
 
             <Section id="mql-part-alarms" title="Problems">
               {alarms.length === 0 ? (
-                <p className="mql-empty">{frame ? "No problems right now" : "No live checks on this machine"}</p>
+                starting ? <Loading label="Loading the checks…" rows={2} /> : <p className="mql-empty">{frame ? "No problems right now" : "No live checks on this machine"}</p>
               ) : (
                 <ul className="mql-list">
                   {alarms.map((r) => (

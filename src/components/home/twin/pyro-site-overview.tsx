@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { homeActive } from "../home-active";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PillButton } from "@/components/ui";
+import { Loading, PillButton } from "@/components/ui";
 import { twinHint, usePersistedNavMode, type TwinNavMode, type TwinNudgeAction } from "./twin-nav-ui";
 import { StatusTag } from "@/components/ui/status-tag";
 import { type Condition, type Tone, conditionTone, toCondition, worstCondition } from "@/components/ui/status";
@@ -13,7 +13,7 @@ import { type SimFrame, formatDuration } from "@shared/lib/kiln-sim/engine";
 import { PYRO_MACHINE_BY_ID } from "@shared/lib/pyro-sim/signals";
 import { useApi } from "@/lib/api-cache";
 import { useIndustrialData } from "@/providers/industrial-data-context";
-import { useKilnFleet, usePrimaryMachineId } from "@/providers/kiln-simulation-context";
+import { useKilnFleet, useLivePlantStarting, usePrimaryMachineId } from "@/providers/kiln-simulation-context";
 import type { MeasurementDto } from "@shared/types/monitoring";
 import type { TwinInset } from "./plant-twin-canvas";
 import { hasWebGL } from "./plant-twin";
@@ -1183,6 +1183,8 @@ function MachinePanel({ row, catalog, frame, onClose, onOpen }: { row: MachineRo
   const counts = frame && row.id ? onlineValid(frame, row.id, catalog) : null;
   const keyTags = (row.id && catalog.keyTags[row.id]) || [];
   const subs = frame ? frame.defs.subassemblies.map((s) => ({ id: s.id, name: s.name, cell: frame.subs[s.id] })) : [];
+  // The live plant still starting: its readings are on their way, not missing.
+  const starting = useLivePlantStarting() && !frame;
 
   return (
     <>
@@ -1203,7 +1205,7 @@ function MachinePanel({ row, catalog, frame, onClose, onOpen }: { row: MachineRo
         <h3>Problems</h3>
         {findings.length === 0 ? (
           <>
-            <p className="pso-empty">{frame ? "No problems right now" : "No live readings"}</p>
+            {starting ? <Loading label="Loading the checks…" rows={2} /> : <p className="pso-empty">{frame ? "No problems right now" : "No live readings"}</p>}
             {frame && keyTags.length > 0 && (
               <dl className="ph-insp-rows">
                 {keyTags.map((tg) => {
@@ -1269,7 +1271,7 @@ function MachinePanel({ row, catalog, frame, onClose, onOpen }: { row: MachineRo
       <section className="pso-sec">
         <h3>Parts</h3>
         {subs.length === 0 ? (
-          <p className="pso-empty">No live readings</p>
+          starting ? <Loading label="Loading the parts…" rows={3} /> : <p className="pso-empty">No live readings</p>
         ) : (
           <ul className="pso-subs">
             {subs.map((s) => {

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo } from "react";
-import { PillButton } from "@/components/ui";
+import { Loading, PillButton } from "@/components/ui";
 import { StatusTag } from "@/components/ui/status-tag";
 import { conditionTone, toCondition, type Tone, VALIDITY_WORDS } from "@/components/ui/status";
 import type { AssetMachine } from "@/components/assets/assets-data";
@@ -21,7 +21,7 @@ import {
   rulRows,
 } from "@/components/assets/prognosis/prognosis-derive";
 import { DIAGNOSIS_SUB_KEY, focusLayer } from "@/components/assets/sensor-focus";
-import { isLiveMachine, useKilnSimulationFor, useLiveMachineStatus } from "@/providers/kiln-simulation-context";
+import { isLiveMachine, useKilnSimulationFor, useLiveMachineStatus, useLivePlantStarting } from "@/providers/kiln-simulation-context";
 import { useHealthBands } from "@/lib/reference-data";
 import { defsFor } from "@/lib/live-defs";
 import { displayName } from "@/lib/display-name";
@@ -97,6 +97,12 @@ export function MachineQuickLook({
   const issues = useMemo(() => buildIssues(frame, rul, defs), [frame, rul, defs]);
   const unknown = useMemo(() => (frame ? unexplained(frame) : []), [frame]);
 
+  /* ------------------------------ Loading ------------------------------- */
+  // Until the readings, the live checks and the estimates are in, nothing here reads as "none" or 0.
+  const starting = useLivePlantStarting() && !frame && isLiveMachine(machine.id);
+  const sensorsLoading = (catalog.isLoading && catalog.sensors.length === 0) || starting;
+  const estimatesLoading = (insights.isLoading && !insights.data) || (isLiveMachine(machine.id) && !frame && Boolean(data));
+
   /* -------------------------------- KPIs -------------------------------- */
   const score = live.health === null ? null : Math.round(live.health);
   const scoreBand = score === null ? null : bandOf(score, bands);
@@ -108,12 +114,14 @@ export function MachineQuickLook({
       bar: score ?? undefined,
       tone: scoreBand === "Critical" ? "bad" : scoreBand === "Alert" ? "warn" : undefined,
       foot: condition,
+      loading: score === null && sensorsLoading,
     },
     {
       label: "Problems found",
       value: frame ? String(totals.active) : "—",
       foot: frame ? `${totals.confirming} more being checked` : "No live checks on this machine",
       tone: totals.active ? "bad" : undefined,
+      loading: starting,
     },
     {
       label: "Sensors out of range",
@@ -121,10 +129,11 @@ export function MachineQuickLook({
       unit: `/ ${sensors.length}`,
       foot: `${totals.invalid} with bad readings · ${totals.suspect} doubtful`,
       tone: alarmRows.length ? "bad" : undefined,
+      loading: sensorsLoading,
     },
     next
       ? { label: "Next likely failure", value: durationText(next.hours), text: true, foot: displayName(next.name), tone: next.status === "Critical" ? "bad" : next.status === "Alert" ? "warn" : undefined }
-      : { label: "Next likely failure", value: "—", text: true, foot: rul.length ? "Nothing is wearing out" : "No estimate yet" },
+      : { label: "Next likely failure", value: "—", text: true, foot: rul.length ? "Nothing is wearing out" : "No estimate yet", loading: estimatesLoading },
   ];
 
   const openSub = (name: string) => {
@@ -186,7 +195,7 @@ export function MachineQuickLook({
           <div className="mql-grid">
             <Section id="mql-diagnosis" title="Health of each part" right={openLink("diagnosis", "Diagnosis")}>
               {health.subs.length === 0 ? (
-                <p className="mql-empty">No part has a health score yet</p>
+                sensorsLoading ? <Loading label="Loading the parts…" rows={3} /> : <p className="mql-empty">No part has a health score yet</p>
               ) : (
                 <ul className="mql-list is-cols">
                   {health.subs.map((sub) => {
@@ -223,7 +232,7 @@ export function MachineQuickLook({
                 ))}
               </div>
               {alarmRows.length === 0 ? (
-                <p className="mql-empty">All sensors are in their normal range</p>
+                sensorsLoading ? <Loading label="Loading the readings…" rows={2} /> : <p className="mql-empty">All sensors are in their normal range</p>
               ) : (
                 <ul className="mql-list">
                   {alarmRows.slice(0, LIST_CAP).map((r) => (
@@ -273,7 +282,11 @@ export function MachineQuickLook({
 
             <Section id="mql-analysis" title="Why it is happening" right={openLink("analysis", "Analysis")}>
               {issues.length === 0 ? (
-                <p className="mql-empty">{frame ? "No problems found or expected" : "No live checks on this machine"}</p>
+                starting || estimatesLoading ? (
+                  <Loading label="Loading the analysis…" rows={2} />
+                ) : (
+                  <p className="mql-empty">{frame ? "No problems found or expected" : "No live checks on this machine"}</p>
+                )
               ) : (
                 <ul className="mql-list">
                   {issues.slice(0, LIST_CAP).map((i) => (

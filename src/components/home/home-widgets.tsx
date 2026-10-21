@@ -345,7 +345,7 @@ export function AlertsFeed({
           )}
         </h2>
         <span className="ast-caption">
-          {active.length} open · {danger} critical
+          {loading && alerts.length === 0 && activity.length === 0 ? "Loading…" : `${active.length} open · ${danger} critical`}
         </span>
       </div>
       {error && (

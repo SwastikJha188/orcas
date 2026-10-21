@@ -8,7 +8,6 @@
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   letter-spacing: 0.02em;
-  animation: ui-loading-in 200ms var(--ease-out) 120ms both;
 }
 .ui-loading[data-inline] { padding: 0; }
 .ui-loading-scan {
@@ -44,10 +43,7 @@
   from { background-position: 100% 0; }
   to { background-position: -100% 0; }
 }
-/* A quick response never flashes the loader: it fades in after a short beat. */
-@keyframes ui-loading-in { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .ui-loading,
   .ui-loading-scan::after,
   .ui-skel { animation: none; }
   .ui-loading-scan::after { inline-size: 100%; opacity: 0.4; }

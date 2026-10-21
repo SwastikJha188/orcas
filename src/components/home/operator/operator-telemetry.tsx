@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { Loading, Skel } from "@/components/ui";
 import { formatClock } from "@shared/lib/kiln-sim/engine";
 import type { HomeAlert } from "../home-widgets";
 import type { Tone } from "@/components/assets/assets-shell-ui";
@@ -251,21 +252,25 @@ export function useLatchedAlarms(scope: string, current: HomeAlert[], clock: str
 /** Operator sidebar: the latched alarm list. Active alarms red, cleared ones in normal text; a row opens its machine's Diagnosis. */
 export function OperatorAlarmLog({
   alarms,
+  loading = false,
   onDiagnose,
 }: {
   alarms: LatchedAlarm[];
+  /** The plant's alarms are still on their way (live frames or the server's list): never read as "none". */
+  loading?: boolean;
   onDiagnose: (machineId: string) => void;
 }) {
   const [openOnly, setOpenOnly] = useState(false);
   const active = alarms.filter((a) => a.active).length;
+  const waiting = loading && alarms.length === 0;
   const shown = openOnly ? alarms.filter((a) => a.active) : alarms;
   return (
     <aside className="opc-alarm-rail opc-alarm-log" aria-label="Alarms">
       <div className="opc-rail-head">
         <strong>Alarms</strong>
         <span className="opc-al-counts">
-          <span data-active={active > 0 || undefined}><b className="ast-num">{active}</b> open</span>
-          <span><b className="ast-num">{alarms.length - active}</b> fixed</span>
+          <span data-active={active > 0 || undefined}><b className="ast-num">{waiting ? <Skel width="1ch" /> : active}</b> open</span>
+          <span><b className="ast-num">{waiting ? <Skel width="1ch" /> : alarms.length - active}</b> fixed</span>
           <button type="button" className="opc-al-filter" aria-pressed={openOnly} onClick={() => setOpenOnly((v) => !v)} title={openOnly ? "Show open and fixed alarms" : "Show only open alarms"}>
             Open only
           </button>
@@ -294,7 +299,9 @@ export function OperatorAlarmLog({
             );
           })
         ) : (
-          <li className="opc-rail-empty">{openOnly && alarms.length ? "No open alarms" : "No problems found since this page was opened"}</li>
+          <li className="opc-rail-empty">
+            {waiting ? <Loading label="Loading the alarms…" rows={3} inline /> : openOnly && alarms.length ? "No open alarms" : "No problems found since this page was opened"}
+          </li>
         )}
       </ol>
     </aside>

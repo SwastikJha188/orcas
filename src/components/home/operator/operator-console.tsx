@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PillButton } from "@/components/ui";
+import { Loading, PillButton } from "@/components/ui";
 import { smoothPath } from "@/components/ui/sparkline";
 import type { AssetMachine, HierarchyNode } from "@/components/assets/assets-data";
 import type { AssetsSubPage } from "@/components/assets/assets-view";
@@ -62,8 +62,9 @@ import { ComponentQuickLook } from "./component-quick-look";
 import { componentOptions, type ComponentOption } from "@/components/assets/component-scope";
 import { MachineQuickLook } from "./machine-quick-look";
 import type { HealthPoint } from "@shared/lib/health-recorder";
-import { isLiveMachine, useKilnFleet, useKilnSimulationFor, usePlantEngineOf, usePrimaryMachineId } from "@/providers/kiln-simulation-context";
+import { isLiveMachine, useKilnFleet, useKilnSimulationFor, useLivePlantStarting, usePlantEngineOf, usePrimaryMachineId } from "@/providers/kiln-simulation-context";
 import { useIndustrialData } from "@/providers/industrial-data-context";
+import { useHierarchyData } from "@/components/assets/hierarchy/use-hierarchy-data";
 import { defsFor } from "@/lib/live-defs";
 import { useHealthModels, type HealthBands } from "@/lib/reference-data";
 import { isConditionRule } from "@shared/lib/plant-defs";
@@ -409,6 +410,7 @@ export function OperatorConsole({
   score,
   dist,
   alerts = [],
+  alertsLoading = false,
   trackHealth,
   view = "operator",
   onChangeView,
@@ -449,8 +451,11 @@ export function OperatorConsole({
   let navigateToLine: ((page: "diagnosis" | "prognosis" | "analysis") => void) | undefined;
   // Practice faults (simulation) belong to the Oswar super administrator alone.
   let canSimulate = false;
+  /** The plant's records are in (false while the first load runs). */
+  let plantLoaded = true;
   try {
     const dataContext = useIndustrialData();
+    plantLoaded = dataContext.hasLoaded && !(dataContext.isLoading && dataContext.hierarchy.length === 0);
     navigateToLine = dataContext.navigateToLine;
     canSimulate = Boolean(dataContext.currentUser?.role.allPlants);
     contextSubPage = dataContext.activeSubPage;
@@ -1334,6 +1339,9 @@ export function OperatorConsole({
 
   /* ------------------------------------------------------ key figures (for Sub-assembly / Operating point / Status by area) */
   const hasDigestData = digestSensors.length > 0 || digestGroups.rows.length > 0 || isLiveHealth;
+  // The machine's record and live checks still on their way: placeholders, never "No data" / "None".
+  const liveStarting = useLivePlantStarting() && !activeFrame && isLiveMachine(activeCatalogMachine?.id);
+  const digestLoading = (digest.catalog.isLoading && digestSensors.length === 0) || liveStarting;
   const offNormalCount = digestCounts.Alert + digestCounts.Critical;
   const firstOutlook = digestOutlook?.first ?? null;
   const topFinding = digestFindings.active[0] ?? null;
@@ -1346,6 +1354,7 @@ export function OperatorConsole({
       bar: hasDigestData ? digestOverall : undefined,
       tone: hasDigestData ? conditionTone(conditionLabel) : "idle",
       foot: isLiveHealth ? "Live" : hasDigestData ? "Saved record" : "No data",
+      loading: !hasDigestData && digestLoading,
     },
     {
       label: "Problems found",
@@ -1358,6 +1367,7 @@ export function OperatorConsole({
         : digestFindings.pending
         ? `${digestFindings.pending} being checked`
         : "None",
+      loading: digestFindings.source === "none" && digestLoading,
     },
     {
       label: "Sensors out of range",
@@ -1365,6 +1375,7 @@ export function OperatorConsole({
       unit: digestSensors.length ? `/ ${digestSensors.length}` : undefined,
       tone: digestCounts.Critical ? "bad" : offNormalCount ? "warn" : "idle",
       foot: digestSensors.length ? `${digestCounts.Critical} critical · ${digestCounts.Alert} alert` : "No sensors linked to this machine",
+      loading: !digestSensors.length && digestLoading,
     },
     firstOutlook && digestOutlook?.intervene
       ? {
@@ -1380,6 +1391,7 @@ export function OperatorConsole({
           unit: digestQuality.live && digestQuality.total ? `/ ${digestQuality.total}` : undefined,
           tone: digestQuality.live && digestQuality.valid !== digestQuality.total ? "warn" : "idle",
           foot: digestQuality.live ? "Checked live" : "Not reported",
+          loading: !digestQuality.live && digestLoading,
         },
   ];
 
@@ -1402,8 +1414,11 @@ export function OperatorConsole({
     if (isPyroPlant) return machineTabs("pyro", plantCatalog);
     if (isVpcPlant) return machineTabs("vpc", vpcUnits);
     const name = (id: string) => lookup?.get(id)?.machine?.name ?? contextMachines?.find((m) => m.id === id)?.name ?? id;
-    return machineTabs("plain", nonPyroUnitIds.map((id) => ({ id, name: name(id) })));
-  }, [isPyroPlant, isVpcPlant, plantCatalog, vpcUnits, lookup, contextMachines, nonPyroUnitIds]);
+    // Before the plant loads its stand-in has no machines: no pills yet (the bar shows a placeholder).
+    const ids = nonPyroUnitIds.filter(Boolean);
+    if (!plantLoaded && ids.length === 0) return [];
+    return machineTabs("plain", ids.map((id) => ({ id, name: name(id) }))).filter((t) => t.label);
+  }, [isPyroPlant, isVpcPlant, plantCatalog, vpcUnits, lookup, contextMachines, nonPyroUnitIds, plantLoaded]);
 
   // Factory Fleet Rollup items when Full line (Factory scope) is active
   const factoryRollupUnits = useMemo(() => {
@@ -1769,7 +1784,8 @@ export function OperatorConsole({
                       >
                         All
                       </button>
-                      {factoryRollupUnits.map((u) => (
+                      {/* The stand-in plant before the real one loads has a nameless unit: no pill for it. */}
+                      {factoryRollupUnits.filter((u) => u.name).map((u) => (
                         <button
                           key={u.id}
                           type="button"
@@ -1973,6 +1989,7 @@ export function OperatorConsole({
                 {showAlarmRail && (
                   <OperatorAlarmLog
                     alarms={sidebarAlarms}
+                    loading={alertsLoading || !plantFrame}
                     onDiagnose={(machineId) => navigateWithinConsole(machineId, "diagnosis")}
                   />
                 )}
@@ -3579,10 +3596,13 @@ function SensorSubpageCard({
    ========================================================================== */
 
 function KilnFleetMimicCanvas({ machine, ...rest }: Omit<KilnFleetMimicProps, "machine"> & { machine: AssetMachine | null }) {
+  // No machine yet because the plant (its data or its tree) is still loading: say so, never "no drawing".
+  const { hasLoaded } = useIndustrialData();
+  const { isLoading: treeLoading } = useHierarchyData();
   if (!machine) {
     return (
       <div className="opc-svg-wrap">
-        <span className="opc-no-data">No drawing for this machine yet</span>
+        {hasLoaded && !treeLoading ? <span className="opc-no-data">No drawing for this machine yet</span> : <Loading label="Loading the plant…" />}
       </div>
     );
   }

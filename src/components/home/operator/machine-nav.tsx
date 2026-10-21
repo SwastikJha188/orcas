@@ -28,7 +28,9 @@ import {
   subtreeMachines,
   toneRank,
 } from "@/components/assets/hierarchy/hierarchy-model";
-import { useKilnFleet, usePlantEngineOf } from "@/providers/kiln-simulation-context";
+import { useKilnFleet, useLivePlantStarting, usePlantEngineOf } from "@/providers/kiln-simulation-context";
+import { Skel } from "@/components/ui";
+import { useHierarchyData } from "@/components/assets/hierarchy/use-hierarchy-data";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { isConditionRule } from "@shared/lib/plant-defs";
 import type { MapView } from "../plant-home";
@@ -135,6 +137,12 @@ export function MachineTopbar({
     <header className="opc-topbar" aria-label="Machines and view">
       <div className="opc-stage-tabs">
         <div className="opc-pill-group" role="tablist" aria-label="Select machine">
+          {/* No machines yet: the plant is still loading. */}
+          {tabs.length === 0 && (
+            <span className="opc-pill-btn" aria-hidden="true">
+              <Skel width="8ch" />
+            </span>
+          )}
           {tabs.map((t) => {
             const isActive = t.key === activeKey;
             return (
@@ -204,12 +212,17 @@ export function usePlantStatus(plant: HierarchyNode | null | undefined, lookup: 
 
 /** Row 2, left: dot · scope · Health % · off-normal count. */
 export function StatusSummary({ tone, label, health, offNormal }: { tone: Tone; label: string; health: number | null; offNormal: string | null }) {
+  // Until the plant and its live readings are in, the number is on its way, not missing.
+  const { hasLoaded } = useIndustrialData();
+  const starting = useLivePlantStarting();
+  const { isLoading: treeLoading } = useHierarchyData();
+  const loading = health === null && (!hasLoaded || starting || treeLoading);
   return (
     <div className="opc-subbar-summary">
-      <span className="ph-unit-dot" data-tone={tone} aria-hidden="true" />
+      <span className="ph-unit-dot" data-tone={loading ? "idle" : tone} aria-hidden="true" />
       <span className="opc-tag-bar-id">{label}</span>
-      <span className="opc-tag-bar-val ast-num" data-tone={tone}>
-        Health {health !== null ? `${health}%` : "—"}
+      <span className="opc-tag-bar-val ast-num" data-tone={loading ? undefined : tone}>
+        Health {health !== null ? `${health}%` : loading ? <Skel width="3ch" label="Loading health" /> : "—"}
       </span>
       {offNormal && <span className="opc-tag-bar-band">{offNormal}</span>}
     </div>
