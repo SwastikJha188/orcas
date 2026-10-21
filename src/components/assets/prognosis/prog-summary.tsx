@@ -43,7 +43,7 @@ export function progKpis(
           value: worst.map((v) => `${v}`).join(" · "),
           unit: "%",
           text: true,
-          foot: "Highest of any part, for each period",
+          foot: timed.length === 1 && timed[0].life ? timed[0].dueLabel : "Highest of any part, for each period",
           tone: worst[0] >= 50 ? "bad" : worst[1] >= 50 ? "warn" : undefined,
         }
       : { label: chanceLabel, value: "—", text: true, foot: "No reading is heading toward a limit" },
@@ -92,13 +92,13 @@ export function downloadReport({ machine, data, analysis, rows }: ProgSectionPro
         r.hours === null ? r.dueLabel : durationText(r.hours),
         r.band ? rangeText(r.band.lo, r.band.hi) : "—",
         r.confidence ?? "—",
-        r.basis === "finding" ? "a reading heading toward its limit" : "health score trend",
+        r.life ? (r.life.source === "recorded" ? "the part's recorded life" : `typical life for a ${r.life.kind}`) : r.basis === "finding" ? "a reading heading toward its limit" : "health score trend",
         k && !isBaselineRisk(k) ? k.fault : "—",
         ...FAILURE_HORIZONS.map((h) => (r.band ? failureChance(r.band, h.hours) : "—")),
       ].join("\t");
     }),
     ``,
-    `Chance of failure = how much of the likely range of time left falls within that period. These estimates have not yet been checked against real failures.`,
+    `Chance of failure = how much of the likely range of time left falls within that period; for a part with no reading moving toward its limit, the Weibull chance from its life (its recorded life, else the typical life for its kind of part). These estimates have not yet been checked against real failures.`,
   ];
   const url = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/plain" }));
   const a = document.createElement("a");

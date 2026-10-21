@@ -74,7 +74,7 @@ export function ProgRul({ machine, focusedComponent, data, analysis, rows, onSee
             No limit ahead
           </span>
         ) : (
-          <span className="ast-cell-stack ast-num">
+          <span className="ast-cell-stack ast-num" title={r.life ? r.dueLabel : undefined}>
             <strong>{roundHours(r.hours)}</strong>
             <span className="ast-cell-sub">{r.band ? `likely ${rangeText(r.band.lo, r.band.hi)}` : r.dueLabel}</span>
           </span>
@@ -153,8 +153,9 @@ export function ProgRul({ machine, focusedComponent, data, analysis, rows, onSee
 function HorizonBar({ row, tone }: { row: RulRow; tone?: "warn" | "bad" }) {
   // No estimate: nothing to place on the time axis.
   if (!row.band || row.hours === null) return <span className="ast-muted">—</span>;
-  const lo = logPos(row.band.lo, MAX_H);
-  const hi = logPos(row.band.hi, MAX_H);
+  // Lives beyond the 1-year scale run to its end.
+  const lo = Math.min(99.2, logPos(row.band.lo, MAX_H));
+  const hi = Math.min(100, logPos(row.band.hi, MAX_H));
   return (
     <div
       className="pg-prog-hbar"
@@ -165,7 +166,7 @@ function HorizonBar({ row, tone }: { row: RulRow; tone?: "warn" | "bad" }) {
       <span className="pg-prog-cell-track pg-prog-hbar-track" data-tone={tone}>
         <TimeTicks maxH={MAX_H} />
         <span className="pg-prog-rul-band" style={{ left: `${lo}%`, width: `${Math.max(0.8, hi - lo)}%` }} />
-        <span className="pg-prog-rul-mark" style={{ left: `${logPos(row.hours, MAX_H)}%` }} />
+        <span className="pg-prog-rul-mark" style={{ left: `${Math.min(100, logPos(row.hours, MAX_H))}%` }} />
       </span>
       <span className="pg-prog-hbar-scale" aria-hidden="true">
         {LABELS.map((t) => (

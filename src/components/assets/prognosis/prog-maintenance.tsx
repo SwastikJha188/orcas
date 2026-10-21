@@ -1,6 +1,6 @@
 "use client";
 
-import { crossingsAt, windowFor, windowHours, type AnalysisPayload, type PrognosisData, type RulRow } from "./prognosis-derive";
+import { crossingsAt, failureChance, FAILURE_HORIZONS, windowFor, windowHours, type AnalysisPayload, type PrognosisData, type RulRow } from "./prognosis-derive";
 import { priorityRank } from "../analysis/an-ui";
 import type { WorkOrderPriorityDto } from "@shared/types/monitoring";
 
@@ -40,8 +40,24 @@ export function buildRecs(data: PrognosisData, analysis: AnalysisPayload | null,
     ];
     out.push({ id: a.id, title: a.title, component: a.component, priority: a.priority, window: a.window, due, supports: supports.length ? supports : ["Finding"], tags });
   }
+  const sixMonths = FAILURE_HORIZONS[FAILURE_HORIZONS.length - 1].hours;
   for (const r of rows) {
-    if (r.status === "Normal" || covered.has(r.id)) continue;
+    if (covered.has(r.id)) continue;
+    // A healthy part whose life makes failure more likely than not within 6 months: plan its replacement.
+    if (r.status === "Normal" && r.life && r.band && r.hours !== null && failureChance(r.band, sixMonths) >= 50) {
+      out.push({
+        id: `life-${r.id}`,
+        title: `Plan the replacement of ${r.name}`,
+        component: r.name,
+        priority: "Low",
+        window: windowFor(r.band.lo),
+        due: r.band.lo,
+        supports: ["RUL"],
+        tags: r.tags,
+      });
+      continue;
+    }
+    if (r.status === "Normal") continue;
     out.push({
       id: `rul-${r.id}`,
       title: `Send someone to inspect ${r.name}`,

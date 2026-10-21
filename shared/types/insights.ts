@@ -148,6 +148,26 @@ export interface RulItem {
   dueLabel: string;
   /** The measurement whose trend sets `hours`. */
   driver?: string;
+  /**
+   * Set when no reading is moving toward its limit: `hours` is then the median
+   * time left from the part's life (its own record, else the typical life for
+   * its kind of part, migration 055) on a Weibull curve.
+   */
+  life?: RulLife | null;
+}
+
+export interface RulLife {
+  /** "recorded": the plant's part record; "typical": the typical life for its kind of part. */
+  source: "recorded" | "typical";
+  /** Kind of part the typical life is for ("motor or drive"). */
+  kind: string;
+  /** Characteristic life η, plant hours. */
+  lifeH: number;
+  /** Weibull shape β. */
+  shape: number;
+  /** Life already used, plant hours (recorded, else estimated from the part's health). */
+  ageH: number;
+  usedPct: number;
 }
 
 export interface AnomalyItem {

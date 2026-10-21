@@ -386,7 +386,13 @@ async function nextFailure(ctx: PrefixedContext): Promise<CopilotAnswer> {
   const text = [
     `**${first.r.name} on ${nameOf(ctx, first.id)} is likely to need repair first: in about ${durationText(first.r.hours!)}**${rangeText(first.r.band!.lo, first.r.band!.hi) !== durationText(first.r.hours!) ? ` (likely ${rangeText(first.r.band!.lo, first.r.band!.hi)})` : ""}.`,
     first.r.driver ? `What sets it: ${first.r.driver.fault}.` : first.r.dueLabel ? `What sets it: ${first.r.dueLabel}.` : "",
-    `Chance it fails within 6 months: ${failureChance(first.r.band!, sixMonths)} %. This comes from how fast its readings are moving toward their limits, so it firms up as more readings arrive.`,
+    `Chance it fails within 6 months: ${failureChance(first.r.band!, sixMonths)} %. ${
+      first.r.life
+        ? first.r.life.source === "recorded"
+          ? "No reading is moving toward its limit, so this comes from the part's recorded life and how much of it is used."
+          : `No reading is moving toward its limit and the plant has not recorded this part's life, so this uses the typical life for a ${first.r.life.kind}.`
+        : "This comes from how fast its readings are moving toward their limits, so it firms up as more readings arrive."
+    }`,
     rest.length ? `After that:\n${rest.slice(0, 4).map((x) => `• ${x.r.name} (${nameOf(ctx, x.id)}): about ${durationText(x.r.hours!)}`).join("\n")}` : "",
   ]
     .filter(Boolean)

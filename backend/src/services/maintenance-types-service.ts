@@ -248,7 +248,8 @@ export async function listTrendLives(machineIds: string[]): Promise<TrendLife[]>
   for (const x of all) {
     if (!x) continue;
     for (const r of x.d.prognosis.rul) {
-      if (r.hours === null) continue;
+      // Only readings moving toward a limit; part lives are listed from their own records.
+      if (r.hours === null || r.life) continue;
       out.push({ machineId: x.id, id: r.id, name: r.name, hours: r.hours, confidence: r.confidence, driver: r.driver ?? null, status: r.status });
     }
   }

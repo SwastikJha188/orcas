@@ -137,6 +137,34 @@ function dueLabel(hours: number): string {
 /* Orchestration                                                       */
 /* ------------------------------------------------------------------ */
 
+/** Each sub-assembly's life: its own part record (component_service_lives) and the typical life for its kind (part_kind_lives). */
+async function partLives(machineId: string) {
+  const res = await query<{
+    sa_id: string;
+    label: string;
+    k_life: number;
+    k_shape: number;
+    r_life: string | null;
+    r_basis: "h" | "d" | null;
+    r_used: string | null;
+    r_shape: number | null;
+  }>(
+    `SELECT ms.id AS sa_id, k.label, k.life_h AS k_life, k.weibull_shape AS k_shape,
+            c.life AS r_life, c.basis AS r_basis, c.used AS r_used, c.weibull_shape AS r_shape
+       FROM machine_subassemblies ms JOIN machine_systems sy ON sy.id = ms.machine_system_ref_id
+       CROSS JOIN LATERAL (SELECT * FROM part_kind_lives WHERE ms.name ~* name_pattern ORDER BY sort_order LIMIT 1) k
+       LEFT JOIN LATERAL (SELECT * FROM component_service_lives c WHERE c.subassembly_ref_id = ms.id ORDER BY c.sort_order LIMIT 1) c ON true
+      WHERE sy.machine_id = $1`,
+    [machineId],
+  );
+  return new Map(res.rows.map((r) => [r.sa_id, r]));
+}
+
+/** Time until the chance of failure reaches `q`, for a part of age `age` on a Weibull(η, β) life. */
+function weibullLeft(eta: number, beta: number, age: number, q: number): number {
+  return eta * ((age / eta) ** beta - Math.log(1 - q)) ** (1 / beta) - age;
+}
+
 export async function getMachineInsights(machineId: string): Promise<InsightsResponse> {
   const trendH = await setting("evaluation.trend_window_h");
   const minTrend = await setting("evaluation.min_trend_samples");
@@ -373,6 +401,33 @@ export async function getMachineInsights(machineId: string): Promise<InsightsRes
       driver: best?.tag,
     };
   });
+  // No reading moving toward a limit: the time left comes from the part's life instead.
+  const lifeBy = await partLives(machineId);
+  const maxScore = param("max_score") ?? 100;
+  const critical = param("band_critical");
+  for (const r of rul) {
+    if (r.hours !== null) continue;
+    const sa = subs.find((x) => x.subassemblyId === r.id);
+    const lf = sa ? lifeBy.get(sa.id) : undefined;
+    if (!lf) continue;
+    const recorded = lf.r_life !== null && lf.r_used !== null;
+    const unit = lf.r_basis === "d" ? 24 : 1;
+    const eta = recorded ? Number(lf.r_life) * unit : Number(lf.k_life);
+    const beta = Number((recorded ? lf.r_shape : null) ?? lf.k_shape);
+    // Without the plant's record, the used share is read from the part's health between full health and the critical band.
+    const share = recorded
+      ? Number(lf.r_used) / Number(lf.r_life)
+      : sa?.health != null && critical !== null && maxScore > critical
+        ? clamp((maxScore - sa.health) / (maxScore - critical), 0.02, 0.95)
+        : null;
+    if (share === null || !(eta > 0) || !(beta > 0)) continue;
+    const age = share * eta;
+    const hours = weibullLeft(eta, beta, age, 0.5);
+    r.hours = Math.max(1, Math.round(hours));
+    r.days = Math.round(hours / 24);
+    r.dueLabel = recorded ? `From its recorded life, ${Math.round(share * 100)} % used` : `From the typical life for a ${lf.label}`;
+    r.life = { source: recorded ? "recorded" : "typical", kind: lf.label, lifeH: eta, shape: beta, ageH: round(age, 1), usedPct: Math.round(share * 100) };
+  }
   rul.sort((a, b) => (a.hours ?? Infinity) - (b.hours ?? Infinity));
 
   /* ---------------- anomalies ---------------- */

@@ -15,6 +15,7 @@
 import { ACTION } from "@/components/ui/status";
 import { isRelativeLimit, limitPair, type SignalDef } from "@shared/lib/kiln-sim/signals";
 import { formatDuration, type LiveSignal, type RuleState, type SimFrame } from "@shared/lib/kiln-sim/engine";
+import { formatRulHours } from "@/components/assets/prognosis/prognosis-derive";
 import { buildLiveInsights } from "@/lib/kiln-sim/live-insights";
 import type { PlantDefs } from "@shared/lib/plant-defs";
 import { isConditionRule } from "@shared/lib/plant-defs";
@@ -831,12 +832,23 @@ function answerPredict(ctx: AskContext, ent: Entities): CopilotAnswer {
     lines.push(`Related problem: **${ruleTitle(lead)}** (${stateWords(lead.status)}${ttlText(lead) ? `, reaches its limit in ${ttlText(lead)}` : ""}). If nobody acts: ${clause(lead.consequence)}.`);
   }
   if (!t && !lead) {
-    // Only components with an estimate (a measurement trending toward a limit) have a remaining life.
+    // A remaining life comes from a measurement trending toward a limit, else from the part's life.
     const rl0 = ins.prognosis.rul.flatMap((r) => (r.hours === null ? [] : [{ r, h: r.hours }])).sort((a, b) => a.h - b.h)[0]?.r;
-    lines.push(`Across the machine: no automatic check has found a problem and nothing is expected to reach a limit within 24 hours. ${rl0 ? `The part with the shortest expected remaining life is ${rl0.name}, about ${rl0.dueLabel}.` : "No reading is moving toward a limit, so no remaining life can be estimated."}`);
+    lines.push(`Across the machine: no automatic check has found a problem and nothing is expected to reach a limit within 24 hours. ${rl0 ? `The part with the shortest expected remaining life is ${rl0.name}, about ${formatRulHours(rl0.hours)}${rl0.life ? ` (${rl0.dueLabel.toLowerCase()})` : ""}.` : "No reading is moving toward a limit, so no remaining life can be estimated."}`);
   } else if (!t) {
     const rl = ins.prognosis.rul.filter((r) => r.status !== "Normal").slice(0, 2);
-    if (rl.length) lines.push(rl.map((r) => (r.hours === null ? `• ${r.name}: ${r.dueLabel}` : `• ${r.name}: about ${r.dueLabel} left${r.confidence !== null ? ` (${r.confidence}% sure)` : ""}`)).join("\n"));
+    if (rl.length)
+      lines.push(
+        rl
+          .map((r) =>
+            r.hours === null
+              ? `• ${r.name}: ${r.dueLabel}`
+              : r.life
+                ? `• ${r.name}: about ${formatRulHours(r.hours)} left (${r.dueLabel.toLowerCase()})`
+                : `• ${r.name}: about ${r.dueLabel} left${r.confidence !== null ? ` (${r.confidence}% sure)` : ""}`,
+          )
+          .join("\n"),
+      );
   }
   return {
     intent: "predict",

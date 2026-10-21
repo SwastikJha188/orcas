@@ -51,12 +51,35 @@ export function fmt(v: number | null | undefined): string {
 /* RUL                                                                */
 /* ------------------------------------------------------------------ */
 
+/** A part's life on a Weibull curve: characteristic life η, shape β and the life already used (plant hours). */
+export interface LifeCurve {
+  eta: number;
+  beta: number;
+  age: number;
+}
+
+/** Interval of time left; from a part's life it also carries the curve, so the failure chance follows it exactly. */
+export interface RulBand {
+  lo: number;
+  hi: number;
+  curve?: LifeCurve;
+}
+
+/** Time until the chance of failure reaches `q` on the curve (conditional on the life already used). */
+export function lifeLeftAt(c: LifeCurve, q: number): number {
+  return Math.max(1, c.eta * ((c.age / c.eta) ** c.beta - Math.log(1 - q)) ** (1 / c.beta) - c.age);
+}
+
 /**
- * Confidence-scaled band around a RUL estimate (calc.): the estimate
- * ± (100 − confidence) %. Used to show how firm each estimate is.
- * Null when there is no estimate (nothing trending toward a limit) or no fit quality.
+ * Band around a RUL estimate (calc.). From a reading's trend: the estimate
+ * ± (100 − confidence) %. From a part's life: the times by which 10 % and
+ * 90 % of such parts have failed. Null when there is no estimate.
  */
-export function rulBand(r: RulItem): { lo: number; hi: number } | null {
+export function rulBand(r: RulItem): RulBand | null {
+  if (r.hours !== null && r.life) {
+    const curve = { eta: r.life.lifeH, beta: r.life.shape, age: r.life.ageH };
+    return { lo: lifeLeftAt(curve, 0.1), hi: lifeLeftAt(curve, 0.9), curve };
+  }
   if (r.hours === null || r.confidence === null) return null;
   const spread = Math.max(0, Math.min(0.9, (100 - r.confidence) / 100));
   return { lo: Math.max(1, r.hours * (1 - spread)), hi: r.hours * (1 + spread) };
@@ -70,12 +93,15 @@ export const FAILURE_HORIZONS = [
 ] as const;
 
 /**
- * Chance (%) the remaining life runs out within `hours` (calc.): the share of
- * the RUL interval (`rulBand`) that ends by then — 0 before the interval
- * starts, 100 once it has passed, linear in between. As firm as the RUL
- * estimate it comes from; not a calibrated failure probability.
+ * Chance (%) the remaining life runs out within `hours` (calc.). From a part's
+ * life: the Weibull chance of failing by then, given the life already used.
+ * From a reading's trend: the share of the RUL interval (`rulBand`) that ends
+ * by then — 0 before the interval starts, 100 once it has passed, linear in
+ * between. As firm as the estimate it comes from; not a calibrated failure probability.
  */
-export function failureChance(band: { lo: number; hi: number }, hours: number): number {
+export function failureChance(band: RulBand, hours: number): number {
+  const c = band.curve;
+  if (c) return Math.round((1 - Math.exp((c.age / c.eta) ** c.beta - ((c.age + hours) / c.eta) ** c.beta)) * 100);
   if (hours <= band.lo) return 0;
   if (hours >= band.hi) return 100;
   return Math.round(((hours - band.lo) / (band.hi - band.lo)) * 100);
@@ -200,7 +226,7 @@ export type AnalysisPayload = InsightsResponse["analysis"];
 export const isBaselineRisk = (r: FailureRisk) => r.id.startsWith("base-");
 
 /** How a RUL estimate was produced, so the page can say so. */
-export type RulBasis = "finding" | "health";
+export type RulBasis = "finding" | "health" | "life";
 
 export interface RulRow extends Omit<RulItem, "driver"> {
   basis: RulBasis;
@@ -209,7 +235,7 @@ export interface RulRow extends Omit<RulItem, "driver"> {
   /** Sensor tags behind the driver. */
   tags: string[];
   /** RUL interval; null when there is no estimate (`dueLabel` says why). */
-  band: { lo: number; hi: number } | null;
+  band: RulBand | null;
 }
 
 const norm = (s: string) => s.toLowerCase();
@@ -238,7 +264,7 @@ export function rulRows(data: PrognosisData, analysis: AnalysisPayload | null): 
       const driver = findingsFor(r.name, data)[0] ?? null;
       return {
         ...r,
-        basis: driver ? "finding" : "health",
+        basis: driver ? "finding" : r.life ? "life" : "health",
         driver,
         tags: driver ? tagsForRisk(driver, analysis, data) : [],
         band: rulBand(r),
@@ -301,14 +327,15 @@ export function riskForRow(r: Pick<RulItem, "id" | "name">, data: PrognosisData)
 /**
  * The one prognosis duration scale. RUL, intervals, horizons and lead times
  * are plant hours (simulated minutes / 60 on the live kiln), shown at the
- * precision an estimate supports: h below 2 d, days to 30 d, weeks beyond.
+ * precision an estimate supports: h below 2 d, days to 30 d, weeks to 2 y, years beyond.
  * Other pages reuse `formatRulHours` / `formatRulInterval` / `formatRiskWindow`.
  */
 export function formatRulHours(hours: number | null): string {
   if (hours === null || !Number.isFinite(hours)) return "—";
   if (hours < 48) return `${Math.max(1, Math.round(hours))} h`;
   if (hours <= 720) return `${Math.round(hours / 24)} d`;
-  return `${Math.round(hours / 168)} wk`;
+  if (hours < 2 * 8760) return `${Math.round(hours / 168)} wk`;
+  return `${Math.round(hours / 8760)} y`;
 }
 
 /** "9–23 d" style interval (plant hours) in a shared unit where possible; "5 h – 2 d" otherwise. */

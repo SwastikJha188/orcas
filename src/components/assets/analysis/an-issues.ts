@@ -65,7 +65,8 @@ export function buildIssues(frame: SimFrame | null, rul: RulRow[], defs: PlantDe
   const subOrder = new Map((defs?.subassemblies ?? []).map((sa, i) => [sa.id, i]));
   const sixMonths = FAILURE_HORIZONS[FAILURE_HORIZONS.length - 1].hours;
   const predicted = rul
-    .filter((x) => x.band !== null && failureChance(x.band, sixMonths) > 0 && !covered.has(x.id))
+    // A reading heading toward its limit always counts; a part's life only once it is more likely than not to fail within 6 months.
+    .filter((x) => x.band !== null && failureChance(x.band, sixMonths) > (x.life ? 50 : 0) && !covered.has(x.id))
     .sort((a, b) => (subOrder.get(a.id) ?? 999) - (subOrder.get(b.id) ?? 999));
   for (const x of predicted) {
     out.push({ key: `pred-${x.id}`, kind: "predicted", title: x.name, where: x.name, subIds: [x.id], rule: null, life: [x] });
