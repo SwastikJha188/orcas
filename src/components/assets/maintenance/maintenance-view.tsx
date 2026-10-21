@@ -643,7 +643,7 @@ export function MaintenanceView({ machine, kind, routes, bare }: { machine: Asse
   if (bare)
     return (
       <div className="ast-root mt-page mt-bare" aria-label={title}>
-        {body || (api.isLoading && !data ? <Loading label="Loading checklist…" rows={6} /> : <Empty title="Checklist unavailable.">{api.error ?? vocabApi.error ?? "No maintenance checklist for this machine."}</Empty>)}
+        {body || ((api.isLoading && !data) || (data && !vocab && vocabApi.isLoading) ? <Loading label="Loading checklist…" rows={6} /> : <Empty title="Checklist unavailable.">{api.error ?? vocabApi.error ?? "No maintenance checklist for this machine."}</Empty>)}
       </div>
     );
 
@@ -663,7 +663,7 @@ export function MaintenanceView({ machine, kind, routes, bare }: { machine: Asse
       />
 
       {(api.isLoading && !data) || (data && !vocab && vocabApi.isLoading) ? (
-        <section className="ast-card" role="status" aria-live="polite">
+        <section className="ast-card">
           <Loading label="Loading checklist…" rows={6} />
         </section>
       ) : !data || !vocab ? (

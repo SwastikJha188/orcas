@@ -146,6 +146,8 @@ function DevicesShell() {
   }, []);
 
   const ix = useMemo(() => (registry ? buildIndex(registry, snapshot) : null), [registry, snapshot]);
+  // Registry loaded, live state not yet: counts of readings would read 0 until the first snapshot.
+  const connecting = Boolean(registry) && snapshot === null && !error;
   const signals = useMemo<Signals>(() => Object.fromEntries(Object.entries(fleet).map(([id, s]) => [id, s.frame.signals])), [fleet]);
   const det = useMemo(() => (ix ? detections(ix) : new Map()), [ix]);
   const channels = useMemo<ChannelRow[]>(() => (ix ? allChannels(ix, det, signals) : []), [ix, det, signals]);
@@ -250,7 +252,7 @@ function DevicesShell() {
       </div>
     );
   } else if (section === "mapping") {
-    body = <MappingBody ix={ix} channels={channels} machineId={machine ? machine.id : ALL_MACHINES} now={now} onMachine={pickMachine} onLink={link} onEditPoint={editPoint} />;
+    body = <MappingBody ix={ix} channels={channels} machineId={machine ? machine.id : ALL_MACHINES} now={now} connecting={connecting} onMachine={pickMachine} onLink={link} onEditPoint={editPoint} />;
   } else if (gw && editing) {
     body = (
       <FormatEditor
@@ -266,6 +268,7 @@ function DevicesShell() {
     body = (
       <GatewayBody
         ix={ix}
+        connecting={connecting}
         gw={gw}
         detection={det.get(gw.id)}
         rackId={rackId}
@@ -375,6 +378,12 @@ function DevicesShell() {
               <p className="pg-cfg-context">{head.context}</p>
             </div>
           </header>
+          {/* Saved gateways are shown; their live state arrives with the first MQTT snapshot. */}
+          {connecting && (
+            <div className="ast-card dvp-connecting">
+              <Loading label="Connecting to live data…" inline />
+            </div>
+          )}
           {body}
         </div>
       </div>

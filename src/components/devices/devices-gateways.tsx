@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { PillButton, Table, type Column } from "@/components/ui";
+import { PillButton, Table, type Column, Loading } from "@/components/ui";
 import { StatusTag } from "@/components/assets/assets-shell-ui";
 import { ULTRON_FORMAT_ID } from "@shared/lib/edge-format";
 import type { EdgeBroker, EdgeGateway, EdgeSource } from "@shared/types/edge";
@@ -21,6 +21,8 @@ import { ChannelActions, PositionCell, SensorCell, Stack, StatusCell, ValueCell 
 
 export interface GatewayBodyProps {
   ix: EdgeIndex;
+  /** The first live snapshot has not arrived: what the gateway sends is not known yet. */
+  connecting?: boolean;
   gw: EdgeGateway;
   detection: Detection | undefined;
   rackId: string | null;
@@ -247,7 +249,11 @@ export function GatewayBody(props: GatewayBodyProps) {
             onRowClick={(r) => props.onRack(r.rack.rackId)}
           />
         ) : (
+          props.connecting ? (
+            <Loading label="Connecting to live data…" rows={3} />
+          ) : (
           <div className="ast-empty">No racks yet. Add the racks and control systems (PLC, SCADA, DCS) wired to this gateway, or wait: they appear when it sends its first readings.</div>
+          )
         )}
       </section>
 
@@ -269,7 +275,11 @@ export function GatewayBody(props: GatewayBodyProps) {
           {channels.length ? (
             <Table className="ast-table dvp-table" columns={channelColumns} data={channels} keyExtractor={(r) => r.key} onRowClick={props.onLink} />
           ) : (
-            <div className="ast-empty">No channels on this rack yet. Add one, or wait: they appear when the rack sends readings.</div>
+            props.connecting ? (
+              <Loading label="Connecting to live data…" rows={3} />
+            ) : (
+              <div className="ast-empty">No channels on this rack yet. Add one, or wait: they appear when the rack sends readings.</div>
+            )
           )}
         </section>
       )}

@@ -220,7 +220,7 @@ export function RackView({ machine, simulation }: RackViewProps) {
   const lastSeen = model.link.gateway?.lastSeenAt ?? null;
   // Pyro line: the gateway is simulated; say so rather than imply a live link.
   const proposed = model.proposed;
-  const heartbeat = lastSeen ? heartbeatOf(lastSeen) : "No sign of life received";
+  const heartbeat = lastSeen ? heartbeatOf(lastSeen) : registry.isLoading && !registry.data ? "Loading…" : "No sign of life received";
   const required = requiredAvailability(sim?.frame, measurements.byTag);
   const tones = sectionTones(model);
   const sections = SECTIONS.filter((s) => s.id !== "rack-calculated" || model.calculated.length > 0);

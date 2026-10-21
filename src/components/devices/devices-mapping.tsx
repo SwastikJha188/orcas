@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { Table, type Column } from "@/components/ui";
+import { Table, type Column, Skel } from "@/components/ui";
 import { IconChevron } from "@/components/assets/assets-shell-ui";
 import { SOURCE_KIND_LABEL } from "@shared/types/edge";
 import { type EdgeIndex, ago } from "./edge-model";
@@ -36,6 +36,8 @@ export interface MappingBodyProps {
   channels: ChannelRow[];
   machineId: string;
   now: number;
+  /** The first live snapshot has not arrived: how many sensors send is not known yet. */
+  connecting?: boolean;
   onMachine: (id: string) => void;
   onLink: (r: ChannelRow) => void;
   onEditPoint: (r: ChannelRow) => void;
@@ -66,7 +68,7 @@ function Codes({ codes }: { codes: string[] }) {
   );
 }
 
-export function MappingBody({ ix, channels, machineId, now, onMachine, onLink, onEditPoint }: MappingBodyProps) {
+export function MappingBody({ ix, channels, machineId, now, connecting = false, onMachine, onLink, onEditPoint }: MappingBodyProps) {
   const machines = useMemo(() => machineRows(ix, channels), [ix, channels]);
   const machine = machineId === ALL_MACHINES ? null : (machines.find((m) => m.id === machineId) ?? null);
 
@@ -97,7 +99,9 @@ export function MappingBody({ ix, channels, machineId, now, onMachine, onLink, o
       header: "Sending readings now",
       width: "170px",
       render: (m) =>
-        m.linked ? (
+        m.linked && connecting ? (
+          <Skel width="5ch" />
+        ) : m.linked ? (
           <span className="ast-num dvp-value" data-tone={m.sending < m.linked ? "warn" : undefined}>
             {m.sending}
             <span className="ast-muted"> of {m.linked}</span>

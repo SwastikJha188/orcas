@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useMemo, useState } from "react";
-import { Table, type Column } from "@/components/ui";
+import { Loading, Table, type Column } from "@/components/ui";
 import { StatusTag } from "@/components/assets/assets-shell-ui";
 import { conditionTone, type Condition } from "@/components/ui/status";
 import { useIndustrialData } from "@/providers/industrial-data-context";
@@ -233,7 +233,7 @@ export function LineDiagnosis({ units, names, health }: { units: AssetMachine[];
 
       <Section id="dx-diagnosis" title="Sensors" right={tableRight}>
         {totalSensors === 0 ? (
-          <p className="pg-diag-missing">No live sensor readings on this line yet.</p>
+          starting ? <Loading label="Starting the live plant…" rows={4} /> : <p className="pg-diag-missing">No live sensor readings on this line yet.</p>
         ) : shown.length === 0 ? (
           <p className="pg-diag-missing">{onlyAlarm ? "No sensor on this line is in alarm." : "No sensor matches this filter."}</p>
         ) : (

@@ -101,7 +101,7 @@ export function LineAnalysis({ units, names }: { units: AssetMachine[]; names: R
     {
       label: "Parts that may fail in 6 months",
       // Forecasts arrive per machine; until the first one, the count waits.
-      loading: ins.loading === units.length,
+      loading: ins.loading > 0 && predicted.length === 0,
       value: String(predicted.length),
       unit: "parts",
       foot: predicted[0] ? `First: ${predicted[0].issue.where} on ${names[predicted[0].machine.id] ?? predicted[0].machine.name}` : "None apart from the problems now",

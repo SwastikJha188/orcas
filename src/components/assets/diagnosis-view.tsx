@@ -5,7 +5,7 @@ import { PillButton, Loading } from "@/components/ui";
 import type { AssetMachine } from "./assets-data";
 import type { AssetsSubPage } from "./assets-view";
 import { useIndustrialData } from "@/providers/industrial-data-context";
-import { useKilnSimulationFor, useLiveMachineStatus } from "@/providers/kiln-simulation-context";
+import { isLiveMachine, useKilnSimulationFor, useLiveMachineStatus, useLivePlantStarting } from "@/providers/kiln-simulation-context";
 import { conditionTone, toCondition } from "@/components/ui/status";
 import { useKilnOps } from "@/providers/kiln-ops-context";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
@@ -77,6 +77,8 @@ export function DiagnosisView({
   const compId = componentId !== undefined ? componentId : selectedComponentId;
   const simulation = useKilnSimulationFor(machine.id);
   const frame = simulation?.frame ?? null;
+  // A live machine whose plant is still starting has no frame yet: its live totals wait.
+  const starting = useLivePlantStarting() && !frame && isLiveMachine(machine.id);
   const ops = useKilnOps();
   const opsOn = machine.id === ops.machineId && frame !== null;
   const tz = useSiteTimeZone({ machineId: machine.id });
@@ -377,7 +379,7 @@ export function DiagnosisView({
       />
 
       {/* Until the machine's sensors load, its totals wait instead of reading 0. */}
-      <KpiStrip page items={loading ? kpis.map((k) => ({ ...k, loading: true })) : kpis} label="Diagnosis totals" />
+      <KpiStrip page items={loading || starting ? kpis.map((k) => ({ ...k, loading: true })) : kpis} label="Diagnosis totals" />
 
       {subRows.length > 0 && !subFilter && (
         <Section id="dx-health" title="Parts">

@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { PillNav, conditionTone, rowActivate, toCondition, type Tone } from "@/components/ui";
+import { Loading as LoadingState, PillNav, Skel, conditionTone, rowActivate, toCondition, type Tone } from "@/components/ui";
 import { isConditionRule } from "@shared/lib/plant-defs";
 import { STAGE_LABEL, isOpenStage, planGenerates, planKey } from "@shared/lib/pms";
 import { LINE_SHEET_ART, LINE_SHEET_BY_ID, LINE_SHEET_OF_TAG, lineSheetTags, lineSheetsForMachine } from "@/components/assets/pyro/line-sheets";
 import { LineSheet } from "@/components/assets/pyro/line-sheets/line-sheet";
-import { useKilnFleet } from "@/providers/kiln-simulation-context";
+import { useKilnFleet, useLivePlantStarting } from "@/providers/kiln-simulation-context";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { formatLocalTime } from "@/lib/time";
 import type { PmsPlan, PlanTask } from "@shared/types/pms";
@@ -85,6 +85,8 @@ export function PageMachine({ pms, machineId: picked, onMachineChange }: { pms: 
   }, [id]);
   const tz = useSiteTimeZone({ machineId: id });
   const frame = id ? (fleet[id]?.frame ?? null) : null;
+  // No frame yet while the live plant starts: its values wait instead of reading "No data".
+  const starting = useLivePlantStarting() && !frame;
   const sheets = useMemo(() => (id ? lineSheetsForMachine(id) : []), [id]);
   const overview = sheets.find((s) => s.kind === "overview") ?? null;
   const parts = useMemo(() => (overview?.parts ?? []).map((p) => LINE_SHEET_BY_ID[p]).filter(Boolean), [overview]);
@@ -173,8 +175,8 @@ export function PageMachine({ pms, machineId: picked, onMachineChange }: { pms: 
         page
         label={`${machineName(id)} maintenance`}
         items={[
-          { label: active ? "Component condition" : "Machine condition", value: cond, text: true, tone: conditionTone(cond), foot: active ? `${compTags.length} measuring points` : `health score ${frame ? Math.round(frame.overall) : "—"}%` },
-          { label: "Active problems", value: `${faults.length}`, tone: faults.some((f) => f.severity === "Critical") ? "bad" : faults.length ? "warn" : undefined, foot: faults[0] ? faults[0].plainTitle || faults[0].name : "no active problem" },
+          { label: active ? "Component condition" : "Machine condition", loading: starting, value: cond, text: true, tone: conditionTone(cond), foot: active ? `${compTags.length} measuring points` : `health score ${frame ? Math.round(frame.overall) : "—"}%` },
+          { label: "Active problems", loading: starting, value: `${faults.length}`, tone: faults.some((f) => f.severity === "Critical") ? "bad" : faults.length ? "warn" : undefined, foot: faults[0] ? faults[0].plainTitle || faults[0].name : "no active problem" },
           {
             label: "Next inspection",
             value: nextDue ? (nextDue.d!.dueAt! <= now ? "Due now" : formatLocalTime(nextDue.d!.dueAt!, { date: true, seconds: false, timeZone: tz.timeZone })) : "—",
@@ -232,7 +234,8 @@ export function PageMachine({ pms, machineId: picked, onMachineChange }: { pms: 
 
         <div className="pm-split">
           <Section id="pm-readings" title="Readings and problems" right={!active && pointCount > points.length ? <span className="ast-caption">{points.length} of {pointCount} points · pick a part to see all</span> : undefined}>
-            {faults.length === 0 && points.length > 0 && <p className="ast-caption pm-nofault">No active problem{active ? " on this part" : " on this machine"}.</p>}
+            {starting && <LoadingState label="Starting the live plant…" inline />}
+            {!starting && faults.length === 0 && points.length > 0 && <p className="ast-caption pm-nofault">No active problem{active ? " on this part" : " on this machine"}.</p>}
             {faults.length > 0 && (
               <ul className="pm-list pm-faults">
                 {faults.map((r) => {
@@ -292,10 +295,10 @@ export function PageMachine({ pms, machineId: picked, onMachineChange }: { pms: 
                             </span>
                           </td>
                           <td className="ast-num" data-tone={SIG_TONE(s?.status)}>
-                            <span className="pm-value">{s?.display ?? "—"}</span>
+                            <span className="pm-value">{s?.display ?? (starting ? <Skel width="4ch" /> : "—")}</span>
                           </td>
                           <td>
-                            <StateWord label={!s ? "No data" : s.quality === "Good" ? "Good" : s.quality} tone={s && s.quality !== "Good" ? "warn" : undefined} />
+                            {!s && starting ? <Skel width="4ch" /> : <StateWord label={!s ? "No data" : s.quality === "Good" ? "Good" : s.quality} tone={s && s.quality !== "Good" ? "warn" : undefined} />}
                           </td>
                         </tr>
                       );

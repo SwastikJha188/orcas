@@ -183,3 +183,6 @@
     border-block-start: 0;
   }
 }
+
+/* Shown while the first live MQTT snapshot is on its way (devices-view). */
+.dvp-connecting { padding: 12px 16px; margin-block-end: 12px; }

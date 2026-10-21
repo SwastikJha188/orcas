@@ -472,6 +472,7 @@ export function MachineSensorMappingView({
     counts,
     frame,
     acquisition: acquisition.data,
+    acquisitionLoading: acquisition.loading && !acquisition.data,
     history: acquisition.history,
     hasSpec,
     defs,
@@ -525,7 +526,7 @@ export function MachineSensorMappingView({
           rows.length > 0 && { label: "Readings", value: feed },
           {
             label: "Last reading",
-            value: lastSample ? lastSample.text : "no live reading yet",
+            value: lastSample ? lastSample.text : acquisition.loading && !acquisition.data ? "loading…" : "no live reading yet",
           },
           scope && { label: "Part", value: scope.label },
         ]}

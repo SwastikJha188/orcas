@@ -28,7 +28,9 @@ export function StartCaseButton({
   className?: string;
 }) {
   const { setActiveTab, currentUserId } = useIndustrialData();
-  const { data } = useApi<CaseList>(ruleCode ? casesUrl({ machineId, ruleCode }) : null);
+  const { data, error: listError } = useApi<CaseList>(ruleCode ? casesUrl({ machineId, ruleCode }) : null);
+  // Until this problem's cases are known, starting one could duplicate an open case.
+  const checking = Boolean(ruleCode) && data === undefined && !listError;
   const open = data?.cases.find((c) => c.stage !== "closed") ?? null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,8 +54,8 @@ export function StartCaseButton({
 
   return (
     <span className={className} title={open ? `Case ${open.id}: ${open.stageWord}` : "Follow this problem as a case: owner, checks, maintenance, and a checked fix"}>
-      <PillButton variant="secondary" className="pg-diag-sm" loading={busy} onClick={() => void go()}>
-        {open ? `Open its case (${open.stageWord.toLowerCase()}) →` : "Start a case →"}
+      <PillButton variant="secondary" className="pg-diag-sm" loading={busy} disabled={checking} onClick={() => void go()}>
+        {checking ? "Checking for a case…" : open ? `Open its case (${open.stageWord.toLowerCase()}) →` : "Start a case →"}
       </PillButton>
       {error && (
         <span className="pg-note" data-tone="bad" role="alert">

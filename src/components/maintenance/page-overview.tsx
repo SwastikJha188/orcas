@@ -7,6 +7,7 @@ import { useKilnFleet } from "@/providers/kiln-simulation-context";
 import { Empty, KpiStrip, Section } from "@/components/assets/analysis/an-ui";
 import type { PmsModel, QueueItem } from "./pms-model";
 import { useWorkOrderPriorities } from "@/lib/reference-data";
+import { useIndustrialData } from "@/providers/industrial-data-context";
 import { checkState, partLife, useAlertChecks, useRunningHours, useServiceParts } from "./maint-types-model";
 import { machineCode, machineName } from "./pms-model";
 import { DAY, ItemCell, PM_ICON, StateWord, occurrences, setPmsFocus, startOfDay, usePmsNav } from "./pms-ui";
@@ -268,7 +269,9 @@ export function PageOverview({ pms }: { pms: PmsModel }) {
 
 /** Loading / unavailable line for a page. */
 export function Loading({ pms, what }: { pms: PmsModel; what: string }) {
-  if (pms.loading)
+  const { hasLoaded } = useIndustrialData();
+  // Plans, or the plant's machines they are matched to, still on the way.
+  if (pms.loading || (!hasLoaded && !pms.error))
     return (
       <section className="ast-card">
         <LoadingState label={`Loading ${what}…`} rows={5} />

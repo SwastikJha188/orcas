@@ -428,7 +428,7 @@ function PlanLibrary({ pms, filter, selectedId, onSelect }: { pms: PmsModel; fil
               },
               { label: "Counted from", value: "When each task was last done" },
               { label: "Machine state", value: planMode(selected) === "Isolate" ? "Must be stopped and locked off" : planMode(selected) === "Run + stop" ? "Some checks while running, the rest at a shutdown" : "While running" },
-              { label: "Who does it", value: (owners && [...new Set(selected.tasks.map((t) => owners[t.owner] ?? t.owner).filter(Boolean))].join(" · ")) || "—" },
+              { label: "Who does it", value: owners === null ? "Loading…" : [...new Set(selected.tasks.map((t) => owners[t.owner] ?? t.owner).filter(Boolean))].join(" · ") || "—" },
               { label: "Last done", value: due?.lastRunAt ? when(due.lastRunAt) : "Not done since the plan started" },
               {
                 label: "Next due",

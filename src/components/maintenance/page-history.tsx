@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { PillButton, PillNav, type Tone } from "@/components/ui";
+import { Loading as LoadingState, PillButton, PillNav, type Tone } from "@/components/ui";
 import { latestByTask } from "@shared/lib/maintenance";
 import { STAGE_LABEL, planGenerates, planHours, planKey } from "@shared/lib/pms";
-import { useKilnSimulationFor } from "@/providers/kiln-simulation-context";
+import { useKilnSimulationFor, useLivePlantStarting } from "@/providers/kiln-simulation-context";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { formatLocalTime } from "@/lib/time";
 import type { WoStage } from "@shared/types/pms";
@@ -214,6 +214,7 @@ function ConditionTrend({ machineId, pms }: { machineId: string; pms: PmsModel }
   // Work orders of this machine only: sim minutes are per machine engine.
   const sim = useKilnSimulationFor(machineId);
   const frame = sim?.frame ?? null;
+  const starting = useLivePlantStarting() && !frame;
   const times = frame?.times ?? [];
   const series = frame?.healthHistory.overall ?? [];
   const n = Math.min(times.length, series.length);
@@ -246,7 +247,7 @@ function ConditionTrend({ machineId, pms }: { machineId: string; pms: PmsModel }
   return (
     <Section id="pm-condition" title={`${machineName(machineId)} · health before and after work`} right={model ? <StateWord label={`Health score ${Math.round(model.last)}% now`} /> : undefined}>
       {!model ? (
-        <Empty title="No live health history for this machine." />
+        starting ? <LoadingState label="Starting the live plant…" rows={3} /> : <Empty title="No live health history for this machine." />
       ) : (
         <>
           <svg className="pm-trend" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Machine health score over time, with work orders marked">

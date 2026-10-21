@@ -231,7 +231,8 @@ function DetailsDialog({ onClose }: { onClose: () => void }) {
   const [stage, setStage] = useState<string>(c.stage);
 
   const partOptions = [
-    { value: "", label: "Whole machine" },
+    // The parts list arrives with the machine's catalogue; until then only the whole machine is offered, and says so.
+    { value: "", label: catalog.data === undefined && !catalog.error ? "Whole machine · loading parts…" : "Whole machine" },
     ...parts.map((p) => ({ value: p.id, label: p.name })),
     ...(c.partId && !parts.some((p) => p.id === c.partId) ? [{ value: c.partId, label: c.partName ?? c.partId }] : []),
   ];

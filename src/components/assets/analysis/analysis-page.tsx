@@ -184,6 +184,9 @@ export function MachineAnalysisPage({
   const predicted = issues.filter((i) => i.kind === "predicted");
   const confirming = faults.filter((i) => i.rule?.status === "PENDING").length;
   const first = chain[0] ?? null;
+  // Forecasts load on their own; until they arrive, what they decide waits.
+  const forecastWait = insights.isLoading && !insights.data;
+  const forecastFail = insights.isError && !insights.data;
   const kpis: KpiItem[] = [
     {
       label: "Problems now",
@@ -199,6 +202,7 @@ export function MachineAnalysisPage({
     },
     {
       label: "Parts that may fail in 6 months",
+      loading: forecastWait,
       value: String(predicted.length),
       unit: "parts",
       foot: predicted[0] ? `First: ${predicted[0].where}` : "None apart from the problems now",
@@ -325,6 +329,17 @@ export function MachineAnalysisPage({
               title="Readings against what is expected"
               right={readings.length ? <span className="ast-num pg-diag-muted">{readings.length} sensors</span> : undefined}
             >
+              {forecastWait || forecastFail ? (
+                forecastWait ? (
+                  <Loading label="Loading the forecasts…" rows={3} />
+                ) : (
+                  <Empty title="The forecasts could not be loaded, so only what is happening now is shown.">
+                    <button type="button" className="pg-diag-inline-link" onClick={insights.retry} disabled={insights.retrying}>
+                      {insights.retrying ? "Trying again…" : "Try again"}
+                    </button>
+                  </Empty>
+                )
+              ) : (
               <Empty
                 title={
                   readings.length === 0 && !catalog.isLoading
@@ -334,6 +349,7 @@ export function MachineAnalysisPage({
                     : "No problem has been found, and no failure is expected in the next 6 months."
                 }
               />
+              )}
               {readings.length > 0 && <ReadingsAgainstExpected sensors={readings} frame={frame} onOpenTrend={openTrend} />}
             </Section>
           )}

@@ -186,7 +186,11 @@ export function LinePrognosis({ units, names }: { units: AssetMachine[]; names: 
             {life.length ? (
               <Table className="pg-dx-subs" columns={lifeCols} data={life} keyExtractor={(x) => x.key} onRowClick={openLife} />
             ) : (
-              <p className="pg-analysis-empty">No part on the line has a reading heading toward a limit.</p>
+              ins.loading > 0 ? (
+                <Loading label="Loading the remaining forecasts…" rows={3} />
+              ) : (
+                <p className="pg-analysis-empty">No part on the line has a reading heading toward a limit.</p>
+              )
             )}
             {untimed > 0 && (
               <p className="pg-table-rest">

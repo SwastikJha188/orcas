@@ -57,6 +57,8 @@ export interface SensorsCtx {
   counts: SensorCounts;
   frame: SimFrame | null;
   acquisition: MachineAcquisition | null;
+  /** True until the first wiring / live-reading answer (GET acquisition) arrives. */
+  acquisitionLoading: boolean;
   history: Record<string, number[]>;
   hasSpec: boolean;
   defs: PlantDefs | null;
@@ -462,8 +464,8 @@ export function SensorsChain({ ctx }: { ctx: SensorsCtx }) {
         id: "card",
         step: "Input card",
         name: p ? `Card ${p.card}, channel ${p.channel}` : module || subject.cardId || "—",
-        meta: p ? [p.cardInfo.model ?? p.cardInfo.type, p.address].filter(Boolean).join(" · ") : "not registered yet",
-        tone: p ? (p.live.state === "stale" ? "warn" : "idle") : "warn",
+        meta: p ? [p.cardInfo.model ?? p.cardInfo.type, p.address].filter(Boolean).join(" · ") : ctx.acquisitionLoading ? "loading…" : "not registered yet",
+        tone: p ? (p.live.state === "stale" ? "warn" : "idle") : ctx.acquisitionLoading ? "idle" : "warn",
         onClick: p ? () => ctx.goDevices(p) : undefined,
         external: Boolean(p),
       });
@@ -482,8 +484,8 @@ export function SensorsChain({ ctx }: { ctx: SensorsCtx }) {
         id: "gateway",
         step: "Network gateway",
         name: p?.gateway.code ?? gw?.code ?? (subject.rackId.split(" (")[0] || "—"),
-        meta: gw ? [GW_WORD[gw.state] ?? gw.state, gw.ip].filter(Boolean).join(" · ") : "not registered yet",
-        tone: gw ? (GW_TONE[gw.state] ?? "idle") : "warn",
+        meta: gw ? [GW_WORD[gw.state] ?? gw.state, gw.ip].filter(Boolean).join(" · ") : ctx.acquisitionLoading ? "loading…" : "not registered yet",
+        tone: gw ? (GW_TONE[gw.state] ?? "idle") : ctx.acquisitionLoading ? "idle" : "warn",
         onClick: () => ctx.goDevices(p),
         external: true,
       });
@@ -491,8 +493,8 @@ export function SensorsChain({ ctx }: { ctx: SensorsCtx }) {
         id: "broker",
         step: "Message server",
         name: gw?.brokerName ?? "—",
-        meta: gw?.brokerName ? "MQTT" : "none set up",
-        tone: gw?.brokerName ? "idle" : "warn",
+        meta: gw?.brokerName ? "MQTT" : ctx.acquisitionLoading ? "loading…" : "none set up",
+        tone: gw?.brokerName || ctx.acquisitionLoading ? "idle" : "warn",
       });
     }
   }
