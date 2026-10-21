@@ -5,6 +5,7 @@
  * transport), the same drawing the machine Overview shows.
  */
 import type { PyroDrawing } from "./pyro-drawing-types";
+import { sourceMachineId } from "@shared/lib/pyro-sim/fleet";
 import { PYRO_MACHINES } from "@shared/lib/pyro-sim/signals";
 import { VPC_MACHINES } from "@shared/lib/vpc-sim/signals";
 import { LINE_SHEETS, LINE_SHEET_ART } from "./line-sheets";
@@ -63,5 +64,5 @@ function drawingOf(s: LineSheetArt): PyroDrawing {
 export const hasCodeDrawing = (diagramType: string | null | undefined): boolean => Boolean(diagramType && BY_TYPE[diagramType]);
 
 export function pyroDrawingForMachine(machineId: string | null | undefined): PyroDrawing | null {
-  return (machineId && PYRO_DRAWINGS[machineId]) || null;
+  return (machineId && PYRO_DRAWINGS[sourceMachineId(machineId)]) || null;
 }

@@ -87,7 +87,9 @@ export function PageMachine({ pms, machineId: picked, onMachineChange }: { pms: 
   const frame = id ? (fleet[id]?.frame ?? null) : null;
   // No frame yet while the live plant starts: its values wait instead of reading "No data".
   const starting = useLivePlantStarting() && !frame;
-  const sheets = useMemo(() => (id ? lineSheetsForMachine(id) : []), [id]);
+  // A copy of a line machine resolves its drawings once the live plant's configuration is in (its first frame).
+  const live = frame !== null;
+  const sheets = useMemo(() => (id ? lineSheetsForMachine(id) : []), [id, live]); // eslint-disable-line react-hooks/exhaustive-deps
   const overview = sheets.find((s) => s.kind === "overview") ?? null;
   const parts = useMemo(() => (overview?.parts ?? []).map((p) => LINE_SHEET_BY_ID[p]).filter(Boolean), [overview]);
   const active = part && parts.some((p) => p.id === part) ? LINE_SHEET_BY_ID[part] : null;

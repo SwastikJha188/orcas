@@ -10,11 +10,12 @@
  */
 import { query } from "@backend/db";
 import type { FleetEngines } from "@shared/lib/fleet-boot";
+import { COPY_SOURCE } from "@shared/lib/pyro-sim/fleet";
 import type { QualityCode, ReadingIn } from "@backend/monitoring/readings";
 
 export interface SimBinding {
   machineId: string;
-  engine: "kiln" | "pyro" | "vpc";
+  engine: "kiln" | "pyro" | "pyro-kln" | "vpc";
   measurementId: string;
   tag: string;
   valueKind: "analog" | "state";
@@ -65,6 +66,14 @@ export function sampleFleet(e: FleetEngines, bindings: SimBinding[], acquiredAt:
       if (b.valueKind === "state") state = ms.prevStates[b.tag] ?? null;
       else value = e.line.hist[b.tag]?.at(-1) ?? null;
       quality = qualityOf(e.line.qualHist[b.tag]?.at(-1));
+    } else if (b.engine === "pyro-kln") {
+      // A copy of the line: its kiln's readings, published under the copy's machine id.
+      const line = e.copies?.[b.machineId];
+      const ms = line?.machines[COPY_SOURCE];
+      if (!line || !ms) continue;
+      if (b.valueKind === "state") state = ms.prevStates[b.tag] ?? null;
+      else value = line.hist[b.tag]?.at(-1) ?? null;
+      quality = qualityOf(line.qualHist[b.tag]?.at(-1));
     } else {
       const v = e.vpcs?.[b.machineId];
       if (!v) continue;

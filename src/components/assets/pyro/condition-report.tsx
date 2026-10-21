@@ -9,6 +9,7 @@
  */
 
 import React, { useMemo } from "react";
+import { sourceMachineId } from "@shared/lib/pyro-sim/fleet";
 import { ACTION, PillButton, Table, type Column } from "@/components/ui";
 import { conditionReport, type MachineReport } from "@shared/lib/condition-report";
 import { formatDuration, simTimeMs } from "@shared/lib/kiln-sim/engine";
@@ -42,7 +43,7 @@ export function ConditionReport() {
       width: "120px",
       render: (r) => (
         <span className="ast-cell-title" title={code[r.machineId]}>
-          {PYRO_MACHINE_BY_ID[r.machineId]?.shortName ?? code[r.machineId]}
+          {PYRO_MACHINE_BY_ID[sourceMachineId(r.machineId)]?.shortName ?? code[r.machineId]}
         </span>
       ),
     },

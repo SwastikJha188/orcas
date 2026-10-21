@@ -45,6 +45,11 @@ export interface UserRecord {
   status: "Active" | "On Call" | "Away" | "Inactive";
   defaultPlantId: string | null;
   plantAccess: UserPlantAccessItem[];
+  /**
+   * Machines the account is limited to (user_machine_access); empty: whole
+   * plants. A one-machine account sees only that machine: no plant or full-line views.
+   */
+  machineAccess: string[];
   /** The account has a password and can sign in. */
   hasPassword: boolean;
   lastActiveAt: string | null;
@@ -121,6 +126,10 @@ export async function listUsers(plantId?: string | null): Promise<UserRecord[]> 
       ORDER BY is_primary DESC, p.sort_order ASC, p.name ASC`,
   );
 
+  const machineRows = await query<{ user_id: string; machine_id: string }>("SELECT user_id, machine_id FROM user_machine_access ORDER BY machine_id");
+  const machinesByUser = new Map<string, string[]>();
+  for (const r of machineRows.rows) machinesByUser.set(r.user_id, [...(machinesByUser.get(r.user_id) ?? []), r.machine_id]);
+
   const accessByUser = new Map<string, UserPlantAccessItem[]>();
   for (const row of accessRows.rows) {
     const uid = String(row.user_id);
@@ -150,6 +159,7 @@ export async function listUsers(plantId?: string | null): Promise<UserRecord[]> 
     status: (u.status as UserRecord["status"]) ?? "Active",
     defaultPlantId: u.default_plant_id ? String(u.default_plant_id) : null,
     plantAccess: accessByUser.get(String(u.id)) ?? [],
+    machineAccess: machinesByUser.get(String(u.id)) ?? [],
     hasPassword: Boolean(u.password_hash),
     lastActiveAt: u.last_active_at ? new Date(u.last_active_at as string).toISOString() : null,
     createdAt: new Date(u.created_at as string).toISOString(),

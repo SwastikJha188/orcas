@@ -52,11 +52,11 @@ import {
   type LineState,
   type SignalFaultSpec,
 } from "@shared/lib/pyro-sim/engine";
-import { PYRO_FLEET } from "@shared/lib/pyro-sim/fleet";
+import { COPY_SOURCE, isPyroCopy, PYRO_COPIES, PYRO_FLEET } from "@shared/lib/pyro-sim/fleet";
 import { recordFrames } from "@shared/lib/condition-report";
 import { flushHealth, mergeHealth, HEALTH_KEEP_MS } from "@shared/lib/health-recorder";
 import { applyEngineConfig, engineConfigAppliedAt, fetchEngineConfig } from "@shared/lib/engine-config";
-import { applySimCommand, finishFleet, loadFleet, syncFleetConfig, type FleetEngines, type SimCommand } from "@shared/lib/fleet-boot";
+import { applySimCommand, finishFleet, loadFleet, stepCopy, syncFleetConfig, type FleetEngines, type SimCommand } from "@shared/lib/fleet-boot";
 import type { FleetBootRequest, FleetBootResult } from "@/lib/fleet-boot.worker";
 import { PYRO_SCENARIOS, pyroScenario } from "@shared/lib/pyro-sim/scenarios";
 import { PYRO_MACHINE_IDS } from "@shared/lib/pyro-sim/signals";
@@ -209,6 +209,13 @@ function anchorClock(tEnd: number, speed: number) {
 }
 
 const isPyro = (id: string) => PYRO_MACHINE_IDS.has(id);
+
+/** The line engine a machine runs in and its id there: the live line, or a copy that publishes its kiln. */
+function lineOf(id: string): { line: LineState | undefined; mid: string } | null {
+  if (isPyroCopy(id)) return { line: fleetEngines?.copies?.[id], mid: COPY_SOURCE };
+  if (isPyro(id)) return { line: fleetEngines?.line, mid: id };
+  return null;
+}
 const isVpc = (id: string) => VPC_MACHINE_IDS.has(id);
 
 // The engines are built once per page, and React may discard a first render
@@ -345,6 +352,7 @@ function currentFrames(e: FleetEngines | null): Record<string, SimFrame> {
   return {
     ...Object.fromEntries(Object.entries(e.sims).map(([id, sim]) => [id, sim.frame!])),
     ...Object.fromEntries(Object.entries(e.line.machines).map(([id, ms]) => [id, ms.frame!])),
+    ...Object.fromEntries(Object.entries(e.copies ?? {}).flatMap(([id, c]) => (c.machines[COPY_SOURCE]?.frame ? [[id, c.machines[COPY_SOURCE].frame!]] : []))),
     ...Object.fromEntries(Object.entries(e.vpcs).filter(([, v]) => v.frame).map(([id, v]) => [id, v.frame!])),
   };
 }
@@ -379,8 +387,9 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
 
   /** Re-read the frames after an out-of-step change to one engine. */
   const refresh = useCallback((id: string) => {
-    const frame = isPyro(id)
-      ? fleetEngines!.line.machines[id]?.frame
+    const L = lineOf(id);
+    const frame = L
+      ? L.line?.machines[L.mid]?.frame
       : isVpc(id)
         ? fleetEngines!.vpcs[id]?.frame
         : fleetEngines!.sims[id]?.frame;
@@ -401,6 +410,10 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
       const line = fleetEngines!.line;
       for (let i = 1; i < minutes; i++) recordFrames(stepLine(line, false));
       Object.assign(next, recordFrames(stepLine(line, true)));
+      for (const [id, c] of Object.entries(fleetEngines!.copies ?? {})) {
+        for (let i = 1; i < minutes; i++) stepCopy(id, c, false);
+        Object.assign(next, stepCopy(id, c, true));
+      }
       for (const [id, vpc] of Object.entries(fleetEngines!.vpcs)) {
         for (let i = 1; i < minutes; i++) stepVpcSim(vpc, false);
         next[id] = stepVpcSim(vpc, true);
@@ -438,9 +451,11 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
 
   /** Manual scenario pick: switches that kiln's autopilot off. */
   const applyScenario = useCallback((id: string, scenarioId: string) => {
-    if (isPyro(id)) {
-      lineSetAutopilot(fleetEngines!.line, id, false);
-      lineSetScenario(fleetEngines!.line, id, scenarioId);
+    const L = lineOf(id);
+    if (L) {
+      if (!L.line) return;
+      lineSetAutopilot(L.line, L.mid, false);
+      lineSetScenario(L.line, L.mid, scenarioId);
       refresh(id);
       return;
     }
@@ -462,8 +477,9 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
   }, [refresh]);
 
   const setAutopilot = useCallback((id: string, on: boolean) => {
-    if (isPyro(id)) {
-      lineSetAutopilot(fleetEngines!.line, id, on);
+    const L = lineOf(id);
+    if (L) {
+      if (L.line) lineSetAutopilot(L.line, L.mid, on);
       refresh(id);
       return;
     }
@@ -482,8 +498,9 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
   }, [refresh]);
 
   const setProfile = useCallback((id: string, profile: StoryProfile) => {
-    if (isPyro(id)) {
-      lineSetProfile(fleetEngines!.line, id, profile);
+    const L = lineOf(id);
+    if (L) {
+      if (L.line) lineSetProfile(L.line, L.mid, profile);
       refresh(id);
       return;
     }
@@ -503,8 +520,9 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
 
   /** Operator action on a finding: acknowledge (log only), mitigate (temporary relief) or repair (recover). */
   const performAction = useCallback((id: string, ruleId: string, kind: OperatorAction) => {
-    if (isPyro(id)) {
-      linePerformAction(fleetEngines!.line, id, ruleId, kind);
+    const L = lineOf(id);
+    if (L) {
+      if (L.line) linePerformAction(L.line, L.mid, ruleId, kind);
       refresh(id);
       return;
     }
@@ -536,6 +554,10 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
     const line = fleetEngines!.line;
     for (let i = 1; i < minutes; i++) recordFrames(stepLine(line, false));
     Object.assign(next, recordFrames(stepLine(line, true)));
+    for (const [id, c] of Object.entries(fleetEngines!.copies ?? {})) {
+      for (let i = 1; i < minutes; i++) stepCopy(id, c, false);
+      Object.assign(next, stepCopy(id, c, true));
+    }
     for (const [id, vpc] of Object.entries(fleetEngines!.vpcs)) {
       for (let i = 1; i < minutes; i++) stepVpcSim(vpc, false);
       next[id] = stepVpcSim(vpc, true);
@@ -625,7 +647,7 @@ export function useKilnFleetSimulation(enabled = true): Record<string, KilnSimul
   return useMemo(
     () =>
       Object.fromEntries(
-        [...KILN_FLEET, ...PYRO_FLEET, ...VPC_FLEET]
+        [...KILN_FLEET, ...PYRO_FLEET, ...PYRO_COPIES, ...VPC_FLEET]
           .filter((k) => frames[k.machineId])
           .map((k) => [k.machineId, buildSimulation(k.machineId, frames[k.machineId], rotationAngle, isPaused, speedMultiplier, controls, lineSim)]),
       ),
@@ -677,12 +699,14 @@ function buildSimulation(
   lineSim: LineSimView | null,
 ) {
   // Pyro and VPC scenarios share the kiln scenario shape (driver names differ, which no page reads).
-  const pyro = isPyro(machineId);
+  // A copy of the line runs the source kiln's scenarios.
+  const pyro = isPyro(machineId) || isPyroCopy(machineId);
+  const engineId = isPyroCopy(machineId) ? COPY_SOURCE : machineId;
   const vpc = isVpc(machineId);
   const scenario: KilnScenario = vpc
     ? (vpcScenario(frame.scenarioId) as unknown as KilnScenario)
     : pyro
-      ? (pyroScenario(machineId, frame.scenarioId) as unknown as KilnScenario)
+      ? (pyroScenario(engineId, frame.scenarioId) as unknown as KilnScenario)
       : scenarioById(frame.scenarioId);
   let _sensorData: KilnSealsSensorData | undefined;
   let _healthScores: KilnSealsHealthScores | undefined;
@@ -695,7 +719,7 @@ function buildSimulation(
     scenarios: vpc
       ? (VPC_SCENARIOS as unknown as KilnScenario[])
       : pyro
-        ? ((PYRO_SCENARIOS[machineId] ?? []) as unknown as KilnScenario[])
+        ? ((PYRO_SCENARIOS[engineId] ?? []) as unknown as KilnScenario[])
         : KILN_SCENARIOS,
     activeScenarioId: frame.scenarioId,
     autopilot: frame.autopilot,
@@ -714,7 +738,7 @@ function buildSimulation(
     setSpeedMultiplier: c.setSpeedMultiplier,
     rotationAngle,
     /** The pyro line's demo layer (events, noise, health drift); null on the kiln-seal fleet. */
-    line: pyro && lineSim ? { ...lineSim, ...c.line } : null,
+    line: isPyro(machineId) && lineSim ? { ...lineSim, ...c.line } : null,
     get sensorData() {
       return (_sensorData ??= toSensorData(frame, rotationAngle));
     },

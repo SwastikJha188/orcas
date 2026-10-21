@@ -581,7 +581,8 @@ export function VpcAreaMachineDiagram({
   const frame = fleet[machineId]?.frame ?? (machineId.startsWith("VPC-") ? fleet[VPC_MACHINE_ID]?.frame : null) ?? null;
   const overviewSheet = useMemo(
     () => lineSheetsForMachine(machineId).find((s) => s.kind === "overview")?.id ?? (machineId.startsWith("VPC-") ? "V-0" : null),
-    [machineId],
+    // A copy of a line machine resolves its sheets once the live plant's configuration is in (its first frame).
+    [machineId, frame !== null], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const dots = useMemo<SchematicDot[]>(

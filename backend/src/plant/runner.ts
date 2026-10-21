@@ -30,7 +30,8 @@ import { randomBytes } from "crypto";
 import { hostname } from "os";
 import { promisify } from "util";
 import { gunzip, gzip } from "zlib";
-import { applySimCommand, finishFleet, freezeFleet, prerollFleet, syncFleetConfig, type FleetEngines, type FleetSnapshot, type PlantState } from "@shared/lib/fleet-boot";
+import { applySimCommand, ensureCopies, finishFleet, freezeFleet, prerollFleet, stepCopy, syncFleetConfig, type FleetEngines, type FleetSnapshot, type PlantState } from "@shared/lib/fleet-boot";
+import { COPY_SOURCE } from "@shared/lib/pyro-sim/fleet";
 import { simulationVersion, takePendingCommands } from "@backend/services/simulation-service";
 import { setWallClock, stepSim } from "@shared/lib/kiln-sim/engine";
 import { stepLine } from "@shared/lib/pyro-sim/engine";
@@ -70,7 +71,8 @@ const holder = `${hostname()}:${process.pid}:${randomBytes(3).toString("hex")}`;
 // 6: pyro line on the OSW-PE-SNL-PYR-01 sensor list (223 online points).
 // 12: part service lives from the database (SW-ALL-01); alarms issue maintenance checks.
 // 13: the limit engine publishes for every machine without a dedicated model.
-const RUNNER_VERSION = 13;
+// 14: copies of the pyro line publish their kiln as a machine of its own (engine pyro-kln).
+const RUNNER_VERSION = 14;
 
 interface Runner {
   engines: FleetEngines | null;
@@ -244,10 +246,13 @@ function ensureVpc(e: FleetEngines): void {
 
 function stepFleet(e: FleetEngines, wallMs: number): void {
   ensureVpc(e);
+  // A copy added (or removed) in the database joins (or leaves) the running plant.
+  e.copies = ensureCopies(e.copies, e.line);
   const sims = Object.values(e.sims);
   if (sims.length) setWallClock(sims[0].t + 1, wallMs, MS_PER_MIN);
   for (const sim of sims) stepSim(sim, false);
   recordFrames(stepLine(e.line, false));
+  for (const [id, c] of Object.entries(e.copies)) stepCopy(id, c, false);
   for (const v of Object.values(e.vpcs)) stepVpcSim(v, false);
 }
 
@@ -260,6 +265,10 @@ function ruleStates(e: FleetEngines | null): EngineRuleState[] {
   }
   for (const [machineId, ms] of Object.entries(e.line.machines)) {
     for (const [code, m] of Object.entries(ms.rules)) if (m.status !== "QUIET") out.push({ machineId, code, status: m.status, severity: m.severity, evidence: m.evidence });
+  }
+  for (const [machineId, c] of Object.entries(e.copies ?? {})) {
+    const ms = c.machines[COPY_SOURCE];
+    for (const [code, m] of Object.entries(ms?.rules ?? {})) if (m.status !== "QUIET") out.push({ machineId, code, status: m.status, severity: m.severity, evidence: m.evidence });
   }
   for (const [machineId, v] of Object.entries(e.vpcs ?? {})) {
     for (const [code, m] of Object.entries(v.ruleMem)) if (m.status !== "QUIET") out.push({ machineId, code, status: m.status, severity: m.severity, evidence: "" });

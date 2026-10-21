@@ -222,7 +222,7 @@ export interface ReferenceSetDto {
 export interface SimulationDto {
   machineId: string;
   plantId: string;
-  engine: "kiln" | "pyro" | "vpc" | "limits";
+  engine: "kiln" | "pyro" | "pyro-kln" | "vpc" | "limits";
   seed: number | null;
   profile: string | null;
   enabled: boolean;

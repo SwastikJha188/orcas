@@ -78,12 +78,15 @@ export interface MachineTab {
   machineId: string | null;
 }
 
-/** The plant's machine pills: Full line, then the pyro sections, the VPC units or the machines. */
+/** A plant that shows one machine (a one-machine account, or a one-machine plant) has no full line: only that machine. */
+export const isSingleMachine = (units: ReadonlyArray<unknown>) => units.length === 1;
+
+/** The plant's machine pills: Full line, then the pyro sections, the VPC units or the machines (no Full line for one machine). */
 export function machineTabs(kind: PlantKind, units: Array<{ id: string; name: string; diagramType?: string | null }>): MachineTab[] {
-  const line: MachineTab = { key: "line", label: "Full line", machineId: null };
+  const line: MachineTab[] = isSingleMachine(units) ? [] : [{ key: "line", label: "Full line", machineId: null }];
   if (kind === "pyro") {
     return [
-      line,
+      ...line,
       ...PYRO_SECTION_TABS.flatMap((t) => {
         const m = t.diagramType ? units.find((u) => u.diagramType === t.diagramType) : undefined;
         return m ? [{ key: t.id, label: t.label, machineId: m.id }] : [];
@@ -91,7 +94,7 @@ export function machineTabs(kind: PlantKind, units: Array<{ id: string; name: st
     ];
   }
   const shown = kind === "vpc" ? units.filter((m) => m.diagramType === VPC_DIAGRAM) : units;
-  return [line, ...shown.map((m) => ({ key: m.id, label: m.name, machineId: m.id }))];
+  return [...line, ...shown.map((m) => ({ key: m.id, label: m.name, machineId: m.id }))];
 }
 
 /**

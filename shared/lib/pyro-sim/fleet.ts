@@ -37,3 +37,26 @@ export function pyroLineSeed(): number {
   if (lineSeed === null) throw new Error("pyro line not configured: apply the engine configuration first");
   return lineSeed;
 }
+
+/** The line machine a copy publishes as a machine of its own. */
+export const COPY_SOURCE = "PYR-KLN-01";
+
+const copies: Array<{ machineId: string; seed: number; profile: StoryProfile }> = [];
+
+/**
+ * Independent copies of the line (`machine_simulations`, engine "pyro-kln"):
+ * each runs a whole line of its own, with its own seed, and only its rotary
+ * kiln (`COPY_SOURCE`) is published, under the copy's machine id. Set by
+ * `applyEngineConfig`.
+ */
+export const PYRO_COPIES: ReadonlyArray<{ machineId: string; seed: number; profile: StoryProfile }> = copies;
+
+export function setPyroCopies(members: Array<{ machineId: string; seed: number; profile: StoryProfile }>): void {
+  copies.splice(0, copies.length, ...members);
+}
+
+/** True for a machine published by a copy of the line. */
+export const isPyroCopy = (machineId: string | null | undefined): boolean => Boolean(machineId && copies.some((c) => c.machineId === machineId));
+
+/** The line machine whose drawings, catalogue and scenarios serve `machineId`: a copy's source, else itself. */
+export const sourceMachineId = (machineId: string): string => (isPyroCopy(machineId) ? COPY_SOURCE : machineId);

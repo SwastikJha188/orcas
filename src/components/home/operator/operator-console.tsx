@@ -508,7 +508,9 @@ export function OperatorConsole({
     return out;
   }, [sectionMachineIds]);
 
-  const initialMachineId = focusMachine?.id ?? contextSelectedMachineId ?? null;
+  // One machine on the plant: its section stands in for the full line everywhere.
+  const onlySection: PyroSectionId | null = plantCatalog.length === 1 ? (machineToSection[plantCatalog[0].id] ?? null) : null;
+  const initialMachineId = focusMachine?.id ?? contextSelectedMachineId ?? (plantCatalog.length === 1 ? plantCatalog[0].id : null);
   const [pyroSection, setPyroSection] = useState<PyroSectionId>(() =>
     initialMachineId && machineToSection[initialMachineId] ? machineToSection[initialMachineId] : "line",
   );
@@ -539,6 +541,13 @@ export function OperatorConsole({
       setLastPyroUnit(pyroSection);
     }
   }, [pyroSection]);
+
+  // Nothing opens the full line of a one-machine plant: any way back to it lands on the machine.
+  useEffect(() => {
+    if (!onlySection) return;
+    if (pyroSection === "line") setPyroSection(onlySection);
+    if (appleUnitFilter === "line") setAppleUnitFilter(onlySection);
+  }, [onlySection, pyroSection, appleUnitFilter]);
 
   const [detailSheetId, setDetailSheetId] = useState<string | null>(null);
   const [detailPartId, setDetailPartId] = useState<string | null>(null);
@@ -935,7 +944,9 @@ export function OperatorConsole({
       return lineSheetsForMachine(activeMachineId).filter((s) => LINE_SHEET_ART[s.id]?.ready);
     }
     return [];
-  }, [isPyroPlant, isVpcPlant, pyroSection, activeMachineId]);
+    // A copy of a line machine resolves its sheets once the live plant's configuration is in (its first frame).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPyroPlant, isVpcPlant, pyroSection, activeMachineId, activeFrame !== null]);
 
   // Honor sessionStorage focus sheet key (when navigating from sheet index)
   useEffect(() => {

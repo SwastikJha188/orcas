@@ -11,8 +11,9 @@
  */
 import { createSim, freezeSim, setAutopilot, setProfile, setWallClock, stepSim, thawSim, type FrozenSim, type SimState } from "./kiln-sim/engine";
 import { KILN_FLEET } from "./kiln-sim/fleet";
-import { LIVE_SIM_SETTINGS, clearEvents, createLine, freezeLine, injectEvent, injectSignalFault, raiseEvent, setAutopilot as lineSetAutopilot, setLineSettings, setProfile as lineSetProfile, stepLine, thawLine, type FrozenLine, type LineSimSettings, type Injection, type LineState, type SignalFaultSpec } from "./pyro-sim/engine";
-import { PYRO_FLEET, pyroLineSeed, pyroLineSim } from "./pyro-sim/fleet";
+import { LIVE_SIM_SETTINGS, clearEvents, createLine, forkLine, freezeLine, injectEvent, injectSignalFault, raiseEvent, setAutopilot as lineSetAutopilot, setLineSettings, setProfile as lineSetProfile, stepLine, thawLine, type FrozenLine, type LineSimSettings, type Injection, type LineState, type SignalFaultSpec } from "./pyro-sim/engine";
+import { COPY_SOURCE, PYRO_COPIES, PYRO_FLEET, pyroLineSeed, pyroLineSim } from "./pyro-sim/fleet";
+import type { SimFrame } from "./kiln-sim/engine";
 import { createVpcSim, freezeVpc, setVpcAutopilot, setVpcProfile, stepVpcSim, thawVpc, type FrozenVpc, type VpcSimState } from "./vpc-sim/engine";
 import { VPC_FLEET } from "./vpc-sim/defs";
 import { exportReportTotals, importReportTotals, recordFrames, type ReportTotals } from "./condition-report";
@@ -22,9 +23,58 @@ import { applyEngineConfig, fetchEngineConfig } from "./engine-config";
 /** Simulated minutes run before the first frame, so each kiln opens already in its condition. */
 export const PRE_ROLL_MIN = 90;
 
-export type FleetEngines = { sims: Record<string, SimState>; line: LineState; vpcs: Record<string, VpcSimState> };
+/** `copies`: independent lines that publish only their kiln, keyed by the copy's machine id (`PYRO_COPIES`). */
+export type FleetEngines = { sims: Record<string, SimState>; line: LineState; vpcs: Record<string, VpcSimState>; copies?: Record<string, LineState> };
 /** Every engine one minute short of its first frame, as structured-cloneable data. */
-export type FleetSnapshot = { sims: Record<string, FrozenSim>; line: FrozenLine; vpcs?: Record<string, FrozenVpc>; report: ReportTotals };
+export type FleetSnapshot = { sims: Record<string, FrozenSim>; line: FrozenLine; vpcs?: Record<string, FrozenVpc>; copies?: Record<string, FrozenLine>; report: ReportTotals };
+
+/* ------------------------------------------------------------------ */
+/* Copies of the line                                                  */
+/* ------------------------------------------------------------------ */
+
+/** A copy's frames as published: only its kiln, under the copy's machine id (recorded and drawn as that machine). */
+export function copyFrames(machineId: string, frames: Record<string, SimFrame>): Record<string, SimFrame> {
+  const f = frames[COPY_SOURCE];
+  return f ? { [machineId]: f } : {};
+}
+
+/** Steps a copy one minute; its published frames (empty without `withFrames`). */
+export function stepCopy(machineId: string, line: LineState, withFrames: boolean): Record<string, SimFrame> {
+  return recordFrames(copyFrames(machineId, stepLine(line, withFrames)));
+}
+
+/**
+ * A copy on the main line's clock. Next to a freshly built line it is built
+ * from its own seed the same way; joining a running line it forks that line at
+ * its current minute with its own random stream (the line's timers count
+ * simulated minutes, so a copy is never jumped ahead, and stepping a new line
+ * through months of plant time would take minutes).
+ */
+function newCopy(c: (typeof PYRO_COPIES)[number], main: LineState): LineState {
+  let line: LineState;
+  if (main.t <= PRE_ROLL_MIN * 2) {
+    line = createLine(c.seed);
+    while (line.t < main.t) stepCopy(c.machineId, line, false);
+  } else {
+    line = forkLine(main, (c.seed ^ main.t) >>> 0);
+    // Its log starts here: the source line's past events are not this machine's.
+    for (const ms of Object.values(line.machines)) ms.events = [];
+  }
+  setLineSettings(line, liveLineSettings());
+  line.simVersion = pyroLineSim()?.version;
+  for (const m of PYRO_FLEET) {
+    lineSetAutopilot(line, m.machineId, true);
+    lineSetProfile(line, m.machineId, m.machineId === COPY_SOURCE ? c.profile : m.profile);
+  }
+  return line;
+}
+
+/** Brings `copies` in line with `PYRO_COPIES` next to `main`: missing ones are made, dropped ones removed. */
+export function ensureCopies(copies: Record<string, LineState> | undefined, main: LineState): Record<string, LineState> {
+  const out: Record<string, LineState> = {};
+  for (const c of PYRO_COPIES) out[c.machineId] = copies?.[c.machineId] ?? newCopy(c, main);
+  return out;
+}
 
 function buildFreshVpcs(): Record<string, FrozenVpc> {
   const out: Record<string, FrozenVpc> = {};
@@ -62,8 +112,9 @@ export function prerollFleet(nowMs: number, msPerMin: number): FleetSnapshot {
   }
   setWallClock(line.t + PRE_ROLL_MIN, nowMs, msPerMin);
   for (let i = 1; i < PRE_ROLL_MIN; i++) recordFrames(stepLine(line, false));
+  const copies = Object.fromEntries(Object.entries(ensureCopies(undefined, line)).map(([id, c]) => [id, freezeLine(c)]));
   const vpcs = buildFreshVpcs();
-  return { sims, line: freezeLine(line), vpcs, report: exportReportTotals() };
+  return { sims, line: freezeLine(line), vpcs, copies, report: exportReportTotals() };
 }
 
 const isStartupEvent = (e: { kind: string; title: string }) => e.kind === "scenario" || (e.kind === "action" && e.title.startsWith("Autopilot"));
@@ -86,13 +137,20 @@ export function finishFleet(snap: FleetSnapshot, anchor: (tEnd: number) => void,
     sims[id] = sim;
   }
   const line = thawLine(snap.line);
+  const copies = ensureCopies(Object.fromEntries(Object.entries(snap.copies ?? {}).map(([id, c]) => [id, thawLine(c)])), line);
   // The Simulation page's stored settings and profiles win over what the snapshot carried.
-  syncFleetConfig({ sims, line, vpcs: {} });
+  syncFleetConfig({ sims, line, vpcs: {}, copies });
   anchor(line.t + 1);
   recordFrames(stepLine(line, true));
-  for (const ms of Object.values(line.machines)) {
-    if (fresh) ms.events = ms.events.filter((e) => !isStartupEvent(e));
-    if (ms.frame) ms.frame = { ...ms.frame, events: ms.events.slice() };
+  for (const [id, c] of Object.entries(copies)) {
+    while (c.t < line.t - 1) stepCopy(id, c, false);
+    stepCopy(id, c, true);
+  }
+  for (const l of [line, ...Object.values(copies)]) {
+    for (const ms of Object.values(l.machines)) {
+      if (fresh) ms.events = ms.events.filter((e) => !isStartupEvent(e));
+      if (ms.frame) ms.frame = { ...ms.frame, events: ms.events.slice() };
+    }
   }
   const rawVpcs = snap.vpcs && Object.keys(snap.vpcs).length === VPC_FLEET.length ? snap.vpcs : buildFreshVpcs();
   const vpcs: Record<string, VpcSimState> = {};
@@ -106,7 +164,7 @@ export function finishFleet(snap: FleetSnapshot, anchor: (tEnd: number) => void,
     if (vpc.frame) vpc.frame = { ...vpc.frame, events: vpc.events.slice() };
     vpcs[m.machineId] = vpc;
   }
-  return { sims, line, vpcs };
+  return { sims, line, vpcs, copies };
 }
 
 /* --------------------------------------------------------------------------
@@ -123,7 +181,13 @@ export function freezeFleet(e: FleetEngines): FleetSnapshot {
   const line = freezeLine(e.line);
   const machines = Object.fromEntries(Object.entries(line.machines).map(([id, ms]) => [id, { ...ms, frame: null }]));
   const vpcs = Object.fromEntries(Object.entries(e.vpcs).map(([id, v]) => [id, freezeVpc(v)])) as Record<string, FrozenVpc>;
-  return { sims, line: { ...line, machines } as FrozenLine, vpcs, report: exportReportTotals() };
+  const copies = Object.fromEntries(
+    Object.entries(e.copies ?? {}).map(([id, c]) => {
+      const f = freezeLine(c);
+      return [id, { ...f, machines: Object.fromEntries(Object.entries(f.machines).map(([mid, ms]) => [mid, { ...ms, frame: null }])) } as FrozenLine];
+    }),
+  );
+  return { sims, line: { ...line, machines } as FrozenLine, vpcs, copies, report: exportReportTotals() };
 }
 
 /** Step a frozen fleet `minutes` simulated minutes without frames (catching a saved plant up to now). */
@@ -138,7 +202,14 @@ export function advanceFrozenFleet(snap: FleetSnapshot, minutes: number): FleetS
     sims[id] = { ...freezeSim(sim), frame: null } as FrozenSim;
   }
   const line = thawLine(snap.line);
+  const live = ensureCopies(Object.fromEntries(Object.entries(snap.copies ?? {}).map(([cid, f]) => [cid, thawLine(f)])), line);
   for (let i = 0; i < minutes; i++) recordFrames(stepLine(line, false));
+  const copies: Record<string, FrozenLine> = {};
+  for (const [id, c] of Object.entries(live)) {
+    for (let i = 0; i < minutes; i++) stepCopy(id, c, false);
+    const f = freezeLine(c);
+    copies[id] = { ...f, machines: Object.fromEntries(Object.entries(f.machines).map(([mid, ms]) => [mid, { ...ms, frame: null }])) } as FrozenLine;
+  }
   const frozen = freezeLine(line);
   const machines = Object.fromEntries(Object.entries(frozen.machines).map(([id, ms]) => [id, { ...ms, frame: null }]));
   const vpcs: Record<string, FrozenVpc> = {};
@@ -148,7 +219,7 @@ export function advanceFrozenFleet(snap: FleetSnapshot, minutes: number): FleetS
     for (let i = 0; i < minutes; i++) stepVpcSim(vpc, false);
     vpcs[m.machineId] = freezeVpc(vpc);
   }
-  return { sims, line: { ...frozen, machines } as FrozenLine, vpcs, report: exportReportTotals() };
+  return { sims, line: { ...frozen, machines } as FrozenLine, vpcs, copies, report: exportReportTotals() };
 }
 
 /** What `/api/plant/state` serves: the server's fleet after its last step, taken at `wallMs`. */
@@ -215,6 +286,21 @@ export function syncFleetConfig(e: FleetEngines): boolean {
     const ms = e.line.machines[m.machineId];
     if (ms && ms.story.profile !== m.profile) {
       lineSetProfile(e.line, m.machineId, m.profile);
+      changed = true;
+    }
+  }
+  // Copies follow the line's settings; their kiln holds the copy's own profile.
+  for (const c of PYRO_COPIES) {
+    const line = e.copies?.[c.machineId];
+    if (!line) continue;
+    if (sim && line.simVersion !== sim.version) {
+      setLineSettings(line, liveLineSettings());
+      line.simVersion = sim.version;
+      changed = true;
+    }
+    const ms = line.machines[COPY_SOURCE];
+    if (ms && ms.story.profile !== c.profile) {
+      lineSetProfile(line, COPY_SOURCE, c.profile);
       changed = true;
     }
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useComponentScope } from "./component-scope";
+import { sourceMachineId } from "@shared/lib/pyro-sim/fleet";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { AssetMachine } from "./assets-data";
 import { PillButton, Loading } from "@/components/ui";
@@ -308,7 +309,7 @@ export function MachineSensorMappingView({
   };
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   // Pyro line & VPC 066: machine specification and manual records. The diagram sheets live on the Overview.
-  const pyroSpec = Boolean(PYRO_MACHINE_BY_ID[machine.id] || VPC_MACHINE_BY_ID[machine.id]);
+  const pyroSpec = Boolean(PYRO_MACHINE_BY_ID[sourceMachineId(machine.id)] || VPC_MACHINE_BY_ID[machine.id]);
   const [focusNonce, setFocusNonce] = useState(0);
 
   useEffect(() => {

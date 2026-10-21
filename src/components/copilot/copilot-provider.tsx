@@ -228,7 +228,9 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
   /** Machine the answers speak for; null asks the full line (a question naming a machine goes to it). */
   const [scope, setScopeState] = useState<string | null>(null);
   const scopeRef = useRef<string | null>(null);
-  scopeRef.current = scope && fleet[scope] ? scope : null;
+  // One live machine on the plant: it is the scope (there is no full line to ask about).
+  const onlyLive = Object.keys(fleet).length === 1 ? Object.keys(fleet)[0] : null;
+  scopeRef.current = scope && fleet[scope] ? scope : onlyLive;
   const setScope = useCallback((id: string | null) => setScopeState(id), []);
 
   const [threads, setThreads] = useState<ChatThread[]>([]);
@@ -452,7 +454,7 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
   const deleted = useMemo(() => (trash ? { id: trash.thread.id, title: trash.thread.title } : null), [trash]);
 
   const focus = active?.focus ?? null;
-  const scopeId = scope && fleet[scope] ? scope : null;
+  const scopeId = scope && fleet[scope] ? scope : onlyLive;
   // Suggestions follow the scoped machine (the primary for the full line).
   const chipFrame = scopeId ? fleet[scopeId].frame : frame;
   const chipRecord = scopeId ? recordOf(scopeId) : record;
@@ -477,7 +479,11 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
   const nameOf = useCallback((id: string) => machines.find((m) => m.id === id)?.name ?? id, [machines]);
   const fleetIds = Object.keys(fleet).join(",");
   const scopes = useMemo<ScopeOption[]>(
-    () => [{ id: null, name: "Full line" }, ...fleetIds.split(",").filter(Boolean).map((id) => ({ id, name: nameOf(id) }))],
+    () => {
+      const ids = fleetIds.split(",").filter(Boolean);
+      const each = ids.map((id) => ({ id, name: nameOf(id) }));
+      return ids.length === 1 ? each : [{ id: null, name: "Full line" }, ...each];
+    },
     [fleetIds, nameOf],
   );
   const abnormal = (xs: FindingDto[]) => xs.filter((x) => x.clearedAt === null && x.severity !== "Normal").length;

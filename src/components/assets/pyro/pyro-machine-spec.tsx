@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { sourceMachineId } from "@shared/lib/pyro-sim/fleet";
 import { Table, type Column } from "@/components/ui";
 import { PYRO_MACHINE_BY_ID, PYRO_SIGNALS } from "@shared/lib/pyro-sim/signals";
 import { PYRO_SPEC } from "@shared/lib/pyro-sim/spec";
@@ -8,7 +9,7 @@ import { VPC_MACHINE_BY_ID, VPC_SIGNALS, VPC_SPEC } from "@shared/lib/vpc-sim/si
 import { plainWords } from "@/lib/plain-words";
 
 export function PyroMachineSpec({ machineId }: { machineId: string; t?: number }) {
-  const m = PYRO_MACHINE_BY_ID[machineId] ?? VPC_MACHINE_BY_ID[machineId];
+  const m = PYRO_MACHINE_BY_ID[sourceMachineId(machineId)] ?? VPC_MACHINE_BY_ID[machineId];
   if (!m) return null;
   const isVpc = Boolean(VPC_MACHINE_BY_ID[machineId]);
   const allSigs = isVpc ? VPC_SIGNALS : PYRO_SIGNALS;

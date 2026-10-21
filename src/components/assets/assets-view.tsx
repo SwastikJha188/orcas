@@ -329,6 +329,11 @@ export function AssetsView() {
   }, [activeSubPage, machineId, navigateToMachine, setActiveSubPage]);
 
   const activeLayer = layerOf(activeSubPage);
+  // A plant showing one machine has no full line or plant page: Assets opens that machine.
+  const onlyUnit = units.length === 1 ? units[0].id : null;
+  useEffect(() => {
+    if (!machineId && !selectedMachineId && onlyUnit) navigateToMachine(onlyUnit, activeSubPage === "overview" ? "diagnosis" : activeLayer);
+  }, [machineId, selectedMachineId, onlyUnit, activeLayer, activeSubPage, navigateToMachine]);
   // Practice faults (simulation) belong to the Oswar super administrator alone.
   const canSimulate = Boolean(currentUser?.role.allPlants);
   // Full line pages: Diagnosis, Prognosis and Analysis of the whole line (no machine picked).

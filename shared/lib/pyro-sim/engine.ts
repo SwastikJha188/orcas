@@ -1632,6 +1632,17 @@ export function createLine(seed = 20261014): LineState {
   return s;
 }
 
+/**
+ * An independent line forked from a running one at its current minute: the
+ * same process state and timers, its own random stream from `seed`, so noise,
+ * events and faults go their own way from here (a copy joining a running plant).
+ */
+export function forkLine(s: LineState, seed: number): LineState {
+  const f = thawLine(freezeLine(s));
+  f.rand = mulberry32(seed);
+  return f;
+}
+
 /** A running line as structured-cloneable data: the PRNG as its state, frames without their defs. */
 export type FrozenLine = Omit<LineState, "rand"> & { rand: number; mem: HealthMem | undefined };
 

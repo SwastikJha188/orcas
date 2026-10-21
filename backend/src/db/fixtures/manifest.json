@@ -1,5 +1,5 @@
 {
-  "exportedAt": "2026-10-21T11:24:07.437Z",
+  "exportedAt": "2026-10-21T20:01:25.708Z",
   "migrations": [
     "000",
     "001",
@@ -49,9 +49,38 @@
     "045",
     "046",
     "047",
-    "048"
+    "048",
+    "049",
+    "050",
+    "051",
+    "052",
+    "053",
+    "054",
+    "055",
+    "056",
+    "057"
   ],
   "tables": [
+    {
+      "name": "demo_requests",
+      "columns": [
+        "id",
+        "full_name",
+        "email",
+        "company",
+        "industry",
+        "message",
+        "created_at",
+        "notified_at",
+        "notify_error"
+      ],
+      "primaryKey": [
+        "id"
+      ],
+      "deferred": [],
+      "rows": 0,
+      "file": "demo_requests.json"
+    },
     {
       "name": "diagrams",
       "columns": [
@@ -232,7 +261,7 @@
         "id"
       ],
       "deferred": [],
-      "rows": 4,
+      "rows": 30,
       "file": "maintenance_documents.json"
     },
     {
@@ -332,6 +361,24 @@
       "file": "measurement_statistics.json"
     },
     {
+      "name": "part_kind_lives",
+      "columns": [
+        "id",
+        "label",
+        "name_pattern",
+        "life_h",
+        "weibull_shape",
+        "source",
+        "sort_order"
+      ],
+      "primaryKey": [
+        "id"
+      ],
+      "deferred": [],
+      "rows": 16,
+      "file": "part_kind_lives.json"
+    },
+    {
       "name": "quality_codes",
       "columns": [
         "id",
@@ -423,7 +470,7 @@
         "id"
       ],
       "deferred": [],
-      "rows": 4,
+      "rows": 5,
       "file": "simulation_engines.json"
     },
     {
@@ -441,6 +488,20 @@
       "deferred": [],
       "rows": 1,
       "file": "simulation_settings.json"
+    },
+    {
+      "name": "support_ticket_statuses",
+      "columns": [
+        "id",
+        "label",
+        "sort_order"
+      ],
+      "primaryKey": [
+        "id"
+      ],
+      "deferred": [],
+      "rows": 3,
+      "file": "support_ticket_statuses.json"
     },
     {
       "name": "units",
@@ -536,7 +597,7 @@
         "id"
       ],
       "deferred": [],
-      "rows": 21,
+      "rows": 47,
       "file": "maintenance_units.json"
     },
     {
@@ -598,7 +659,7 @@
         "id"
       ],
       "deferred": [],
-      "rows": 138,
+      "rows": 300,
       "file": "maintenance_groups.json"
     },
     {
@@ -637,8 +698,28 @@
         "id"
       ],
       "deferred": [],
-      "rows": 916,
+      "rows": 1483,
       "file": "maintenance_tasks.json"
+    },
+    {
+      "name": "part_kind_tasks",
+      "columns": [
+        "id",
+        "kind_id",
+        "sort_order",
+        "component",
+        "check_text",
+        "pass_text",
+        "frequency",
+        "owner",
+        "mode"
+      ],
+      "primaryKey": [
+        "id"
+      ],
+      "deferred": [],
+      "rows": 38,
+      "file": "part_kind_tasks.json"
     },
     {
       "name": "maintenance_task_steps",
@@ -653,7 +734,7 @@
         "step_no"
       ],
       "deferred": [],
-      "rows": 1239,
+      "rows": 1806,
       "file": "maintenance_task_steps.json"
     },
     {
@@ -682,7 +763,7 @@
       "deferred": [
         "site_node_id"
       ],
-      "rows": 4,
+      "rows": 5,
       "file": "edge_gateways.json"
     },
     {
@@ -727,7 +808,7 @@
       "deferred": [
         "machine_id"
       ],
-      "rows": 11,
+      "rows": 15,
       "file": "edge_sources.json"
     },
     {
@@ -747,7 +828,7 @@
         "id"
       ],
       "deferred": [],
-      "rows": 37,
+      "rows": 55,
       "file": "edge_cards.json"
     },
     {
@@ -770,7 +851,7 @@
       "deferred": [
         "measurement_id"
       ],
-      "rows": 268,
+      "rows": 334,
       "file": "edge_points.json"
     },
     {
@@ -790,7 +871,7 @@
       "deferred": [
         "machine_id"
       ],
-      "rows": 17,
+      "rows": 18,
       "file": "rack_chassis.json"
     },
     {
@@ -842,6 +923,23 @@
       ],
       "rows": 11,
       "file": "users.json"
+    },
+    {
+      "name": "assetiq_questions",
+      "columns": [
+        "id",
+        "user_id",
+        "sort_order",
+        "question",
+        "intent",
+        "params"
+      ],
+      "primaryKey": [
+        "id"
+      ],
+      "deferred": [],
+      "rows": 60,
+      "file": "assetiq_questions.json"
     },
     {
       "name": "onboarding_packages",
@@ -916,7 +1014,7 @@
       "deferred": [
         "primary_machine_id"
       ],
-      "rows": 5,
+      "rows": 6,
       "file": "plants.json"
     },
     {
@@ -986,52 +1084,6 @@
       "file": "user_plant_access.json"
     },
     {
-      "name": "assetiq_questions",
-      "columns": [
-        "id",
-        "user_id",
-        "sort_order",
-        "question",
-        "intent",
-        "params"
-      ],
-      "primaryKey": [
-        "id"
-      ],
-      "deferred": [],
-      "rows": 60,
-      "file": "assetiq_questions.json"
-    },
-    {
-      "name": "user_machine_access",
-      "columns": [
-        "user_id",
-        "machine_id",
-        "assigned_at"
-      ],
-      "primaryKey": [
-        "user_id",
-        "machine_id"
-      ],
-      "deferred": [],
-      "rows": 1,
-      "file": "user_machine_access.json"
-    },
-    {
-      "name": "support_ticket_statuses",
-      "columns": [
-        "id",
-        "label",
-        "sort_order"
-      ],
-      "primaryKey": [
-        "id"
-      ],
-      "deferred": [],
-      "rows": 3,
-      "file": "support_ticket_statuses.json"
-    },
-    {
       "name": "asset_images",
       "columns": [
         "id",
@@ -1056,7 +1108,7 @@
         "id"
       ],
       "deferred": [],
-      "rows": 1,
+      "rows": 0,
       "file": "asset_images.json"
     },
     {
@@ -1099,7 +1151,7 @@
         "id"
       ],
       "deferred": [],
-      "rows": 311,
+      "rows": 400,
       "file": "fault_library.json"
     },
     {
@@ -1120,7 +1172,7 @@
       "deferred": [
         "parent_id"
       ],
-      "rows": 49,
+      "rows": 51,
       "file": "hierarchy_nodes.json"
     },
     {
@@ -1135,7 +1187,7 @@
         "kind"
       ],
       "deferred": [],
-      "rows": 18,
+      "rows": 46,
       "file": "machine_maintenance_documents.json"
     },
     {
@@ -1150,7 +1202,7 @@
         "unit_id"
       ],
       "deferred": [],
-      "rows": 33,
+      "rows": 75,
       "file": "machine_maintenance_units.json"
     },
     {
@@ -1166,7 +1218,7 @@
         "machine_id"
       ],
       "deferred": [],
-      "rows": 22,
+      "rows": 23,
       "file": "machine_simulations.json"
     },
     {
@@ -1190,7 +1242,7 @@
         "id"
       ],
       "deferred": [],
-      "rows": 91,
+      "rows": 94,
       "file": "machine_systems.json"
     },
     {
@@ -1208,7 +1260,7 @@
         "id"
       ],
       "deferred": [],
-      "rows": 31,
+      "rows": 33,
       "file": "operating_states.json"
     },
     {
@@ -1232,6 +1284,47 @@
       "file": "sap_equipment_records.json"
     },
     {
+      "name": "support_tickets",
+      "columns": [
+        "id",
+        "plant_id",
+        "machine_id",
+        "raised_by_user_id",
+        "subject",
+        "body",
+        "urgent",
+        "status_id",
+        "reply",
+        "replied_by_user_id",
+        "replied_at",
+        "notified_at",
+        "notify_error",
+        "created_at",
+        "updated_at"
+      ],
+      "primaryKey": [
+        "id"
+      ],
+      "deferred": [],
+      "rows": 0,
+      "file": "support_tickets.json"
+    },
+    {
+      "name": "user_machine_access",
+      "columns": [
+        "user_id",
+        "machine_id",
+        "assigned_at"
+      ],
+      "primaryKey": [
+        "user_id",
+        "machine_id"
+      ],
+      "deferred": [],
+      "rows": 1,
+      "file": "user_machine_access.json"
+    },
+    {
       "name": "machine_subassemblies",
       "columns": [
         "id",
@@ -1245,7 +1338,7 @@
         "id"
       ],
       "deferred": [],
-      "rows": 147,
+      "rows": 159,
       "file": "machine_subassemblies.json"
     },
     {
@@ -1268,7 +1361,7 @@
         "id"
       ],
       "deferred": [],
-      "rows": 22,
+      "rows": 23,
       "file": "reference_sets.json"
     },
     {
@@ -1299,7 +1392,7 @@
         "id"
       ],
       "deferred": [],
-      "rows": 234,
+      "rows": 258,
       "file": "rules.json"
     },
     {
@@ -1317,13 +1410,14 @@
         "installed",
         "duty",
         "record_source",
-        "sort_order"
+        "sort_order",
+        "weibull_shape"
       ],
       "primaryKey": [
         "id"
       ],
       "deferred": [],
-      "rows": 10,
+      "rows": 159,
       "file": "component_service_lives.json"
     },
     {
@@ -1340,7 +1434,7 @@
         "id"
       ],
       "deferred": [],
-      "rows": 36,
+      "rows": 40,
       "file": "investigation_guides.json"
     },
     {
@@ -1357,7 +1451,7 @@
         "id"
       ],
       "deferred": [],
-      "rows": 457,
+      "rows": 526,
       "file": "measurement_points.json"
     },
     {
@@ -1372,7 +1466,7 @@
         "fault_id"
       ],
       "deferred": [],
-      "rows": 218,
+      "rows": 288,
       "file": "rule_faults.json"
     },
     {
@@ -1386,7 +1480,7 @@
         "subassembly_id"
       ],
       "deferred": [],
-      "rows": 219,
+      "rows": 251,
       "file": "rule_subassemblies.json"
     },
     {
@@ -1477,7 +1571,7 @@
         "id"
       ],
       "deferred": [],
-      "rows": 458,
+      "rows": 528,
       "file": "measurements.json"
     },
     {
@@ -1598,7 +1692,7 @@
         "measurement_id"
       ],
       "deferred": [],
-      "rows": 1369,
+      "rows": 1712,
       "file": "fault_library_inputs.json"
     },
     {
@@ -1616,7 +1710,7 @@
         "sort_order"
       ],
       "deferred": [],
-      "rows": 475,
+      "rows": 528,
       "file": "investigation_guide_items.json"
     },
     {
@@ -1657,7 +1751,7 @@
         "measurement_id"
       ],
       "deferred": [],
-      "rows": 458,
+      "rows": 528,
       "file": "measurement_acquisition.json"
     },
     {
@@ -1705,7 +1799,7 @@
         "measurement_id"
       ],
       "deferred": [],
-      "rows": 392,
+      "rows": 441,
       "file": "measurement_limits.json"
     },
     {
@@ -1736,7 +1830,7 @@
         "measurement_id"
       ],
       "deferred": [],
-      "rows": 225,
+      "rows": 293,
       "file": "measurement_ranges.json"
     },
     {
@@ -1752,7 +1846,7 @@
         "state"
       ],
       "deferred": [],
-      "rows": 170,
+      "rows": 222,
       "file": "measurement_states.json"
     },
     {
@@ -1768,7 +1862,7 @@
         "measurement_id"
       ],
       "deferred": [],
-      "rows": 18,
+      "rows": 20,
       "file": "operating_state_criteria.json"
     },
     {
@@ -1804,7 +1898,7 @@
         "measurement_id"
       ],
       "deferred": [],
-      "rows": 393,
+      "rows": 442,
       "file": "reference_values.json"
     },
     {
@@ -1819,7 +1913,7 @@
         "measurement_id"
       ],
       "deferred": [],
-      "rows": 857,
+      "rows": 989,
       "file": "rule_inputs.json"
     },
     {

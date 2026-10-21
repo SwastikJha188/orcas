@@ -5,6 +5,7 @@
 import { LINE_SHEETS, LINE_SHEET_GROUPS } from "./sheet-data";
 import { LINE_SHEET_ART } from "./art";
 import type { LineSheetArt, LineSheetGroup, LineSheetMeta, LineSheetPoint } from "./types";
+import { sourceMachineId } from "@shared/lib/pyro-sim/fleet";
 
 export type { LineSheetArt, LineSheetGroup, LineSheetMeta, LineSheetPoint };
 export { LINE_SHEETS, LINE_SHEET_GROUPS, LINE_SHEET_ART };
@@ -26,7 +27,8 @@ export function lineSheetTags(id: string): string[] {
 
 /** The group sheets for a machine (overview first, then the detail sheets), e.g. PYR-KLN-01 → K-0 … K-9. */
 export function lineSheetsForMachine(machineId: string): LineSheetMeta[] {
-  const group = LINE_SHEETS.find((s) => s.kind === "overview" && s.machines.includes(machineId))?.group;
+  const id = sourceMachineId(machineId);
+  const group = LINE_SHEETS.find((s) => s.kind === "overview" && s.machines.includes(id))?.group;
   return group ? LINE_SHEETS.filter((s) => s.group === group) : [];
 }
 

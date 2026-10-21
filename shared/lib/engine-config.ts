@@ -20,7 +20,7 @@ import { RULES } from "./kiln-sim/rules";
 import { KILN_FLEET, setKilnFleet } from "./kiln-sim/fleet";
 import { PYRO_SIGNALS } from "./pyro-sim/signals";
 import { PYRO_RULES } from "./pyro-sim/rules";
-import { PYRO_FLEET, setPyroFleet, setPyroLineSim } from "./pyro-sim/fleet";
+import { PYRO_FLEET, setPyroCopies, setPyroFleet, setPyroLineSim } from "./pyro-sim/fleet";
 import { setServiceParts, type ServicePart } from "./pyro-sim/service-life";
 import type { LineSimSettings } from "./pyro-sim/engine";
 import { VPC_SIGNALS } from "./vpc-sim/signals";
@@ -28,7 +28,8 @@ import { VPC_RULES } from "./vpc-sim/rules";
 import { VPC_FLEET, setVpcFleet } from "./vpc-sim/defs";
 import type { StoryProfile } from "./kiln-sim/engine";
 
-export type EngineId = "kiln" | "pyro" | "vpc";
+/** "pyro-kln": an independent copy of the pyro line that publishes only its kiln (see `PYRO_COPIES`). */
+export type EngineId = "kiln" | "pyro" | "pyro-kln" | "vpc";
 
 export interface EngineSignalConfig {
   tag: string;
@@ -136,6 +137,7 @@ export function applyEngineConfig(cfg: EngineConfig): void {
     pyro.map((m) => ({ machineId: m.machineId, profile: m.profile as StoryProfile })),
     pyro[0]?.seed ?? null,
   );
+  setPyroCopies(of("pyro-kln").map((m) => ({ machineId: m.machineId, seed: m.seed, profile: m.profile as StoryProfile })));
   setPyroLineSim(cfg.lineSim ?? null);
   setServiceParts(cfg.serviceParts ?? []);
 
