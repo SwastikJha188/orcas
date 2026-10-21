@@ -484,7 +484,7 @@ export function AskTab() {
                 {cp.thinking && (
                   <div className="aqk-thinking" role="status">
                     <i aria-hidden="true" />
-                    Reading the plant's data…
+                    Reading the plant&apos;s data…
                   </div>
                 )}
               </div>

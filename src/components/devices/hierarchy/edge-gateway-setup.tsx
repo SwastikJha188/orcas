@@ -145,7 +145,7 @@ export function GatewaySetup({ code, ipAddress, broker, brokerStatus, format, ra
           <pre className="dv-setup-code">
             {`host   ${host}:${broker.port}${broker.tls ? " (TLS)" : ""}\ntopic  ${format ? templateFilter(format.topic, code.trim() || null) : ""}`}
           </pre>
-          <span className="dv-setup-foot">Payloads are read with the “{format?.name}” format (open it from the gateway's Message format).</span>
+          <span className="dv-setup-foot">Payloads are read with the “{format?.name}” format (open it from the gateway&apos;s Message format).</span>
         </div>
       )}
     </div>
