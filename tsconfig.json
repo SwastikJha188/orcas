@@ -39,7 +39,6 @@
     "**/*.tsx",
     ".next-assetiq/types/**/*.ts",
     ".next-backend/types/**/*.ts",
-    ".next-cards/types/**/*.ts",
     ".next-dev-rims/types/**/*.ts",
     ".next-health/types/**/*.ts",
     ".next-memtest-prod/types/**/*.ts",
@@ -57,7 +56,7 @@
     ".next-verify-build/types/**/*.ts",
     ".next/types/**/*.ts",
     "next-env.d.ts",
-    ".next-verceltest/types/**/*.ts"
+    ".next-cards/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
