@@ -1,10 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PillButton } from "@/components/ui";
 import { StatusTag } from "@/components/assets/assets-shell-ui";
-import { useApi } from "@/lib/api-cache";
-import { useIndustrialData } from "@/providers/industrial-data-context";
 import { machineName, useDefaultMachine, usePmsLine, type PmsModel } from "./pms-model";
 import { usePlantMachineTabs } from "@/components/home/operator/machine-nav";
 import { MAINT_PAGE_EVENT, MAINT_PAGE_KEY, PMS_PAGES, PMS_TABS, PmsNavProvider, PmsViewNav, pmsTabOf, setPmsFocus, type PmsPage } from "./pms-ui";
@@ -17,9 +14,6 @@ import { PageProactive } from "./page-proactive";
 import { PageWork } from "./page-work";
 import { PageResources } from "./page-resources";
 import { PageHistory } from "./page-history";
-import { ProblemsSection } from "@/components/problems/problems-section";
-import { NewCaseDialog, type NewCasePreset } from "@/components/problems/new-case-dialog";
-import { OPEN_CASE_EVENT, casesUrl, takeCaseToOpen, type CaseList } from "@/components/problems/cases-api";
 import "@/components/assets/assets-shell.css";
 import "@/components/assets/analysis/analysis-page.css";
 import "@/components/ui/page.css";
@@ -35,7 +29,6 @@ import "./pms.css";
    section.
 
      Overview      what needs doing next, most urgent first
-     Problems      cases from the first sign to a checked repair (+ guides)
      Preventive    rounds at fixed intervals
      Predictive    checks raised by alarms, jobs engineers plan
      Proactive     part life: replace before it wears out
@@ -43,8 +36,8 @@ import "./pms.css";
      Calendar      when each job runs (+ people, parts & shutdowns)
      Machines      one machine's drawing, part by part
 
-   Problems works on every plant; the planned sections need the plant's
-   maintenance documents (/api/maintenance/pms/line). It opens on
+   The sections need the plant's maintenance documents
+   (/api/maintenance/pms/line). SAP is its own rail tab. It opens on
    Preventive, unless another page asked for a section.
    ========================================================================== */
 
@@ -53,8 +46,6 @@ const FULL_LINE = "full-line";
 /** Title and one plain line under it, per page. */
 const PAGE_HEAD: Record<PmsPage, { title: string; context: string }> = {
   overview: { title: "Overview", context: "What needs doing next on the line, the most urgent first." },
-  problems: { title: "Problems", context: "Each case follows one problem from the first sign to a checked repair." },
-  guides: { title: "Investigation guides", context: "Step-by-step guides for common problems: what to read, what to check, what may cause it. Start a case from one." },
   preventive: { title: "Preventive", context: "Routine checks and servicing at fixed times: daily, weekly, every 15 days and monthly." },
   predictive: { title: "Predictive & planned", context: "Checks raised automatically when an alarm goes off, and jobs engineers plan from what the readings show." },
   proactive: { title: "Proactive", context: "Each part's remaining life, so it is replaced before it wears out." },
@@ -78,14 +69,11 @@ function storedPage(): PmsPage {
 }
 
 export function MaintenanceWorkspace() {
-  const { selectedPlantId } = useIndustrialData();
   const pms = usePmsLine();
   const [page, setPage] = useState<PmsPage>(storedPage);
   // Remounting a page on every switch lets it read the focus another page left.
   const [visit, setVisit] = useState(0);
   const [machineId, setMachineId] = useState<string | null>(null);
-  const [caseId, setCaseId] = useState<number | null>(null);
-  const [newCase, setNewCase] = useState<{ open: boolean; preset?: NewCasePreset }>({ open: false });
   const defaultMachine = useDefaultMachine(pms.data?.machineIds);
   const bodyRef = useRef<HTMLDivElement | null>(null);
 
@@ -98,7 +86,7 @@ export function MaintenanceWorkspace() {
     bodyRef.current?.scrollTo({ top: 0 });
   }, []);
 
-  // Another page asked for a section (an old Problems link, a case to open).
+  // Another page asked for a section.
   useEffect(() => {
     const onPage = (e: Event) => {
       const p = (e as CustomEvent<PmsPage>).detail;
@@ -110,41 +98,21 @@ export function MaintenanceWorkspace() {
       }
       if (PMS_PAGES.some((x) => x.id === p)) nav(p);
     };
-    const takeCase = () => {
-      const id = takeCaseToOpen();
-      if (id) {
-        setCaseId(id);
-        nav("problems");
-      }
-    };
-    takeCase();
-    const onCase = (e: Event) => {
-      const id = Number((e as CustomEvent<{ id?: number }>).detail?.id);
-      takeCaseToOpen();
-      if (Number.isFinite(id) && id > 0) {
-        setCaseId(id);
-        nav("problems");
-      }
-    };
     window.addEventListener(MAINT_PAGE_EVENT, onPage);
-    window.addEventListener(OPEN_CASE_EVENT, onCase);
-    return () => {
-      window.removeEventListener(MAINT_PAGE_EVENT, onPage);
-      window.removeEventListener(OPEN_CASE_EVENT, onCase);
-    };
+    return () => window.removeEventListener(MAINT_PAGE_EVENT, onPage);
   }, [nav]);
 
-  // Planned sections only where the plant has maintenance documents; Problems everywhere.
+  // Planned sections only where the plant has maintenance documents.
   // Until the plans have loaded the sections stay, so a slow answer never reads as "no plans".
   const known = pms.data !== undefined || Boolean(pms.error);
   const planned = !known || (pms.data?.machineIds.length ?? 0) > 0;
   const tabs = PMS_TABS.filter((t) => planned || !t.planned);
   const tab = pmsTabOf(page);
-  const shownPage: PmsPage = tabs.includes(tab) ? page : "problems";
+  const shownPage: PmsPage = tabs.includes(tab) ? page : (tabs[0]?.id ?? "overview");
   const shownTab = pmsTabOf(shownPage);
 
   // Machine bar: the plant's machine pills (as the Operator view names them). Planned sections
-  // list the machines with planned maintenance; Problems lists every machine.
+  // list the machines with planned maintenance.
   const plantTabs = usePlantMachineTabs();
   const machinePills = useMemo(() => {
     const ids = pms.data?.machineIds ?? [];
@@ -168,7 +136,6 @@ export function MaintenanceWorkspace() {
       return;
     }
     setMachineId(id);
-    setCaseId(null);
   };
 
   // Every planned page reads the model narrowed to the picked machine; memoised on the model's
@@ -193,19 +160,14 @@ export function MaintenanceWorkspace() {
   const scoped: PmsModel = narrowed ? { ...pms, ...narrowed } : pms;
 
   // Section counts: what each holds that needs someone.
-  const { data: caseList } = useApi<CaseList>(selectedPlantId ? casesUrl({ plantId: selectedPlantId }) : null);
-  const openCases = (caseList?.cases ?? []).filter((c) => c.stage !== "closed" && (!machineFilter || c.machineId === machineFilter));
   const p1 = scoped.queue.filter((q) => q.priority === "P1").length;
   const overdue = scoped.queue.filter((q) => q.kind === "plan" && q.status.label === "Overdue").length;
   const counts: Partial<Record<PmsPage, { count: number; tone?: string }>> = {
     overview: { count: scoped.queue.length, tone: p1 ? "bad" : overdue ? "warn" : undefined },
-    problems: { count: openCases.length, tone: openCases.some((c) => c.priority === "urgent") ? "bad" : undefined },
     work: { count: scoped.openWos.length },
   };
 
   const head = PAGE_HEAD[shownPage];
-  const startCase = (preset?: NewCasePreset) => setNewCase({ open: true, preset: preset ?? (machineFilter ? { machineId: machineFilter } : undefined) });
-  const isProblems = shownTab.id === "problems";
 
   return (
     <PmsNavProvider value={nav}>
@@ -224,10 +186,7 @@ export function MaintenanceWorkspace() {
                     aria-selected={active}
                     className="opc-pill-btn"
                     data-active={active || undefined}
-                    onClick={() => {
-                      if (t.id === "problems") setCaseId(null);
-                      nav(t.id);
-                    }}
+                    onClick={() => nav(t.id)}
                   >
                     {c?.tone && <span className="ph-unit-dot" data-tone={c.tone} aria-hidden="true" />}
                     <span>{t.label}</span>
@@ -262,11 +221,6 @@ export function MaintenanceWorkspace() {
           </div>
           <div className="opc-stage-toggles">
             <PmsViewNav page={shownPage} />
-            {isProblems && (
-              <PillButton variant="primary" onClick={() => startCase()}>
-                Start a case
-              </PillButton>
-            )}
           </div>
         </div>
 
@@ -289,16 +243,6 @@ export function MaintenanceWorkspace() {
             </header>
 
             <div className="pm-workspace-body" key={`${shownPage}-${visit}-${machineFilter ?? FULL_LINE}`}>
-              {isProblems && (
-                <ProblemsSection
-                  view={shownPage === "guides" ? "guides" : "problems"}
-                  machineId={machineFilter}
-                  caseId={caseId}
-                  onOpenCase={setCaseId}
-                  onCloseCase={() => setCaseId(null)}
-                  onStartCase={startCase}
-                />
-              )}
               {shownPage === "overview" && <PageOverview pms={scoped} />}
               {shownPage === "preventive" && <PagePreventive pms={scoped} />}
               {shownPage === "predictive" && <PagePredictive pms={scoped} />}
@@ -311,17 +255,6 @@ export function MaintenanceWorkspace() {
             </div>
           </div>
         </div>
-
-        <NewCaseDialog
-          open={newCase.open}
-          preset={newCase.preset}
-          onClose={() => setNewCase({ open: false })}
-          onCreated={(id) => {
-            setNewCase({ open: false });
-            setCaseId(id);
-            nav("problems");
-          }}
-        />
       </div>
     </PmsNavProvider>
   );

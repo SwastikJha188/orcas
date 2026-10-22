@@ -21,6 +21,7 @@ import type { SensorScope } from "./sensor-mapping-diagram";
 import type { Tone } from "./assets-shell-ui";
 import { Empty, PageHeader, Section, SectionIndex, scrollToSection, type SectionIndexItem } from "./analysis/an-ui";
 import { SensorsRegister } from "./sensors-register";
+import { focusLayer } from "./sensor-focus";
 import { REFERENCES_SECTION_ID, ReferencesSection } from "./monitoring/references-section";
 import {
   SENSORS_SECTIONS,
@@ -407,6 +408,13 @@ export function MachineSensorMappingView({
     if (onNavigateToRack) onNavigateToRack();
     else setActiveSubPage("rack");
   }, [setActiveSubPage, onNavigateToRack]);
+  const goInvestigate = useCallback(
+    (tag: string) => {
+      focusLayer({ tag, section: "an-sensors" });
+      setActiveSubPage("analysis");
+    },
+    [setActiveSubPage]
+  );
   const goHealth = useCallback(() => {
     if (onNavigateToHealth) onNavigateToHealth();
     else setActiveSubPage("diagnosis");
@@ -487,6 +495,7 @@ export function MachineSensorMappingView({
     goTrends,
     goRack,
     goHealth,
+    goInvestigate: frame ? goInvestigate : undefined,
     goDevices,
     goSection: scrollToSection,
     scopeTags,

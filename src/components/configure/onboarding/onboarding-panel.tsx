@@ -261,8 +261,8 @@ function OnboardingEditor({ id, onBack, onCommitted }: { id: string; onBack: () 
   const [saveTry, setSaveTry] = useState(0);
   const dirty = useRef(false);
   const committed = pkg?.status === "committed";
-  // The draft before the last removal, kept 10 s for Undo.
-  const [undo, setUndo] = useState<{ label: string; draft: OnboardingDraft } | null>(null);
+  // The draft before the last removal or Excel import, kept 10 s for Undo.
+  const [undo, setUndo] = useState<{ label: string; verb?: string; draft: OnboardingDraft } | null>(null);
   // What "Create the plant" wrote (counts for the completion block).
   const [created, setCreated] = useState<Created | null>(null);
   const headRef = useRef<HTMLElement | null>(null);
@@ -395,6 +395,13 @@ function OnboardingEditor({ id, onBack, onCommitted }: { id: string; onBack: () 
     },
     [edit],
   );
+  /** An Excel workbook read into the draft (server-side, from this draft): applied here so the autosave stores it, with Undo. */
+  const applyImport = useCallback((next: OnboardingDraft, fileName: string) => {
+    const before = draftRef.current;
+    setUndo(before ? { verb: "Read", label: fileName, draft: before } : null);
+    dirty.current = true;
+    setDraft(next);
+  }, []);
   useEffect(() => {
     if (!undo) return;
     const t = window.setTimeout(() => setUndo(null), 10_000);
@@ -502,7 +509,7 @@ function OnboardingEditor({ id, onBack, onCommitted }: { id: string; onBack: () 
             <span className="ast-caption">
               <StatusTag tone={STATUS[pkg.status].tone} label={STATUS[pkg.status].label} />{" "}
               {committed ? "Read-only" : saveState === "saved" ? "All changes saved" : saveState === "saving" ? "Saving…" : saveState === "failed" ? "Could not save" : "Not saved yet"}
-              {undo && !committed && ` · Removed ${undo.label}`}
+              {undo && !committed && ` · ${undo.verb ?? "Removed"} ${undo.label}`}
             </span>
             {undo && !committed && (
               <button type="button" className="onb-mini" onClick={undoRemove}>
@@ -526,6 +533,7 @@ function OnboardingEditor({ id, onBack, onCommitted }: { id: string; onBack: () 
       </section>
 
       <fieldset className="onb-fieldset" disabled={committed}>
+        {step === "files" && <ExcelCard pkgId={pkg.id} getDraft={() => draftRef.current} onImported={applyImport} setError={setError} />}
         {step === "files" && (
           <FilesStep
             pkg={pkg}
@@ -718,6 +726,138 @@ function FilesStep({
             </tbody>
           </table>
         </div>
+      )}
+    </section>
+  );
+}
+
+/* ==================================================================== Excel */
+
+interface ExcelSummary {
+  plant: boolean;
+  added: { areas: number; machines: number; parts: number; sensors: number };
+  updated: { areas: number; machines: number; parts: number; sensors: number };
+  notes: string[];
+}
+
+/** "2 areas, 1 machine and 14 sensors"; null when all are zero. */
+function countWords(c: ExcelSummary["added"]): string | null {
+  const parts = (
+    [
+      [c.areas, "area", "areas"],
+      [c.machines, "machine", "machines"],
+      [c.parts, "part", "parts"],
+      [c.sensors, "sensor", "sensors"],
+    ] as const
+  )
+    .filter(([n]) => n > 0)
+    .map(([n, one, many]) => `${n} ${n === 1 ? one : many}`);
+  if (!parts.length) return null;
+  return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
+/**
+ * The asset hierarchy from one workbook: download the Excel format (filled with
+ * what the draft holds), fill in Plant, Areas, Machines, Parts and Sensors,
+ * upload it. The server reads it into this draft and nothing is removed; rows
+ * with the same name, code or tag are updated.
+ */
+function ExcelCard({
+  pkgId,
+  getDraft,
+  onImported,
+  setError,
+}: {
+  pkgId: string;
+  getDraft: () => OnboardingDraft | null;
+  onImported: (draft: OnboardingDraft, fileName: string) => void;
+  setError: (e: string | null) => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const [reading, setReading] = useState(false);
+  const [over, setOver] = useState(false);
+  const [result, setResult] = useState<{ fileName: string; summary: ExcelSummary } | null>(null);
+  const read = async (files: FileList | File[]) => {
+    const f = Array.from(files)[0];
+    if (!f) return;
+    if (!/\.xlsx$/i.test(f.name)) {
+      setError(`${f.name}: choose an Excel workbook (.xlsx).`);
+      return;
+    }
+    setReading(true);
+    setResult(null);
+    const form = new FormData();
+    form.append("file", f);
+    const draft = getDraft();
+    if (draft) form.append("draft", JSON.stringify(draft));
+    try {
+      const r = await call<{ draft: OnboardingDraft; summary: ExcelSummary }>(`/api/onboarding/${pkgId}/excel`, { method: "POST", body: form });
+      onImported(r.draft, f.name);
+      setResult({ fileName: f.name, summary: r.summary });
+      setError(null);
+    } catch (e) {
+      setError(`${f.name}: ${(e as Error).message}`);
+    } finally {
+      setReading(false);
+      if (input.current) input.current.value = "";
+    }
+  };
+  const s = result?.summary;
+  const added = s && countWords(s.added);
+  const updated = s && countWords(s.updated);
+  return (
+    <section className="ast-card onb-excel" aria-label="Fill from Excel">
+      <div className="ast-card-head">
+        <h2 className="ast-card-title">
+          Fill from Excel
+          <span className="ast-caption">Plant, areas, machines, parts and sensors in one workbook. Uploading it again updates the same rows; nothing is removed.</span>
+        </h2>
+      </div>
+      <div
+        className="onb-drop"
+        data-over={over || undefined}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setOver(true);
+        }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setOver(false);
+          void read(e.dataTransfer.files);
+        }}
+      >
+        <span>Drop the filled-in workbook here, or</span>
+        <PillButton variant="secondary" type="button" loading={reading} onClick={() => input.current?.click()}>
+          Upload Excel…
+        </PillButton>
+        <a className="btn-pill btn-pill-secondary" href={`/api/onboarding/${pkgId}/excel`} download>
+          Download Excel format
+        </a>
+        <input
+          ref={input}
+          type="file"
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          hidden
+          onChange={(e) => e.target.files && void read(e.target.files)}
+        />
+        {reading && <span className="ast-caption">Reading…</span>}
+      </div>
+      {s && result && (
+        <>
+          <FormNote tone={s.notes.length ? "warn" : "good"}>
+            Read {result.fileName}:{" "}
+            {[added && `added ${added}`, updated && `updated ${updated}`, s.plant && "updated the plant details"].filter(Boolean).join("; ") || "nothing new"}.
+            {s.notes.length > 0 && ` ${s.notes.length} row${s.notes.length === 1 ? " was" : "s were"} not read as written:`}
+          </FormNote>
+          {s.notes.length > 0 && (
+            <ul className="onb-log onb-excel-notes" aria-label="Rows not read as written">
+              {s.notes.map((n, i) => (
+                <li key={i}>{n}</li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </section>
   );

@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { ConfirmAction, Dialog, Field, FieldGrid, FieldSection, FormNote, PillButton, Select, TextArea, TextInput, Toggle } from "@/components/ui";
 import { useEdge } from "@/providers/edge-context";
+import { useIndustrialData } from "@/providers/industrial-data-context";
 import type { EdgeGateway } from "@shared/types/edge";
 import { ULTRON_FORMAT, ULTRON_FORMAT_ID } from "@shared/lib/edge-format";
 import { type EdgeIndex, gatewayPoints, sourcesOf } from "../edge-model";
@@ -46,7 +47,11 @@ export function GatewayDialog({ open, ix, gateway, prefill, onClose, onSaved }: 
   const [name, setName] = useState(gateway?.name ?? (prefill?.code ? `${prefill.code} gateway` : ""));
   const [brokerId, setBrokerId] = useState(str(gateway ? gateway.brokerId : prefill?.brokerId ?? onlyBroker));
   const [formatId, setFormatId] = useState(gateway?.formatId ?? ULTRON_FORMAT_ID);
-  const [siteNodeId, setSiteNodeId] = useState(str(gateway?.siteNodeId ?? prefill?.siteNodeId));
+  const { selectedPlantId } = useIndustrialData();
+  // A new gateway starts in the plant on screen: the registry only lists a plant's own gateways.
+  const [siteNodeId, setSiteNodeId] = useState(str(gateway ? gateway.siteNodeId : (prefill?.siteNodeId ?? selectedPlantId)));
+  // "No site" hides a gateway from its plant, so it is offered only to one that already has none.
+  const siteChoices = gateway && !gateway.siteNodeId ? [{ value: "", label: "No site" }, ...siteOptions(registry)] : siteOptions(registry);
   const [location, setLocation] = useState(str(gateway?.location));
   const [ipAddress, setIpAddress] = useState(str(gateway?.ipAddress ?? prefill?.ipAddress));
   const [model, setModel] = useState(str(gateway?.model));
@@ -187,7 +192,7 @@ export function GatewayDialog({ open, ix, gateway, prefill, onClose, onSaved }: 
             {(id, d) => <TextInput id={id} describedBy={d} value={name} onChange={setName} placeholder="Kiln line gateway" disabled={busy} />}
           </Field>
           <Field label="Site">
-            {(id, d) => <Select id={id} describedBy={d} value={siteNodeId} onChange={setSiteNodeId} disabled={busy} options={[{ value: "", label: "No site" }, ...siteOptions(registry)]} />}
+            {(id, d) => <Select id={id} describedBy={d} value={siteNodeId} onChange={setSiteNodeId} disabled={busy} options={siteChoices} />}
           </Field>
         </FieldGrid>
       </FieldSection>

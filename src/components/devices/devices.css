@@ -186,3 +186,42 @@
 
 /* Shown while the first live MQTT snapshot is on its way (devices-view). */
 .dvp-connecting { padding: 12px 16px; margin-block-end: 12px; }
+
+/* ---------------------------------------------------------------- hierarchy sidebar */
+/* Under the two bars: the device tree (devices-tree.tsx) beside the section. */
+.dvp-body {
+  display: flex;
+  flex: 1 1 0;
+  min-block-size: 0;
+}
+
+.dvp-body > .cfg-root {
+  min-inline-size: 0;
+}
+
+.dvp-row[data-muted] .ast-tree-name,
+.dvp-row[data-muted] .ast-badge {
+  color: var(--text-muted);
+}
+
+/* Channels have no icon: their names line up under the card's icon. */
+.dvp-row[data-kind="channel"] {
+  min-height: 30px;
+}
+
+.dvp-new {
+  flex-shrink: 0;
+  padding: 0 8px;
+  border-radius: var(--corner-pill);
+  background: color-mix(in srgb, var(--signal-blue) 14%, transparent);
+  color: var(--signal-blue);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+/* Laptop and up only: below that, the gateway pills in the bar do the picking. */
+@media (max-width: 1023px) {
+  .dvp-sidebar {
+    display: none;
+  }
+}

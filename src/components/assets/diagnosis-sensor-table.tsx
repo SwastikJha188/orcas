@@ -14,7 +14,7 @@ import { twoSided, twoSidedValues } from "./sensor-gauge";
    Sensor · Part (hidden while one part is picked) · Reading check · Now · Last 6 h ·
    Alarm limit · Possible problems · In alarm since · trailing actions (Acknowledge /
    Create work order, shown on row hover or keyboard focus). Failure chance lives on
-   Prognosis. The tag opens Trends; each fault's See why → opens Analysis. A row is red
+   Prognosis. The tag opens Trends; each fault's Investigate → opens it in Analysis. A row is red
    while the sensor is beyond its alarm limit or is evidence for a raised fault; nothing
    else is coloured.
    ========================================================================== */
@@ -154,7 +154,7 @@ function FaultList({
               {[f.where, state].filter(Boolean).join(" · ")}
               {" · "}
               <button type="button" className="pg-diag-inline-link" onClick={() => onWhy(f)}>
-                See why <span aria-hidden="true">→</span>
+                Investigate <span aria-hidden="true">→</span>
               </button>
               {wo && (
                 <span title={`${wo.title} (WO-${wo.id})`}>

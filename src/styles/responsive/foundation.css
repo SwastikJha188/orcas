@@ -61,7 +61,7 @@
     min-inline-size: 44px;
   }
   /* Inline text actions keep their look but get a finger-sized hit area. */
-  :root :is(.pm-link, .pm-cal-more, .prb-link-btn, .prb-disclose, .dv-chip, .dv-map-btn) {
+  :root :is(.pm-link, .pm-cal-more, .dv-chip, .dv-map-btn) {
     min-block-size: 44px;
   }
   :root .navbar-gw-status { min-block-size: 44px; }

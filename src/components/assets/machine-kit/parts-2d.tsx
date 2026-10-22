@@ -733,7 +733,7 @@ export function Drum({ x, y, w, h, tyres = [0.18, 0.82], gear, heat }: Box & { t
 export function Conveyor({ x1, y1, x2, y2, h = 14, kind = "belt", ground, material = true }: { x1: number; y1: number; x2: number; y2: number; h?: number; kind?: "belt" | "screw" | "chain" | "slide"; ground?: number; material?: boolean }) {
   const L = Math.hypot(x2 - x1, y2 - y1);
   const deg = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
-  const legs = ground !== undefined ? Math.max(2, Math.round(L / 120) + 1) : 0;
+  const legs = ground !== undefined ? Math.max(2, Math.round(L / 280) + 1) : 0;
   const legPts = Array.from({ length: legs }).map((_, i) => {
     const t = 0.08 + (0.84 * i) / Math.max(1, legs - 1);
     return [x1 + (x2 - x1) * t, y1 + (y2 - y1) * t] as Pt;

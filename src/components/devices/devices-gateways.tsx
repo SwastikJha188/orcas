@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { PillButton, Table, type Column, Loading } from "@/components/ui";
 import { StatusTag } from "@/components/assets/assets-shell-ui";
 import { ULTRON_FORMAT_ID } from "@shared/lib/edge-format";
@@ -26,6 +26,8 @@ export interface GatewayBodyProps {
   gw: EdgeGateway;
   detection: Detection | undefined;
   rackId: string | null;
+  /** Channel picked in the tree: its row is marked and scrolled into view. */
+  channelKey?: string | null;
   now: number;
   signals: Signals;
   onRack: (rackId: string) => void;
@@ -74,6 +76,11 @@ export function GatewayBody(props: GatewayBodyProps) {
   const rack = racks.find((r) => r.rack.rackId === rackId) ?? racks[0] ?? null;
   const channels = useMemo(() => (rack ? rackChannels(gw, rack.rack, signals) : []), [gw, rack, signals]);
   const linked = channels.filter((c) => c.tag).length;
+  const channelsRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (props.channelKey) channelsRef.current?.querySelector("tbody tr.active")?.scrollIntoView({ block: "nearest" });
+  }, [props.channelKey]);
 
   const rackColumns = useMemo<Column<RackRow>[]>(
     () => [
@@ -258,7 +265,7 @@ export function GatewayBody(props: GatewayBodyProps) {
       </section>
 
       {rack && (
-        <section className="ast-card pg-table-card" aria-label={`Channels of ${rack.rack.rackId}`}>
+        <section className="ast-card pg-table-card" aria-label={`Channels of ${rack.rack.rackId}`} ref={channelsRef}>
           <div className="ast-card-head">
             <h2 className="ast-card-title">
               Channels on <span className="ast-num">{rack.rack.rackId}</span>
@@ -273,7 +280,14 @@ export function GatewayBody(props: GatewayBodyProps) {
             )}
           </div>
           {channels.length ? (
-            <Table className="ast-table dvp-table" columns={channelColumns} data={channels} keyExtractor={(r) => r.key} onRowClick={props.onLink} />
+            <Table
+              className="ast-table dvp-table"
+              columns={channelColumns}
+              data={channels}
+              keyExtractor={(r) => r.key}
+              selectedId={props.channelKey ?? undefined}
+              onRowClick={props.onLink}
+            />
           ) : (
             props.connecting ? (
               <Loading label="Connecting to live data…" rows={3} />

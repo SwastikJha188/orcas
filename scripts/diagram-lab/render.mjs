@@ -62,7 +62,8 @@ if (!is3d) {
 
 // Type check the file on its own (esbuild only strips types): a wrong argument to a kit part
 // is reported at its line here instead of turning into NaN geometry or a blank sheet.
-{
+// --no-typecheck skips it (draw.mjs: its generated files are data for typed modules).
+if (!args.includes("--no-typecheck")) {
   const tcDir = mkdtempSync(path.join(tmpdir(), "diagram-tc-"));
   const tcConfig = path.join(tcDir, "tsconfig.json");
   writeFileSync(

@@ -1,5 +1,5 @@
 {
-  "exportedAt": "2026-10-21T20:01:25.708Z",
+  "exportedAt": "2026-10-22T09:01:54.893Z",
   "migrations": [
     "000",
     "001",
@@ -58,7 +58,9 @@
     "054",
     "055",
     "056",
-    "057"
+    "057",
+    "058",
+    "059"
   ],
   "tables": [
     {
@@ -129,7 +131,7 @@
         "id"
       ],
       "deferred": [],
-      "rows": 0,
+      "rows": 2,
       "file": "edge_brokers.json"
     },
     {
@@ -444,6 +446,52 @@
       "deferred": [],
       "rows": 11,
       "file": "rule_categories.json"
+    },
+    {
+      "name": "sap_auth_types",
+      "columns": [
+        "id",
+        "label",
+        "sort_order"
+      ],
+      "primaryKey": [
+        "id"
+      ],
+      "deferred": [],
+      "rows": 2,
+      "file": "sap_auth_types.json"
+    },
+    {
+      "name": "sap_editions",
+      "columns": [
+        "id",
+        "label",
+        "sort_order"
+      ],
+      "primaryKey": [
+        "id"
+      ],
+      "deferred": [],
+      "rows": 4,
+      "file": "sap_editions.json"
+    },
+    {
+      "name": "sap_resources",
+      "columns": [
+        "id",
+        "label",
+        "api_name",
+        "default_path",
+        "key_fields",
+        "write_action",
+        "sort_order"
+      ],
+      "primaryKey": [
+        "id"
+      ],
+      "deferred": [],
+      "rows": 9,
+      "file": "sap_resources.json"
     },
     {
       "name": "signal_origins",
@@ -763,7 +811,7 @@
       "deferred": [
         "site_node_id"
       ],
-      "rows": 5,
+      "rows": 7,
       "file": "edge_gateways.json"
     },
     {
@@ -778,7 +826,7 @@
         "filter"
       ],
       "deferred": [],
-      "rows": 0,
+      "rows": 2,
       "file": "edge_gateway_topics.json"
     },
     {
@@ -1064,8 +1112,25 @@
         "id"
       ],
       "deferred": [],
-      "rows": 6,
+      "rows": 7,
       "file": "onboarding_runs.json"
+    },
+    {
+      "name": "sap_sim_products",
+      "columns": [
+        "plant_id",
+        "material",
+        "description",
+        "unit",
+        "rate_per_hour"
+      ],
+      "primaryKey": [
+        "plant_id",
+        "material"
+      ],
+      "deferred": [],
+      "rows": 7,
+      "file": "sap_sim_products.json"
     },
     {
       "name": "user_plant_access",
@@ -1280,7 +1345,7 @@
         "sap_number"
       ],
       "deferred": [],
-      "rows": 13,
+      "rows": 14,
       "file": "sap_equipment_records.json"
     },
     {
@@ -1498,6 +1563,27 @@
       "deferred": [],
       "rows": 0,
       "file": "rule_verdicts.json"
+    },
+    {
+      "name": "sap_material_mappings",
+      "columns": [
+        "id",
+        "machine_id",
+        "subassembly_id",
+        "description",
+        "sap_material",
+        "storage_location",
+        "required_quantity",
+        "unit",
+        "updated_by",
+        "updated_at"
+      ],
+      "primaryKey": [
+        "id"
+      ],
+      "deferred": [],
+      "rows": 0,
+      "file": "sap_material_mappings.json"
     },
     {
       "name": "cases",
@@ -1915,6 +2001,21 @@
       "deferred": [],
       "rows": 989,
       "file": "rule_inputs.json"
+    },
+    {
+      "name": "sap_measuring_point_mappings",
+      "columns": [
+        "measurement_id",
+        "sap_point",
+        "updated_by",
+        "updated_at"
+      ],
+      "primaryKey": [
+        "measurement_id"
+      ],
+      "deferred": [],
+      "rows": 5,
+      "file": "sap_measuring_point_mappings.json"
     },
     {
       "name": "case_checks",

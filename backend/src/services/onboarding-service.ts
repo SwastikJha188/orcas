@@ -18,6 +18,7 @@ import pool from "@backend/db";
 import { invalidateReadCache } from "@backend/db";
 import { InputError, NotFoundError } from "@backend/errors";
 import { ensureDatabaseSeeded, isTimeZone } from "./industrial-service";
+import { buildWorkbook, importWorkbook, type ExcelImportSummary } from "@backend/onboarding/excel";
 import {
   emptyDraft,
   guessQuantity,
@@ -664,6 +665,8 @@ export async function commitPackage(id: string, dryRun = false): Promise<{ plant
         p.rangeText,
         p.nominalText?.slice(0, 128) ?? null,
         p.source?.fileId ? docNames.get(p.source.fileId) ?? null : null,
+        // The sensor pages read calculated and hand-typed sensors from install_status, as in the rest of the catalog.
+        p.origin === "calculated" ? "Calculated" : p.origin === "manual" ? "Manual" : null,
         sortOrder,
       ]);
       const doc = p.source?.fileId ? docNames.get(p.source.fileId) : null;
@@ -715,7 +718,7 @@ export async function commitPackage(id: string, dryRun = false): Promise<{ plant
     await insertRows(
       client,
       `INSERT INTO measurements (id, point_id, tag, name, quantity_id, unit_id, statistic_id, origin_id, value_kind, range_lo, range_hi,
-                                 sensor_type, priority, range_text, normal_text, spec_reference, sort_order)`,
+                                 sensor_type, priority, range_text, normal_text, spec_reference, install_status, sort_order)`,
       measurementRows,
     );
     await insertRows(
@@ -760,4 +763,26 @@ export async function onboardingReference(): Promise<{
     pool.query<{ id: string; name: string }>("SELECT id, name FROM roles ORDER BY sort_order, name"),
   ]);
   return { quantities: q.rows, units: u.rows, roles: r.rows };
+}
+
+/* ---------------------------------------------------------------- Excel format */
+
+/** The draft as the Excel format (Plant, Areas, Machines, Parts, Sensors sheets); a new onboarding gives the blank format. */
+export async function draftWorkbook(id: string): Promise<{ fileName: string; bytes: Buffer }> {
+  const pkg = await getPackage(id);
+  const bytes = await buildWorkbook(pkg.draft, await onboardingReference());
+  const name = slug(pkg.draft.plant.code || pkg.draft.plant.name || pkg.name) || "plant";
+  return { fileName: `${name}-asset-hierarchy.xlsx`, bytes };
+}
+
+/**
+ * A filled-in Excel format read into the draft the page is editing (or the
+ * stored one). Nothing is saved here: the page applies the result and its
+ * autosave stores it, so edits not saved yet are kept.
+ */
+export async function importDraftWorkbook(id: string, bytes: Buffer, draft: unknown): Promise<{ draft: OnboardingDraft; summary: ExcelImportSummary }> {
+  const r = await editable(id);
+  if (bytes.length > MAX_FILE_BYTES) throw new InputError("The workbook is larger than 30 MB.");
+  const base = normaliseDraft(draft ?? r.draft, r.name);
+  return importWorkbook(bytes, base, await onboardingReference());
 }

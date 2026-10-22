@@ -1721,3 +1721,227 @@
 /* Who gave the shared answer, and a failed save. */
 .pg-an-verify-by { white-space: nowrap; }
 .pg-an-verify [data-tone="bad"] { color: var(--status-danger); }
+
+/* ======================================================================
+   Investigation windows (an-intel-*.tsx): window tabs, the list of what to
+   investigate, the picked subject, eight numbered steps. Facts carry their
+   basis (Measured / Inferred / Predicted / To verify) as one quiet word.
+   ====================================================================== */
+.pg-in-windows {
+  align-self: flex-start;
+}
+
+.pg-in-window-count {
+  margin-left: 6px;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.pg-in-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pg-frame-gap, 16px);
+  min-width: 0;
+}
+
+.pg-in-steps:empty {
+  display: none;
+}
+
+.pg-in-subject {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+  margin-top: 8px;
+  scroll-margin-top: 56px;
+}
+
+.pg-in-subject-title {
+  margin: 0;
+  font-size: var(--fs-2xl);
+  font-weight: 600;
+  color: var(--dx-ink);
+}
+
+.pg-in-subject-sub {
+  color: var(--text-muted);
+  font-size: var(--fs-md);
+}
+
+.pg-in-step {
+  scroll-margin-top: 56px;
+}
+
+.pg-in-step-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pg-in-step-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--corner-sm);
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.pg-in-facts {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.pg-in-fact {
+  display: grid;
+  grid-template-columns: minmax(140px, 200px) minmax(0, 1fr) 88px;
+  gap: 0 24px;
+  align-items: baseline;
+}
+
+.pg-in-fact > dt {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.pg-in-fact > dd {
+  margin: 0;
+  color: var(--dx-ink);
+  min-width: 0;
+}
+
+.pg-in-fact-basis {
+  text-align: right;
+}
+
+.pg-in-basis {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.pg-in-block-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pg-in-facts + .ui-table-container,
+.pg-in-facts + .pg-analysis-block {
+  margin-top: 4px;
+}
+
+.pg-in-standing {
+  color: var(--page-fg);
+  font-size: var(--fs-md);
+  white-space: nowrap;
+}
+
+.pg-in-standing[data-tone="lead"] {
+  color: var(--dx-ink);
+  font-weight: 600;
+}
+
+.pg-in-standing:is([data-tone="check"], [data-tone="out"]) {
+  color: var(--text-muted);
+}
+
+.pg-in-causes tr:has(.pg-in-standing[data-tone="out"]) .ast-cell-title {
+  color: var(--text-muted);
+}
+
+.pg-in-subject-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pg-in-subject-cell[data-tone="warn"] {
+  --tone: var(--status-warning);
+}
+
+.pg-in-subject-cell[data-tone="bad"] {
+  --tone: var(--status-danger);
+}
+
+.pg-in-subjects tbody tr {
+  cursor: pointer;
+}
+
+.pg-in-chart {
+  margin: 0;
+}
+
+.pg-in-chart-model {
+  stroke-dasharray: 4 3;
+  opacity: 0.9;
+}
+
+.pg-in-chart-key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.pg-in-key {
+  display: inline-block;
+  width: 16px;
+  height: 0;
+  border-top: 1.5px solid var(--dx-ink);
+}
+
+.pg-in-key + * {
+  margin-right: 8px;
+}
+
+.pg-in-key.is-model {
+  margin-left: 12px;
+  border-top: 1px dashed var(--text-muted);
+}
+
+.pg-in-key.is-band {
+  margin-left: 12px;
+  height: 8px;
+  border: 0;
+  background: var(--text-muted);
+  opacity: 0.18;
+}
+
+@media (max-width: 599px) {
+  .pg-in-fact {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px 12px;
+  }
+  .pg-in-fact > dt {
+    grid-column: 1;
+  }
+  .pg-in-fact > dd {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .pg-in-fact-basis {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}
+
+.pg-in-more {
+  align-self: flex-start;
+}

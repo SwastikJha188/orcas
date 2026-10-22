@@ -1,6 +1,6 @@
 ---
 name: onboarding-process
-description: Process the uploads of a ULTRON plant onboarding (Configure › Onboarding) — read every uploaded PDF with the pdf-extract skill and turn every uploaded machine image into a 2D sheet and a 3D model with the machine-diagram-2d / -3d skills, then send the results back so they fill the onboarding draft. Use when the user asks to process, run or finish an onboarding, or says uploads are "waiting for processing".
+description: Process the uploads of a ULTRON plant onboarding (Configure › Onboarding) — read every uploaded PDF with the pdf-extract skill and turn every uploaded machine image into a 2D sheet and a 3D model with the machine-diagram-2d skill, then send the results back so they fill the onboarding draft. Use when the user asks to process, run or finish an onboarding, or says uploads are "waiting for processing".
 ---
 
 # Process a plant onboarding
@@ -57,18 +57,18 @@ machine that the documents added (tag, name, location).
    Check `curl -s $ULTRON_API/api/diagrams` (or http://localhost:3000): when
    that kind already exists and the image shows the same kind of machine,
    reuse it and skip to 4.
-2. Make the 2D sheet with the **machine-diagram-2d** skill and the 3D model
-   with the **machine-diagram-3d** skill from the image, saving the files as
-   `onboarding-work/<id>/diagrams/<kind>.tsx` and `<kind>.ts` (not in `src/`:
-   these drawings live in the database). Render and fix them as those skills
-   say, until the renderer reports no errors — every renderer error
-   (`Type error … Line N`, `NaN`, `build() threw`) is a bug in your file to
-   fix, never a reason to skip the 3D model (keep the PNGs in the same
-   `diagrams/` folder). Use the tags from that image's `points` in todo.json
-   as the sheet's pad tags, exactly as written, where the image shows where
-   they sit; make up a tag only for a point the image shows that has none.
-   Skip those skills' "Register it in the app" step and their `tsc` /
-   `eslint` run: these drawings are stored in the database, not in `src/`.
+2. Make the 2D sheet and the 3D model with the **machine-diagram-2d** skill
+   (`.claude/skills/machine-diagram-2d/SKILL.md`; one spec gives both).
+   Work folder `onboarding-work/<id>/diagrams`, spec
+   `onboarding-work/<id>/diagrams/<kind>.spec.json` with `"id": "<kind>"` and
+   `"image"` = the image's `file`, relative to that diagrams folder; draw
+   with `node scripts/diagram-lab/draw.mjs onboarding-work/<id>/diagrams/<kind>.spec.json --name <kind>`.
+   It writes `diagrams/<kind>.tsx` and `<kind>.ts` (not in `src/`: these
+   drawings live in the database). Never edit those files; fix the spec.
+   Sensor tags: the tags from that image's `points` in todo.json, exactly as
+   written, where the image shows where they sit; make up a tag only for a
+   point the image shows that has none. Skip the skill's "copy into the app
+   source" part.
 3. Store both:
    ```
    node scripts/diagram-lab/export.mjs onboarding-work/<id>/diagrams/<kind>.tsx --type <kind> --name "<Plain machine kind>" --post
@@ -87,13 +87,12 @@ flows, with their names.
 
 1. Drawing kind: `area-<kebab-name of the area>` (e.g. `area-kiln-line`);
    reuse `area.diagramType` when it is already set.
-2. Make the 2D sheet with **machine-diagram-2d** (it covers process lines and
-   factories), as `onboarding-work/<id>/diagrams/<kind>.tsx`. Label each
-   machine with its name from `area.machines` (code in brackets) where the
-   photo shows it; no pads unless the photo shows instruments. A 3D model
-   (**machine-diagram-3d**, `<kind>.ts`) only when the photo shows the
-   layout clearly enough to place the machines in metres.
-3. Store it (and the 3D model if made) with `export.mjs … --type <kind>
+2. Make the drawings with **machine-diagram-2d** exactly as in step 2 above
+   (spec `onboarding-work/<id>/diagrams/<kind>.spec.json`, `--name <kind>`).
+   Each machine is an item labelled with its name from `area.machines` (code
+   in brackets) where the photo shows it, joined by `material` links in flow
+   order; no sensors unless the photo shows instruments.
+3. Store both with `export.mjs … --type <kind>
    --name "<Area name> line" --post`, then
    `node scripts/onboarding/push.mjs <id> <fileId> --diagram-type <kind>`:
    the drawing is linked to the area.

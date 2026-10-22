@@ -22,6 +22,13 @@ export function startBackground(): void {
       .catch((err) => console.error("[cache] warm-up failed", err instanceof Error ? err.message : err));
   }, 500);
 
+  // SAP: due writes, scheduled syncs and reading publishes, once a minute.
+  setTimeout(() => {
+    void import("@backend/sap/service")
+      .then((m) => m.startSapScheduler())
+      .catch((err) => console.error("[sap] scheduler failed to start", err instanceof Error ? err.message : err));
+  }, 2_000);
+
   // Run the live plant around the clock (one server per database holds the
   // lease), so its health is recorded while no page is open.
   setTimeout(() => {

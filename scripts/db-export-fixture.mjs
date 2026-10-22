@@ -33,6 +33,11 @@ const RUNTIME = new Set([
   "maintenance_custom_tasks", "maintenance_removed_tasks", "maintenance_plan_states", "maintenance_wo_stages", "maintenance_events",
   "alert_checks", "component_service_events", "maintenance_job_sources",
   "ultron_migrations",
+  // SAP: the connection holds credentials sealed with this server's key; the rest is exchange history.
+  "sap_connections", "sap_connection_paths", "sap_object_cache", "sap_sync_runs", "sap_sync_run_resources", "sap_outbox", "sap_audit_log",
+  // The SAP simulator's system is made from the plant when started (Simulation tab).
+  "sap_sim_systems", "sap_sim_equipment", "sap_sim_materials", "sap_sim_bom", "sap_sim_stock", "sap_sim_stock_movements", "sap_sim_notifications",
+  "sap_sim_orders", "sap_sim_order_components", "sap_sim_production_orders", "sap_sim_measuring_points", "sap_sim_measurement_documents",
 ]);
 /** Columns blanked on export (secrets). */
 const BLANK = { users: ["password_hash"], edge_brokers: ["password", "client_key"] };

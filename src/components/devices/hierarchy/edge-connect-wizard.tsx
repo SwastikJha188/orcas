@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, Field, FieldGrid, FormNote, PillButton, Table, TextInput, type Column } from "@/components/ui";
 import { useEdge } from "@/providers/edge-context";
+import { useIndustrialData } from "@/providers/industrial-data-context";
 import type { ApiResponse } from "@shared/types/api";
 import { FORMAT_FIELD_KEYS, type EdgeBroker, type EdgeFormat, type EdgeGateway, type RawSample, type SourceKind } from "@shared/types/edge";
 import { type EdgeIndex, ago } from "../edge-model";
@@ -64,6 +65,7 @@ function preview(payload: string): string {
 
 export function ConnectWizard({ open, ix, now, onClose, onCommissioned }: ConnectWizardProps) {
   const { create, update, remove, refresh } = useEdge();
+  const { selectedPlantId } = useIndustrialData();
   const registry = ix.registry;
   const firstBroker = registry.brokers.find((b) => b.enabled) ?? registry.brokers[0];
   const [brokerText, setBrokerText] = useState(firstBroker ? addressOf(firstBroker) : "");
@@ -228,7 +230,8 @@ export function ConnectWizard({ open, ix, now, onClose, onCommissioned }: Connec
         name: code,
         brokerId: b.id,
         formatId: null,
-        siteNodeId: null,
+        // Sited in the plant on screen: the registry only lists a plant's own gateways.
+        siteNodeId: selectedPlantId,
         location: null,
         ipAddress: null,
         model: null,

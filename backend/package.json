@@ -11,7 +11,9 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.5",
+    "exceljs": "^4.4.0",
     "hono": "^4.13.13",
+    "jszip": "^3.10.2",
     "mqtt": "^5.16.0",
     "nodemailer": "^10.1.7",
     "pg": "^8.23.1"

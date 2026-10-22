@@ -112,7 +112,7 @@ export function ProgRul({ machine, focusedComponent, data, analysis, rows, onSee
           <span style={{ display: "inline-flex", gap: 8, flexWrap: "wrap" }}>
             {onSeeReason && (
               <button type="button" className="pg-diag-inline-link" onClick={() => onSeeReason(ruleId, r.name, null)}>
-                See why <span aria-hidden="true">→</span>
+                Investigate <span aria-hidden="true">→</span>
               </button>
             )}
             {onSeeDiagnosis && (

@@ -4,12 +4,14 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { PillButton, Loading } from "@/components/ui";
 import { EdgeProvider, useEdge } from "@/providers/edge-context";
 import { useKilnFleet } from "@/providers/kiln-simulation-context";
+import { machineCode } from "@/lib/display-name";
 import { ULTRON_FORMAT, ULTRON_FORMAT_ID } from "@shared/lib/edge-format";
 import type { EdgeBroker, EdgeFormat, EdgeGateway, EdgePoint, EdgeSource } from "@shared/types/edge";
 import { type DiscoveredGateway, buildIndex, discoveredGateways, gatewayTone } from "./edge-model";
 import { type ChannelRow, type Signals, allChannels, detections } from "./devices-rows";
 import { DiscoveredBody, GatewayBody } from "./devices-gateways";
 import { ALL_MACHINES, MappingBody, machineRows } from "./devices-mapping";
+import { DevicesTree, type TreePick, channelRowId, discoveredRowId, gatewayRowId, rackRowId } from "./devices-tree";
 import { BrokerDialog } from "./broker-dialog";
 import { FormatEditor } from "./formats/format-editor";
 import { draftFrom, usage, type FormatDraft } from "./formats/format-model";
@@ -117,6 +119,8 @@ function DevicesShell() {
   const [section, setSectionState] = useState<Section>("gateways");
   const [gatewayKey, setGatewayKey] = useState<string | null>(null);
   const [rackId, setRackId] = useState<string | null>(null);
+  // Channel picked in the tree: its row is marked in the channels table.
+  const [channelKey, setChannelKey] = useState<string | null>(null);
   const [machineId, setMachineId] = useState<string>(ALL_MACHINES);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
@@ -137,9 +141,24 @@ function DevicesShell() {
   const pickGateway = useCallback((key: string) => {
     setGatewayKey(key);
     setRackId(null);
+    setChannelKey(null);
     setEditing(null);
     store(KEY.gateway, key);
   }, []);
+  const pickRack = useCallback((id: string) => {
+    setRackId(id);
+    setChannelKey(null);
+  }, []);
+  const pickInTree = useCallback(
+    (pick: TreePick) => {
+      setSection("gateways");
+      if (pick.type === "discovered") return pickGateway(pick.key);
+      pickGateway(pick.gatewayId);
+      if (pick.type === "rack" || pick.type === "channel") setRackId(pick.rackId);
+      if (pick.type === "channel") setChannelKey(pick.channelKey);
+    },
+    [setSection, pickGateway],
+  );
   const pickMachine = useCallback((id: string) => {
     setMachineId(id);
     store(KEY.machine, id);
@@ -159,6 +178,19 @@ function DevicesShell() {
   const machines = useMemo(() => (ix ? machineRows(ix, channels) : []), [ix, channels]);
   const machine = machines.find((m) => m.id === machineId) ?? null;
   const unlinked = channels.filter((r) => !r.tag).length;
+  // The tree marks what the Gateways section shows; nothing while on Machine mapping.
+  const treeSelected =
+    section !== "gateways" || editing
+      ? null
+      : gw
+        ? channelKey
+          ? channelRowId(channelKey)
+          : rackId
+            ? rackRowId(gw.id, rackId)
+            : gatewayRowId(gw.id)
+        : found
+          ? discoveredRowId(discKey(found))
+          : null;
 
   const openDialog = (spec: DialogSpec) => setDialog((d) => ({ seq: (d?.seq ?? 0) + 1, open: true, spec }));
   const closeDialog = () => setDialog((d) => (d ? { ...d, open: false } : d));
@@ -199,7 +231,7 @@ function DevicesShell() {
         ]
       : [
           { id: ALL_MACHINES, label: "All machines", count: String(machines.length) },
-          ...machines.map((m) => ({ id: m.id, label: m.name, count: String(m.linked), title: m.id })),
+          ...machines.map((m) => ({ id: m.id, label: machineCode(m.name), count: String(m.linked), title: m.name })),
         ];
   const activePill = section === "gateways" ? (gw?.id ?? (found ? discKey(found) : "")) : machine ? machine.id : ALL_MACHINES;
 
@@ -272,9 +304,10 @@ function DevicesShell() {
         gw={gw}
         detection={det.get(gw.id)}
         rackId={rackId}
+        channelKey={channelKey}
         now={now}
         signals={signals}
-        onRack={setRackId}
+        onRack={pickRack}
         onBroker={(broker) => openDialog({ kind: "broker", broker })}
         onEditGateway={() => openDialog({ kind: "gateway", gateway: gw })}
         onFormat={() => openFormat(gw)}
@@ -368,23 +401,38 @@ function DevicesShell() {
         <div className="opc-stage-toggles">{barActions}</div>
       </div>
 
-      <div className="pg-root ast-root cfg-root">
-        <div className="cfg-main">
-          <header className="ast-head pg-head">
-            <div className="ast-head-main">
-              <div className="ast-title-row">
-                <h1 className="ast-title">{head.title}</h1>
+      <div className="dvp-body">
+        {/* No gateways: the section's own empty state says what to do. */}
+        {ix && gateways.length + discovered.length > 0 && (
+          <DevicesTree
+            ix={ix}
+            gateways={gateways}
+            discovered={discovered}
+            discoveredKey={discKey}
+            det={det}
+            channels={channels}
+            selectedId={treeSelected}
+            onPick={pickInTree}
+          />
+        )}
+        <div className="pg-root ast-root cfg-root">
+          <div className="cfg-main">
+            <header className="ast-head pg-head">
+              <div className="ast-head-main">
+                <div className="ast-title-row">
+                  <h1 className="ast-title">{head.title}</h1>
+                </div>
+                <p className="pg-cfg-context">{head.context}</p>
               </div>
-              <p className="pg-cfg-context">{head.context}</p>
-            </div>
-          </header>
-          {/* Saved gateways are shown; their live state arrives with the first MQTT snapshot. */}
-          {connecting && (
-            <div className="ast-card dvp-connecting">
-              <Loading label="Connecting to live data…" inline />
-            </div>
-          )}
-          {body}
+            </header>
+            {/* Saved gateways are shown; their live state arrives with the first MQTT snapshot. */}
+            {connecting && (
+              <div className="ast-card dvp-connecting">
+                <Loading label="Connecting to live data…" inline />
+              </div>
+            )}
+            {body}
+          </div>
         </div>
       </div>
 

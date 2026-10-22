@@ -521,6 +521,11 @@ function RegisterRow({
                 <button type="button" role="menuitem" tabIndex={-1} onClick={choose(() => ctx.goTrends(tag))}>
                   See its history chart
                 </button>
+                {ctx.goInvestigate && (
+                  <button type="button" role="menuitem" tabIndex={-1} onClick={choose(() => ctx.goInvestigate?.(tag))}>
+                    Investigate in Analysis
+                  </button>
+                )}
                 {!calc && !manual && s.cardId && (
                   <button type="button" role="menuitem" tabIndex={-1} onClick={choose(ctx.goRack)}>
                     See where it is wired
@@ -762,6 +767,11 @@ function SensorPanel({ sensor, ctx, onClose }: { sensor: SensorRow; ctx: Sensors
         <PillButton variant="primary" onClick={() => ctx.goTrends(tag)}>
           See history chart
         </PillButton>
+        {ctx.goInvestigate && (
+          <PillButton variant="secondary" onClick={() => ctx.goInvestigate?.(tag)}>
+            Investigate
+          </PillButton>
+        )}
         {!calc && !manual && sensor.cardId && (
           <PillButton variant="secondary" onClick={ctx.goRack}>
             Where it is wired

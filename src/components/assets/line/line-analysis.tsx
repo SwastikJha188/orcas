@@ -126,7 +126,7 @@ export function LineAnalysis({ units, names }: { units: AssetMachine[]; names: R
   ];
 
   const openIssue = (x: LineIssue) => {
-    focusLayer({ ruleId: x.issue.rule?.id ?? null, component: x.issue.where, section: "an-diagnosis" });
+    focusLayer({ ruleId: x.issue.rule?.id ?? null, component: x.issue.where, section: x.issue.kind === "fault" ? "an-diagnosis" : "an-prognosis" });
     navigateToMachine(x.machine.id, "analysis");
   };
   const openTrend = (r: UnknownRow) => {

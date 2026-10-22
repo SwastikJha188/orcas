@@ -128,7 +128,7 @@ export function MachinePrognosisPage({
 
   const handleSeeReason = (ruleId?: string | null, component?: string | null, tag?: string | null) => {
     const rId = ruleId ?? activeRuleId;
-    focusLayer({ ruleId: rId, component: component ?? mode?.component, tag, section: "an-diagnosis" });
+    focusLayer({ ruleId: rId, component: component ?? mode?.component, tag, section: "an-prognosis" });
     if (onNavigateToAnalysis) onNavigateToAnalysis(rId, component ?? mode?.component, tag);
     else setActiveSubPage("analysis");
   };

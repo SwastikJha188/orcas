@@ -38,27 +38,29 @@ skip to Step 3 and push it with that kind.
 
 ## Step 2 — Draw it
 
+Follow the **machine-diagram-2d** skill (`.claude/skills/machine-diagram-2d/SKILL.md`)
+for the photo. It makes both the 2D drawing and the 3D model from one spec.
+Use exactly:
+
+- work folder: `onboarding-work/photos-<plant-id>/diagrams`
+- spec file: `onboarding-work/photos-<plant-id>/diagrams/<kind>.spec.json`,
+  with `"id": "<kind>"` and `"image": "../<path of the photo inside the
+  photos folder>"` (the photo's `file`, relative to the diagrams folder)
+- draw command: `node scripts/diagram-lab/draw.mjs onboarding-work/photos-<plant-id>/diagrams/<kind>.spec.json --name <kind>`
+
+It writes `diagrams/<kind>.tsx` (2D) and `diagrams/<kind>.ts` (3D). Never
+edit those two files; fix the spec and draw again.
+
 Machine (`shows: "machine"`):
-- 2D sheet with the **machine-diagram-2d** skill and 3D model with the
-  **machine-diagram-3d** skill, from the photo. Save them as
-  `onboarding-work/photos-<plant-id>/diagrams/<kind>.tsx` and `<kind>.ts`
-  (never in `src/`). Render and fix them as those skills say until the
-  renderer reports no errors. Every renderer error (`Type error … Line N`,
-  `NaN`, `build() threw`) is a bug in your file: fix that line and render
-  again. Never skip the 3D model because of errors; only when the photo
-  truly shows too little to place anything in metres, push the 2D drawing
-  and say so in your report.
-- Pad tags: the tags in that item's `points`, exactly as written, where the
-  photo shows where they sit. No points listed → no pads.
-- Skip those skills' "Register it in the app" step and their `tsc` /
-  `eslint` run.
+- Sensor tags: the tags in that item's `points`, exactly as written, placed
+  where the photo shows each one (use the point's `name` / `location` to
+  find it). No points listed → no sensors, unless the photo shows some.
+- Skip the skill's "copy into the app source" part of Step 7.
 
 Plant or line (`shows: "plant"`):
-- A 2D line drawing with **machine-diagram-2d** (it covers process lines and
-  factories): the machines in the order the material flows, joined by flows,
-  each labelled with its name from todo.json's `machines` (code in brackets)
-  where the photo shows it. A 3D model only when the photo shows the layout
-  clearly enough to place the machines in metres.
+- The same skill: each machine of the photo is an item, labelled with its
+  name from the `machines` list (code in brackets) where the photo shows it,
+  joined by `material` links in the order the material flows.
 
 ## Step 3 — Store and link (one command)
 

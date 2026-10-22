@@ -218,12 +218,14 @@
   display: grid;
   margin: 0;
   padding: 0;
+  grid-template-columns: minmax(0, 1fr);
   list-style: none;
   border-top: 1px solid var(--separator);
 }
 
 .hx-units > li {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-1) 0;
@@ -242,6 +244,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.hx-unit-health {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
 }
 
 .hx-facts {

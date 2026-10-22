@@ -23,6 +23,7 @@ function TabLoading() {
 }
 const AssetsView = dynamic(() => import("@/components/assets/assets-view").then((m) => m.AssetsView), { loading: TabLoading });
 const IndustrialDevicesView = dynamic(() => import("@/components/devices/devices-view").then((m) => m.IndustrialDevicesView), { loading: TabLoading });
+const SapWorkspace = dynamic(() => import("@/components/sap/sap-workspace").then((m) => m.SapWorkspace), { loading: TabLoading });
 const MaintenanceWorkspace = dynamic(() => import("@/components/maintenance/maintenance-workspace").then((m) => m.MaintenanceWorkspace), { loading: TabLoading });
 const AssetIqHubView = dynamic(() => import("@/components/assetiq/assetiq-hub-view").then((m) => m.AssetIqHubView), { loading: TabLoading });
 const ConfigureView = dynamic(() => import("@/components/configure/configure-view").then((m) => m.ConfigureView), { loading: TabLoading });
@@ -104,6 +105,7 @@ function UltronWorkspaceContent() {
           )}
           {activeTab === "assets" && <AssetsView />}
           {activeTab === "maintenance" && <MaintenanceWorkspace />}
+          {activeTab === "sap" && <SapWorkspace />}
           {activeTab === "devices" && <IndustrialDevicesView />}
           {activeTab === "assetiq" && <AssetIqHubView />}
           {activeTab === "configure" && <ConfigureView />}

@@ -193,7 +193,7 @@ function FolderCard({ node, lookup, onOpen }: { node: HierarchyNode; lookup: Mac
               <li key={m.id}>
                 <span className="ast-chip-dot" data-tone={nodeTone(m, lookup)} aria-hidden="true" />
                 <span className="hx-unit-name">{displayName(m.name)}</span>
-                <span className="ast-num">{h !== null ? `${Math.round(h)}/100` : "—"}</span>
+                <span className="hx-unit-health">{h !== null ? `${Math.round(h)}/100` : "—"}</span>
               </li>
             );
           })}

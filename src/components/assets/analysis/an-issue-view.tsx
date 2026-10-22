@@ -14,7 +14,6 @@ import { formatLocalTime } from "@/lib/time";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { episodes, fmt, offText, sigma, type DetectionRow } from "./an-derive";
 import { alternatives, couplingShifts, deviationOrder, evidenceFor, trendingSignals, type EvidenceRow, type ImpactRow, type Issue } from "./an-issues";
-import { StartCaseButton } from "@/components/problems/start-case-button";
 import { StartChart } from "./an-start-chart";
 import { WhyDisclosure } from "./an-ui";
 import { distinctTexts, faultsForRule, type FaultEntry, type FaultLibrary } from "../fault-library";
@@ -69,15 +68,6 @@ export function IssueHead({ issue, frame, feedback, machineId }: { issue: Issue;
         </span>
         <span className="ast-cell-sub">{[issue.where !== issue.title ? issue.where : null, issueState(issue, frame)].filter(Boolean).join(" · ")}</span>
       </span>
-      {machineId && issue.rule && (
-        <StartCaseButton
-          machineId={machineId}
-          partId={issue.subIds[0] ?? null}
-          ruleCode={issue.rule.id}
-          title={issue.title}
-          observation={[issue.rule.plainWhat, issue.rule.evidence ? `What the sensors showed: ${issue.rule.evidence}` : null].filter(Boolean).join("\n")}
-        />
-      )}
       {id && (
         <span className="pg-an-verify" role="group" aria-label="Is this a real problem?">
           {feedback.kinds.map((b) => (

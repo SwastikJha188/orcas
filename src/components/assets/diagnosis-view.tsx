@@ -27,8 +27,6 @@ import "./diagnosis/overview-tab.css";
 import "./analysis/analysis-page.css";
 import "./prognosis/prognosis-page.css";
 import "./diagnosis-page.css";
-import { NewCaseDialog } from "@/components/problems/new-case-dialog";
-import { openCase } from "@/components/problems/cases-api";
 
 /* ==========================================================================
    Diagnosis — "What is wrong with this machine, how bad, and where?"
@@ -72,7 +70,7 @@ export function DiagnosisView({
   componentId,
   onComponentChange,
 }: DiagnosisViewProps) {
-  const { setActiveSubPage, selectedComponentId, selectComponent, setActiveTab } = useIndustrialData();
+  const { setActiveSubPage, selectedComponentId, selectComponent } = useIndustrialData();
   // The machine's component filter (shared by its pages) unless the host passes one.
   const compId = componentId !== undefined ? componentId : selectedComponentId;
   const simulation = useKilnSimulationFor(machine.id);
@@ -94,7 +92,6 @@ export function DiagnosisView({
   const [ruleFilter, setRuleFilter] = useState<string | null>(null);
   /** Sub-assembly picked in the health table (filters the sensor table). */
   const [subFilter, setSubFilter] = useState<string | null>(compId ?? null);
-  const [caseOpen, setCaseOpen] = useState(false);
   // The component filter drives the sub-assembly filter; a pick here becomes the machine's component filter.
   useEffect(() => {
     setSubFilter(compId ?? null);
@@ -355,27 +352,13 @@ export function DiagnosisView({
         status={{ label: condition, tone: conditionTone(condition) }}
         meta={meta}
         actions={
-          // Page links and popups are in the machine bar above; this page's own trend and starting a case stay.
-          <>
-            {leadTag && (
-              <PillButton variant="secondary" onClick={() => openTrend(leadTag)}>
-                {`Open trend: ${leadRow?.s.name ?? leadTag} ↗`}
-              </PillButton>
-            )}
-            <PillButton variant="secondary" onClick={() => setCaseOpen(true)} title="Follow a problem you have seen as a case: owner, checks, maintenance, and a checked fix">
-              Start a case
+          // Page links and popups are in the machine bar above; this page's own trend stays.
+          leadTag ? (
+            <PillButton variant="secondary" onClick={() => openTrend(leadTag)}>
+              {`Open trend: ${leadRow?.s.name ?? leadTag} ↗`}
             </PillButton>
-          </>
+          ) : undefined
         }
-      />
-      <NewCaseDialog
-        open={caseOpen}
-        onClose={() => setCaseOpen(false)}
-        onCreated={(id) => {
-          setCaseOpen(false);
-          openCase(id, setActiveTab);
-        }}
-        preset={{ machineId: machine.id, partId: subFilter }}
       />
 
       {/* Until the machine's sensors load, its totals wait instead of reading 0. */}

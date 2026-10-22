@@ -14,8 +14,6 @@ import { machineName, planName, planRound, unitLabel, woRef, type Outcome } from
 
 export type PmsPage =
   | "overview"
-  | "problems"
-  | "guides"
   | "preventive"
   | "predictive"
   | "proactive"
@@ -27,8 +25,6 @@ export type PmsPage =
 
 export const PMS_PAGES: { id: PmsPage; label: string }[] = [
   { id: "overview", label: "Overview" },
-  { id: "problems", label: "Problems" },
-  { id: "guides", label: "Investigation guides" },
   { id: "preventive", label: "Preventive" },
   { id: "predictive", label: "Predictive & planned" },
   { id: "proactive", label: "Proactive" },
@@ -40,15 +36,13 @@ export const PMS_PAGES: { id: PmsPage; label: string }[] = [
 ];
 
 /**
- * The workspace sections. Some pages share a section with a second view: investigation
- * guides sit with Problems, history with Work orders, people / parts / shutdowns with
- * Calendar. Every page id stays valid, so stored pages and links from other pages still
- * open the right section. `planned` sections need the plant's planned maintenance
- * (checklists); Problems works on every plant.
+ * The workspace sections. Some pages share a section with more views: history with Work
+ * orders, people / parts / shutdowns with Calendar. Every page id stays valid, so stored
+ * pages and links from other pages still open the right section. `planned` sections need
+ * the plant's planned maintenance (checklists).
  */
 export const PMS_TABS: { id: PmsPage; label: string; views: PmsPage[]; planned: boolean }[] = [
   { id: "overview", label: "Overview", views: ["overview"], planned: true },
-  { id: "problems", label: "Problems", views: ["problems", "guides"], planned: false },
   { id: "preventive", label: "Preventive", views: ["preventive"], planned: true },
   { id: "predictive", label: "Predictive", views: ["predictive"], planned: true },
   { id: "proactive", label: "Proactive", views: ["proactive"], planned: true },
@@ -72,7 +66,7 @@ export function requestMaintenancePage(page: PmsPage) {
 /** The tab a page belongs to. */
 export const pmsTabOf = (page: PmsPage) => PMS_TABS.find((t) => t.views.includes(page)) ?? PMS_TABS[0];
 
-/** View switch for a tab that holds two pages (Work orders · History, Calendar · People, parts & shutdowns). */
+/** View switch for a tab that holds more pages (Work orders · History, Calendar · People, parts & shutdowns). */
 export function PmsViewNav({ page }: { page: PmsPage }) {
   const nav = usePmsNav();
   const tab = pmsTabOf(page);

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { canAdminister, currentUserId, fail, failFrom, forbidden, ok } from "@backend/http";
 import { latestRun, processorStatus, startRun, stopRun } from "@backend/onboarding/claude-runner";
-import { addFile, commitPackage, createPackage, deleteFile, deletePackage, draftProblems, fileContent, getPackage, listPackages, onboardingReference, saveDraft, setFileResult } from "@backend/services/onboarding-service";
+import { addFile, commitPackage, createPackage, deleteFile, deletePackage, draftProblems, draftWorkbook, fileContent, getPackage, importDraftWorkbook, listPackages, onboardingReference, saveDraft, setFileResult } from "@backend/services/onboarding-service";
 
 /** /api/onboarding */
 export const onboarding = new Hono();
@@ -82,6 +82,47 @@ onboarding.post("/:id/commit", async (c) => {
     return ok(await commitPackage(c.req.param().id, Boolean(body?.dryRun)));
   } catch (error) {
     return failFrom(error, "ONBOARDING_COMMIT_FAILED");
+  }
+});
+
+onboarding.get("/:id/excel", async (c) => {
+  const request = c.req.raw;
+  if (!(await canAdminister(request))) return forbidden();
+  try {
+    const f = await draftWorkbook(c.req.param().id);
+    return new Response(new Uint8Array(f.bytes), {
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="${f.fileName}"`,
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  } catch (error) {
+    return failFrom(error, "ONBOARDING_EXCEL_FAILED");
+  }
+});
+
+/** Reads a filled-in Excel format into the draft sent with it (field: draft, JSON); answers { draft, summary } and saves nothing. */
+onboarding.post("/:id/excel", async (c) => {
+  const request = c.req.raw;
+  if (!(await canAdminister(request))) return forbidden();
+  try {
+    const form = await request.formData().catch(() => null);
+    const file = form?.get("file");
+    if (!form || !(file instanceof File)) return fail(400, "INVALID_INPUT", "Send the workbook as multipart form data (field: file)");
+    const draftText = form.get("draft");
+    let draft: unknown = null;
+    if (typeof draftText === "string" && draftText) {
+      try {
+        draft = JSON.parse(draftText);
+      } catch {
+        return fail(400, "INVALID_INPUT", "The draft field is not JSON");
+      }
+    }
+    return ok(await importDraftWorkbook(c.req.param().id, Buffer.from(await file.arrayBuffer()), draft));
+  } catch (error) {
+    return failFrom(error, "ONBOARDING_EXCEL_IMPORT_FAILED");
   }
 });
 

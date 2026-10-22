@@ -6,7 +6,7 @@ Everything else on the screen is secondary and ranks below it (Hick, Occam, Visu
 | Screen | Who | Primary task (one sentence) | Primary action |
 |---|---|---|---|
 | Home (Operator view) | Control-room operator | See at a glance which machine needs attention right now. | Open the alarm / machine |
-| Maintenance › Problems | Reliability engineer | Work an open problem from first sign to a checked repair. | Start a case / open a case |
+| Maintenance › SAP | Maintenance planner | Get the problems ULTRON finds into SAP as notifications, against the right equipment. | Raise in SAP / Sync now |
 | Assets › machine Overview | Operator | Read the machine's live state on its drawing. | Open the part that is not Normal |
 | Assets › Diagnosis | Engineer | Find which sensor and part are causing the machine's condition. | Acknowledge / create work order on a problem |
 | Assets › Prognosis | Planner | See what will need work next and how long is left. | Plan the work |

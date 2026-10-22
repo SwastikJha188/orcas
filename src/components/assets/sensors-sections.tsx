@@ -74,6 +74,8 @@ export interface SensorsCtx {
   goTrends: (tag?: string | null) => void;
   goRack: () => void;
   goHealth?: () => void;
+  /** Open the sensor in Analysis › Sensors (live machines only). */
+  goInvestigate?: (tag: string) => void;
   goDevices: (point?: MachineLivePoint) => void;
   goSection: (id: string) => void;
   /** Tags of the part the page shows (`rows` are already only these); null for the whole machine. */

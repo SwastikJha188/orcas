@@ -28,6 +28,7 @@ import { rackUnits } from "./rack-units";
 import { readings } from "./readings";
 import { references } from "./references";
 import { roles } from "./roles";
+import { sap } from "./sap";
 import { settings } from "./settings";
 import { signals } from "./signals";
 import { simulation } from "./simulation";
@@ -69,6 +70,7 @@ export const routes: [string, Hono][] = [
   ["/readings", readings],
   ["/references", references],
   ["/roles", roles],
+  ["/sap", sap],
   ["/settings", settings],
   ["/signals", signals],
   ["/simulation", simulation],

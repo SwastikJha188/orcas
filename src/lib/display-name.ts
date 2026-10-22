@@ -18,6 +18,14 @@ export function isIdOnly(label: string): boolean {
   return new RegExp(`^${ID_TOKEN.source}$`).test(label.trim());
 }
 
+/**
+ * Short label for a machine: the code its name ends with
+ * ("Clinker Cooler and Fans CLR-01" → "CLR-01"); the whole name when it has none.
+ */
+export function machineCode(name: string): string {
+  return /\b[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$/.exec(name.trim())?.[0] ?? name;
+}
+
 /** What `nameIds` needs from plant definitions (structural, so `PlantDefs` fits). */
 export interface IdNameSource {
   signals: ReadonlyArray<{ tag: string; name: string }>;

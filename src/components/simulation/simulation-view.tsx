@@ -17,6 +17,7 @@ import { Field, FieldGrid, NumberInput, PillButton, PillNav, Select, Table, Togg
 import { formatLocalTime } from "@/lib/time";
 import { syncSimulation } from "@/components/assets/kiln-seals-simulation";
 import { SimulationTry } from "./simulation-try";
+import { SimulationSap } from "./simulation-sap";
 import type { LineSimSettings } from "@shared/lib/pyro-sim/engine";
 import type { SimCommandDto, SimMachine, SimProfile, SimulationDto } from "@backend/services/simulation-service";
 import "@/components/assets/assets-shell.css";
@@ -142,7 +143,7 @@ export function SimulationView() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [confirmReset, setConfirmReset] = useState(false);
   const [pick, setPick] = useState<Record<string, string>>({});
-  const [tab, setTab] = useState<"try" | "settings">("try");
+  const [tab, setTab] = useState<"try" | "settings" | "sap">("try");
 
   // Take the stored settings when they first arrive or change elsewhere, unless the person is mid-edit.
   const dirty = Boolean(draft && data && JSON.stringify(draft) !== JSON.stringify(draftOf(data)));
@@ -316,9 +317,10 @@ export function SimulationView() {
               items={[
                 { id: "try", label: "Try a fault" },
                 { id: "settings", label: "Settings" },
+                { id: "sap", label: "SAP" },
               ]}
               activeId={tab}
-              onChange={(v) => setTab(v as "try" | "settings")}
+              onChange={(v) => setTab(v as "try" | "settings" | "sap")}
             />
           </div>
           <p className="sim-context">
@@ -363,6 +365,8 @@ export function SimulationView() {
           Could not load the simulation settings. Reload the page to try again.
         </p>
       )}
+
+      {tab === "sap" && <SimulationSap />}
 
       {data && tab === "try" && <SimulationTry machines={lineMachines} busy={busy} note={note} onCommand={command} onClearNote={() => setNote(null)} />}
 

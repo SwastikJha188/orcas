@@ -1,222 +1,343 @@
 ---
 name: machine-diagram-2d
-description: Turn an image (photo, PDF page, P&ID, process schematic, sketch, screenshot) of any machine, process line or factory into an ULTRON 2D machine-kit drawing — a React/SVG sheet (`LineSheetArt`) with graphite equipment, pipes, flows, labels and measurement pads, in the house style. Use when the user uploads or points to an image and asks for a 2D diagram, mimic, schematic, machine drawing, line sheet or "draw this" for ULTRON.
+description: Turn an image (photo, render, PDF page, P&ID, schematic, DCS/HMI screenshot, sketch) of any machine, process line or factory into ULTRON's house-style drawings — the 2D machine sheet AND the 3D model — by writing a small JSON spec that a script lays out, routes, details and renders. Use when the user uploads or points to an image and asks for a 2D or 3D diagram, mimic, machine drawing, line sheet, twin or "draw this" for ULTRON.
 ---
 
-# 2D machine diagram from an image
+# Machine drawing from an image
 
-You will turn a picture of equipment into one `.tsx` file that exports
-`sheet: LineSheetArt`. The drawing is built from ready-made parts in
-`@/components/assets/machine-kit/parts-2d` and the kit primitives in
-`@/components/assets/machine-kit/machine-kit`. You do not invent colours or
-styles: the parts already carry the style. Your job is to **measure, map,
-place and detail**.
+You do **not** draw anything and you do **not** write code. You write one
+JSON file (the **spec**) that says:
 
-Read these files from this skill folder before starting:
+- which machines are in the picture, what kind each is, and where it is;
+- which machines are connected and by what (pipe, cable, signal …);
+- where the sensors are.
 
-1. `reference.md` — every part, its props and what its box means. Read all of it.
-2. `template.md` — the file skeleton you copy.
-3. `checklist.md` — the review you run after every render.
+Then one command turns the spec into the finished 2D drawing and 3D model in
+the house style (layout, straight pipes, detail, labels, sensor pads are all
+done for you). You look at two check pictures, fix the spec, run again.
 
-Work through the steps in order. Do not skip the inventory or the render.
+Follow the steps **in order**. Do every step. Do not skip the checks.
 
 ---
 
-## Step 1 — Look and write the inventory (no code yet)
+## Step 1 — Prepare the image
 
-Open the image. Imagine a 10 × 10 grid over it (0 % = left / top edge,
-100 % = right / bottom edge). Write a table in your reply with one row per
-physical item you can see:
+Pick a work folder (the task tells you; otherwise the folder the image is in).
+Run, from the repository root:
 
-| # | What it is | Part to use | Box x0–x1 % | Box y0–y1 % | Label text | Notes |
-|---|-----------|-------------|-------------|-------------|------------|-------|
-| 1 | Vertical storage tank with cone bottom on legs | `Tank` bottom="cone" legs | 4–12 | 10–78 | RAW MEAL SILO | level window |
-| 2 | Fan + motor on a base | `FanSet` | 60–80 | 55–80 | ID FAN | outlet left |
-| … | | | | | | |
-
-Rules for the inventory:
-
-- **Every** item: vessels, machines, motors, gearboxes, pumps, fans, valves,
-  dampers, conveyors, cabinets, structures, platforms, pipes and ducts.
-- Read the box edges carefully against your grid: where does the item start
-  and end horizontally and vertically? Estimate to 1 %.
-- Use the "If you see … use …" table in `reference.md` to pick the part. If
-  nothing fits, use `Housing` (box with bolts) plus details — see "Unknown
-  machines" in `reference.md`.
-- Then list **connections** (pipes, ducts, chutes, belts, flow arrows): from
-  which item to which item, the route as a few points in %, the medium
-  (material, gas, air, water, oil, signal) and the size (thin pipe / large duct).
-- Then list **measurement points** (instrument tags, sensor circles, gauges):
-  tag text (or invent `T1`, `P1`… if none are printed), the item it sits on, and
-  its position in %.
-- Then find the **ground line**: the y % where machines stand. Most drawings
-  have one floor; tall structures and elevated items stand on frames.
-- Ignore page furniture: titles, borders, legends, tables, logos, revision boxes,
-  notes paragraphs, page numbers.
-
-## Step 2 — Sheet size and units
-
-- Measure only the drawing area (crop away titles and tables in your head).
-  **Wide or square image:** `W = 1600`, `H = round(1600 × height ÷ width)`,
-  clamped to 600 … 1250. **Tall image** (height > width): `H = 1200`,
-  `W = round(1200 × width ÷ height)`, at least 800. Keep the image's aspect
-  ratio so circles stay round and the drawing fills the sheet.
-- Convert every % to sheet units: `x = W × x% / 100`, `y = H × y% / 100`.
-- Keep a 40-unit margin: nothing may go below x = 40 or above x = W − 40, same
-  for y. If your boxes touch the edges, scale them all in a little.
-- The drawing must fill the sheet: equipment should span about 85–95 % of the
-  width and at least 70 % of the height. If the image is mostly empty space,
-  enlarge the equipment (scale every box about the sheet centre) rather than
-  leaving empty sheet.
-
-Write the converted boxes as constants at the top of the file (see template),
-e.g. `const SILO = { x: 64, y: 90, w: 128, h: 620 };`. Every part reads its
-numbers from these constants — never retype numbers in two places.
-
-## Step 3 — Tidy the layout (this is what makes it look engineered)
-
-Before writing parts, adjust the constants:
-
-1. **One ground line.** Set `const GROUND = …`. Every floor-standing item's box
-   bottom (`y + h`) equals `GROUND` exactly. Draw `<GroundLine x1={40} x2={W - 40} y={GROUND} />`.
-2. **Shared centrelines.** Items on one shaft (motor → coupling → gearbox →
-   driven machine) share one shaft height. Items in a column share one centre x.
-3. **Orthogonal runs.** Pipes and ducts run horizontal and vertical only, with
-   right-angle bends; each point list changes only x or only y per step.
-4. **Connect for real.** A pipe ends exactly on the item edge it enters (use
-   the box constants: `SILO.x + SILO.w`, not a guessed number).
-5. **Proportions.** Motors are smaller than the machine they drive; valves are
-   small (size 12–20); labels are small. If the image is a rough sketch, use
-   real-world proportions.
-6. **No overlaps** between separate items unless one is mounted on the other.
-7. **Nothing floats.** Schematics often draw boxes in mid-air (cabinets,
-   generators, pumps placed wherever there was room). In our drawings every
-   free-standing item stands on `GROUND`, on another item (stacked, e.g. a
-   generator under its cabinet), on a `Frame` / `Platform`, or hangs from a
-   structure you draw. Move floating items down to the ground and keep their
-   left-to-right order — order matters more than the exact y in the source.
-   Re-route the pipes to the new positions.
-8. **Compact, readable routing.** Place connected items near each other and
-   keep the sheet free of long pipes across empty space: shortest
-   orthogonal route, at most two bends, parallel pipes 12–20 units apart,
-   no pipe through an equipment body. A cabinet and the unit it powers may
-   stack (generator on the floor, cabinet beside or on top) to close gaps.
-   Signal / power links are short dashed `Flow medium="signal"` lines, not pipes.
-   Use simple parts for machines the image shows as boxes: "vacuum pump +
-   motor" is a `PumpSet`, "fan" a `FanSet`, "chiller" a `Cabinet` with louvres.
-9. **Instruments touch what they measure.** The `Instrument` mount point
-   `(x, y)` lies exactly on the outline of the part or pipe it measures (e.g.
-   `TANK.x + TANK.w` for the right wall). If the source shows a sensor
-   floating near a line, mount it on that line.
-
-## Step 4 — Write the file
-
-Copy `template.md`. Then fill `Art()` in this order (later = drawn on top):
-
-1. `GroundLine`
-2. Structures behind equipment: `Frame`, `Column`, `Platform`, `Ladder`
-3. Ducts and pipes that pass **behind** equipment: `Duct`, `Pipe`
-4. Large equipment: `Tank`, `Cyclone`, `Drum`, `Baghouse`, `Chamber`, `Cabinet`, …
-5. Drives and small machines: `FanSet`, `PumpSet`, `ElectricMotor`, `Gearbox`, `Bearing`, `Coupling`
-6. Pipes in front, valves (`Valve`), dampers, bellows
-7. Process flows (`Flow`) — thin coloured arrows showing what moves where
-8. Instruments (`Instrument`) at every measurement point
-9. Labels (`MachineLabel`) — one per equipment item, uppercase
-
-**Insides.** When the source shows what is inside (melt, bed, crucible,
-coil, flask, charge, rotor), draw it inside the body: contents with
-`PAINT.material`, vessels-inside with `PAINT.cylinderV` and an inner
-`PAINT.recess`, coils as two columns of small rounded `PAINT.material` or
-`PAINT.raised` bars on both sides of what they heat (not loose lines), rotors
-as `GearWheel` / `Fan` / circles with hubs.
-
-**Detail layer (required).** The parts give base detail; add what the image
-shows on top: inspection doors (`Panel`), louvres (`Louvres`), bolt rows
-(`BoltLine`), flanges (`Flange`), nozzles, extra platforms, ladders, a support
-(`Column` down to `GROUND`) under a pipe only where it runs low (within ~120
-units of the ground) for more than ~250 units — never a column standing alone
-in the middle of the sheet — and contents (`level` on tanks, `heat` on chambers). A finished
-sheet has 150–600 SVG shapes; the renderer warns below 60.
-
-**Labels.** `MachineLabel` uppercase, `size` 9–11, placed centred **below**
-the item (y = item bottom + 18) for floor items or **above** for tall/elevated
-items (y = item top − 10). Never over a body. 3–20 labels per sheet. No
-sentences, no tag chips, no legends, no title block — the app adds those.
-
-**Tags.** Use the tag codes printed in the image (P1, TT-101 …). If only
-descriptions are printed ("Fan bearing temp."), make short codes from them —
-`TMP-01`, `VIB-02`, `PRS-01`, `CUR-01`, `SPD-01`, `FLW-01`, `LVL-01` — and
-write the description in a comment next to the point.
-
-**Pads and callouts.** For every measurement point, put a pad at the
-instrument head: `pads: { "TT-101": instrumentHead(x, y, "up") }`. Overview
-sheets also need `callouts` (where the value plate sits): `[x, y, "start"]`
-places a plate's left edge just right of the pad, `"end"` its right edge to the
-left; use `x = padX + 14` with `"start"` or `x = padX − 14` with `"end"`,
-`y = padY`, and pick the side with empty space. If the image has no
-measurement points, use `pads: {}`.
-
-## Step 5 — Render, look, fix (repeat until clean)
-
-Run from the repository root:
-
-```bash
-node scripts/diagram-lab/render.mjs <your-file.tsx> --out <your-file.png>
+```
+python3 scripts/diagram-lab/prep.py <image> --out <work folder>/prep
 ```
 
-(First time only: `cd scripts/diagram-lab && npm install`.)
+Open these files and look at them:
 
-It prints a JSON report and writes a PNG. Then:
+- `<work folder>/prep/grid.png` — the image with a yellow grid. Numbers on
+  the edges: **x 0 = left edge … 100 = right edge, y 0 = top … 100 = bottom.**
+  Every position you write is read off this grid. Never use pixels.
+- `zoom-1.png` (top-left quarter), `zoom-2.png` (top-right), `zoom-3.png`
+  (bottom-left), `zoom-4.png` (bottom-right) — the same image enlarged, with
+  grid numbers every 5. Use them to read small text and exact edges.
 
-1. If `compiled` is false: fix the TypeScript error it names and run again.
-2. Fix every entry in `errors`. A `Type error … Line N` is a wrong call
-   on that line (compare it with the part's props in reference.md): fix
-   those first.
-3. Fix every entry in `warnings` (art outside the sheet, too empty, pads off
-   the equipment, too few shapes, overlapping labels…).
-4. **Open the PNG and look at it next to the source image.** Go through
-   `checklist.md` item by item and write down each failure.
-5. Fix them in the code and render again.
+### What if the image is not a plain machine picture?
 
-Stop only when: no errors, no warnings (or each remaining warning is
-explained), and every checklist item passes. Plan for at least three render
-rounds. Also render once with `--theme light` and check nothing disappears.
+- **A block flow chart** (boxes with machine names joined by arrows, e.g.
+  "Crusher → Raw mill → Kiln"): draw each named machine as an item of its
+  type, with the box where the chart's box is, and a `material` link for
+  each arrow. Use `"layout": "schematic"`. Boxes that are not machines
+  ("Market", "Quarry", "Power handling") are left out.
+- **A photo or render with several machines** (a factory floor, a skid):
+  draw every machine you can see clearly; leave out people, buildings,
+  vehicles, crates and background.
+- **No machine at all** (a person, a chart of numbers, a logo, a text-only
+  slide): do not write a spec. Say "no machine in the image" in your report
+  (in an onboarding run, push it as failed with that reason).
+- **Several small pictures in one image** (a collage, steps 1-2-3): draw the
+  largest picture of the machine only.
 
-## Step 6 — Register it in the app
+## Step 2 — List the machines (items)
 
-If the file is in `src/components/assets/diagrams/`, add it to
-`src/components/assets/diagrams/index.ts`: import its `sheet` and add
-`{ diagramType: "<kebab-name>", label: "<plain machine name>", sheet }` to
-`DIAGRAM_SHEETS`. The drawing kind is then offered under "Drawing style"
-when a machine is commissioned (Configure), and every machine whose drawing
-style (DB `equipment_models.diagram_type`) is that kind shows the sheet on
-its Overview, with its sensors at their DB x / y (% of the sheet: seed them
-as `pads[tag]` / width or height × 100). Preview at `/dev/diagrams`. Run
-`npx tsc --noEmit` and `npx eslint <your file>`; both must be clean (no unused
-constants).
+Write a table in your reply first, one row per machine you can see:
+
+| id | type | box: left, top, right, bottom | label |
+|----|------|-------------------------------|-------|
+| cabinet | cabinet | 4.6, 21, 15.4, 47 | CONTROL CABINET |
+
+Rules:
+
+1. **One row per physical machine** (cabinet, pump, tank, fan, chamber …).
+   Pipes, cables, arrows and sensors are NOT items (they come in steps 3–4).
+   A valve on a pipe is NOT an item (it goes on the link in step 3).
+2. **id**: short, lower case, no spaces: `vacuum_pump`, `melt_chamber`, `fan_2`.
+3. **type** — decide in this order:
+   a. Is it a standard piece of process equipment from the **equipment**
+      table (pump, tank, fan, cyclone, conveyor, cabinet …)? Use that type.
+   b. **Anything else — any machine at all** (a robot, a lathe, a sewing
+      machine, a packing machine, an unusual furnace): do NOT use one big
+      box. Build it from **shapes** (the shapes table): one item per part
+      you can see, each in its own place — the main body a `block`, round
+      housings `cylinder`, wheels / pulleys / dials `wheel`, funnels and
+      tapered parts `cone`, its motor a `motor`, screens and openings a
+      `block` with `"tone": "recess"`, covers `"tone": "raised"`, an
+      inclined arm a `block` with `"angle"`. Usually 4–25 parts. Make
+      touching parts touch in your boxes (see rule 9).
+   c. Only a small, unclear thing you cannot break into parts → `machine`.
+4. **box**: the machine's own outline on the grid — left edge x, top edge y,
+   right edge x, bottom edge y. Read each edge off grid.png / the zooms.
+   - Wrap the machine body only: NOT its name text, NOT the sensor circles,
+     NOT the pipes going out of it.
+   - Include its feet / base / skid (the part it stands on).
+   - left < right and top < bottom, always. Values are 0–100.
+5. **label**: the name printed next to it in the image, in CAPITALS. No name
+   printed → a short plain name ("PUMP", "MIXER"). No label for small parts.
+6. A machine that sits **on top of** another machine (an actuator on a
+   chamber, a chamber on a chamber, a motor on a tank lid): add `"on": "<id
+   of the one below>"`.
+7. **What kind of picture is it?** Answer one question:
+   - Do the machines stand on a floor, seen from the side (a photo, a 3D
+     render, an elevation drawing)? → leave it as it is (`"layout"` is
+     `"plant"` by default). Everything is stood on the floor for you, even
+     items the image shows floating. If the image draws two or more floor
+     lines (a two-level plant), add `"floors": [y1, y2]` (the y of each line).
+   - Is it a flow diagram, P&ID or control-room (DCS / SCADA) screen with
+     machines placed all over the page? → add `"layout": "schematic"`. The
+     machines then keep the places the image gives them.
+8. Repeated machines (6 identical fans) → 6 items: `fan_1` … `fan_6`.
+9. **Parts that touch stay joined.** When you build a machine from shapes,
+   draw the boxes so parts that touch in the image touch (or slightly
+   overlap) in your boxes: they are kept together exactly as drawn — a
+   spindle hanging from a crossbar stays hanging, an arm stays on its base.
+   Give each part a label only if the image names it.
+
+### Catalog of types
+
+Two tables: **equipment** (standard process equipment, drawn as a finished
+part) and **shapes** (to build any other machine from its visible parts).
+
+#### Equipment
+
+| type | use it for | useful options |
+|------|-----------|----------------|
+| `cabinet` | control cabinet, electrical panel, MCC, PLC, VFD, HMI box | `doors`, `screen`, `lamps` |
+| `generator` | induction generator, power supply, transformer, rectifier, UPS | |
+| `motor` | an electric motor on its own | `motor`: shaft side `left`/`right` |
+| `gearbox` | gearbox / reducer on its own | |
+| `drive` | motor + gearbox together (main drive) | `motor`: side of the motor |
+| `pump` | pump with its motor (water, oil, slurry) | `motor`: `left`/`right` |
+| `vacuum-pump` | vacuum pump with its motor | `motor`: `left`/`right` |
+| `fan` | fan / blower with motor | `outlet`: `left`/`right` |
+| `compressor` | air compressor | |
+| `tank` | vertical tank, vessel, reactor, receiver, column | `top`: dome/cone/flat, `bottom`: flat/cone/dish, `level` 0–1 |
+| `silo` | silo, bin, bunker (tall, cone bottom) | `level` |
+| `hopper` | hopper, chute, funnel | |
+| `horizontal-tank` | horizontal vessel, boiler, air receiver | `level` |
+| `cyclone` | cyclone separator | `inlet`: `left`/`right` |
+| `stack` | chimney, exhaust stack | |
+| `gas-cylinder` | gas bottle (argon, nitrogen, oxygen) | |
+| `chamber` | furnace, oven, vacuum / melting / casting chamber, heater box | `contents`: `crucible-coil`, `crucible`, `flask`, `bed`, `parts`, `none`; `heat`: true if glowing |
+| `drum` | rotary kiln, dryer, ball mill, rotating drum | `heat`: true |
+| `conveyor` | belt / screw conveyor, air slide, drag chain | `kind`: belt/screw/chain/slide; `slope`: flat/up/down (up = rises to the right) |
+| `bucket-elevator` | bucket elevator | |
+| `filter` | bag filter, dust collector, ESP, scrubber | |
+| `heat-exchanger` | heat exchanger, condenser | `kind`: shell/plate |
+| `cooling-unit` | chiller, cooling pump / loop skid, radiator, cooling tower | `motor`: `left`/`right` |
+| `actuator` | pneumatic / hydraulic cylinder, ram, sealing-rod actuator | `horizontal`: true |
+| `hydraulic-unit` | hydraulic power unit, lube / grease unit, oil skid | |
+| `crusher` | crusher, breaker, shredder | |
+| `mixer` | mixer, blender, agitator | |
+| `press` | press (hydraulic, stamping) | |
+| `extruder` | extruder, injection unit | `motor` |
+| `burner` | burner (horizontal) | `heat` |
+| `screen` | vibrating screen, sieve | |
+| `frame` | steel structure, tower, rack, platform the others stand on | |
+| `rotary-valve` | rotary airlock, rotary feeder, star valve, flap valve | |
+
+#### Shapes (build any other machine from these)
+
+| type | use it for | useful options |
+|------|-----------|----------------|
+| `block` | any solid part: body, housing, column, base, bed, arm, crossbar, guard, door | `tone`: raised / recess / material; `angle`: degrees |
+| `cylinder` | a round part seen from the side: spindle, roll, barrel, round housing, shaft (even when wider than tall) | `horizontal`: true if its axis lies flat; `angle` |
+| `wheel` | a round face seen end-on: wheel, pulley, flywheel, roller end, dial, gear, handwheel | |
+| `cone` | a tapered part: funnel, nozzle, cone, duct transition | `narrow`: top / bottom / left / right |
+| `pile` | loose material lying in a heap: stockpile, pile, spill | |
+| `table` | machine table, work bed | |
+| `fixture` | clamp, vise, chuck, jig | |
+| `workpiece` | the part being made / processed (workpiece, casting, mould, product) | |
+| `tool` | cutting tool, drill, cutter, nozzle, electrode (cutting end down) | `horizontal`: true if it points sideways |
+| `machine` | only a small, unclear item you cannot break into parts (drawn from its outline in the image) | |
+
+Options go in `"options": { … }` on the item, e.g.
+`"options": { "motor": "left" }`. Leave out options you are not sure of.
+
+## Step 3 — List the connections (links)
+
+One row per pipe, duct, cable, belt or dashed signal line between two items:
+
+| from | to | medium | valves |
+|------|----|--------|--------|
+| generator | melt_chamber | power | |
+| gas | flask_chamber | gas | regulator at 25, solenoid at 60 |
+
+- **from / to**: item ids from step 2, exactly as written. Flow goes from →
+  to (for a vacuum line, from the pump to the chamber is fine).
+- **medium** — one of:
+  `material` (powder, meal, clinker, melt, product moving) ·
+  `hot-gas` (flue / kiln / exhaust gas) · `gas` (argon, nitrogen, fuel gas) ·
+  `air` (compressed / combustion air) · `water` (cooling or process water) ·
+  `steam` · `oil` (hydraulic, lube) · `vacuum` ·
+  `power` (power cable, busbar, induction leads) ·
+  `signal` (dashed control / data line).
+- Two lines between the same two items (supply and return) → two links; give
+  them ids: `"id": "water_out"` and `"id": "water_in"`.
+- **valves**: valves drawn on that line, each with `kind` (gate, globe, ball,
+  butterfly, check, control, solenoid, regulator) and `at` = how far along
+  the line from `from` to `to`, in % (25 = a quarter of the way).
+- You do NOT give the pipe's path. The script routes it.
+
+## Step 4 — List the sensors (points)
+
+One row per sensor / instrument circle / gauge in the image:
+
+| tag | on | pos x, y | what it measures |
+|-----|----|----------|------------------|
+| VIB-01 | vacuum_pump | 11, 74 | Vacuum pump vibration |
+
+- **tag**: the tag printed in the image (TT-101, P1 …). If you were given a
+  list of sensor tags for this machine, use those tags exactly as written and
+  match each one to the place the image shows. Otherwise make one up from
+  what it measures: `TMP-01` temperature, `PRS-01` pressure, `VIB-01`
+  vibration, `FLW-01` flow, `LVL-01` level, `POS-01` position, `SPD-01` speed,
+  `CUR-01` current, `PWR-01` power. Number each kind 01, 02, 03 …
+- **on**: the id of the item it sits on, or the id of the link it sits on
+  (for a sensor on a pipe: give that link an `"id"` in step 3 and use it).
+- **pos**: where the sensor circle is on the grid, [x, y].
+- Every sensor the image shows gets a row. Do not invent sensors.
+
+## Step 5 — Write the spec
+
+Write the file `<work folder>/<name>.spec.json` (the task may give the exact
+path and name). Copy this shape exactly — it is the spec for the example
+image (an induction melting and vacuum casting system). Replace everything
+with what YOUR image shows:
+
+```json
+{
+  "id": "vacuum-casting-cell",
+  "name": "Induction melting and vacuum casting system",
+  "image": "source.png",
+  "items": [
+    { "id": "cabinet", "type": "cabinet", "box": [4.6, 21, 15.4, 47], "label": "CONTROL CABINET" },
+    { "id": "generator", "type": "generator", "box": [25.5, 29, 36.5, 49], "label": "INDUCTION GENERATOR" },
+    { "id": "vacuum_pump", "type": "vacuum-pump", "box": [6.5, 75, 25, 93], "label": "VACUUM PUMP", "options": { "motor": "left" } },
+    { "id": "flask_chamber", "type": "chamber", "box": [45.5, 64, 58.5, 92], "label": "FLASK CHAMBER", "options": { "contents": "flask" } },
+    { "id": "melt_chamber", "type": "chamber", "box": [46, 26, 58, 54], "label": "MELTING CHAMBER", "on": "flask_chamber", "options": { "contents": "crucible-coil", "heat": true } },
+    { "id": "actuator", "type": "actuator", "box": [48.3, 9, 51.7, 26], "label": "SEALING ROD ACTUATOR", "on": "melt_chamber" },
+    { "id": "cooling", "type": "cooling-unit", "box": [82, 37, 94, 50.5], "label": "COOLING PUMP / LOOP" },
+    { "id": "gas", "type": "gas-cylinder", "box": [89.5, 60, 92.5, 83], "label": "GAS SUPPLY" }
+  ],
+  "links": [
+    { "from": "generator", "to": "melt_chamber", "medium": "power" },
+    { "id": "water_out", "from": "melt_chamber", "to": "cooling", "medium": "water" },
+    { "id": "water_in", "from": "cooling", "to": "melt_chamber", "medium": "water" },
+    { "from": "vacuum_pump", "to": "flask_chamber", "medium": "vacuum" },
+    { "id": "gas_line", "from": "gas", "to": "flask_chamber", "medium": "gas", "valves": [{ "kind": "regulator", "at": 25 }, { "kind": "solenoid", "at": 60 }] },
+    { "from": "cabinet", "to": "generator", "medium": "signal" },
+    { "from": "cabinet", "to": "actuator", "medium": "signal" }
+  ],
+  "points": [
+    { "tag": "VIB-01", "on": "vacuum_pump", "pos": [11, 74], "text": "Vacuum pump vibration" },
+    { "tag": "TMP-02", "on": "melt_chamber", "pos": [53.5, 40], "text": "Melt temperature" },
+    { "tag": "TMP-03", "on": "water_out", "pos": [69, 21], "text": "Cooling water outlet temperature" },
+    { "tag": "PRS-02", "on": "gas_line", "pos": [82.5, 62], "text": "Gas supply pressure" }
+  ]
+}
+```
+
+A machine that is not standard equipment is built from shapes. Example —
+a robot arm next to a CNC lathe (items only):
+
+```json
+"items": [
+  { "id": "robot_base", "type": "block", "box": [10, 70, 22, 80], "label": "ROBOT" },
+  { "id": "robot_turret", "type": "cylinder", "box": [13, 58, 19, 70] },
+  { "id": "robot_arm_1", "type": "block", "box": [12, 30, 18, 60], "options": { "angle": 20 } },
+  { "id": "robot_arm_2", "type": "block", "box": [16, 26, 34, 32], "options": { "angle": -10 } },
+  { "id": "robot_gripper", "type": "tool", "box": [32, 30, 36, 40] },
+  { "id": "lathe_body", "type": "block", "box": [45, 35, 85, 80], "label": "CNC LATHE" },
+  { "id": "lathe_window", "type": "block", "box": [50, 42, 68, 62], "options": { "tone": "recess" } },
+  { "id": "lathe_chuck", "type": "wheel", "box": [54, 46, 62, 56] },
+  { "id": "lathe_panel", "type": "block", "box": [72, 40, 82, 60], "options": { "tone": "raised" } },
+  { "id": "lathe_screen", "type": "block", "box": [74, 42, 80, 48], "options": { "tone": "recess" } }
+]
+```
+
+Small parts drawn inside a bigger one (a window in a door, a chuck in a
+window) are fine — they sit on top of it.
+
+- `"id"`: kebab-case name of this machine kind (the task may give it).
+- `"image"`: path of the source image, relative to the spec file.
+- Plain JSON: double quotes, commas between entries, no comments.
+
+## Step 6 — Draw, check, fix (at least 2 rounds)
+
+Run:
+
+```
+node scripts/diagram-lab/draw.mjs <work folder>/<name>.spec.json
+```
+
+(Add `--name <kind>` if the task says what the files must be called.)
+
+It prints a report and writes, next to the spec: `<name>.tsx` (2D),
+`<name>.ts` (3D), `<name>.png`, `<name>-3d.png`, `<name>-overlay.png`,
+`<name>-compare.png`.
+
+**Round check — do all of these, in order:**
+
+1. **Problems.** Read every line of `"problems"`. Each one says what to
+   change in the spec. Change it.
+2. **Overlay.** Open `<name>-overlay.png`. It shows your boxes (with ids)
+   and your sensor positions (red circles) on the image. For every box ask:
+   - Does it wrap exactly one machine, edge to edge? If it is too big, too
+     small or shifted, fix its four numbers using the grid on that picture.
+   - Is a machine in the image left without a box? Add an item.
+   For every red circle: is it on the sensor in the image? If not, fix `pos`.
+3. **Compare.** Open `<name>-compare.png` (image on top, your drawing below)
+   and check:
+   - Every machine of the image is in the drawing, with the right kind of part
+     (a pump looks like a pump, a tank like a tank). Wrong look → change `type`.
+   - Left-to-right order of the machines matches the image.
+   - Every pipe / cable / signal line of the image is a line in the drawing.
+     Missing → add a link. Wrong kind of line → change `medium`.
+   - A machine that should sit on another one sits on it. If not → add `"on"`.
+   - Every sensor of the image has a pad (ring) in the drawing.
+   - Labels are the names from the image.
+4. Fix the spec and run `draw.mjs` again.
+
+Stop when the report has no problems you can fix and the checks above all
+pass. **Never edit the .tsx or .ts files** — they are rewritten on every run;
+change the spec instead. If `"problems"` reports a "2D drawing error" or "3D
+model error", run once more; if it stays, say so in your report.
 
 ## Step 7 — Report
 
-Tell the user: the file path, the PNG path, what equipment you drew, any
-items you could not identify (and what you drew instead), and any
-measurement points you invented tags for.
+Tell the user: the spec path, the drawing files (`.tsx`, `.ts`, `.png`,
+`-3d.png`), the machines you drew, anything in the image you could not match
+to a type (and what you used instead), and any sensor tags you made up.
 
-## Hard style rules (never break)
+If the drawing belongs in the app source (not an onboarding run): copy the
+`.tsx` into `src/components/assets/diagrams/` and add it to
+`src/components/assets/diagrams/index.ts` (`{ diagramType, label, sheet }`),
+and the `.ts` into `src/components/home/twin/models/` (register it in its
+`index.ts` the same way).
 
-- Colours only through `MX.*` / `PAINT.*` / the parts. No `#hex`, `rgb()`,
-  named colours, opacity tricks for colour, gradients of your own, or `<style>`.
-- No background, no grid, no frame/border, no title, no legend, no tables in
-  the art. Art = equipment, pipes, flows, instruments and equipment labels only.
-- Status colours (green / amber / red) never appear in the art — pads carry status.
-- Brass (`MX.material`, `PAINT.material`) only for process material inside
-  equipment (bed, melt, contents) and material flow arrows.
-- Flows: material = brass, hot gas = `gas`, air / water = `air`, signals =
-  dashed `signal`. Flow arrows are thin (w 1.6–2.2) and point downstream.
-- Line weights are fixed by the parts; do not set `strokeWidth` above 2 on
-  your own shapes, except pipes / ducts through `Pipe` / `Duct`.
-- Your own extra shapes use the presets: `{...PAINT.body}` for solid bodies,
-  `{...PAINT.raised}` for plates / flanges / covers, `{...PAINT.recess}` for
-  openings, windows, slots, `{...PAINT.cylinderV}` for vertical round shells,
-  `{...PAINT.cylinder}` for horizontal round shells, `{...PAINT.shaft}` for
-  shafts and rods, `{...PAINT.hair}` for seams, `{...PAINT.detail}` for detail lines.
-  Rounded corners: `rx` 2–10.
+## Mistakes to avoid
+
+- Pixels instead of grid units. Every number is 0–100 from the grid.
+- A box around the label text or the whole group instead of one machine.
+- `[left, top, width, height]` — the box is `[left, top, right, bottom]`.
+- Forgetting the signal (dashed) and power lines — they are links too.
+- A link or point that names an id that is not in `items` (typos).
+- Leaving the example's machines in your spec.
+- Editing the generated `.tsx` / `.ts` files instead of the spec.
+- Stopping after the first run without opening the overlay and compare images.

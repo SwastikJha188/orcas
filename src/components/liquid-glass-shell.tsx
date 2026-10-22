@@ -8,6 +8,7 @@ import {
   AssetIQIcon,
   ConfigureIcon,
   MaintenanceIcon,
+  SapIcon,
   SimulationIcon,
 } from "./navigation-icons";
 import { ThemeToggle } from "./theme-toggle";
@@ -17,7 +18,7 @@ import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useApi } from "@/lib/api-cache";
 import { conditionUrl, type ConditionStrip as ConditionData } from "@/components/problems/cases-api";
 
-export type WorkspaceTab = "home" | "assets" | "problems" | "maintenance" | "devices" | "assetiq" | "configure" | "simulation";
+export type WorkspaceTab = "home" | "assets" | "problems" | "maintenance" | "sap" | "devices" | "assetiq" | "configure" | "simulation";
 
 interface LiquidGlassShellProps {
   activeTab?: WorkspaceTab;
@@ -32,7 +33,9 @@ type RailItem = { id: WorkspaceTab; label: string; hint: string; Icon: Component
 const PRIMARY: RailItem[] = [
   { id: "home", label: "Home", hint: "Home: live view of the plant and its machines", Icon: HomeIcon },
   // Problems (cases) and planned maintenance in one place; planned sections where the plant has checklists.
-  { id: "maintenance", label: "Maintenance", hint: "Maintenance: problems to follow up, planned checks, repair jobs and their history", Icon: MaintenanceIcon },
+  { id: "maintenance", label: "Maintenance", hint: "Maintenance: planned checks, repair jobs and their history", Icon: MaintenanceIcon },
+  // The plant's SAP system: problems raised there, its orders, spare parts and production.
+  { id: "sap", label: "SAP", hint: "SAP: notifications, maintenance orders, spare parts and production orders in the plant's SAP system", Icon: SapIcon },
   // Asset directory and each machine's Sensors, Diagnosis, Prognosis and Analysis.
   { id: "assets", label: "Assets", hint: "Assets: every machine, its sensors, health and problems", Icon: AssetsIcon },
   { id: "assetiq", label: "AssetIQ", hint: "AssetIQ: ask questions about your machines in plain words", Icon: AssetIQIcon },

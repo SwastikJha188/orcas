@@ -106,6 +106,17 @@ export function ConfigureIcon({ className }: { className?: string }) {
   );
 }
 
+/** SAP: two systems linked (ERP exchange). */
+export function SapIcon({ className }: { className?: string }) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <rect x="3" y="4" width="8" height="7" rx="1.5" />
+      <rect x="13" y="13" width="8" height="7" rx="1.5" />
+      <path d="M11 7.5h3.5a2 2 0 0 1 2 2V13M13 16.5H9.5a2 2 0 0 1-2-2V11" />
+    </svg>
+  );
+}
+
 export function MaintenanceIcon({ className }: { className?: string }) {
   return (
     <svg

@@ -117,7 +117,7 @@ interface IndustrialDataContextType {
   deleteMachine: (id: string) => Promise<void>;
 }
 
-const WORKSPACE_TABS: readonly WorkspaceTab[] = ["home", "assets", "problems", "maintenance", "devices", "assetiq", "configure", "simulation"];
+const WORKSPACE_TABS: readonly WorkspaceTab[] = ["home", "assets", "problems", "maintenance", "sap", "devices", "assetiq", "configure", "simulation"];
 const SUB_PAGES: readonly AssetsSubPage[] = [
   "overview", "sensors", "diagnosis", "thermal", "prognosis",
   "analysis", "health", "trends", "rack", "simulation",
@@ -229,15 +229,8 @@ export function IndustrialDataProvider({ children }: { children: React.ReactNode
       const subPage = isSubPage(page) ? page : "overview";
       // Older links had no tab for machine pages: those pages live in Assets now.
       let resolvedTab: WorkspaceTab = isWorkspaceTab(tab) ? tab : machine && subPage !== "overview" ? "assets" : "home";
-      // Problems moved into Maintenance (its Problems section).
-      if (resolvedTab === "problems") {
-        resolvedTab = "maintenance";
-        try {
-          localStorage.setItem("ultron.maint.page", "problems");
-        } catch {
-          /* storage unavailable */
-        }
-      }
+      // Old Problems links open Maintenance (Problems was removed).
+      if (resolvedTab === "problems") resolvedTab = "maintenance";
       setActiveTab(resolvedTab);
       setSelectedMachineId(machine || null);
       setActiveSubPage(subPage);
