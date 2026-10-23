@@ -195,7 +195,7 @@
 
 .mq-empty-body {
   max-width: 560px;
-  line-height: 1.5;
+  line-height: var(--lh-body);
   display: flex;
   flex-direction: column;
   align-items: center;

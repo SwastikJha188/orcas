@@ -14,6 +14,11 @@ import { PageProactive } from "./page-proactive";
 import { PageWork } from "./page-work";
 import { PageResources } from "./page-resources";
 import { PageHistory } from "./page-history";
+import { PageShutdownPlan, PageShutdownReady } from "./page-shutdown";
+import { PageShutdownLive, PageShutdownLockoff, PageShutdownRestart } from "./page-shutdown-live";
+import { useShutdownList } from "./shutdown-model";
+import { isActiveShutdown } from "@shared/lib/shutdown";
+import { useIndustrialData } from "@/providers/industrial-data-context";
 import "@/components/assets/assets-shell.css";
 import "@/components/assets/analysis/analysis-page.css";
 import "@/components/ui/page.css";
@@ -33,8 +38,9 @@ import "./pms.css";
      Predictive    checks raised by alarms, jobs engineers plan
      Proactive     part life: replace before it wears out
      Work orders   every job from request to closed (+ history)
-     Calendar      when each job runs (+ people, parts & shutdowns)
+     Calendar      when each job runs (+ people & parts)
      Machines      one machine's drawing, part by part
+     Shutdown      one planned stop: plan, ready, lock-off, live, restart
 
    The sections need the plant's maintenance documents
    (/api/maintenance/pms/line). SAP is its own rail tab. It opens on
@@ -52,8 +58,13 @@ const PAGE_HEAD: Record<PmsPage, { title: string; context: string }> = {
   work: { title: "Work orders", context: "Every repair and service job, from request to closed." },
   history: { title: "History & performance", context: "Jobs done before, and how well maintenance keeps up." },
   calendar: { title: "Calendar", context: "When each round and job is planned." },
-  resources: { title: "People, parts & shutdowns", context: "Who and what each planned job needs, and which shutdowns it waits for." },
+  resources: { title: "People & parts", context: "Who and what each planned job needs before it can start." },
   machine: { title: "Machines", context: "One machine's drawing: pick a part to see its problems, readings, checks and jobs." },
+  shutdown: { title: "Shutdown", context: "A planned stop of the line: which machines stop, when, and the work done while they are stopped." },
+  "shutdown-ready": { title: "Shutdown · ready?", context: "Parts, people and a timeline that fits the window, before the line stops." },
+  "shutdown-lockoff": { title: "Shutdown · lock-off", context: "Every isolator, valve and blank locked off for the work, and released before the restart." },
+  "shutdown-live": { title: "Shutdown · live", context: "While the line is stopped: work done against the plan, work found, and when it will end." },
+  "shutdown-restart": { title: "Shutdown · restart", context: "What must be finished before the restart, the sign-off, and the readings after it." },
 };
 
 /** Maintenance opens on Preventive, unless another page asked for one (`requestMaintenancePage`, taken once). */
@@ -70,6 +81,10 @@ function storedPage(): PmsPage {
 
 export function MaintenanceWorkspace() {
   const pms = usePmsLine();
+  const { selectedPlantId } = useIndustrialData();
+  // A shutdown under way puts Maintenance in shutdown mode: marked on every page, and Shutdown opens on its live board.
+  const shutdowns = useShutdownList(selectedPlantId);
+  const activeShutdown = shutdowns.data?.shutdowns.find((s) => isActiveShutdown(s.state)) ?? null;
   const [page, setPage] = useState<PmsPage>(storedPage);
   // Remounting a page on every switch lets it read the focus another page left.
   const [visit, setVisit] = useState(0);
@@ -165,6 +180,7 @@ export function MaintenanceWorkspace() {
   const counts: Partial<Record<PmsPage, { count: number; tone?: string }>> = {
     overview: { count: scoped.queue.length, tone: p1 ? "bad" : overdue ? "warn" : undefined },
     work: { count: scoped.openWos.length },
+    ...(activeShutdown ? { shutdown: { count: 0, tone: "info" } } : {}),
   };
 
   const head = PAGE_HEAD[shownPage];
@@ -186,7 +202,7 @@ export function MaintenanceWorkspace() {
                     aria-selected={active}
                     className="opc-pill-btn"
                     data-active={active || undefined}
-                    onClick={() => nav(t.id)}
+                    onClick={() => nav(t.id === "shutdown" && activeShutdown ? (activeShutdown.state === "restarting" ? "shutdown-restart" : "shutdown-live") : t.id)}
                   >
                     {c?.tone && <span className="ph-unit-dot" data-tone={c.tone} aria-hidden="true" />}
                     <span>{t.label}</span>
@@ -234,6 +250,7 @@ export function MaintenanceWorkspace() {
                   {shownPage === "overview" && scoped.data && (p1 || overdue) ? (
                     <StatusTag tone={p1 ? "bad" : "warn"} label={p1 ? `${p1} need action now` : `${overdue} rounds overdue`} />
                   ) : null}
+                  {activeShutdown && <StatusTag tone="info" label={`Shutdown under way · ${activeShutdown.name}`} />}
                 </div>
                 <p className="pg-cfg-context">
                   {machineFilter ? `${machineName(machineFilter)}. ` : ""}
@@ -252,6 +269,11 @@ export function MaintenanceWorkspace() {
               {shownPage === "machine" && <PageMachine pms={scoped} machineId={machineFilter} onMachineChange={setMachineId} />}
               {shownPage === "resources" && <PageResources pms={scoped} />}
               {shownPage === "history" && <PageHistory pms={scoped} />}
+              {shownPage === "shutdown" && <PageShutdownPlan pms={scoped} />}
+              {shownPage === "shutdown-ready" && <PageShutdownReady pms={scoped} />}
+              {shownPage === "shutdown-lockoff" && <PageShutdownLockoff pms={scoped} />}
+              {shownPage === "shutdown-live" && <PageShutdownLive pms={scoped} />}
+              {shownPage === "shutdown-restart" && <PageShutdownRestart pms={scoped} />}
             </div>
           </div>
         </div>

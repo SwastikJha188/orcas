@@ -341,6 +341,10 @@ export interface ShellThermal {
   /** Mean section residual over the outlet zone 66–74 m, K. */
   outletResidual: number;
   coverageTarget: number;
+  /** Scanner coverage this minute (% of the shell in view), when the scanner reports it apart from the map (pyro line, Rev. 02). */
+  coverage?: number;
+  /** Its per-minute history, current minute last (pyro line: coverage is the scanner's own quality figure, not a register point). */
+  coverageHist?: number[];
   /** Last good reading of every cell (`i · 72 + k`) and the minute it was taken (−1: never seen). */
   lastGood: Float32Array;
   lastGoodAt: Int32Array;

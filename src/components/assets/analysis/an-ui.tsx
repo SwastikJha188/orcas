@@ -559,9 +559,9 @@ export function Section({
   return (
     <section id={id} className={bare ? "pg-analysis-section is-bare" : "ast-card pg-analysis-section"} aria-labelledby={`${id}-title`}>
       <header className="pg-analysis-section-head">
-        <h3 id={`${id}-title`} className="pg-analysis-section-title">
+        <h2 id={`${id}-title`} className="pg-analysis-section-title">
           {title}
-        </h3>
+        </h2>
         {right && <div className="pg-analysis-section-right">{right}</div>}
       </header>
       <div className="pg-analysis-section-body">{children}</div>

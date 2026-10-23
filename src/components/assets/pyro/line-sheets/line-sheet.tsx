@@ -198,8 +198,8 @@ export function MachineHealthShade({
 const PAD_OUTER = 9 * PAD_SCALE;
 
 /** Equipment art, pads and (optionally) tag chips — the geometry `useSheetBox` measures. */
-function SheetFootprint({ sheetId, chips }: { sheetId: string; chips: boolean }) {
-  const art = LINE_SHEET_ART[sheetId];
+function SheetFootprint({ sheetId, chips, drawn }: { sheetId: string; chips: boolean; drawn?: LineSheetArt }) {
+  const art = drawn ?? LINE_SHEET_ART[sheetId];
   if (!art) return null;
   const Art = art.Art;
   const chipW = (tag: string) => Math.ceil(textWidth(tag, CHIP_FONT, 600, 0.02) + 12);
@@ -215,9 +215,13 @@ function SheetFootprint({ sheetId, chips }: { sheetId: string; chips: boolean })
   );
 }
 
-/** The tight content box of a sheet drawing (art + pads, + chips when shown); see `useContentBox`. */
-export function useSheetBox(sheetId: string | null, chips: boolean): { box: SheetBox | null; measure: React.ReactNode } {
-  return useContentBox(sheetId ? `sheet:v4:${sheetId}|${chips ? 1 : 0}` : null, () => (sheetId ? <SheetFootprint sheetId={sheetId} chips={chips} /> : null));
+/**
+ * The tight content box of a sheet drawing (art + pads, + chips when shown); see `useContentBox`.
+ * `drawn`: the sheet as the operator arranged it (its own id), in place of the registered drawing.
+ */
+export function useSheetBox(sheetId: string | null, chips: boolean, drawn?: LineSheetArt): { box: SheetBox | null; measure: React.ReactNode } {
+  const key = drawn && drawn.id !== sheetId ? drawn.id : sheetId;
+  return useContentBox(key ? `sheet:v4:${key}|${chips ? 1 : 0}` : null, () => (sheetId ? <SheetFootprint sheetId={sheetId} chips={chips} drawn={drawn} /> : null));
 }
 
 /** A detail sheet's note, as printed; sheet references open that sheet. */

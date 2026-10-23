@@ -111,29 +111,28 @@ function Art() {
   );
 }
 
-/** Pad centre per point: one pad per load cell on its bracket (the PDF draws a single bin-weight pad); bin filter and fan as in the PDF. */
+/** Pad centre per point: one pad per load cell on its bracket, the bin weight (sum of the cells) on the support beam beside them; bin filter inlet / outlet taps, ΔP transmitter and fan as in the PDF. */
 const pads: LineSheetArt["pads"] = {
-  "WGT-KFS-01": [165, 329],
-  "WGT-KFS-02": [300.5, 329],
-  "WGT-KFS-03": [435.5, 329],
-  "WGT-KFS-AVG": [300.5, 329],
+  "WGT-KFS-02": [165, 329],
+  "WGT-KFS-03": [300.5, 329],
+  "WGT-KFS-04": [435.5, 329],
+  "WGT-KFS-01": [466, 351.5],
+  "PRS-KFS-08": [347.5, 160],
+  "PRS-KFS-09": [432.5, 141.5],
   "PRS-KFS-05": [385, 148.3],
   "ELE-KFS-03": [526, 123.7],
 };
 
-/** Outer load cells run outward along the beam, the centre one right; filter ΔP over the duct, fan current along the motor. */
+/** Outer load cells run outward along the beam, the centre one right, bin weight right under the beam; filter inlet and ΔP left of the chute, outlet under the fan, fan current along the motor. */
 const callouts: LineSheetArt["callouts"] = {
-  "WGT-KFS-01": [150, 329, "end"],
-  "WGT-KFS-02": [315, 329, "start"],
-  "WGT-KFS-03": [450, 329, "start"],
-  "WGT-KFS-AVG": [315, 329, "start"],
-  "PRS-KFS-05": [400, 148.3, "start"],
+  "WGT-KFS-02": [150, 329, "end"],
+  "WGT-KFS-03": [315, 329, "start"],
+  "WGT-KFS-04": [450, 329, "start"],
+  "WGT-KFS-01": [470, 378, "start"],
+  "PRS-KFS-08": [270, 160, "end"],
+  "PRS-KFS-09": [445, 200, "start"],
+  "PRS-KFS-05": [270, 128, "end"],
   "ELE-KFS-03": [540, 123.7, "start"],
 };
 
-/** The mimic shows the three load cells as one block: their mean, on the centre cell. */
-const averages: LineSheetArt["averages"] = {
-  "WGT-KFS-AVG": { tags: ["WGT-KFS-01", "WGT-KFS-02", "WGT-KFS-03"], label: "BIN CELLS AVG" },
-};
-
-export const sheet: LineSheetArt = { id: "F-4", ready: true, width: W, height: H, Art, pads, callouts, averages };
+export const sheet: LineSheetArt = { id: "F-4", ready: true, width: W, height: H, Art, pads, callouts };

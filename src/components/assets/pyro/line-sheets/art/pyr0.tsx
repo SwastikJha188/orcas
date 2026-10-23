@@ -1,21 +1,23 @@
 /**
- * Sheet PYR-0 — PYRO LINE · Cement plant — Feed silo to clinker silo.
+ * Sheet PYR-0 — PYRO LINE · Cement plant — Feed silo to clinker silo (design Main_Overview Rev03).
  *
- * The whole line composed from the six stage overviews (F-0 … H-0), each
- * placed at its own scale as on the user's line layout (2000 × 1125 units):
- * feed system and preheater with the main baghouse on top, the main burner
- * and the clinker transport in the middle, the rotary kiln and the grate
- * cooler at the bottom. Process flows join the stages: hot meal to the kiln
- * and kiln gas back to the calciner, coal to the burner, tertiary air from the
- * cooler to the calciner, clinker from the cooler to the crusher.
+ * The whole line composed from the six stage overviews (F-0 … H-0), each piece placed at its own scale on the
+ * 2000 × 1125 line: the feed system top left with the meal line down to the preheater top; the preheater
+ * tower and calciner on the left over the rotary kiln, the exit gas up and across to the WHRS, ID fan and main
+ * baghouse (top middle); the coal firing system top right with the calciner coal duct and the coal + primary
+ * air line down to the burner manifold on the kiln hood; the grate cooler beside the hood and the crusher,
+ * deep-pan conveyor and clinker silo bottom right, clinker down the transfer chute to the crusher.
  *
- * No pads: the viewer shows a health dot per sub-assembly, placed on that
- * sub-assembly's central measuring point of its stage drawing.
+ * A machine may be drawn as several pieces (the preheater tower and its gas route; the coal system and the
+ * burner end). No pads: the viewer shows a health dot per sub-assembly, placed on that sub-assembly's central
+ * measuring point of its stage drawing.
  */
 import React, { useId } from "react";
-import { MX } from "@/components/assets/machine-kit/machine-kit";
+import { MX, MachineLabel } from "@/components/assets/machine-kit/machine-kit";
 import { PYRO_SIGNALS, PYRO_SUBASSEMBLIES } from "@shared/lib/pyro-sim/signals";
-import type { LineSheetArt } from "../types";
+import type { ArrangePiece, LineSheetArt, PieceOffsets } from "../types";
+import { arrangeable, clampOffset, movedFlow, movedLabel } from "../arrange";
+import { Line, type Dir } from "./parts-d";
 import { sheet as f0 } from "./f0";
 import { sheet as p0 } from "./p0";
 import { sheet as k0 } from "./k0";
@@ -29,9 +31,8 @@ const W = 2000;
 const H = 1125;
 
 /**
- * Where each stage sits on the line: scale, offset (line units) and the part
- * of the stage drawing shown (stage units; pieces another stage already draws
- * are left out, e.g. the kiln hood on the cooler stage).
+ * One piece of a stage on the line: its machine, scale, offset (line units) and the part of the stage drawing
+ * shown (stage units).
  */
 interface Placement {
   machine: string;
@@ -41,102 +42,122 @@ interface Placement {
   ty: number;
   /** Visible outline of the stage drawing (stage units). */
   clip: Pt[];
+  /** The equipment drawn in the piece ([x0, y0, x1, y1], stage units): its click area on the line. */
+  area: [number, number, number, number];
 }
 
+const ALL: Pt[] = [[0, 0], [W, 0], [W, H], [0, H]];
+
 const STAGES: Placement[] = [
-  // Feed system without its bucket elevator and the arrow to the preheater (the preheater stage draws the elevator).
-  { machine: "PYR-FED-01", art: f0, s: 0.645, tx: 0, ty: -2.8, clip: [[0, 0], [990, 0], [990, 400], [1165, 400], [1165, 774], [0, 774]] },
-  { machine: "PYR-PHC-01", art: p0, s: 0.655, tx: 690.3, ty: -8.1, clip: [[0, 0], [1654, 0], [1654, 774], [0, 774]] },
-  // Kiln without its inlet chamber and gas analyser (the hot-meal / kiln-gas flow arrives there from the preheater).
-  { machine: "PYR-KLN-01", art: k0, s: 0.615, tx: 8, ty: 649.4, clip: [[500, 0], [1654, 0], [1654, 774], [0, 774], [0, 515], [185, 515], [185, 175], [500, 175]] },
-  // Burner without the kiln, hood and cooler it shares with the kiln and cooler stages.
-  { machine: "PYR-BRN-01", art: b0, s: 0.34, tx: 749, ty: 448, clip: [[930, 80], [1654, 80], [1654, 774], [930, 774]] },
-  // Cooler without the kiln hood.
-  { machine: "PYR-CLR-01", art: c0, s: 0.635, tx: 891.7, ty: 644.8, clip: [[215, 0], [1654, 0], [1654, 774], [215, 774]] },
-  { machine: "PYR-CCT-01", art: h0, s: 0.33, tx: 1398, ty: 460.3, clip: [[0, 0], [1654, 0], [1654, 774], [0, 774]] },
+  { machine: "PYR-FED-01", art: f0, s: 0.62, tx: -209, ty: -136.4, area: [590, 240, 1690, 820], clip: ALL },
+  // Preheater tower, exit duct and calciner (left), over the kiln inlet.
+  { machine: "PYR-PHC-01", art: p0, s: 0.745, tx: -308.9, ty: 262.4, area: [515, 120, 872, 622], clip: [[515, 175], [872, 175], [872, 252], [760, 252], [760, 622], [515, 622]] },
+  // WHRS, ID fan, main baghouse, baghouse fan and stack (top middle).
+  { machine: "PYR-PHC-01", art: p0, s: 0.75, tx: 304.2, ty: -111.2, area: [780, 120, 1480, 660], clip: [[780, 120], [1480, 120], [1480, 700], [950, 700], [950, 520], [780, 520]] },
+  // Kiln, its inlet chamber under the calciner (riser, chute and tertiary up-leg left to the preheater piece).
+  { machine: "PYR-KLN-01", art: k0, s: 0.75, tx: -152, ty: 426.5, area: [440, 280, 1500, 715], clip: [[0, 0], [W, 0], [W, H], [0, H], [0, 400], [560, 400], [560, 0]] },
+  // Coal firing system: fine-coal bin, feeders, aeration and conveying blowers, calciner coal riser (top right).
+  { machine: "PYR-BRN-01", art: b0, s: 0.665, tx: 770.6, ty: -112.9, area: [1060, 200, 1440, 690], clip: [[1060, 226], [1440, 226], [1440, 690], [1060, 690]] },
+  // Burner end: manifold, axial / swirl lines and primary-air fan on the kiln hood.
+  { machine: "PYR-BRN-01", art: b0, s: 0.52, tx: 535.6, ty: 574.6, area: [795, 395, 945, 662], clip: [[795, 395], [936, 395], [936, 662], [795, 662]] },
+  // Cooler without the kiln outlet and hood (the kiln piece draws them) and its "to crusher" box.
+  { machine: "PYR-CLR-01", art: c0, s: 0.415, tx: 965.7, ty: 670.7, area: [345, 230, 1240, 820], clip: [[620, 0], [W, 0], [W, H], [1170, H], [1170, 556], [1075, 556], [1075, H], [354, H], [354, 398], [620, 398]] },
+  { machine: "PYR-CCT-01", art: h0, s: 0.26, tx: 1388.8, ty: 864.5, area: [90, 280, 1720, 1000], clip: ALL },
 ];
 
 const toLine = (p: Placement, [x, y]: Pt): Pt => [+(p.tx + x * p.s).toFixed(1), +(p.ty + y * p.s).toFixed(1)];
 
-/** Process flow line: material (solid brass), hot gas (dashed) or air (dashed), with direction arrows. */
+const COLOR = { material: MX.material, gas: MX.gas, air: MX.air };
+const headDir = ([ax, ay]: Pt, [bx, by]: Pt): Dir => (Math.abs(bx - ax) >= Math.abs(by - ay) ? (bx > ax ? "right" : "left") : by > ay ? "down" : "up");
+
+/** Process line between stages: a tube with the medium's core (gas dashed) and flow heads on the given segments. */
 function FlowLine({ pts, kind, arrows = [] }: { pts: Pt[]; kind: "material" | "gas" | "air"; arrows?: number[] }) {
-  const color = kind === "material" ? "var(--mx-material)" : kind === "gas" ? MX.gas : MX.air;
-  const d = pts.map(([x, y], i) => `${i ? "L" : "M"} ${x} ${y}`).join(" ");
-  return (
-    <g>
-      <path d={d} fill="none" stroke={color} strokeWidth={2.2} strokeLinejoin="round" strokeDasharray={kind === "material" ? undefined : "7 5"} />
-      {arrows.map((seg) => {
-        const [a, b] = [pts[seg], pts[seg + 1]];
-        const mx = (a[0] + b[0]) / 2;
-        const my = (a[1] + b[1]) / 2;
-        const ang = (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
-        return <path key={seg} d="M 7 0 L -6 -6 L -6 6 Z" fill={color} transform={`translate(${mx} ${my}) rotate(${ang})`} />;
-      })}
-    </g>
-  );
+  const heads = arrows.filter((k) => k < pts.length - 1).map((k): [number, number, Dir] => [(pts[k][0] + pts[k + 1][0]) / 2, (pts[k][1] + pts[k + 1][1]) / 2, headDir(pts[k], pts[k + 1])]);
+  return <Line pts={pts} color={COLOR[kind]} w={7} core={1.5} heads={heads} dash={kind === "gas" ? 5 : undefined} />;
 }
 
-function FlowLabel({ x, y, children, kind, anchor = "start" }: { x: number; y: number; children: React.ReactNode; kind: "material" | "air"; anchor?: "start" | "middle" | "end" }) {
-  return (
-    <text x={x} y={y} fontSize={11} fontWeight={600} letterSpacing="0.1em" textAnchor={anchor} fill={kind === "material" ? "var(--mx-material)" : MX.air}>
-      {children}
-    </text>
-  );
+/**
+ * The flows between the stages, in line units, each from one machine's stage to another's (they follow
+ * the machines when the operator moves them; see arrange.ts).
+ */
+interface Flow {
+  kind: "material" | "gas" | "air";
+  pts: Pt[];
+  arrows: number[];
+  from: string;
+  to: string;
 }
-
-/** The flows between the stages, in line units. */
-function Flows() {
-  return (
-    <g>
-      {/* Hot meal from the preheater to the kiln inlet (brass), kiln gas back up to the calciner (dashed). */}
-      <FlowLine kind="material" pts={[[1058, 445], [1058, 476], [20, 476], [20, 832], [125, 832]]} arrows={[1, 3]} />
-      <FlowLine kind="gas" pts={[[125, 822], [30, 822], [30, 486], [1066, 486], [1066, 446]]} arrows={[1, 2]} />
-      <FlowLabel x={208} y={498} kind="material">
-        HOT MEAL TO KILN · KILN GAS TO CALCINER
-      </FlowLabel>
-      {/* Fine coal from the burner manifold down to the main burner in the kiln hood. */}
-      <FlowLine kind="material" pts={[[1068, 588], [998, 588], [998, 826], [962, 826]]} arrows={[1, 2]} />
-      <FlowLabel x={988} y={631} kind="material" anchor="end">
-        COAL TO BURNER
-      </FlowLabel>
-      {/* Tertiary air from the cooler hood end up to the calciner. */}
-      <FlowLine kind="air" pts={[[1066, 748], [1066, 720], [1390, 720], [1390, 385], [1292, 385]]} arrows={[1, 2, 3]} />
-      <FlowLabel x={1400} y={716} kind="air">
-        TERTIARY AIR
-      </FlowLabel>
-      {/* Clinker from the cooler discharge round to the crusher feed chute. */}
-      <FlowLine kind="material" pts={[[1706, 1100], [1706, 1118], [1986, 1118], [1986, 480], [1572, 480], [1572, 508]]} arrows={[2, 3]} />
-      <FlowLabel x={1978} y={1108} kind="material" anchor="end">
-        CLINKER TO CRUSHER
-      </FlowLabel>
-    </g>
-  );
+interface Label {
+  x: number;
+  y: number;
+  text: string;
+  anchor?: "start" | "middle" | "end";
+  from: string;
+  to: string;
 }
+const FLOWS: Flow[] = [
+  // Meal from the airlocks down and across to the preheater top.
+  { kind: "material", pts: [[746, 190], [746, 385], [181, 385], [181, 393]], arrows: [0, 1], from: "PYR-FED-01", to: "PYR-PHC-01" },
+  // Exit gas from the C1 duct across and up to the WHRS.
+  { kind: "gas", pts: [[341, 411], [868, 411], [868, 39], [889, 39]], arrows: [0, 1], from: "PYR-PHC-01", to: "PYR-PHC-01" },
+  // Hot meal from C6 down into the kiln inlet chamber.
+  { kind: "material", pts: [[123.9, 725], [123.9, 800], [190, 800]], arrows: [0, 1], from: "PYR-PHC-01", to: "PYR-KLN-01" },
+  // Calciner coal from the coal system's riser round to the calciner burner.
+  { kind: "material", pts: [[1700, 42], [1700, 12], [1415, 12], [1415, 645], [248, 645], [248, 680]], arrows: [2, 3], from: "PYR-BRN-01", to: "PYR-PHC-01" },
+  // Kiln coal and conveying air down to the burner manifold.
+  { kind: "material", pts: [[1475, 273], [1430, 273], [1430, 738], [1010, 738], [1010, 800], [998, 800]], arrows: [1, 2], from: "PYR-BRN-01", to: "PYR-BRN-01" },
+  // Clinker from the cooler's transfer chute to the crusher.
+  { kind: "material", pts: [[1430, 905], [1430, 925], [1507, 925], [1507, 947]], arrows: [1, 2], from: "PYR-CLR-01", to: "PYR-CCT-01" },
+];
+const LABELS: Label[] = [
+  { x: 568, y: 379, text: "MEAL TO PREHEATER TOP", anchor: "middle", from: "PYR-FED-01", to: "PYR-PHC-01" },
+  { x: 608, y: 404, text: "PREHEATER GAS → WHRS · ID FAN · BAGHOUSE", anchor: "middle", from: "PYR-PHC-01", to: "PYR-PHC-01" },
+  { x: 1500, y: 26, text: "COAL FIRING SYSTEM", anchor: "middle", from: "PYR-BRN-01", to: "PYR-BRN-01" },
+  { x: 895, y: 639, text: "COAL DUCT → CALCINER BURNER", anchor: "middle", from: "PYR-BRN-01", to: "PYR-PHC-01" },
+  { x: 1160, y: 732, text: "COAL + PA → KILN BURNER", anchor: "middle", from: "PYR-BRN-01", to: "PYR-BRN-01" },
+];
 
-function Art() {
-  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
-  return (
-    <g>
-      <defs>
-        {STAGES.map((p, i) => (
-          <clipPath key={p.machine} id={`pyr0-${uid}-${i}`}>
-            <polygon points={p.clip.map(([x, y]) => `${x},${y}`).join(" ")} />
-          </clipPath>
-        ))}
-      </defs>
-      {STAGES.map((p, i) => {
-        const StageArt = p.art.Art;
-        return (
-          <g key={p.machine} transform={`translate(${p.tx} ${p.ty}) scale(${p.s})`}>
-            <g clipPath={`url(#pyr0-${uid}-${i})`}>
-              <StageArt />
+function artFor(stages: Placement[], off: PieceOffsets): React.ComponentType {
+  const at = (id: string): [number, number] => off[id] ?? [0, 0];
+  const flows = FLOWS.map((f) => ({ ...f, ...movedFlow(f.pts, f.arrows, at(f.from), at(f.to)) }));
+  const labels = LABELS.map((l) => {
+    const [x, y] = movedLabel(l.x, l.y, at(l.from), at(l.to));
+    return { ...l, x, y };
+  });
+  return function Art() {
+    const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+    return (
+      <g>
+        <defs>
+          {stages.map((p, i) => (
+            <clipPath key={i} id={`pyr0-${uid}-${i}`}>
+              <polygon points={p.clip.map(([x, y]) => `${x},${y}`).join(" ")} />
+            </clipPath>
+          ))}
+        </defs>
+        {stages.map((p, i) => {
+          const StageArt = p.art.Art;
+          return (
+            <g key={i} transform={`translate(${p.tx} ${p.ty}) scale(${p.s})`}>
+              <g clipPath={`url(#pyr0-${uid}-${i})`}>
+                <StageArt />
+              </g>
             </g>
-          </g>
-        );
-      })}
-      <Flows />
-    </g>
-  );
+          );
+        })}
+        <g>
+          {flows.map((f, i) => (
+            <FlowLine key={i} kind={f.kind} pts={f.pts} arrows={f.arrows} />
+          ))}
+          {labels.map((l, i) => (
+            <MachineLabel key={i} x={l.x} y={l.y} anchor={l.anchor ?? "start"} size={7.5}>
+              {l.text}
+            </MachineLabel>
+          ))}
+        </g>
+      </g>
+    );
+  };
 }
 
 /** No sensor pads on the line sheet: it shows sub-assembly health; each machine's points are on its own sheets. */
@@ -161,17 +182,17 @@ const inside = (p: Placement, [x, y]: Pt) => {
 /** Sub-assemblies whose own drawing is cropped from the line: a place on what is shown (stage units). */
 const PART_AT: Record<string, [string, Pt]> = {
   // Kiln inlet chamber and gas analysis: on the shell's inlet end, where the hot meal arrives.
-  "kln-inlet": ["PYR-KLN-01", [214, 250]],
+  "kln-inlet": ["PYR-KLN-01", [505, 497]],
 };
 
-const parts: NonNullable<LineSheetArt["parts"]> = Object.fromEntries(
+const partsFor = (stages: Placement[]): NonNullable<LineSheetArt["parts"]> => Object.fromEntries(
   PYRO_SUBASSEMBLIES.flatMap((sub) => {
     const fixed = PART_AT[sub.id];
-    const fixedStage = fixed && STAGES.find((p) => p.machine === fixed[0]);
+    const fixedStage = fixed && stages.find((p) => p.machine === fixed[0]);
     if (fixedStage) return [[sub.id, { machine: sub.machine, at: toLine(fixedStage, fixed[1]) }]];
     const tags = PYRO_SIGNALS.filter((s) => s.sub === sub.id && s.origin !== "manual").map((s) => s.tag);
-    const own = STAGES.filter((x) => x.machine === sub.machine);
-    const order = [...own.map((p) => ({ p, strict: true })), ...STAGES.filter((x) => x.machine !== sub.machine).map((p) => ({ p, strict: true })), ...own.map((p) => ({ p, strict: false }))];
+    const own = stages.filter((x) => x.machine === sub.machine);
+    const order = [...own.map((p) => ({ p, strict: true })), ...stages.filter((x) => x.machine !== sub.machine).map((p) => ({ p, strict: true })), ...own.map((p) => ({ p, strict: false }))];
     // Points in the visible part first; a sub-assembly whose drawing is cropped away (kiln inlet chamber) keeps its own points.
     for (const { p, strict } of order) {
       const pts = tags.map((t) => p.art.pads[t]).filter((xy): xy is Pt => Boolean(xy) && (!strict || inside(p, xy)));
@@ -190,17 +211,17 @@ const parts: NonNullable<LineSheetArt["parts"]> = Object.fromEntries(
  * its measuring points on the stage drawing (plus a margin), on the line.
  */
 const REGION_MARGIN = 34;
-const partRegions: NonNullable<LineSheetArt["partRegions"]> = Object.fromEntries(
+const partRegionsFor = (stages: Placement[]): NonNullable<LineSheetArt["partRegions"]> => Object.fromEntries(
   PYRO_SUBASSEMBLIES.flatMap((sub) => {
     const fixed = PART_AT[sub.id];
     if (fixed) {
-      const p = STAGES.find((x) => x.machine === fixed[0])!;
+      const p = stages.find((x) => x.machine === fixed[0])!;
       const [x0, y0] = toLine(p, [fixed[1][0] - 40, fixed[1][1] - 60]);
       const [x1, y1] = toLine(p, [fixed[1][0] + 40, fixed[1][1] + 60]);
       return [[sub.id, { machine: sub.machine, box: [x0, y0, x1 - x0, y1 - y0] as [number, number, number, number] }]];
     }
     const tags = PYRO_SIGNALS.filter((s) => s.sub === sub.id && s.origin !== "manual").map((s) => s.tag);
-    for (const p of [...STAGES.filter((x) => x.machine === sub.machine), ...STAGES.filter((x) => x.machine !== sub.machine)]) {
+    for (const p of [...stages.filter((x) => x.machine === sub.machine), ...stages.filter((x) => x.machine !== sub.machine)]) {
       const pts = tags.map((t) => p.art.pads[t]).filter((xy): xy is Pt => Boolean(xy) && inside(p, xy));
       if (!pts.length) continue;
       const xs = pts.map((q) => q[0]);
@@ -213,15 +234,33 @@ const partRegions: NonNullable<LineSheetArt["partRegions"]> = Object.fromEntries
   }),
 );
 
-/** Clickable machine regions: each stage's block on the line. */
+/** Clickable machine regions: each piece's equipment on the line. */
 const box = (p: Placement): [number, number, number, number] => {
-  const xs = p.clip.map(([x]) => x);
-  const ys = p.clip.map(([, y]) => y);
-  const [x0, y0] = toLine(p, [Math.min(...xs), Math.min(...ys)]);
-  const [x1, y1] = toLine(p, [Math.max(...xs), Math.max(...ys)]);
+  const [x0, y0] = toLine(p, [p.area[0], p.area[1]]);
+  const [x1, y1] = toLine(p, [p.area[2], p.area[3]]);
   return [x0, y0, +(x1 - x0).toFixed(1), +(y1 - y0).toFixed(1)];
 };
-const links: NonNullable<LineSheetArt["links"]> = Object.fromEntries(STAGES.map((p) => [p.machine, box(p)]));
 
-// No condition wash (`shades`): health shows as the sub-assembly dots.
-export const sheet: LineSheetArt = { id: "PYR-0", ready: true, width: W, height: H, Art, pads, links, parts, partRegions };
+/** The line with each machine's stage moved by the operator's offset (kept on the sheet's top-left side). */
+export const sheet: LineSheetArt = arrangeable("PYR-0", (asked) => {
+  const off: PieceOffsets = {};
+  for (const p of STAGES) if (asked[p.machine] && !off[p.machine]) off[p.machine] = clampOffset(asked, p.machine, box(p));
+  const stages = STAGES.map((p) => (off[p.machine] ? { ...p, tx: p.tx + off[p.machine][0], ty: p.ty + off[p.machine][1] } : p));
+  // A machine's main piece (its first) is its link and arrange handle; every piece is clickable.
+  const links: NonNullable<LineSheetArt["links"]> = {};
+  const areas: NonNullable<LineSheetArt["areas"]> = {};
+  for (const p of stages) {
+    links[p.machine] ??= box(p);
+    (areas[p.machine] ??= []).push(box(p));
+  }
+  const pieces: ArrangePiece[] = Object.entries(links).map(([id, b]) => ({ id, box: b }));
+  // A machine moved past the sheet's right or bottom edge grows the sheet.
+  const moved = pieces.filter((p) => off[p.id]);
+  const width = Math.max(W, ...moved.map((p) => p.box[0] + p.box[2] + 16));
+  const height = Math.max(H, ...moved.map((p) => p.box[1] + p.box[3] + 16));
+  // No condition wash (`shades`): health shows as the sub-assembly dots.
+  return {
+    art: { ready: true, width, height, Art: artFor(stages, off), pads, links, areas, parts: partsFor(stages), partRegions: partRegionsFor(stages) },
+    pieces,
+  };
+});

@@ -1,6 +1,8 @@
 /**
  * Equipment run states of the pyro line (D5 Table 9.4.1 "motor run states";
- * Phase 2 contract §1).
+ * Phase 2 contract §1; units of the OSW-PE-SNL-PYR-01 Rev. 02 register: motor-driven
+ * grate drives 1–3, air-slide blowers A / B / common / preheater top, kiln motor
+ * cooling fan, fine-coal bin aeration blower).
  *
  * Every drive / blower / fan / pump the D5 machine tables name has a run
  * state: "run", "stopped" (by the operator or an interlock) or "tripped"
@@ -17,10 +19,14 @@ export const EQUIPMENT_IDS = [
   "fsl-blower-duty",
   "fsl-blower-standby",
   "fsl-gate",
-  "kfs-airslide-blower",
+  "kfs-slide-blower-a",
+  "kfs-slide-blower-b",
+  "kfs-common-blower",
   "kfs-elevator",
+  "kfs-top-blower",
   "phc-idfan",
   "kln-main-drive",
+  "kln-motor-fan",
   "kln-aux-drive",
   "kln-lube-pump",
   "kln-spray",
@@ -29,13 +35,16 @@ export const EQUIPMENT_IDS = [
   "brn-pafan",
   "brn-coal-feeder",
   "brn-coal-blower",
+  "brn-bin-blower",
   "clr-fan-1",
   "clr-fan-2",
   "clr-fan-3",
   "clr-fan-4",
   "clr-fan-5",
   "clr-fan-6",
-  "clr-grate-hpu",
+  "clr-grate-1",
+  "clr-grate-2",
+  "clr-grate-3",
   "clr-vent-fan",
   "hmr-crusher",
   "csl-conveyor",
@@ -50,10 +59,14 @@ export const EQUIPMENT_LABEL: Record<EquipmentId, string> = {
   "fsl-blower-duty": "Aeration blower (duty)",
   "fsl-blower-standby": "Aeration blower (standby)",
   "fsl-gate": "Silo air-slide outlet gates",
-  "kfs-airslide-blower": "Air-slide blower",
+  "kfs-slide-blower-a": "Air slide A blower",
+  "kfs-slide-blower-b": "Air slide B blower",
+  "kfs-common-blower": "Common air slide blower",
   "kfs-elevator": "Bucket elevator",
+  "kfs-top-blower": "Preheater-top air slide blower",
   "phc-idfan": "ID fan",
   "kln-main-drive": "Kiln main drive",
+  "kln-motor-fan": "Main motor cooling fan",
   "kln-aux-drive": "Kiln auxiliary drive",
   "kln-lube-pump": "Gearbox lube-oil pump",
   "kln-spray": "Girth-gear spray system",
@@ -62,13 +75,16 @@ export const EQUIPMENT_LABEL: Record<EquipmentId, string> = {
   "brn-pafan": "Primary-air fan",
   "brn-coal-feeder": "Kiln coal feeder",
   "brn-coal-blower": "Coal conveying blower",
+  "brn-bin-blower": "Fine-coal bin aeration blower",
   "clr-fan-1": "Cooling fan 1",
   "clr-fan-2": "Cooling fan 2",
   "clr-fan-3": "Cooling fan 3",
   "clr-fan-4": "Cooling fan 4",
   "clr-fan-5": "Cooling fan 5",
   "clr-fan-6": "Cooling fan 6",
-  "clr-grate-hpu": "Grate drive hydraulic unit",
+  "clr-grate-1": "Grate drive 1",
+  "clr-grate-2": "Grate drive 2",
+  "clr-grate-3": "Grate drive 3 (if fitted)",
   "clr-vent-fan": "Cooler vent fan",
   "hmr-crusher": "Hammer crusher",
   "csl-conveyor": "Deep-pan conveyor",
@@ -79,10 +95,14 @@ export const EQUIPMENT_MACHINE: Record<EquipmentId, string> = {
   "fsl-blower-duty": "PYR-FED-01",
   "fsl-blower-standby": "PYR-FED-01",
   "fsl-gate": "PYR-FED-01",
-  "kfs-airslide-blower": "PYR-FED-01",
+  "kfs-slide-blower-a": "PYR-FED-01",
+  "kfs-slide-blower-b": "PYR-FED-01",
+  "kfs-common-blower": "PYR-FED-01",
   "kfs-elevator": "PYR-FED-01",
+  "kfs-top-blower": "PYR-FED-01",
   "phc-idfan": "PYR-PHC-01",
   "kln-main-drive": "PYR-KLN-01",
+  "kln-motor-fan": "PYR-KLN-01",
   "kln-aux-drive": "PYR-KLN-01",
   "kln-lube-pump": "PYR-KLN-01",
   "kln-spray": "PYR-KLN-01",
@@ -91,13 +111,16 @@ export const EQUIPMENT_MACHINE: Record<EquipmentId, string> = {
   "brn-pafan": "PYR-BRN-01",
   "brn-coal-feeder": "PYR-BRN-01",
   "brn-coal-blower": "PYR-BRN-01",
+  "brn-bin-blower": "PYR-BRN-01",
   "clr-fan-1": "PYR-CLR-01",
   "clr-fan-2": "PYR-CLR-01",
   "clr-fan-3": "PYR-CLR-01",
   "clr-fan-4": "PYR-CLR-01",
   "clr-fan-5": "PYR-CLR-01",
   "clr-fan-6": "PYR-CLR-01",
-  "clr-grate-hpu": "PYR-CLR-01",
+  "clr-grate-1": "PYR-CLR-01",
+  "clr-grate-2": "PYR-CLR-01",
+  "clr-grate-3": "PYR-CLR-01",
   "clr-vent-fan": "PYR-CLR-01",
   "hmr-crusher": "PYR-CCT-01",
   "csl-conveyor": "PYR-CCT-01",
@@ -122,25 +145,32 @@ export function defaultEquipment(): EquipmentStates {
  */
 const UNIT_TAGS: Array<[EquipmentId | "fsl-aeration", string[]]> = [
   ["fsl-aeration", ["PRS-FSL-01", "ELE-FSL-01", "TMP-FSL-01"]],
-  ["kfs-airslide-blower", ["PRS-KFS-01", "ELE-KFS-02"]],
-  ["kfs-elevator", ["FLO-BRN-02", "ELE-KFS-01", "VIB-KFS-01", "TMP-KFS-01", "TMP-KFS-02", "SPD-KFS-01", "FLO-KFS-01", "FLO-KFS-02", "PRS-KFS-02", "PRS-KFS-06", "PRS-KFS-04"]],
-  ["phc-idfan", ["SPD-PHC-01", "ELE-PHC-01", "TMP-PHC-11", "PRS-PHC-10", "VIB-PHC-01", "VIB-PHC-02", "TMP-PHC-09", "TMP-PHC-10", "POS-PHC-01", "PRS-PHC-01", "PRS-PHC-02", "PRS-PHC-03", "PRS-PHC-04", "PRS-PHC-05", "PRS-PHC-06", "PRS-PHC-07", "PRS-PHC-08", "PRS-PHC-09", "PRS-KLN-01"]],
-  ["kln-main-drive", ["ELE-KLN-01", "SPD-KLN-01", "TMP-KLN-21", "TMP-KLN-19", "TMP-KLN-20", "VIB-KLN-01", "VIB-KLN-02", "VIB-KLN-03", "VIB-KLN-04", "TMP-KLN-22", "TMP-KLN-23"]],
+  ["kfs-slide-blower-a", ["PRS-KFS-01", "ELE-KFS-04"]],
+  ["kfs-slide-blower-b", ["PRS-KFS-03", "ELE-KFS-05"]],
+  ["kfs-common-blower", ["PRS-KFS-04", "ELE-KFS-06"]],
+  ["kfs-top-blower", ["PRS-KFS-07", "ELE-KFS-07"]],
+  ["kfs-elevator", ["FLO-BRN-02", "ELE-KFS-01", "VIB-KFS-01", "VIB-KFS-04", "TMP-KFS-01", "TMP-KFS-03", "TMP-KFS-02", "SPD-KFS-01", "FLO-KFS-01", "FLO-KFS-02", "PRS-KFS-02", "PRS-KFS-06"]],
+  [
+    "phc-idfan",
+    ["SPD-PHC-01", "ELE-PHC-01", "TMP-PHC-11", "PRS-PHC-10", "VIB-PHC-01", "VIB-PHC-02", "TMP-PHC-09", "TMP-PHC-10", "POS-PHC-01", ...[1, 2, 3, 4, 5, 6].flatMap((n) => [`PRS-PHC-0${n}`, `PRS-PHC-1${n}`]), "PRS-KLN-01"],
+  ],
+  ["kln-main-drive", ["ELE-KLN-01", "SPD-KLN-01", ...[1, 2, 3, 4, 5, 6].map((n) => `TMP-KLN-4${n}`), "TMP-KLN-19", "TMP-KLN-20", "VIB-KLN-01", "VIB-KLN-05", "VIB-KLN-02", "VIB-KLN-03", "VIB-KLN-04", "TMP-KLN-22", "TMP-KLN-23"]],
   ["kln-lube-pump", ["PRS-KLN-04", "PRS-KLN-05"]],
   ["kln-thrust-hpu", ["PRS-KLN-07"]],
   ["kln-outlet-fan", ["TMP-KLN-25"]],
   ["brn-pafan", ["PRS-BRN-01", "PRS-BRN-02", "PRS-BRN-03", "VIB-BRN-01", "TMP-BRN-01", "ELE-BRN-01", "TMP-BRN-05"]],
-  ["brn-coal-feeder", ["FLO-BRN-01", "CAL-BRN-01"]],
+  ["brn-coal-feeder", ["FLO-BRN-01"]],
   ["brn-coal-blower", ["PRS-BRN-04", "VIB-BRN-02", "ELE-BRN-02", "TMP-BRN-06"]],
+  ["brn-bin-blower", ["ELE-BRN-03"]],
   ...([1, 2, 3, 4, 5, 6] as const).map((k): [EquipmentId, string[]] => [
     `clr-fan-${k}` as EquipmentId,
-    [`PRS-CLR-0${k}`, `ELE-CLR-0${k}`, `TMP-CLR-0${k}`, `TMP-CLR-${16 + k}`, ...(k <= 3 ? [`VIB-CLR-0${k}`] : [])],
+    [`PRS-CLR-0${k}`, `ELE-CLR-0${k}`, `TMP-CLR-0${k}`, `TMP-CLR-${16 + k}`, `VIB-CLR-0${k}`, `SPD-CLR-0${k}`],
   ]),
-  ["clr-grate-hpu", ["SPD-CLR-01", "PRS-CLR-07", "TMP-CLR-07"]],
+  ...([1, 2, 3] as const).map((k): [EquipmentId, string[]] => [`clr-grate-${k}` as EquipmentId, [`SPD-CLR-1${k}`, `ELE-CLR-1${k}`, `VIB-CLR-1${k}`, `TMP-CLR-3${k}`]]),
   ["clr-vent-fan", ["VIB-CLR-07", "TMP-CLR-10", "ELE-CLR-07", "TMP-CLR-23"]],
-  ["hmr-crusher", ["TMP-HMR-03", "ELE-HMR-01", "VIB-HMR-01", "VIB-HMR-02", "TMP-HMR-01", "TMP-HMR-02", "SPD-HMR-01"]],
-  ["csl-conveyor", ["VIB-CSL-01", "ELE-CSL-01", "SPD-CSL-01", "TMP-CSL-02"]],
-  ["csl-dust-fan", ["PRS-CSL-01", "ELE-CSL-02"]],
+  ["hmr-crusher", ["TMP-HMR-03", "ELE-HMR-01", "VIB-HMR-01", "VIB-HMR-02", "VIB-HMR-03", "VIB-HMR-04", "TMP-HMR-01", "TMP-HMR-02", "TMP-HMR-04", "TMP-HMR-05", "SPD-HMR-01"]],
+  ["csl-conveyor", ["VIB-CSL-01", "VIB-CSL-02", "VIB-CSL-03", "ELE-CSL-01", "SPD-CSL-01", "TMP-CSL-02", "TMP-CSL-03", "TMP-CSL-04"]],
+  ["csl-dust-fan", ["ELE-CSL-02", "PRS-CSL-02", "PRS-CSL-03"]],
 ];
 
 export const TAG_UNIT: Record<string, EquipmentId | "fsl-aeration"> = Object.fromEntries(UNIT_TAGS.flatMap(([u, tags]) => tags.map((tg) => [tg, u])));
@@ -167,12 +197,12 @@ export function machineRunning(eq: EquipmentStates): Record<string, boolean> {
 }
 
 /**
- * Units without a run-feedback point in the D5 signal schedule (no motor current / status tag): the edge cannot
- * see that they stopped, so the reference model and the rules assume they run and their loss shows in their
- * process signals (air-slide pressure FP-03, gearbox oil pressure / flow switch FP-15, thrust pressure / axial
- * position FP-25, sector-plate cooling air FP-29, grate stroke / hydraulic pressure FP-38).
+ * Units without a run-feedback point in the OSW-PE-SNL-PYR-01 Rev. 02 register (no motor current / status tag): the
+ * edge cannot see that they stopped, so the reference model and the rules assume they run and their loss shows in
+ * their process signals (gearbox oil pressure / flow switch FP-15, thrust pressure / axial position FP-25,
+ * sector-plate cooling air FP-29). Rev. 02 gives the air-slide blowers and the grate drives their own motor currents.
  */
-export const PROCESS_ONLY: readonly EquipmentId[] = ["kfs-airslide-blower", "kln-lube-pump", "kln-thrust-hpu", "kln-outlet-fan", "clr-grate-hpu"];
+export const PROCESS_ONLY: readonly EquipmentId[] = ["kln-lube-pump", "kln-thrust-hpu", "kln-outlet-fan"];
 
 /** Equipment states as the edge sees them (MCC / status feedback): process-only units read "run". */
 export function observedEquipment(eq: EquipmentStates): EquipmentStates {
@@ -181,7 +211,7 @@ export function observedEquipment(eq: EquipmentStates): EquipmentStates {
   return o;
 }
 
-/** Tags each unit governs (the shared aeration header goes to neither blower: STS-FSL-02 says which one runs). */
+/** Tags each unit governs (the shared aeration header goes to neither blower: the header pressure and current say which one runs). */
 const TAGS_OF_UNIT: Partial<Record<EquipmentId, string[]>> = Object.fromEntries(
   UNIT_TAGS.filter(([u]) => u !== "fsl-aeration").map(([u, tags]) => [u, tags]),
 );

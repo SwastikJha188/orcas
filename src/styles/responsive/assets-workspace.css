@@ -30,8 +30,8 @@
     grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
     align-content: start;
     align-items: start;
-    gap: 20px;
-    padding: 28px 40px 48px;
+    gap: var(--gap-group) var(--gap-section);
+    padding: var(--page-pad-top) var(--page-pad-inline) var(--page-pad-bottom);
   }
   :root .hx-contents > * {
     grid-column: 1 / -1;
@@ -70,7 +70,7 @@
     flex: none;
     font-size: var(--fs-xs);
     font-weight: 500;
-    letter-spacing: -0.01em;
+    letter-spacing: var(--tracking-small);
     color: var(--text-muted);
   }
   :root .hx-tree-toggle-node {
@@ -118,8 +118,6 @@
     flex: 1 1 auto;
     min-height: 0;
     height: auto;
-    padding: 18px 20px 32px;
-    gap: 16px;
   }
 
   /* Register: drop location (the tree and map carry it), criticality and the
@@ -136,11 +134,6 @@
   :root .hx-module[data-tree-open] > .assets-industrial-sidebar {
     width: 100%;
     border-right: none;
-  }
-
-  :root .hx-contents {
-    padding: 12px 12px 24px;
-    gap: 16px;
   }
 
   /* Header: stacked, crumbs keep only the parent level as a way up. */
@@ -160,6 +153,8 @@
   }
   :root .hx-head .ast-title {
     font-size: var(--fs-2xl);
+    line-height: var(--lh-tight);
+    letter-spacing: var(--tracking-heading);
   }
   :root .hx-head .pg-actions {
     display: flex;
@@ -181,6 +176,8 @@
   }
   :root .hx-contents .ast-kpi-value {
     font-size: var(--fs-3xl);
+    line-height: var(--lh-tight);
+    letter-spacing: var(--tracking-heading);
   }
   :root .hx-contents .ast-kpi-value .ast-unit {
     font-size: var(--fs-sm);
@@ -210,25 +207,7 @@
    2. MACHINE WORKSPACE · padding (the bars above it are machine-nav.tsx)
    ========================================================================== */
 
-@media (min-width: 1920px) {
-  :root .assets-machine-workspace {
-    padding: 12px 24px 32px;
-  }
-}
-
-@media (max-width: 1023px) {
-  :root .assets-machine-workspace {
-    padding: 18px 20px 32px;
-    gap: 16px;
-  }
-}
-
-@media (max-width: 599px) {
-  :root .assets-machine-workspace {
-    padding: 12px 12px 24px;
-    gap: 12px;
-  }
-}
+/* Padding and gap come from --page-pad-* / --gap-group, which step down per breakpoint in globals.css. */
 
 /* ==========================================================================
    3. MACHINE DRAWINGS · .mx-canvas frame scales with its column
@@ -310,6 +289,8 @@
   }
   :root .sim-head .ast-title {
     font-size: var(--fs-2xl);
+    line-height: var(--lh-tight);
+    letter-spacing: var(--tracking-heading);
   }
   :root .sim-head .sim-actions {
     gap: 8px;
@@ -353,6 +334,8 @@
   }
   :root .sim-kpis .ast-kpi-value {
     font-size: var(--fs-3xl);
+    line-height: var(--lh-tight);
+    letter-spacing: var(--tracking-heading);
   }
   :root .sim-kpis .ast-kpi-foot {
     display: -webkit-box;

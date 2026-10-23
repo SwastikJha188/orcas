@@ -35,7 +35,10 @@ import { useIndustrialData } from "@/providers/industrial-data-context";
 import { isConditionRule } from "@shared/lib/plant-defs";
 import type { MapView } from "../plant-home";
 
-export type PyroSectionId = "line" | "phc" | "kln" | "clr" | "fed" | "brn" | "cct";
+export type PyroMachineSectionId = "phc" | "kln" | "clr" | "fed" | "brn" | "cct";
+/** Stages drawn together on one combined sheet (top bar, after the machines). */
+export type PyroComboId = "pk" | "pkb" | "cc";
+export type PyroSectionId = "line" | PyroMachineSectionId | PyroComboId;
 
 /**
  * Pyro-line drawing sections: each section's overview sheet draws one machine
@@ -58,6 +61,34 @@ export const PYRO_SECTION_TABS: Array<{
   { id: "clr", label: "Grate cooler", code: "CLR-01", sheetId: "C-0", diagramType: "grate-cooler" },
   { id: "cct", label: "Clinker", code: "CCT-01", sheetId: "H-0", diagramType: "clinker-transport" },
 ];
+
+/**
+ * Combined sheets: several stages on one drawing with all their readings.
+ * `sections` are the machines it draws; `primary` is the machine its pages
+ * (Diagnosis, Prognosis …) open on.
+ */
+export const PYRO_COMBO_TABS: Array<{
+  id: PyroComboId;
+  label: string;
+  sheetId: string;
+  sections: PyroMachineSectionId[];
+  primary: PyroMachineSectionId;
+}> = [
+  { id: "pk", label: "Preheater + kiln", sheetId: "PYR-PK", sections: ["phc", "kln"], primary: "kln" },
+  { id: "pkb", label: "Preheater + kiln + burner", sheetId: "PYR-PKB", sections: ["phc", "kln", "brn"], primary: "kln" },
+  { id: "cc", label: "Grate cooler + clinker", sheetId: "PYR-CC", sections: ["clr", "cct"], primary: "clr" },
+];
+
+export const isPyroCombo = (id: string): id is PyroComboId => PYRO_COMBO_TABS.some((t) => t.id === id);
+
+/** A plant's combined-sheet pills: those whose machines are all on the plant. */
+export function comboTabs(units: Array<{ id: string; diagramType?: string | null }>): MachineTab[] {
+  const machineOf = (sec: PyroMachineSectionId) => {
+    const dt = PYRO_SECTION_TABS.find((t) => t.id === sec)?.diagramType;
+    return dt ? units.find((u) => u.diagramType === dt)?.id ?? null : null;
+  };
+  return PYRO_COMBO_TABS.filter((c) => c.sections.every((sec) => machineOf(sec))).map((c) => ({ key: c.id, label: c.label, machineId: machineOf(c.primary) }));
+}
 
 export const VPC_DIAGRAM = "vpc-casting";
 
@@ -119,15 +150,42 @@ const VIEW_ITEMS = [
   { id: "assets", label: "Assets" },
 ];
 
-/** Row 1: the plant's machines (left) and the view toggle (right). */
+/** One pill group of Row 1. */
+function TopbarPills({ tabs, activeKey, onSelect, label }: { tabs: MachineTab[]; activeKey: string | null; onSelect: (tab: MachineTab) => void; label: string }) {
+  return (
+    <div className="opc-pill-group" role="tablist" aria-label={label}>
+      {tabs.map((t) => {
+        const isActive = t.key === activeKey;
+        return (
+          <button
+            key={t.key}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            className="opc-pill-btn"
+            data-active={isActive || undefined}
+            onClick={() => onSelect(t)}
+          >
+            <span>{t.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Row 1: the plant's machines, then (after a rule) the combined sheets (left), and the view toggle (right). */
 export function MachineTopbar({
   tabs,
+  combos = [],
   activeKey,
   onSelect,
   view,
   onChangeView,
 }: {
   tabs: MachineTab[];
+  /** Combined sheets of several machines (Operator view only). */
+  combos?: MachineTab[];
   activeKey: string | null;
   onSelect: (tab: MachineTab) => void;
   view: MapView;
@@ -136,30 +194,22 @@ export function MachineTopbar({
   return (
     <header className="opc-topbar" aria-label="Machines and view">
       <div className="opc-stage-tabs">
-        <div className="opc-pill-group" role="tablist" aria-label="Select machine">
-          {/* No machines yet: the plant is still loading. */}
-          {tabs.length === 0 && (
-            <span className="opc-pill-btn" aria-hidden="true">
+        {/* No machines yet: the plant is still loading. */}
+        {tabs.length === 0 ? (
+          <div className="opc-pill-group" aria-hidden="true">
+            <span className="opc-pill-btn">
               <Skel width="8ch" />
             </span>
-          )}
-          {tabs.map((t) => {
-            const isActive = t.key === activeKey;
-            return (
-              <button
-                key={t.key}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                className="opc-pill-btn"
-                data-active={isActive || undefined}
-                onClick={() => onSelect(t)}
-              >
-                <span>{t.label}</span>
-              </button>
-            );
-          })}
-        </div>
+          </div>
+        ) : (
+          <TopbarPills tabs={tabs} activeKey={activeKey} onSelect={onSelect} label="Select machine" />
+        )}
+        {tabs.length > 0 && combos.length > 0 && (
+          <>
+            <span className="opc-bar-sep opc-topbar-sep" aria-hidden="true" />
+            <TopbarPills tabs={combos} activeKey={activeKey} onSelect={onSelect} label="Machines drawn together" />
+          </>
+        )}
       </div>
       <div className="opc-topbar-right">
         {onChangeView && (
@@ -210,7 +260,7 @@ export function usePlantStatus(plant: HierarchyNode | null | undefined, lookup: 
   }, [plant, lookup, fleet, isPyro]);
 }
 
-/** Row 2, left: dot · scope · Health % · off-normal count. */
+/** Row 2, left: dot · scope · Health % with a 0–100 meter · off-normal count. */
 export function StatusSummary({ tone, label, health, offNormal }: { tone: Tone; label: string; health: number | null; offNormal: string | null }) {
   // Until the plant and its live readings are in, the number is on its way, not missing.
   const { hasLoaded } = useIndustrialData();
@@ -221,10 +271,27 @@ export function StatusSummary({ tone, label, health, offNormal }: { tone: Tone; 
     <div className="opc-subbar-summary">
       <span className="ph-unit-dot" data-tone={loading ? "idle" : tone} aria-hidden="true" />
       <span className="opc-tag-bar-id">{label}</span>
-      <span className="opc-tag-bar-val ast-num" data-tone={loading ? undefined : tone}>
-        Health {health !== null ? `${health}%` : loading ? <Skel width="3ch" label="Loading health" /> : "—"}
+      <span className="opc-health" data-tone={loading ? "idle" : tone} title={health !== null ? `Health ${health} out of 100` : undefined}>
+        <span className="opc-health-num ast-num">
+          {health !== null ? (
+            <>
+              {health}
+              <small>%</small>
+            </>
+          ) : loading ? (
+            <Skel width="2.2ch" label="Loading health" />
+          ) : (
+            "—"
+          )}
+        </span>
+        <span className="opc-health-side">
+          <span className="opc-health-label">Health</span>
+          <span className="opc-health-meter" aria-hidden="true">
+            <i style={{ width: `${Math.max(0, Math.min(100, health ?? 0))}%` }} />
+          </span>
+        </span>
       </span>
-      {offNormal && <span className="opc-tag-bar-band">{offNormal}</span>}
+      {offNormal && <span className="opc-tag-bar-band opc-health-note">{offNormal}</span>}
     </div>
   );
 }

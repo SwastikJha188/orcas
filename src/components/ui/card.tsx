@@ -12,7 +12,7 @@ export function Card({ icon, title, description, className = "", children, ...pr
   return (
     <div className={`ui-card ${className}`} {...props}>
       {icon && <div className="ui-card-icon">{icon}</div>}
-      <h3 className="ui-card-title">{title}</h3>
+      <h2 className="ui-card-title">{title}</h2>
       {description && (
         <div className="ui-card-description">
           {description}

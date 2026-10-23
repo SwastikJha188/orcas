@@ -3,8 +3,9 @@
  * left panel (page box 48.5, 105.5 → 811.5, 777.5): inlet duct from the ID fan
  * (temperature and draft), pulse-cleaning air header and controller, clean-gas
  * plenum over three filter-bag compartments, bag ΔP transmitter on its
- * impulse lines, three dust hoppers with level switch, dust discharge
- * conveyor and airlock, outlet duct to the baghouse fan and stack CEMS.
+ * impulse lines, three dust hoppers each with a level switch and a rotary
+ * airlock (zero-speed), dust discharge conveyor and airlock, outlet duct to the
+ * baghouse fan (outlet pressure) and the stack CEMS (dust, SOx, NOx, CO, CO₂).
  */
 import React from "react";
 import { GroundLine, MX, PAINT } from "@/components/assets/machine-kit/machine-kit";
@@ -79,15 +80,23 @@ function Art() {
       <InstrumentBox x={577.5} y={249} w={41} h={35} rx={4} />
       <Baghouse />
       <PulseController />
-      {/* level switch on the middle hopper */}
-      <InstrumentBox x={361} y={491.5} w={30} h={19.5} rx={3} />
+      {/* level switch on each hopper, rotary airlock under each hopper outlet */}
+      {[0, 1, 2].map((i) => (
+        <InstrumentBox key={i} x={361 + (i - 1) * CW} y={491.5} w={30} h={19.5} rx={3} />
+      ))}
+      {OUTLETS.map(([a, b]) => (
+        <g key={a}>
+          <circle cx={(a + b) / 2} cy={526} r={8.5} {...PAINT.raised} />
+          <circle cx={(a + b) / 2} cy={526} r={3.5} fill="none" stroke={MX.edge} strokeWidth={1} />
+        </g>
+      ))}
       {/* dust discharge conveyor and airlock with its motor */}
       <rect x={185.5} y={546.5} width={338} height={21} rx={4} {...PAINT.cylinder} />
       <circle cx={550} cy={557} r={16.5} {...PAINT.raised} />
       <circle cx={550} cy={557} r={10} fill="none" stroke={MX.fine} strokeWidth={0.9} />
       <InstrumentBox x={568} y={548.5} w={40.5} h={17.5} rx={3} />
       {/* stack dust CEMS */}
-      <InstrumentBox x={645} y={432} w={74.5} h={38} rx={4} />
+      <InstrumentBox x={645} y={432} w={74.5} h={58} rx={4} />
       <Caps x={37.5} y={161} size={7.5} color={MX.gas} spacing="0.2em">
         FROM ID FAN
       </Caps>
@@ -119,26 +128,44 @@ function Art() {
   );
 }
 
-/** Pad centre per point, at the group-image pads. */
+/** Pad centre per point, at the group-image pads; hoppers 1–3 left → right (level switch, then airlock under it), CEMS species on its box. */
 const pads: LineSheetArt["pads"] = {
-  "TMP-BGH-02": [71, 188.5],
   "PRS-BGH-02": [125, 188.5],
-  "STS-BGH-01": [628, 107.5],
+  "PRS-BGH-03": [660, 216],
   "PRS-BGH-01": [597.5, 266.5],
-  "LEV-BGH-01": [376, 501.5],
-  "GAS-BGH-01": [681.7, 450.7],
-  "ELE-BGH-02": [588, 557],
+  "TMP-BGH-02": [71, 188.5],
+  "STS-BGH-01": [628, 107.5],
+  "LEV-BGH-01": [376 - CW, 501.5],
+  "LEV-BGH-02": [376, 501.5],
+  "LEV-BGH-03": [376 + CW, 501.5],
+  "SPD-BGH-02": [(OUTLETS[0][0] + OUTLETS[0][1]) / 2, 526],
+  "SPD-BGH-03": [(OUTLETS[1][0] + OUTLETS[1][1]) / 2, 526],
+  "SPD-BGH-04": [(OUTLETS[2][0] + OUTLETS[2][1]) / 2, 526],
+  "GAS-BGH-01": [657.5, 447],
+  "GAS-BGH-02": [682, 447],
+  "GAS-BGH-03": [706.5, 447],
+  "GAS-BGH-04": [669.8, 474],
+  "GAS-BGH-05": [694.3, 474],
 };
 
-/** Inlet draft over the bags, controller back over its header, ΔP over the bags, CEMS back over its box, airlock out to the right. */
+/** Inlet points under the inlet duct, outlet pressure over the outlet duct, controller back over its header, ΔP over the bags, hopper plates in the gaps between the hoppers, CEMS plates stacked above its box. */
 const callouts: LineSheetArt["callouts"] = {
-  "TMP-BGH-02": [22.5, 215, "start"],
   "PRS-BGH-02": [58, 238.5, "start"],
-  "STS-BGH-01": [586, 79.5, "end"],
+  "PRS-BGH-03": [700, 192, "middle"],
   "PRS-BGH-01": [580.5, 294, "end"],
-  "LEV-BGH-01": [420, 529, "start"],
-  "GAS-BGH-01": [639, 479, "end"],
-  "ELE-BGH-02": [628, 529, "start"],
+  "TMP-BGH-02": [22.5, 215, "start"],
+  "STS-BGH-01": [586, 79.5, "end"],
+  "LEV-BGH-01": [200, 490, "end"],
+  "LEV-BGH-02": [372, 485, "start"],
+  "LEV-BGH-03": [515, 490, "start"],
+  "SPD-BGH-02": [200, 526, "end"],
+  "SPD-BGH-03": [372, 528, "start"],
+  "SPD-BGH-04": [500, 528, "start"],
+  "GAS-BGH-01": [640, 330, "start"],
+  "GAS-BGH-02": [640, 348, "start"],
+  "GAS-BGH-03": [640, 366, "start"],
+  "GAS-BGH-04": [640, 384, "start"],
+  "GAS-BGH-05": [640, 402, "start"],
 };
 
 export const sheet: LineSheetArt = { id: "G-1", ready: true, width: W, height: H, Art, pads, callouts };

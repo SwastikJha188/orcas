@@ -402,7 +402,7 @@ export function VpcPlantOverview({
                   <text
                     x={25}
                     y={21.5}
-                    fontFamily="var(--font-sans, system-ui, sans-serif)"
+                    fontFamily="var(--font-ui)"
                     fontSize={12}
                     fontWeight={600}
                     fill="var(--dx-ink)"
@@ -415,7 +415,7 @@ export function VpcPlantOverview({
                       <text
                         x={25}
                         y={40}
-                        fontFamily="var(--font-mono, monospace)"
+                        fontFamily="var(--font-mono)"
                         fontSize={12}
                         fontWeight={500}
                         fill={toneColor(tone)}
@@ -427,7 +427,7 @@ export function VpcPlantOverview({
                           x={cardW - 14}
                           y={40}
                           textAnchor="end"
-                          fontFamily="var(--font-mono, monospace)"
+                          fontFamily="var(--font-mono)"
                           fontSize={12}
                           fontWeight={700}
                           fill="var(--dx-ink)"
@@ -441,7 +441,7 @@ export function VpcPlantOverview({
                     <text
                       x={25}
                       y={40}
-                      fontFamily="var(--font-mono, monospace)"
+                      fontFamily="var(--font-mono)"
                       fontSize={11.5}
                       fill="var(--text-muted)"
                     >

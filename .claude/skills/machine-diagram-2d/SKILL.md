@@ -45,14 +45,23 @@ Open these files and look at them:
   type, with the box where the chart's box is, and a `material` link for
   each arrow. Use `"layout": "schematic"`. Boxes that are not machines
   ("Market", "Quarry", "Power handling") are left out.
-- **A photo or render with several machines** (a factory floor, a skid):
-  draw every machine you can see clearly; leave out people, buildings,
-  vehicles, crates and background.
+- **A factory, plant or line** (a photo, render, flow sheet or DCS screen of
+  many machines): every machine is an item in the order the material flows
+  — nothing is merged into one box. Name each with the name the image
+  prints (code in brackets if given: `"KILN (KLN-01)"`). Link every machine
+  to the next with the right medium, and name the main flows (`label`).
+  Leave out people, buildings, vehicles, crates and background. A line of
+  12 machines needs 12 items and at least 11 links.
 - **No machine at all** (a person, a chart of numbers, a logo, a text-only
   slide): do not write a spec. Say "no machine in the image" in your report
   (in an onboarding run, push it as failed with that reason).
 - **Several small pictures in one image** (a collage, steps 1-2-3): draw the
   largest picture of the machine only.
+
+**Draw everything the image shows.** Never narrow the drawing to one area
+or one machine of the picture because of a file name, a title or a guess —
+only when the task itself names one machine. A whole-plant screen becomes a
+whole-plant drawing.
 
 ## Step 2 — List the machines (items)
 
@@ -60,14 +69,14 @@ Write a table in your reply first, one row per machine you can see:
 
 | id | type | box: left, top, right, bottom | label |
 |----|------|-------------------------------|-------|
-| cabinet | cabinet | 4.6, 21, 15.4, 47 | CONTROL CABINET |
+| cabinet | cabinet | 3, 20, 13, 50 | CONTROL PANEL |
 
 Rules:
 
 1. **One row per physical machine** (cabinet, pump, tank, fan, chamber …).
    Pipes, cables, arrows and sensors are NOT items (they come in steps 3–4).
    A valve on a pipe is NOT an item (it goes on the link in step 3).
-2. **id**: short, lower case, no spaces: `vacuum_pump`, `melt_chamber`, `fan_2`.
+2. **id**: short, lower case, no spaces: `booster_pump`, `feed_tank`, `fan_2`.
 3. **type** — decide in this order:
    a. Is it a standard piece of process equipment from the **equipment**
       table (pump, tank, fan, cyclone, conveyor, cabinet …)? Use that type.
@@ -80,6 +89,13 @@ Rules:
       `block` with `"tone": "recess"`, covers `"tone": "raised"`, an
       inclined arm a `block` with `"angle"`. Usually 4–25 parts. Make
       touching parts touch in your boxes (see rule 9).
+      **The drawing of such a machine is traced from the image itself** —
+      its real outline, curves and detail — so your part boxes only have to
+      say *where* the machine and its parts are and what they are called.
+      Together your boxes must cover the **whole** machine, edge to edge
+      (nothing of it left outside a box), and never reach over label text
+      or into the next machine. Don't worry about drawing curves: boxes
+      are enough, the picture gives the shape.
    c. Only a small, unclear thing you cannot break into parts → `machine`.
 4. **box**: the machine's own outline on the grid — left edge x, top edge y,
    right edge x, bottom edge y. Read each edge off grid.png / the zooms.
@@ -91,16 +107,29 @@ Rules:
    printed → a short plain name ("PUMP", "MIXER"). No label for small parts.
 6. A machine that sits **on top of** another machine (an actuator on a
    chamber, a chamber on a chamber, a motor on a tank lid): add `"on": "<id
-   of the one below>"`.
-7. **What kind of picture is it?** Answer one question:
-   - Do the machines stand on a floor, seen from the side (a photo, a 3D
-     render, an elevation drawing)? → leave it as it is (`"layout"` is
-     `"plant"` by default). Everything is stood on the floor for you, even
-     items the image shows floating. If the image draws two or more floor
-     lines (a two-level plant), add `"floors": [y1, y2]` (the y of each line).
-   - Is it a flow diagram, P&ID or control-room (DCS / SCADA) screen with
-     machines placed all over the page? → add `"layout": "schematic"`. The
-     machines then keep the places the image gives them.
+   of the one below>"`. Use `"on"` only for "stands on top of". A part that
+   **hangs below** another (a spindle under a crossbar, handles under a
+   wheel) or is fixed **beside** it gets no `"on"` — just draw its box
+   touching the other part, and it stays exactly there.
+7. **What kind of picture is it?** Look at the floor in the image:
+   - **The floor is a line** at the bottom (or there is no floor and the
+     machines are drawn front-on, like an elevation): a **side view**. Leave
+     `"layout"` out (it is `"plant"`). Everything is stood on the floor for
+     you; a machine the image draws well above the floor keeps its height
+     and gets a stand down to the floor. Only if the
+     image itself **draws** a second floor — a floor line, slab or platform
+     with machines standing on it (a two-level plant) — add
+     `"floors": [y1, y2]`. Never add a floor that is not drawn, not even to
+     keep a machine at its height or to stack one machine on another (use
+     `"on"` for that).
+   - **The floor is a big area you look down onto** — you can see the tops
+     of the machines, machines further back are higher up in the picture
+     (an isometric / 3D render of a cell or factory, an aerial photo, a
+     layout plan): add `"layout": "schematic"`. A side view would pile the
+     back machines on top of the front ones.
+   - **A flow diagram, P&ID or control-room (DCS / SCADA) screen** with
+     machines placed all over the page: add `"layout": "schematic"`.
+   With `"schematic"` the machines keep the places the image gives them.
 8. Repeated machines (6 identical fans) → 6 items: `fan_1` … `fan_6`.
 9. **Parts that touch stay joined.** When you build a machine from shapes,
    draw the boxes so parts that touch in the image touch (or slightly
@@ -175,8 +204,8 @@ One row per pipe, duct, cable, belt or dashed signal line between two items:
 
 | from | to | medium | valves |
 |------|----|--------|--------|
-| generator | melt_chamber | power | |
-| gas | flask_chamber | gas | regulator at 25, solenoid at 60 |
+| feed_tank | pump | water | |
+| dosing | feed_tank | gas | regulator at 15, solenoid at 55 |
 
 - **from / to**: item ids from step 2, exactly as written. Flow goes from →
   to (for a vacuum line, from the pump to the chamber is fine).
@@ -192,7 +221,25 @@ One row per pipe, duct, cable, belt or dashed signal line between two items:
 - **valves**: valves drawn on that line, each with `kind` (gate, globe, ball,
   butterfly, check, control, solenoid, regulator) and `at` = how far along
   the line from `from` to `to`, in % (25 = a quarter of the way).
-- You do NOT give the pipe's path. The script routes it.
+- **label**: when the image names the flow ("Hot meal to kiln", "Tertiary
+  air", "Clinker to crusher"), add `"label": "HOT MEAL TO KILN"` — it is
+  written along the line. Give every long line of a factory its name.
+- **path** — where the line runs in the image. Follow the line in the image
+  with your eye and write its corner points on the grid, from the `from`
+  item to the `to` item: `"path": [[23, 31], [23, 42], [61, 42], [61, 50]]`.
+  - First point: where the line leaves the `from` machine (on its edge).
+    Last point: where it enters the `to` machine.
+  - One point at every corner (where the line turns). A straight line needs
+    only its two ends. Do not add points along a straight run.
+  - Use the zoom pictures to read corners exactly; a line hugging a machine
+    stays hugging it.
+  - A line with no visible route in the image (two machines just side by
+    side) may leave `path` out; the script then routes it.
+  - Give a path for every line the image draws. This is what makes the
+    drawing look like the image instead of a re-arranged copy.
+- **Count your lines.** Before moving on, count the pipes, ducts and arrows
+  in the image and make sure you have a link for each. A machine with no
+  link is usually a mistake (every machine in a plant feeds or is fed).
 
 ## Step 4 — List the sensors (points)
 
@@ -200,7 +247,7 @@ One row per sensor / instrument circle / gauge in the image:
 
 | tag | on | pos x, y | what it measures |
 |-----|----|----------|------------------|
-| VIB-01 | vacuum_pump | 11, 74 | Vacuum pump vibration |
+| LVL-01 | feed_tank | 27, 50 | Feed tank level |
 
 - **tag**: the tag printed in the image (TT-101, P1 …). If you were given a
   list of sensor tags for this machine, use those tags exactly as written and
@@ -217,38 +264,36 @@ One row per sensor / instrument circle / gauge in the image:
 
 Write the file `<work folder>/<name>.spec.json` (the task may give the exact
 path and name). Copy this shape exactly — it is the spec for the example
-image (an induction melting and vacuum casting system). Replace everything
+image (a made-up cooling water treatment skid). Replace everything
 with what YOUR image shows:
 
 ```json
 {
-  "id": "vacuum-casting-cell",
-  "name": "Induction melting and vacuum casting system",
+  "id": "water-treatment-skid",
+  "name": "Cooling water treatment skid",
   "image": "source.png",
   "items": [
-    { "id": "cabinet", "type": "cabinet", "box": [4.6, 21, 15.4, 47], "label": "CONTROL CABINET" },
-    { "id": "generator", "type": "generator", "box": [25.5, 29, 36.5, 49], "label": "INDUCTION GENERATOR" },
-    { "id": "vacuum_pump", "type": "vacuum-pump", "box": [6.5, 75, 25, 93], "label": "VACUUM PUMP", "options": { "motor": "left" } },
-    { "id": "flask_chamber", "type": "chamber", "box": [45.5, 64, 58.5, 92], "label": "FLASK CHAMBER", "options": { "contents": "flask" } },
-    { "id": "melt_chamber", "type": "chamber", "box": [46, 26, 58, 54], "label": "MELTING CHAMBER", "on": "flask_chamber", "options": { "contents": "crucible-coil", "heat": true } },
-    { "id": "actuator", "type": "actuator", "box": [48.3, 9, 51.7, 26], "label": "SEALING ROD ACTUATOR", "on": "melt_chamber" },
-    { "id": "cooling", "type": "cooling-unit", "box": [82, 37, 94, 50.5], "label": "COOLING PUMP / LOOP" },
-    { "id": "gas", "type": "gas-cylinder", "box": [89.5, 60, 92.5, 83], "label": "GAS SUPPLY" }
+    { "id": "cabinet", "type": "cabinet", "box": [3, 20, 13, 50], "label": "CONTROL PANEL" },
+    { "id": "feed_tank", "type": "tank", "box": [20, 25, 34, 78], "label": "FEED TANK" },
+    { "id": "mixer_drive", "type": "motor", "box": [24, 15, 30, 25], "label": "MIXER DRIVE", "on": "feed_tank" },
+    { "id": "pump", "type": "pump", "box": [40, 64, 55, 80], "label": "BOOSTER PUMP", "options": { "motor": "right" } },
+    { "id": "filter", "type": "filter", "box": [62, 22, 76, 78], "label": "SAND FILTER" },
+    { "id": "cooler", "type": "heat-exchanger", "box": [82, 40, 97, 56], "label": "PLATE COOLER" },
+    { "id": "dosing", "type": "gas-cylinder", "box": [86, 64, 90, 88], "label": "DOSING GAS" }
   ],
   "links": [
-    { "from": "generator", "to": "melt_chamber", "medium": "power" },
-    { "id": "water_out", "from": "melt_chamber", "to": "cooling", "medium": "water" },
-    { "id": "water_in", "from": "cooling", "to": "melt_chamber", "medium": "water" },
-    { "from": "vacuum_pump", "to": "flask_chamber", "medium": "vacuum" },
-    { "id": "gas_line", "from": "gas", "to": "flask_chamber", "medium": "gas", "valves": [{ "kind": "regulator", "at": 25 }, { "kind": "solenoid", "at": 60 }] },
-    { "from": "cabinet", "to": "generator", "medium": "signal" },
-    { "from": "cabinet", "to": "actuator", "medium": "signal" }
+    { "from": "feed_tank", "to": "pump", "medium": "water", "path": [[34, 72], [40, 72]] },
+    { "id": "pump_out", "from": "pump", "to": "filter", "medium": "water", "path": [[42, 64], [42, 14], [69, 14], [69, 22]] },
+    { "id": "filter_out", "from": "filter", "to": "cooler", "medium": "water", "path": [[76, 48], [82, 48]] },
+    { "from": "dosing", "to": "feed_tank", "medium": "gas", "path": [[88, 64], [88, 60], [58, 60], [58, 86], [27, 86], [27, 78]], "valves": [{ "kind": "regulator", "at": 15 }, { "kind": "solenoid", "at": 55 }] },
+    { "from": "cabinet", "to": "pump", "medium": "signal", "path": [[13, 30], [16, 30], [16, 90], [47, 90], [47, 80]] },
+    { "from": "cabinet", "to": "mixer_drive", "medium": "signal", "path": [[13, 24], [15, 24], [15, 10], [27, 10], [27, 15]] }
   ],
   "points": [
-    { "tag": "VIB-01", "on": "vacuum_pump", "pos": [11, 74], "text": "Vacuum pump vibration" },
-    { "tag": "TMP-02", "on": "melt_chamber", "pos": [53.5, 40], "text": "Melt temperature" },
-    { "tag": "TMP-03", "on": "water_out", "pos": [69, 21], "text": "Cooling water outlet temperature" },
-    { "tag": "PRS-02", "on": "gas_line", "pos": [82.5, 62], "text": "Gas supply pressure" }
+    { "tag": "LVL-01", "on": "feed_tank", "pos": [27, 50], "text": "Feed tank level" },
+    { "tag": "PRS-01", "on": "pump_out", "pos": [42, 40], "text": "Pump discharge pressure" },
+    { "tag": "FLW-01", "on": "filter_out", "pos": [79, 48], "text": "Filtered water flow" },
+    { "tag": "TMP-01", "on": "cooler", "pos": [89, 47], "text": "Cooler outlet temperature" }
   ]
 }
 ```
@@ -274,6 +319,10 @@ a robot arm next to a CNC lathe (items only):
 Small parts drawn inside a bigger one (a window in a door, a chuck in a
 window) are fine — they sit on top of it.
 
+- `"scale"` (optional, for the 3D model): when the image or its text gives
+  a real size ("kiln 60 m long", "tank height 12 m"), add
+  `"scale": { "item": "<that item's id>", "metres": <its height> }` so the
+  model is built to true size. Otherwise leave it out.
 - `"id"`: kebab-case name of this machine kind (the task may give it).
 - `"image"`: path of the source image, relative to the spec file.
 - Plain JSON: double quotes, commas between entries, no comments.
@@ -302,13 +351,20 @@ It prints a report and writes, next to the spec: `<name>.tsx` (2D),
      small or shifted, fix its four numbers using the grid on that picture.
    - Is a machine in the image left without a box? Add an item.
    For every red circle: is it on the sensor in the image? If not, fix `pos`.
+   For every yellow path (L1, L2 … in the order of your links): does it lie
+   on its line in the image, corner on corner, from the right machine to the
+   right machine? If not, fix its points. A line in the image with no yellow
+   path on it → add the link or its path.
 3. **Compare.** Open `<name>-compare.png` (image on top, your drawing below)
    and check:
    - Every machine of the image is in the drawing, with the right kind of part
      (a pump looks like a pump, a tank like a tank). Wrong look → change `type`.
    - Left-to-right order of the machines matches the image.
-   - Every pipe / cable / signal line of the image is a line in the drawing.
-     Missing → add a link. Wrong kind of line → change `medium`.
+   - Every pipe / cable / signal line of the image is a line in the drawing,
+     running the same way (same corners, same side of each machine).
+     Missing → add a link. Wrong kind of line → change `medium`. Running a
+     different way → fix its `path` (the problems list says when a path was
+     not usable).
    - A machine that should sit on another one sits on it. If not → add `"on"`.
    - Every sensor of the image has a pad (ring) in the drawing.
    - Labels are the names from the image.

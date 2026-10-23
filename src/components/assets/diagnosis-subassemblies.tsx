@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { Table, type Column } from "@/components/ui";
+import React from "react";
+import { RestLine, Table, useFold, type Column } from "@/components/ui";
 import { bandOf, type SubNode } from "./health-derive";
 import type { HealthBands } from "@/lib/reference-data";
 
@@ -47,7 +47,6 @@ export function SubassemblyHealthTable({
   /** The machine's health-model bands; null while loading. */
   bands: HealthBands | null;
 }) {
-  const [showAll, setShowAll] = useState(false);
   const cols: Column<SubRow>[] = [
     {
       key: "sub",
@@ -92,8 +91,8 @@ export function SubassemblyHealthTable({
   // known); the picked part always shows.
   const quiet = (r: SubRow) =>
     bands !== null && r.inAlarm === 0 && r.sub.id !== selectedId && !(r.sub.scored && r.sub.health !== null && bandTone(r.sub.health, bands));
-  const rest = rows.filter(quiet).length;
-  const shown = showAll ? rows : rows.filter((r) => !quiet(r));
+  const fold = useFold(rows, quiet);
+  const shown = fold.shown;
 
   return (
     <>
@@ -107,16 +106,7 @@ export function SubassemblyHealthTable({
           onRowClick={(r) => onSelect(r.sub.id === selectedId ? null : r.sub.id)}
         />
       )}
-      {rest > 0 && (
-        <p className="pg-table-rest">
-          {showAll
-            ? `${rest} of these parts are healthy with every sensor in range.`
-            : `${shown.length ? `${rest} other part${rest === 1 ? "" : "s"}` : `All ${rest} parts`}: healthy, every sensor in range.`}{" "}
-          <button type="button" className="pg-diag-inline-link" onClick={() => setShowAll((v) => !v)} aria-expanded={showAll}>
-            {showAll ? "Hide them" : "Show them"}
-          </button>
-        </p>
-      )}
+      <RestLine rest={fold.rest} shown={shown.length} noun="part" note="healthy, every sensor in range" open={fold.open} onToggle={fold.toggle} />
     </>
   );
 }

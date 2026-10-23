@@ -3,9 +3,9 @@
  * (group-images PDF page 13 "5B", panel COOLING FANS 1–3 (HOT ZONE)).
  *
  * Three cooling fans blow up their riser ducts into compartments 1–3. Each
- * fan carries the same four points: motor current at the terminal box,
+ * fan carries the same five points: motor current at the terminal box,
  * vibration and temperature on the bearing housing, winding temperature in
- * the motor.
+ * the motor, speed at the motor's fan cowl.
  */
 import type { LineSheetArt } from "../types";
 import { CoolingFanRow, FAN, FAN_PITCH, FAN_SHEET } from "./parts-c2";
@@ -18,7 +18,8 @@ function Art() {
 /**
  * One pattern per fan: current and vibration plates run right along the
  * motor, bearing plate left over the volute, winding plate right along the
- * motor foot (its slot under the base rail is used only if the reading outgrows its lane).
+ * motor foot (its slot under the base rail is used only if the reading outgrows its lane),
+ * speed plate under the cowl below the fan label.
  */
 const pads: LineSheetArt["pads"] = {};
 const callouts: NonNullable<LineSheetArt["callouts"]> = {};
@@ -30,10 +31,12 @@ for (let k = 0; k < 3; k++) {
   pads[`VIB-CLR-${n}`] = at(FAN.pads.vib);
   pads[`TMP-CLR-${n}`] = at(FAN.pads.brg);
   pads[`TMP-CLR-${17 + k}`] = at(FAN.pads.wdg);
+  pads[`SPD-CLR-${n}`] = at(FAN.pads.spd);
   callouts[`ELE-CLR-${n}`] = [FAN.pads.ele[0] + o - 6, FAN.pads.ele[1], "start"];
   callouts[`VIB-CLR-${n}`] = [FAN.pads.vib[0] + o - 6, FAN.pads.vib[1], "start"];
   callouts[`TMP-CLR-${n}`] = [FAN.pads.brg[0] + o + 6, FAN.pads.brg[1], "end"];
   callouts[`TMP-CLR-${17 + k}`] = [FAN.pads.wdg[0] + o, 524, "middle"];
+  callouts[`SPD-CLR-${n}`] = [FAN.pads.spd[0] + o, 566, "middle"];
 }
 
 export const sheet: LineSheetArt = { id: "C-2", ready: true, width: FAN_SHEET.w, height: FAN_SHEET.h, Art, pads, callouts };

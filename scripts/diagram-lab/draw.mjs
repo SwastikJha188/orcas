@@ -108,28 +108,35 @@ await esbuild.build({
 });
 const { layoutSpec } = await import(pathToFileURL(bundle).href);
 rmSync(work, { recursive: true, force: true });
-// Items without a catalog part keep their own silhouette, traced from the image.
-let traces = {};
-if (imgFile) {
-  const tf = path.join(tmpdir(), `diagram-trace-${process.pid}.json`);
-  const tr = spawnSync("python3", ["-I", path.join(here, "trace.py"), imgFile, specPath, tf], { encoding: "utf8", timeout: 120000 });
-  if (tr.status === 0 && existsSync(tf)) {
-    try {
-      traces = JSON.parse(readFileSync(tf, "utf8"));
-    } catch {
-      traces = {};
-    }
-    rmSync(tf, { force: true });
-  }
-}
 let layout;
 try {
-  layout = layoutSpec(spec, size ?? undefined, traces);
+  layout = layoutSpec(spec, size ?? undefined);
 } catch (e) {
   out({ ok: false, problems: [`1. The layout failed: ${e?.message ?? e}. Check every item has "id", "type" and "box", and every link "from", "to", "medium".`] }, 1);
 }
 problems.push(...layout.issues);
 if (!layout.items.length) out({ ok: false, problems: problems.map((p, i) => `${i + 1}. ${p}`) }, 1);
+
+/* ---- machines without a catalog part: drawn from their own picture ---- */
+// The model's boxes say where such a machine is; its real shape comes from the image, so the drawing
+// does not depend on which model wrote the spec.
+if (imgFile && layout.traced?.length) {
+  const jf = path.join(tmpdir(), `diagram-vec-jobs-${process.pid}.json`);
+  const of = path.join(tmpdir(), `diagram-vec-out-${process.pid}.json`);
+  writeFileSync(jf, JSON.stringify(layout.traced.map((g) => ({ key: g.key, src: g.src, parts: g.parts }))));
+  const vr = spawnSync("python3", ["-I", path.join(here, "vectorize.py"), imgFile, jf, of], { encoding: "utf8", timeout: 240000 });
+  if (vr.status === 0 && existsSync(of)) {
+    try {
+      const art = JSON.parse(readFileSync(of, "utf8"));
+      for (const g of layout.traced) if (art[g.key]) g.art = art[g.key];
+    } catch {
+      /* fall back to the shape parts */
+    }
+  } else problems.push(`Could not trace the machine from the image (${(vr.stderr || "").trim().slice(0, 160)}); its parts are drawn as shapes.`);
+  rmSync(jf, { force: true });
+  rmSync(of, { force: true });
+  for (const g of layout.traced) delete g.parts;
+}
 
 /* ---- write the drawing files ---- */
 const base = (opt("name") ?? layout.id).replace(/[^a-zA-Z0-9_-]+/g, "-");
@@ -177,6 +184,19 @@ if (imgFile) {
   const cmp = path.join(dir, `${base}-compare.png`);
   spawnSync("python3", ["-I", path.join(here, "check.py"), "overlay", specPath, imgFile, ov], { encoding: "utf8" });
   spawnSync("python3", ["-I", path.join(here, "check.py"), "compare", imgFile, png, cmp], { encoding: "utf8" });
+  // Most of the picture left without items means machines were left out (or the scope was narrowed): send the model back.
+  const cv = spawnSync("python3", ["-I", path.join(here, "check.py"), "coverage", specPath, imgFile], { encoding: "utf8" });
+  try {
+    const c = JSON.parse(cv.stdout);
+    // Calibrated on 115 specs: honest ones (text-heavy screens and infographics included) score 9% and up; a spec
+    // narrowed to one area of a whole-plant screen scored 2%.
+    if (c.coverage < 0.06) {
+      const areas = c.missing.slice(0, 8).map(([x0, y0, x1, y1]) => `x ${x0}-${x1}, y ${y0}-${y1}`).join("; ");
+      problems.push(`Your items cover only ${Math.round(c.coverage * 100)}% of what the image shows. Draw EVERY machine in the image, not one area of it. Look again at these grid areas and add the machines you left out: ${areas}. (If those areas hold only text, people or background, leave them out.)`);
+    }
+  } catch {
+    /* coverage is a hint only */
+  }
   if (existsSync(ov)) files.overlay = path.relative(repo, ov);
   if (existsSync(cmp)) files.compare = path.relative(repo, cmp);
 }

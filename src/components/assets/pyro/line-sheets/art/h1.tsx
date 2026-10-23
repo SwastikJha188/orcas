@@ -5,6 +5,8 @@
  * the left, the hammer crusher (feed chute from the cooler, hopper, hammer
  * rotor cut-away) between its DE and NDE rotor bearing blocks, speed pickup on
  * the NDE shaft end, common base frame, discharge down to the pan conveyor.
+ * Rev 02 adds the motor's DE / NDE bearing vibration and temperature and the
+ * crusher outlet temperature.
  */
 import React from "react";
 import { Bolt, Coupling, GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
@@ -122,27 +124,39 @@ function Art() {
  * Pad centre per point (sheet units = page units − panel corner), as in the
  * panel. The bearing-block pads sit a few units further apart than printed
  * (blocks drawn a little taller) so the vibration / speed-and-winding /
- * temperature plate rows clear each other.
+ * temperature plate rows clear each other. Motor bearings: DE at the coupling
+ * end, NDE at the cowl end (vibration high, temperature low); crusher outlet
+ * temperature on the housing above the discharge.
  */
 const pads: LineSheetArt["pads"] = {
-  "ELE-HMR-01": [107, 255.5],
+  "VIB-HMR-03": [168, 285],
+  "VIB-HMR-04": [76, 285],
+  "TMP-HMR-04": [168, 330],
+  "TMP-HMR-05": [76, 330],
   "TMP-HMR-03": [106.2, 306.5],
+  "ELE-HMR-01": [107, 255.5],
+  "TMP-HMR-06": [318, 362],
   "VIB-HMR-01": [234.8, 283.5],
-  "TMP-HMR-01": [234.8, 329.5],
   "VIB-HMR-02": [350.2, 283.5],
+  "TMP-HMR-01": [234.8, 329.5],
   "TMP-HMR-02": [350.2, 329.5],
   "SPD-HMR-01": [405.5, 306.5],
 };
 
-/** Plate side / stand-off slot per point, from the panel's label chips. */
+/** Plate side / stand-off slot per point, from the panel's label chips; motor-bearing plates stack above the motor. */
 const callouts: LineSheetArt["callouts"] = {
-  "ELE-HMR-01": [107.5, 233.3, "middle"],
+  "VIB-HMR-03": [150, 190, "start"],
+  "VIB-HMR-04": [30, 190, "start"],
+  "TMP-HMR-04": [150, 208, "start"],
+  "TMP-HMR-05": [30, 208, "start"],
   "TMP-HMR-03": [65, 362.5, "start"],
+  "ELE-HMR-01": [107.5, 233.3, "middle"],
+  "TMP-HMR-06": [380, 360, "start"],
   "VIB-HMR-01": [210, 268, "end"],
-  "TMP-HMR-01": [210, 346, "end"],
   "VIB-HMR-02": [366.5, 289, "start"],
-  "SPD-HMR-01": [422.5, 306.7, "start"],
+  "TMP-HMR-01": [210, 346, "end"],
   "TMP-HMR-02": [366.5, 324.5, "start"],
+  "SPD-HMR-01": [422.5, 306.7, "start"],
 };
 
 export const sheet: LineSheetArt = { id: "H-1", ready: true, width: W, height: H, Art, pads, callouts };

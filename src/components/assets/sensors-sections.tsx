@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { Table, type Column } from "@/components/ui";
+import { RestLine, Table, useFold, type Column } from "@/components/ui";
 import { StatusTag, type Tone } from "./assets-shell-ui";
 import { validityTone } from "@/components/ui/status";
 import type { MachineAcquisition, MachineLivePoint } from "@shared/types/edge";
@@ -173,7 +173,6 @@ export function SensorsAssemblies({
   activeId: string | null;
   onPick: (id: string, label: string, tags: string[]) => void;
 }) {
-  const [showAll, setShowAll] = useState(false);
   const groups = useMemo(() => {
     const map = new Map<string, SensorRow[]>();
     for (const r of ctx.rows) {
@@ -256,8 +255,8 @@ export function SensorsAssemblies({
 
   // Parts whose readings are all good and within limits fold into one line; the picked part always shows.
   const quiet = ([name, list]: [string, SensorRow[]]) => name !== activeId && list.every((r) => r.status === "Normal" && r.q.quality === "Valid");
-  const rest = groups.filter(quiet).length;
-  const shown = showAll ? groups : groups.filter((g) => !quiet(g));
+  const fold = useFold(groups, quiet);
+  const shown = fold.shown;
   return (
     <section className="ast-card pg-table-card" aria-label="Machine parts">
       {shown.length > 0 && (
@@ -269,16 +268,7 @@ export function SensorsAssemblies({
           onRowClick={([name, list]) => onPick(name, name, list.map(tagOf))}
         />
       )}
-      {rest > 0 && (
-        <p className="pg-table-rest">
-          {showAll
-            ? `${rest} of these parts have every reading good and within limits.`
-            : `${shown.length ? `${rest} other part${rest === 1 ? "" : "s"}` : `All ${rest} parts`}: every reading good and within limits.`}{" "}
-          <button type="button" className="pg-diag-inline-link" onClick={() => setShowAll((v) => !v)} aria-expanded={showAll}>
-            {showAll ? "Hide them" : "Show them"}
-          </button>
-        </p>
-      )}
+      <RestLine rest={fold.rest} shown={shown.length} noun="part" note="every reading good and within limits" open={fold.open} onToggle={fold.toggle} />
     </section>
   );
 }

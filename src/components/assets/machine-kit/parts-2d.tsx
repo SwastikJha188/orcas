@@ -681,14 +681,14 @@ export function HeatExchanger({ x, y, w, h, kind = "shell" }: Box & { kind?: "sh
  * rollers with concrete piers to the box bottom; optional girth gear and a hot
  * zone glow. `tyres` are fractions of the length.
  */
-export function Drum({ x, y, w, h, tyres = [0.18, 0.82], gear, heat }: Box & { tyres?: number[]; gear?: number; heat?: [number, number] }) {
+export function Drum({ x, y, w, h, tyres = [0.18, 0.82], gear, heat, piers = true }: Box & { tyres?: number[]; gear?: number; heat?: [number, number]; piers?: boolean }) {
   const d = h * 0.5;
   const cy = y + d / 2 + h * 0.04;
   const sy = cy - d / 2;
   const rr = d * 0.18;
   return (
     <g aria-hidden="true">
-      {tyres.map((f) => {
+      {(piers ? tyres : []).map((f) => {
         const tx = x + w * f;
         return (
           <g key={f}>

@@ -4,8 +4,10 @@
  * Everything here reads the live shell map (`buildShellMap` over
  * `frame.shellProfile`) and the limits the page passes in from the DB
  * (`thermalLimits`, GET /api/measurements):
- *   - CAL-KLN-03 shell maximum: warning rate of rise from its DB limit (`ratePerHour`)
- *   - STS-KLN-08 coverage: normal = the accepted reference's lower bound, warning / alarm = its DB limit
+ *   - shell maximum (KLN fleet CAL-KLN-03, pyro line STS-KLN-08 — `shellTagsOf`): warning rate of rise from its
+ *     DB limit (`ratePerHour`)
+ *   - scanner coverage (KLN fleet STS-KLN-08; pyro line the scanner's own quality figure, D5 target 95 % / alarm
+ *     80 %): normal = the accepted reference's lower bound, warning / alarm = its DB limit
  *   - R-SHL-01 refractory loss / hot spot: shell max above the expected profile (> 12.5 K) and / or fast rise; local
  *   - R-SHL-02 ring / coating build-up: cold-band residual < −15 K + torque residual; drive vibration normal
  *
@@ -21,6 +23,8 @@ import type { MeasurementDto } from "@shared/types/monitoring";
 import {
   SHELL_ALERT,
   SHELL_CELL_AREA,
+  SHELL_COVERAGE_ALARM,
+  SHELL_COVERAGE_TARGET,
   SHELL_HOT_DELTA,
   SHELL_DA,
   SHELL_DANGER,
@@ -42,13 +46,25 @@ export const COLD_BAND = { from: 29, to: 37 } as const;
 /** Pyro-line cold band of the engine's map processing (m); not held in the DB. */
 const PYRO_COLD_BAND = { from: 30, to: 36 } as const;
 
+/**
+ * Shell-scanner tags per plant. KLN fleet: CAL-KLN-03 is the map maximum and STS-KLN-08 the scanner coverage. Pyro line
+ * (OSW-PE-SNL-PYR-01 Rev. 02): STS-KLN-08 is the scanner's shell maximum (its position along the kiln is part of the
+ * same reading) and coverage is not a register point (`frame.shellThermal.coverage`).
+ */
+export function shellTagsOf(plant: string): { maxTag: string; covTag: string | null } {
+  return plant === "pyro" ? { maxTag: "STS-KLN-08", covTag: null } : { maxTag: "CAL-KLN-03", covTag: "STS-KLN-08" };
+}
+
+/** Pyro line scanner coverage target and alarm (D5 Tables 5.4.7a / 12.1) when the DB holds no coverage measurement. */
+const PYRO_COVERAGE = { normal: SHELL_COVERAGE_TARGET, warn: SHELL_COVERAGE_TARGET, alarm: SHELL_COVERAGE_ALARM } as const;
+
 /** Thresholds the Thermal page judges and draws with, per plant. Null where the DB holds no value. */
 export interface ThermalLimits {
   /** Residual of the hottest section that makes a hot-spot finding (K). */
   hotDelta: number;
-  /** Rate of rise that is a warning (K/h): CAL-KLN-03's DB limit `ratePerHour`. */
+  /** Rate of rise that is a warning (K/h): the shell maximum's DB limit `ratePerHour`. */
   rateWarn: number | null;
-  /** STS-KLN-08: normal = accepted reference lower bound; warn / alarm = DB limit values. */
+  /** Scanner coverage: normal = accepted reference lower bound; warn / alarm = DB limit values (pyro line: D5 target / alarm). */
   coverage: { normal: number | null; warn: number | null; alarm: number | null };
   /** Where a ring / coating build-up shows as a cold band (m). */
   coldBand: { from: number; to: number };
@@ -57,9 +73,10 @@ export interface ThermalLimits {
 }
 
 /**
- * Limits from the machine's DB measurements: CAL-KLN-03 (shell maximum) and
- * STS-KLN-08 (scanner coverage). Pyro line: the hot-spot residual is the shell
- * maximum's model-deviation warning when its DB limit is one.
+ * Limits from the machine's DB measurements: the shell maximum and the scanner
+ * coverage (`shellTagsOf`). Pyro line: the hot-spot residual is the shell
+ * maximum's model-deviation warning when its DB limit is one; coverage takes the
+ * D5 target and alarm (it has no measurement of its own).
  */
 export function thermalLimits(pyro: boolean, db: { shellMax?: MeasurementDto | null; coverage?: MeasurementDto | null }): ThermalLimits {
   const shell = db.shellMax?.limit ?? null;
@@ -68,7 +85,11 @@ export function thermalLimits(pyro: boolean, db: { shellMax?: MeasurementDto | n
   return {
     hotDelta: pyro ? pyroDelta : HOT_DELTA,
     rateWarn: shell?.ratePerHour ?? null,
-    coverage: { normal: db.coverage?.reference?.lo ?? null, warn: cov?.warnValue ?? null, alarm: cov?.alarmValue ?? null },
+    coverage: {
+      normal: db.coverage?.reference?.lo ?? (pyro ? PYRO_COVERAGE.normal : null),
+      warn: cov?.warnValue ?? (pyro ? PYRO_COVERAGE.warn : null),
+      alarm: cov?.alarmValue ?? (pyro ? PYRO_COVERAGE.alarm : null),
+    },
     coldBand: pyro ? PYRO_COLD_BAND : COLD_BAND,
     source: [shell?.source ?? cov?.source, shell || cov ? `${(shell ?? cov)!.approval} limits (DB)` : "no DB limits"].filter(Boolean).join(" · "),
   };

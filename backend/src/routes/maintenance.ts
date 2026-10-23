@@ -6,9 +6,12 @@ import { SESSION_COOKIE, sessionUser } from "@backend/services/auth-service";
 import { MaintenanceInputError, addChecklistItem, getChecklist, getVocabulary, recordInspection, removeChecklistItem, restoreChecklistItem, undoInspection } from "@backend/services/maintenance-service";
 import { alertCheckMachine, listAlertChecks, listServiceParts, listTrendLives, maintenanceMachinesIn, recordAlertCheck, replaceServicePart, servicePartMachine } from "@backend/services/maintenance-types-service";
 import { getPms, getPmsLine, proposeRequest, setPlanState, transitionWorkOrder, updateWorkOrderDetails } from "@backend/services/pms-service";
+import { shutdowns } from "./maintenance-shutdowns";
 
 /** /api/maintenance */
 export const maintenance = new Hono();
+
+maintenance.route("/shutdowns", shutdowns);
 
 function fail(error: unknown, code: string, fallback: string) {
   const bad = error instanceof MaintenanceInputError;

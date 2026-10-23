@@ -11,21 +11,27 @@ import { bearingHit, unitRun, type EvalContext } from "./context";
 
 type Sev = "Alert" | "Critical";
 
-/** C4–C6 cone taps with the gas outlet of the same stage (D5 FP-07 signals PRS-PHC-07…09, TMP-PHC-04…06). */
-const CONES: Array<[string, string, string]> = [
-  ["PRS-PHC-07", "C4", "TMP-PHC-04"],
-  ["PRS-PHC-08", "C5", "TMP-PHC-05"],
-  ["PRS-PHC-09", "C6", "TMP-PHC-06"],
-];
+/**
+ * C1–C6 cyclone cones (OSW-PE-SNL-PYR-01 Rev. 02 §4, tags on hold): cone pressure, cone temperature and the riser duct
+ * gas leaving the stage (into the stage above; C1 → the preheater exit), D5 FP-07.
+ */
+const CONES: Array<{ cone: string; stage: string; coneT: string; gasOut: string; sub: string }> = [1, 2, 3, 4, 5, 6].map((n) => ({
+  cone: `PRS-PHC-1${n}`,
+  stage: `C${n}`,
+  coneT: `TMP-PHC-2${n}`,
+  gasOut: n === 1 ? "TMP-PHC-30" : `TMP-PHC-0${n - 1}`,
+  sub: n <= 3 ? "phc-upper" : "phc-lower",
+}));
 /** Draft taps from the fan side down the tower to the kiln inlet: stage ΔP sections (D5 FP-08) and the staircase (Table 5.3.6). */
 const STAIR = ["PRS-PHC-01", "PRS-PHC-02", "PRS-PHC-03", "PRS-PHC-04", "PRS-PHC-05", "PRS-PHC-06", "PRS-KLN-01"];
 const SECTIONS: Array<{ a: string; b: string; label: string; temps: string[]; tempMin: number }> = [
   ...[1, 2, 3, 4, 5].map((n) => ({ a: `PRS-PHC-0${n}`, b: `PRS-PHC-0${n + 1}`, label: `C${n}/C${n + 1}`, temps: [`TMP-PHC-0${n}`, `TMP-PHC-0${n + 1}`], tempMin: 10 })),
-  { a: "PRS-PHC-06", b: "PRS-KLN-01", label: "C6 riser", temps: ["TMP-PHC-08"], tempMin: 15 },
+  { a: "PRS-PHC-06", b: "PRS-KLN-01", label: "C6 riser", temps: ["TMP-PHC-06"], tempMin: 15 },
 ];
-/** Gas temperatures up the tower must fall stage by stage (riser hottest). */
-const TEMP_ORDER = ["TMP-PHC-01", "TMP-PHC-02", "TMP-PHC-03", "TMP-PHC-04", "TMP-PHC-05", "TMP-PHC-06", "TMP-PHC-08"];
-const DRAFT_TAPS = ["PRS-PHC-01", "PRS-PHC-02", "PRS-PHC-03", "PRS-PHC-04", "PRS-PHC-05", "PRS-PHC-06", "PRS-PHC-07", "PRS-PHC-08", "PRS-PHC-09"];
+/** Riser duct gas temperatures up the tower must fall stage by stage (C6 riser hottest, the exit gas coolest); the cones likewise. */
+const TEMP_ORDER = ["TMP-PHC-30", "TMP-PHC-01", "TMP-PHC-02", "TMP-PHC-03", "TMP-PHC-04", "TMP-PHC-05", "TMP-PHC-06"];
+const CONE_ORDER = ["TMP-PHC-21", "TMP-PHC-22", "TMP-PHC-23", "TMP-PHC-24", "TMP-PHC-25", "TMP-PHC-26"];
+const DRAFT_TAPS = [1, 2, 3, 4, 5, 6].flatMap((n) => [`PRS-PHC-0${n}`, `PRS-PHC-1${n}`]);
 const phiOf = (tag: string) => (tag.startsWith("VIB") ? 0.6 : 0.75);
 
 export function evalPhc(c: EvalContext): void {
@@ -43,14 +49,16 @@ export function evalPhc(c: EvalContext): void {
 
     // FP-07 cyclone cone blockage: cone pressure rising toward zero, plus pulsation fading / stage gas hot / hot meal cold.
     if (drafted) {
-      for (const [cone, stage, tmp] of CONES) {
+      for (const { cone, stage, coneT, gasOut, sub } of CONES) {
         if (!good(cone)) continue;
         const r = meanRes(cone, 5);
         const f = r / Math.max(0.5, Math.abs(model[cone]));
         if (f < 0.2 || r < 4 * sig(cone)) continue;
         const why: string[] = [];
-        const hot = good(tmp) ? meanRes(tmp, 10) : 0;
-        if (hot >= 8) why.push(`${stage} gas ${fmtSigned(hot, 0)} K`);
+        const cold = good(coneT) ? meanRes(coneT, 10) : 0;
+        if (cold <= -8) why.push(`${stage} cone ${fmtSigned(cold, 0)} K (meal hold-up)`);
+        const hot = good(gasOut) ? meanRes(gasOut, 10) : 0;
+        if (hot >= 8) why.push(`gas leaving ${stage} ${fmtSigned(hot, 0)} K`);
         const h = s.hist[cone];
         const mh = s.modelHist[cone];
         if (h.length >= 16) {
@@ -66,8 +74,8 @@ export function evalPhc(c: EvalContext): void {
           sev: f >= 0.35 || (why.length >= 2 && f >= 0.25) ? "Critical" : "Alert",
           score: f,
           evidence: `FP-07 ${stage} cone blockage: cone ${measured[cone].toFixed(1)} mbar, ${fmtSigned(r)} mbar toward zero (${(f * 100).toFixed(0)} % of model) · ${why.join(" · ")}`,
-          tags: [cone, tmp, "TMP-PHC-07"],
-          subs: ["phc-lower"],
+          tags: [cone, coneT, gasOut, "TMP-PHC-07"],
+          subs: [sub],
           lead: { tag: cone, target: model[cone] * (f < 0.35 ? 0.65 : 0.5) },
         });
       }
@@ -143,16 +151,20 @@ export function evalPhc(c: EvalContext): void {
   }
 
   // ================================================================ R-PHC-05 (FP-09 false air)
-  if (fanOn && good("CAL-PHC-01") && meanRes("CAL-PHC-01", 10) > 0.6) {
+  // Exit − kiln-inlet O₂, computed from the two analysers (Rev. 02 has no false-air value; CAL-PHC-01 removed).
+  const o2Ok = good("GAS-PHC-01", "GAS-KLN-01");
+  const o2Rise = measured["GAS-PHC-01"] - measured["GAS-KLN-01"];
+  const o2RiseRes = meanRes("GAS-PHC-01", 10) - meanRes("GAS-KLN-01", 10);
+  if (fanOn && o2Ok && o2RiseRes > 0.6) {
     const pw = good("ELE-PHC-01") ? meanRes("ELE-PHC-01", 10) / Math.max(1, model["ELE-PHC-01"]) : 0;
-    const c1 = good("TMP-PHC-01") ? meanRes("TMP-PHC-01", 10) : 0;
+    const c1 = good("TMP-PHC-30") ? meanRes("TMP-PHC-30", 10) : 0;
     if (pw >= 0.02 || c1 <= -6) {
       H("PYR-PHC-01", "R-PHC-05", {
-        severity: measured["CAL-PHC-01"] >= 2.8 ? "Critical" : "Alert",
-        evidence: `Exit − inlet O₂ ${measured["CAL-PHC-01"].toFixed(2)} vol% (${fmtSigned(meanRes("CAL-PHC-01", 10), 2)} above model) · ID fan power ${fmtSigned(pw * 100, 1)} % vs fan law · C1 gas ${fmtSigned(c1, 0)} K`,
-        tags: ["CAL-PHC-01", "GAS-PHC-01", "ELE-PHC-01", "TMP-PHC-01"],
+        severity: o2Rise >= 2.8 ? "Critical" : "Alert",
+        evidence: `Exit − inlet O₂ ${o2Rise.toFixed(2)} vol% (${fmtSigned(o2RiseRes, 2)} above model) · ID fan power ${fmtSigned(pw * 100, 1)} % vs fan law · exit gas ${fmtSigned(c1, 0)} K`,
+        tags: ["GAS-PHC-01", "GAS-KLN-01", "ELE-PHC-01", "TMP-PHC-30"],
         subs: ["phc-upper"],
-        lead: { tag: "CAL-PHC-01", target: measured["CAL-PHC-01"] < 2.0 ? 2.0 : 2.8 },
+        lead: { tag: "GAS-PHC-01", target: measured["GAS-KLN-01"] + (o2Rise < 2.0 ? 2.0 : 2.8) },
       });
     }
   }
@@ -171,13 +183,20 @@ export function evalPhc(c: EvalContext): void {
         odd.add(Math.abs(z(tg[i])) >= Math.abs(z(tg[i + 1])) ? tg[i] : tg[i + 1]);
       }
     }
-    if (good("TMP-PHC-07", "TMP-PHC-04", "TMP-PHC-08")) {
+    const cg = CONE_ORDER.filter((t) => good(t));
+    for (let i = 0; i + 1 < cg.length; i++) {
+      if (measured[cg[i]] >= measured[cg[i + 1]]) {
+        pairs.push(`${cg[i]} ${measured[cg[i]].toFixed(0)} ≥ ${cg[i + 1]} ${measured[cg[i + 1]].toFixed(0)} °C`);
+        odd.add(Math.abs(z(cg[i])) >= Math.abs(z(cg[i + 1])) ? cg[i] : cg[i + 1]);
+      }
+    }
+    if (good("TMP-PHC-07", "TMP-PHC-03", "TMP-PHC-06")) {
       const meal = measured["TMP-PHC-07"];
-      const lo = measured["TMP-PHC-04"];
-      const hi = measured["TMP-PHC-08"];
+      const lo = measured["TMP-PHC-03"];
+      const hi = measured["TMP-PHC-06"];
       if (meal <= lo || meal >= hi) {
-        pairs.push(`hot meal ${meal.toFixed(0)} °C outside C4 gas ${lo.toFixed(0)} … riser ${hi.toFixed(0)} °C`);
-        const nb = meal <= lo ? "TMP-PHC-04" : "TMP-PHC-08";
+        pairs.push(`hot meal ${meal.toFixed(0)} °C outside C3 riser gas ${lo.toFixed(0)} … C6 riser gas ${hi.toFixed(0)} °C`);
+        const nb = meal <= lo ? "TMP-PHC-03" : "TMP-PHC-06";
         odd.add(Math.abs(z("TMP-PHC-07")) >= Math.abs(z(nb)) ? "TMP-PHC-07" : nb);
       }
     }
@@ -236,7 +255,7 @@ export function evalPhc(c: EvalContext): void {
     H("PYR-PHC-01", "R-PHC-V3", {
       severity: "Alert",
       evidence: `${odd} suspect: exit O₂ ${measured["GAS-PHC-01"].toFixed(2)} vol% (${fmtSigned(res("GAS-PHC-01"), 2)} vs model) below kiln-inlet O₂ ${measured["GAS-KLN-01"].toFixed(2)} vol% (${fmtSigned(res("GAS-KLN-01"), 2)}) — air only enters the tower`,
-      tags: [odd, odd === "GAS-PHC-01" ? "GAS-KLN-01" : "GAS-PHC-01", "CAL-PHC-01"],
+      tags: [odd, odd === "GAS-PHC-01" ? "GAS-KLN-01" : "GAS-PHC-01"],
       subs: ["phc-exitgas"],
     });
   }
@@ -244,11 +263,11 @@ export function evalPhc(c: EvalContext): void {
   // R-PHC-V4 · fan power vs speed / damper (no false air to explain it).
   if (good("ELE-PHC-01", "SPD-PHC-01", "POS-PHC-01")) {
     const f = meanRes("ELE-PHC-01", 5) / Math.max(1, model["ELE-PHC-01"]);
-    const falseAir = good("CAL-PHC-01") && meanRes("CAL-PHC-01", 10) > 0.3;
+    const falseAir = o2Ok && o2RiseRes > 0.3;
     if (Math.abs(f) > 0.1 && !falseAir) {
       H("PYR-PHC-01", "R-PHC-V4", {
         severity: "Alert",
-        evidence: `ELE-PHC-01 suspect: ${measured["ELE-PHC-01"].toFixed(0)} kW, ${fmtSigned(f * 100, 0)} % vs the fan-law model at ${measured["SPD-PHC-01"].toFixed(0)} rpm and damper ${measured["POS-PHC-01"].toFixed(0)} % · exit − inlet O₂ at model (no false air)`,
+        evidence: `ELE-PHC-01 suspect: ${measured["ELE-PHC-01"].toFixed(1)} % rated, ${fmtSigned(f * 100, 0)} % vs the fan-law model at ${measured["SPD-PHC-01"].toFixed(0)} rpm and damper ${measured["POS-PHC-01"].toFixed(0)} % · exit − inlet O₂ at model (no false air)`,
         tags: ["ELE-PHC-01", "SPD-PHC-01", "POS-PHC-01"],
         subs: ["phc-idfan"],
       });

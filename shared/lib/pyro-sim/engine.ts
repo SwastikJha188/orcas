@@ -47,7 +47,7 @@ import { isEquipmentEffect, type PyroSignalEffect } from "./scenarios/common";
 import { EQUIPMENT_IDS, EQUIPMENT_LABEL, EQUIPMENT_MACHINE, defaultEquipment, machineEquipment, machineRunning, observedEquipment, unitRunning, type EquipmentId, type EquipmentState, type EquipmentStates } from "./equipment";
 import { PYRO_DEFS } from "./defs";
 import type { ManualRecord } from "../plant-defs";
-import { CLR_BASE, HANDHELD_EMISSIVITY, PROFILE_N, SCANNER_EMISSIVITY, SIGNED, clamp, emissivityMatched, median, slope } from "./shared";
+import { CLR_BASE, CLR_FAN_AIR, CLR_FAN_FLA, CLR_FAN_RPM, CLR_FAN_VIB, HANDHELD_EMISSIVITY, PROFILE_N, SCANNER_EMISSIVITY, SIGNED, clamp, emissivityMatched, median, slope } from "./shared";
 import { adoptLineMemory, applyAnalyserCycle, evaluateRules, lineMemory, qualityNoteOf, screenQuality, shiftValidityOf, signalQuality, type HealthMem, type Hit, type Lead } from "./eval";
 import { instrumentReading } from "./sensor-meta";
 import {
@@ -118,17 +118,36 @@ const FINDING_MAPS_KEEP = 8;
 const TRANSIENT_WIN = 30;
 /** ID-fan inlet damper position at the design operating point (%). */
 const DAMPER0 = 82;
+/** Shell scanner coverage at the design point (% of the shell in view; D5 target ≥ 95 %). */
+const SCANNER_COVERAGE0 = 95.9;
+/** Calculated ΔP points (OSW-PE-SNL-PYR-01 Rev. 02 CALC.): ΔP tag, inlet pressure, outlet pressure. */
+const DP_CALC: Array<[string, string, string]> = [
+  ["PRS-FSL-02", "PRS-FSL-03", "PRS-FSL-04"],
+  ["PRS-KFS-05", "PRS-KFS-08", "PRS-KFS-09"],
+  ["PRS-BGH-01", "PRS-BGH-02", "PRS-BGH-03"],
+  ["PRS-CLR-20", "PRS-CLR-21", "PRS-CLR-22"],
+  ["PRS-CSL-01", "PRS-CSL-02", "PRS-CSL-03"],
+];
 
-/** Support-roller bearing offsets above ambient (K), per tag. */
+/** Support-roller bearing offsets above ambient (K), per tag (OSW-PE-SNL-PYR-01 Rev. 02 nominal 40–60 °C). */
 const ROLLER_OFFSET: Record<string, number> = {
-  "TMP-KLN-01": 22.0, "TMP-KLN-02": 23.4, "TMP-KLN-03": 21.6, "TMP-KLN-04": 22.8,
-  "TMP-KLN-05": 25.6, "TMP-KLN-06": 26.1, "TMP-KLN-07": 25.2, "TMP-KLN-08": 25.9,
-  "TMP-KLN-09": 23.0, "TMP-KLN-10": 22.4, "TMP-KLN-11": 23.8, "TMP-KLN-12": 23.1,
+  "TMP-KLN-01": 20.0, "TMP-KLN-02": 21.4, "TMP-KLN-03": 19.6, "TMP-KLN-04": 20.8,
+  "TMP-KLN-05": 23.6, "TMP-KLN-06": 24.1, "TMP-KLN-07": 23.2, "TMP-KLN-08": 23.9,
+  "TMP-KLN-09": 21.0, "TMP-KLN-10": 20.4, "TMP-KLN-11": 21.8, "TMP-KLN-12": 21.1,
 };
 const ROLLER_TAGS = Object.keys(ROLLER_OFFSET);
-const CLR_FAN_I = [215, 196, 172, 148, 126, 104];
-const CLR_FAN_T = [26, 27, 25, 24, 23, 22];
-const CLR_FAN_V = [2.1, 2.4, 1.9];
+/** Cooling-fan bearing rise above ambient (K) at the design air. */
+const CLR_FAN_T = [27, 28, 27, 26, 26, 25];
+/** Grate drives 1–3 at the design point: motor current (% FLA, Rev. 02 nominal 50–85) and vibration (mm/s). */
+const GRATE_FLA = [68, 66, 64];
+const GRATE_VIB = [1.6, 1.5, 1.4];
+/** Cyclones C1–C6 at the design point (OSW-PE-SNL-PYR-01 Rev. 02 §4): riser duct and cone temperature (°C) and pressure (mbar). */
+const CYC_T = [510, 650, 775, 830, 870, 890];
+const CYC_CONE_T = [310, 495, 640, 760, 820, 850];
+const CYC_P = [-57, -47, -36, -27, -18, -11.5];
+const CYC_CONE_P = [-3.5, -3.5, -4.5, -6, -5, -6];
+/** Running motor current at the design point (% FLA, Rev. 02 nominal 60–90). */
+const I0 = 75;
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -435,11 +454,13 @@ export interface ThermalState {
   areaHist: number[];
   /** Maps kept around shell findings, newest first. */
   findingMaps: ShellFindingMaps[];
+  /** Scanner coverage (% of the shell in view), one value per minute (last 61 min); the scanner's own quality figure. */
+  coverageHist: number[];
 }
 
 function blankThermal(): ThermalState {
   const n = PROFILE_N * SHELL_NA;
-  return { lastGood: new Float32Array(n), lastGoodAt: new Int32Array(n).fill(-1), areaHist: [], findingMaps: [] };
+  return { lastGood: new Float32Array(n), lastGoodAt: new Int32Array(n).fill(-1), areaHist: [], findingMaps: [], coverageHist: [] };
 }
 
 function blankLine(rand: Rng): LineState {
@@ -531,8 +552,10 @@ const SILO_T_PER_PCT = 60;
 const BIN_T_PER_PCT = 1.207;
 /** Share of the kiln feed bin weight on each of its three load cells (the outlet sits slightly off-centre). */
 const LOAD_CELL_SHARE = [0.34, 0.33, 0.33];
-/** Kiln feed bin weight from its three load cells. */
-const binWeight = (v: Record<string, number>) => v["WGT-KFS-01"] + v["WGT-KFS-02"] + v["WGT-KFS-03"];
+/** The three load cells (OSW-PE-SNL-PYR-01 Rev. 02 HP-03: WGT-KFS-02/03/04; WGT-KFS-01 is the calculated bin weight). */
+const CELLS = ["WGT-KFS-02", "WGT-KFS-03", "WGT-KFS-04"];
+/** Kiln feed bin weight (t) from its three load cells. */
+const binWeight = (v: Record<string, number>) => CELLS.reduce((acc, tg) => acc + v[tg], 0);
 const COALBIN_T_PER_PCT = 1.2;
 const CSILO_T_PER_PCT = 50;
 /** Kiln feed bin weight set-point (t) and the weigh-bin extraction controller gain (t/h per t of error). */
@@ -545,8 +568,14 @@ const CEMENT_MILL_DRAW = 330;
 /** Kiln speed on the auxiliary drive (rpm) and while the feed is off (operator turn-down, rpm). */
 const AUX_SPEED = 0.15;
 const STOP_SPEED = 1.2;
-const CLR_I_SUM = CLR_FAN_I.reduce((a, b) => a + b, 0);
-const CLR_HOT_I = CLR_FAN_I[0] + CLR_FAN_I[1] + CLR_FAN_I[2];
+const CLR_AIR_SUM = CLR_FAN_AIR.reduce((a, b) => a + b, 0);
+const CLR_HOT_AIR = CLR_FAN_AIR[0] + CLR_FAN_AIR[1] + CLR_FAN_AIR[2];
+/** Extraction capacity of the six silo outlet gates fully open (t/h): the gate opening is the extraction demand over it. */
+const GATE_CAP = 1.5 * F0;
+/** Mechanical end stop of the motorised silo gates (% opening). */
+const GATE_MAX = 97;
+/** Stack CO (mg/Nm³, dry, at the CEMS reference O₂) per ppm of preheater-exit CO, after the WHRS, ID fan and baghouse air ingress. */
+const STACK_CO = 0.75;
 
 interface LagCell {
   buf: number[];
@@ -647,8 +676,10 @@ interface Zones {
   fDis: number;
   fHmr: number;
   fCsl: number;
-  /** Grate stroke share (stroke / 10.5 stroke/min); cooler hot / cold bed depth. */
-  sr: number;
+  /** Grate stroke shares (stroke / 10.5 stroke/min): drive 1 under the hot zone, drives 2 and 3 under the cold zone; cooler hot / cold bed depth. */
+  srHot: number;
+  srCold2: number;
+  srCold3: number;
   bedHot: number;
   bedCold: number;
 }
@@ -668,16 +699,20 @@ function zoneStep(store: LagStore, k: string, feed: number, mealLoss: number, ki
   // The kiln only transports material while it turns (≥ half the design speed for the full rate).
   const moving = clamp(kilnSpeed / (0.5 * N0), 0, 1);
   const fIn = lagStep(store, `${k}kout`, fMeal, LAG.kilnOut[0], LAG.kilnOut[1]) * moving;
-  // Grate stroke follows the clinker rate (bed-depth control), with a minimum stroke that drains an empty kiln's bed.
-  const sr = eq["clr-grate-hpu"] === "run" ? Math.max(fIn, STROKE_MIN) : 0;
-  const hotOut = inv.bedHot * sr;
-  const coldOut = discharge ? inv.bedCold * sr : 0;
+  // Grate strokes follow the clinker rate (bed-depth control), with a minimum stroke that drains an empty kiln's bed.
+  // Drive 1 moves the hot-zone grate, drives 2 and 3 the cold-zone grate in series (the slower one sets the transport).
+  const stroke = (id: EquipmentId) => (eq[id] === "run" ? Math.max(fIn, STROKE_MIN) : 0);
+  const srHot = stroke("clr-grate-1");
+  const srCold2 = stroke("clr-grate-2");
+  const srCold3 = stroke("clr-grate-3");
+  const hotOut = inv.bedHot * srHot;
+  const coldOut = discharge ? inv.bedCold * Math.min(srCold2, srCold3) : 0;
   inv.bedHot = clamp(inv.bedHot + (fIn - hotOut) / T_BED, 0, BED_MAX);
   inv.bedCold = clamp(inv.bedCold + (hotOut - coldOut) / T_BED, 0, BED_MAX);
   const fDis = lagStep(store, `${k}cool`, fIn, LAG.cooler[0], LAG.cooler[1]);
   const fHmr = lagStep(store, `${k}hmr`, coldOut, 0, 1);
   const fCsl = lagStep(store, `${k}csl`, fHmr, LAG.conveyor[0], LAG.conveyor[1]);
-  return { fFeed, fMeal, fInlet, fK, fBz, fIn, fDis, fHmr, fCsl, sr, bedHot: inv.bedHot, bedCold: inv.bedCold };
+  return { fFeed, fMeal, fInlet, fK, fBz, fIn, fDis, fHmr, fCsl, srHot, srCold2, srCold3, bedHot: inv.bedHot, bedCold: inv.bedCold };
 }
 
 interface PhysicsIn {
@@ -700,6 +735,8 @@ interface PhysicsIn {
   pulseStop: number;
   /** Coal reaching the flame in surges after the feeder (t/h, choking line); the weigh feeder still reads steady. */
   coalSurge: number;
+  /** Opening of the six motorised silo outlet gates (%): the extraction controller's demand. */
+  gateOpen: number;
 }
 
 /**
@@ -708,9 +745,10 @@ interface PhysicsIn {
  * inventories. A stopped unit's current, speed and vibration are ≈ 0 and its
  * bearings and windings cool to ambient (D5 Tables 5.x.6 "≈ 0 / ambient when
  * stopped"). Design point (D5 §3.1, Tables 5.2.1, 5.3.1, 5.4.1, 5.5.1): kiln
- * feed 330 t/h, coal 10.5 t/h, kiln 3.6 rpm, C1 gas 330 °C; OSW-PE-SNL-PYR-01 Rev. 01
- * nominals: meal to kiln 850 °C, kiln inlet draft −8.8 mbar, burning zone 1,300 °C,
- * secondary air 1,100 °C.
+ * feed 330 t/h, coal 10.5 t/h, kiln 3.6 rpm; every value sits inside its
+ * OSW-PE-SNL-PYR-01 Rev. 02 nominal band (exit gas 325 °C, meal to kiln 855 °C, kiln
+ * inlet draft −8.8 mbar, burning zone 1,300 °C, secondary air 1,100 °C, motor
+ * currents ≈ 75 % FLA).
  */
 function physics(p: PhysicsIn): Values {
   const { d, z, eq, inv, t, th } = p;
@@ -726,16 +764,16 @@ function physics(p: PhysicsIn): Values {
   const gas = (tag: string, x: number) => th(`g:${tag}`, x, gasTau);
   const rise = (tag: string, x: number, tau = TAU_BEARING) => Ta + th(tag, x, tau);
   // Stator winding RTD: copper losses rise with the square of the load; a stopped motor cools to ambient.
-  const wdg = (tag: string, on: boolean, load = 1) => rise(tag, on ? (PYRO_SIGNAL_BY_TAG[tag].base - TA0) * (0.55 + 0.45 * load * load) : 0);
+  const wdg = (tag: string, on: boolean, load = 1, extra = 0) => rise(tag, on ? (PYRO_SIGNAL_BY_TAG[tag].base - TA0) * (0.55 + 0.45 * load * load) + extra : 0);
   // Pulse-jet filter ΔP: saw-tooth over the cleaning cycle.
   const saw = (period: number) => (((t % period) + period) % period) / period;
   const v: Values = {};
 
-  // Cooler air: each running fan's share of the design air (shares ∝ fan current); compartments 1–3 recuperate the heat.
+  // Cooler air: each running fan's share of the design air; compartments 1–3 recuperate the heat.
   const A = d.coolerAir;
-  const fanRun = CLR_FAN_I.map((_, i) => run(`clr-fan-${i + 1}` as EquipmentId));
-  const Aeff = A * CLR_FAN_I.reduce((acc, b, i) => acc + (fanRun[i] ? b / CLR_I_SUM : 0), 0);
-  const hotShare = CLR_FAN_I.slice(0, 3).reduce((acc, b, i) => acc + (fanRun[i] ? b / CLR_HOT_I : 0), 0);
+  const fanRun = CLR_FAN_AIR.map((_, i) => run(`clr-fan-${i + 1}` as EquipmentId));
+  const Aeff = A * CLR_FAN_AIR.reduce((acc, b, i) => acc + (fanRun[i] ? b / CLR_AIR_SUM : 0), 0);
+  const hotShare = CLR_FAN_AIR.slice(0, 3).reduce((acc, b, i) => acc + (fanRun[i] ? b / CLR_HOT_AIR : 0), 0);
   const vent = run("clr-vent-fan");
 
   // Kiln heat balance (single firing point at the outlet).
@@ -746,82 +784,112 @@ function physics(p: PhysicsIn): Values {
   const o2In = clamp(2.4 + 5 * (dr - 1) - 7 * (c - 1) + 1.2 * (1 - z.fInlet), 0.2, 20.9);
   const o2Ex = Math.min(20.9, o2In + 1.2);
 
-  // FSL-01 · duty / standby aeration blower on the header; silo inventory.
+  // FSL-01 · duty / standby aeration blower on the header; silo inventory; motorised outlet gates; silo dust collector.
   const duty = run("fsl-blower-duty");
   const stby = run("fsl-blower-standby");
   v["LEV-FSL-01"] = inv.silo / SILO_T_PER_PCT;
-  v["PRS-FSL-01"] = duty ? 420 + 0.4 * (Ta - TA0) : stby ? 365 + 0.35 * (Ta - TA0) : 4;
-  v["ELE-FSL-01"] = duty ? 66 + 0.12 * (Ta - TA0) : stby ? 58 + 0.1 * (Ta - TA0) : 0;
-  v["TMP-FSL-01"] = wdg("TMP-FSL-01", duty || stby, v["ELE-FSL-01"] / 66);
-  v["PRS-FSL-02"] = 10.4 + 2.2 * saw(40);
-  v["ELE-FSL-02"] = 34 + 0.06 * (Ta - TA0);
+  v["PRS-FSL-01"] = duty ? 450 + 0.4 * (Ta - TA0) : stby ? 405 + 0.35 * (Ta - TA0) : 4;
+  v["ELE-FSL-01"] = duty ? I0 + 0.12 * (Ta - TA0) : stby ? 68 + 0.1 * (Ta - TA0) : 0;
+  v["TMP-FSL-01"] = wdg("TMP-FSL-01", duty || stby, v["ELE-FSL-01"] / I0);
+  // The six motorised gates open together to the extraction controller's demand (Rev. 02: "per demand").
+  for (let k = 1; k <= 6; k++) v[`POS-FSL-0${k}`] = p.gateOpen;
+  // Silo dust collector: the fan pulls the clean side; the cake builds over the pulse-cleaning cycle (ΔP = in − out).
+  v["PRS-FSL-03"] = -7.5;
+  v["PRS-FSL-04"] = v["PRS-FSL-03"] - (10.4 + 2.2 * saw(40));
+  v["PRS-FSL-02"] = v["PRS-FSL-03"] - v["PRS-FSL-04"];
+  v["ELE-FSL-02"] = I0 + 0.13 * (Ta - TA0);
 
-  // KFS-01 · weigh bin inventory, dosing follows feed.
+  // KFS-01 · weigh bin on three load cells, slides A / B to the two meters, common slide, elevator, preheater-top slide.
   const elev = run("kfs-elevator");
-  // Three load cells carry the bin; there is no level sensor.
-  LOAD_CELL_SHARE.forEach((k, i) => (v[`WGT-KFS-0${i + 1}`] = inv.bin * k));
-  v["PRS-KFS-05"] = 9 + 2 * saw(36);
-  v["ELE-KFS-03"] = 22 + 0.04 * (Ta - TA0);
-  const slide = run("kfs-airslide-blower");
-  v["PRS-KFS-01"] = slide ? 39.2 * (0.9 + 0.1 * z.fFeed) : 0.4;
-  v["ELE-KFS-02"] = slide ? 38 * (0.92 + 0.08 * z.fFeed) : 0;
-  // Gates A and B split the bin discharge over slides A and B to the two solid-flow meters (half each).
-  v["FLO-KFS-01"] = 0.5 * z.fFeed * F0;
-  v["FLO-KFS-02"] = 0.5 * z.fFeed * F0;
-  // Meter pressure taps P2 / P3 sit near atmospheric (OSW-PE-SNL-PYR-01: −5 … +5 mmWG) and move with the meter's
-  // throughput around the design rate; with no flow through the meter they read 0.
-  const pSfm = SFM_P_GAIN * (z.fFeed - 1) * Math.min(1, z.fFeed / 0.2);
-  v["PRS-KFS-02"] = pSfm;
-  v["PRS-KFS-06"] = pSfm;
-  v["PRS-KFS-04"] = slide ? 45 * (0.9 + 0.1 * z.fFeed) : 0.5;
-  v["ELE-KFS-01"] = elev ? 118 * (0.35 + 0.65 * Math.pow(z.fFeed, 1.1)) : 0;
+  // Three load cells carry the bin (no level sensor); the bin weight is their sum, in % of capacity (Rev. 02 HP-03).
+  LOAD_CELL_SHARE.forEach((k, i) => (v[CELLS[i]] = inv.bin * k));
+  v["WGT-KFS-01"] = inv.bin / BIN_T_PER_PCT;
+  v["PRS-KFS-08"] = -5.5;
+  v["PRS-KFS-09"] = v["PRS-KFS-08"] - (8 + 2 * saw(36));
+  v["PRS-KFS-05"] = v["PRS-KFS-08"] - v["PRS-KFS-09"];
+  v["ELE-KFS-03"] = I0 + 0.1 * (Ta - TA0);
+  const slideA = run("kfs-slide-blower-a");
+  const slideB = run("kfs-slide-blower-b");
+  // Gates A and B split the bin discharge over slides A and B (half each); a slide without its blower stops and the other
+  // carries the whole feed.
+  const shareA = slideA ? (slideB ? 0.5 : 1) : 0;
+  const shareB = slideB ? (slideA ? 0.5 : 1) : 0;
+  v["PRS-KFS-01"] = slideA ? 40 * (0.9 + 0.1 * z.fFeed) : 0.4;
+  v["PRS-KFS-03"] = slideB ? 40 * (0.9 + 0.1 * z.fFeed) : 0.4;
+  v["ELE-KFS-04"] = slideA ? I0 * (0.92 + 0.08 * z.fFeed) : 0;
+  v["ELE-KFS-05"] = slideB ? I0 * (0.92 + 0.08 * z.fFeed) : 0;
+  v["FLO-KFS-01"] = shareA * z.fFeed * F0;
+  v["FLO-KFS-02"] = shareB * z.fFeed * F0;
+  // Meter pressure taps P2 / P3 sit near atmospheric (Rev. 02: −1 … +1 mbar) and move with the meter's throughput around
+  // its design rate (half the kiln feed); with no flow through the meter they read 0.
+  const pSfm = (q: number) => SFM_P_GAIN * (q / 0.5 - 1) * Math.min(1, q / 0.1);
+  v["PRS-KFS-02"] = pSfm(shareA * z.fFeed);
+  v["PRS-KFS-06"] = pSfm(shareB * z.fFeed);
+  const common = run("kfs-common-blower");
+  v["PRS-KFS-04"] = common ? 45 * (0.9 + 0.1 * z.fFeed) : 0.5;
+  v["ELE-KFS-06"] = common ? I0 * (0.92 + 0.08 * z.fFeed) : 0;
+  v["ELE-KFS-01"] = elev ? I0 * (0.35 + 0.65 * Math.pow(z.fFeed, 1.1)) : 0;
   v["VIB-KFS-01"] = elev ? 1.8 * (1 + 0.1 * (z.fFeed - 1)) : VIB_STOPPED;
+  v["VIB-KFS-04"] = elev ? 1.6 * (1 + 0.1 * (z.fFeed - 1)) : VIB_STOPPED;
   v["TMP-KFS-01"] = rise("TMP-KFS-01", elev ? 28 + 4 * (z.fFeed - 1) : 0);
-  v["SPD-KFS-01"] = elev ? 24.5 : 0;
-  v["TMP-KFS-02"] = wdg("TMP-KFS-02", elev, v["ELE-KFS-01"] / 118);
+  v["TMP-KFS-03"] = rise("TMP-KFS-03", elev ? 26 + 4 * (z.fFeed - 1) : 0);
+  v["TMP-KFS-02"] = wdg("TMP-KFS-02", elev, v["ELE-KFS-01"] / I0);
+  const top = run("kfs-top-blower");
+  v["PRS-KFS-07"] = top ? 42 * (0.9 + 0.1 * z.fMeal) : 0.5;
+  v["ELE-KFS-07"] = top ? I0 * (0.92 + 0.08 * z.fMeal) : 0;
 
-  // PHC-01 · stage temperatures scale with the kiln exit gas, drafts with the fan (D5 5.3.1: C1 300–360 °C; OSW-PE-SNL-PYR-01
-  // Rev. 01: C5 820–860, C6 860–890, riser 870–900, meal to kiln 830–870 °C). C5 / C6 / riser sit apart inside their
-  // nominals so the stage order (C6 < riser, R-PHC-V1) holds with the thermocouple scatter.
-  const STAGE = [330, 505, 650, 775, 832, 866];
-  STAGE.forEach((b, i) => (v[`TMP-PHC-0${i + 1}`] = 20 + (b - 20) * r * (1 + 0.04 * (dr - 1)) * (1 - 0.02 * (i < 2 ? z.fMeal - 1 : 0))));
-  v["TMP-PHC-08"] = 20 + 872 * r;
-  // Less meal runs a little hotter; the sensitivity keeps the meal below the riser gas (≈ 40 K above it) with no meal at all.
-  v["TMP-PHC-07"] = 20 + 830 * r * (1 - 0.015 * (z.fMeal - 1));
-  // C6 / riser draft −11.2 mbar (nominal −5.9 … −11.8) stays below the kiln inlet (−8.8 mbar): the staircase C1 → C6 → inlet.
-  const DRAFT = [-62, -51, -40, -30, -21, -11.2];
-  DRAFT.forEach((b, i) => (v[`PRS-PHC-0${i + 1}`] = b * dr * (1 + 0.12 * (z.fMeal - 1))));
-  v["PRS-PHC-07"] = -5.9 * dr;
-  v["PRS-PHC-08"] = -4.9 * dr;
-  v["PRS-PHC-09"] = -7 * dr;
+  // PHC-01 · cyclone riser ducts (gas into each stage) and cones (meal out) scale with the kiln exit gas, pressures with
+  // the fan (OSW-PE-SNL-PYR-01 Rev. 02 §4 nominals); the C1 / C2 gas cools a little more with more meal.
+  CYC_T.forEach((b, i) => (v[`TMP-PHC-0${i + 1}`] = 20 + (b - 20) * r * (1 + 0.04 * (dr - 1)) * (1 - 0.02 * (i < 2 ? z.fMeal - 1 : 0))));
+  CYC_CONE_T.forEach((b, i) => (v[`TMP-PHC-2${i + 1}`] = 20 + (b - 20) * r * (1 - 0.015 * (z.fMeal - 1))));
+  v["TMP-PHC-08"] = 20 + 865 * r;
+  // Less meal runs a little hotter; the sensitivity keeps the meal below the C6 riser gas with no meal at all.
+  v["TMP-PHC-07"] = 20 + 835 * r * (1 - 0.015 * (z.fMeal - 1));
+  v["TMP-PHC-30"] = 20 + 305 * r * (1 + 0.04 * (dr - 1)) * (1 - 0.02 * (z.fMeal - 1));
+  // Riser duct pressures: the staircase C1 → C6 → kiln inlet (−8.8 mbar).
+  CYC_P.forEach((b, i) => (v[`PRS-PHC-0${i + 1}`] = b * dr * (1 + 0.12 * (z.fMeal - 1))));
+  CYC_CONE_P.forEach((b, i) => (v[`PRS-PHC-1${i + 1}`] = b * dr));
   v["GAS-PHC-01"] = o2Ex;
   v["GAS-PHC-02"] = 300 + 1600 * Math.max(0, 2.6 - o2Ex);
+  // Waste-heat recovery: most of the exit gas passes the WHRS (inlet / outlet dampers open), the bypass damper lets a
+  // little past on the main line; the mixed gas goes on to the ID fan and the baghouse.
+  v["POS-PHC-03"] = 85;
+  v["POS-PHC-04"] = 85;
+  v["POS-PHC-05"] = 8;
+  const bypass = clamp(0.01 * v["POS-PHC-05"] + 0.9 * (1 - Math.min(v["POS-PHC-03"], v["POS-PHC-04"]) / 85), 0, 1);
+  v["TMP-PHC-31"] = (1 - bypass) * (20 + 195 * r) + bypass * v["TMP-PHC-30"];
   const fan = run("phc-idfan");
   v["POS-PHC-01"] = d.idDamper;
   // A tripped fan coasts down: its vibration and power follow the falling speed.
-  v["VIB-PHC-01"] = Math.max(VIB_STOPPED, 2.3 * dr);
-  v["VIB-PHC-02"] = Math.max(VIB_STOPPED, 2.0 * dr);
-  v["TMP-PHC-09"] = rise("TMP-PHC-09", fan ? 38 + 10 * (s - 1) : 0);
-  v["TMP-PHC-10"] = rise("TMP-PHC-10", fan ? 33 + 10 * (s - 1) : 0);
-  v["ELE-PHC-01"] = fan ? 1850 * s * s * s * (1 + 0.08 * (z.fMeal - 1)) * (1 + 0.6 * (dmp - 1)) : 0;
+  v["VIB-PHC-01"] = Math.max(VIB_STOPPED, 2.0 * dr);
+  v["VIB-PHC-02"] = Math.max(VIB_STOPPED, 1.8 * dr);
+  v["TMP-PHC-09"] = rise("TMP-PHC-09", fan ? 36 + 10 * (s - 1) : 0);
+  v["TMP-PHC-10"] = rise("TMP-PHC-10", fan ? 32 + 10 * (s - 1) : 0);
+  v["ELE-PHC-01"] = fan ? 80 * s * s * s * (1 + 0.08 * (z.fMeal - 1)) * (1 + 0.6 * (dmp - 1)) : 0;
   v["SPD-PHC-01"] = d.idFan;
-  v["TMP-PHC-11"] = wdg("TMP-PHC-11", fan, Math.cbrt(v["ELE-PHC-01"] / 1850));
+  v["TMP-PHC-11"] = wdg("TMP-PHC-11", fan, Math.cbrt(v["ELE-PHC-01"] / 80));
   // Calciner outlet (C5 meal split to calciner / riser) and the main baghouse after the ID fan.
-  v["PRS-PHC-10"] = -11 * dr;
+  v["PRS-PHC-10"] = -12 * dr;
   // Calciner outlet: its own firing keeps O₂ steady; the draft moves it.
   v["GAS-PHC-03"] = clamp(2.0 + 4 * (dr - 1), 0.2, 20.9);
   v["GAS-PHC-04"] = 450 + 2400 * Math.max(0, 1.4 - v["GAS-PHC-03"]);
   v["POS-PHC-02"] = 70;
-  v["TMP-BGH-02"] = 20 + 155 * (v["TMP-PHC-01"] - 20) / 310;
-  v["PRS-BGH-02"] = -18 * dr;
-  v["PRS-BGH-01"] = 12.6 + 2.6 * saw(30);
-  v["ELE-BGH-02"] = 9.5 * (0.9 + 0.1 * z.fFeed);
+  v["TMP-BGH-02"] = 20 + (155 * (v["TMP-PHC-31"] - 20)) / 205;
+  // Baghouse: ΔP across the bags (= inlet − outlet) with the pulse-cleaning saw-tooth, in proportion to the gas flow.
+  v["PRS-BGH-02"] = -17.5 * dr;
+  v["PRS-BGH-03"] = v["PRS-BGH-02"] - (11.7 + 2.6 * saw(30)) * Math.min(1, dr);
+  v["PRS-BGH-01"] = v["PRS-BGH-02"] - v["PRS-BGH-03"];
+  // Stack (CEMS, read-only): dust after the bags, SOx with the meal, NOx from the kiln less the calciner's reduction,
+  // CO from the preheater exit, CO₂ from calcination and fuel.
   v["GAS-BGH-01"] = 12;
+  v["GAS-BGH-02"] = 60 * (1 + 0.3 * (z.fMeal - 1));
+  v["GAS-BGH-04"] = STACK_CO * v["GAS-PHC-02"];
+  v["GAS-BGH-05"] = 24 + 3 * (z.fMeal - 1) + 2 * (c - 1);
   v["VIB-BGH-01"] = 2.1;
   v["TMP-BGH-01"] = rise("TMP-BGH-01", 32);
-  v["ELE-BGH-01"] = 310 * (0.92 + 0.08 * dr);
+  v["ELE-BGH-01"] = I0 * (0.92 + 0.08 * dr);
   v["SPD-BGH-01"] = 980;
-  v["TMP-BGH-03"] = wdg("TMP-BGH-03", true, v["ELE-BGH-01"] / 310);
+  v["TMP-BGH-03"] = wdg("TMP-BGH-03", true, v["ELE-BGH-01"] / I0);
 
   // KLN-01 · drive train (load from the kiln hold-up and speed); the aux drive turns the kiln through the gearbox.
   const main = run("kln-main-drive");
@@ -832,7 +900,13 @@ function physics(p: PhysicsIn): Values {
   const lube = run("kln-lube-pump");
   v["ELE-KLN-01"] = torque;
   v["SPD-KLN-01"] = d.kilnSpeed;
-  v["TMP-KLN-21"] = rise("TMP-KLN-21", main ? 62 * Math.pow(torque / 64, 2) : 0);
+  // Six stator winding RTDs: copper losses with the square of the torque; without the motor cooling fan the windings
+  // run about 18 K hotter at full load.
+  const motorFan = run("kln-motor-fan");
+  for (let k = 1; k <= 6; k++) {
+    const tag = `TMP-KLN-4${k}`;
+    v[tag] = rise(tag, main ? (PYRO_SIGNAL_BY_TAG[tag].base - TA0 + (motorFan ? 0 : 18)) * Math.pow(torque / 64, 2) : 0);
+  }
   v["TMP-KLN-19"] = rise("TMP-KLN-19", main ? 29 + 4 * tr : 0);
   v["TMP-KLN-20"] = rise("TMP-KLN-20", main ? 25 + 4 * tr : 0);
   v["TMP-KLN-15"] = oil;
@@ -843,6 +917,7 @@ function physics(p: PhysicsIn): Values {
   v["TMP-KLN-23"] = oil + th("TMP-KLN-23", main ? 8 + 2 * tr : aux ? 2 : 0, TAU_BEARING);
   const vk = (b: number) => Math.max(VIB_STOPPED, b * n * (1 + 0.12 * tr));
   v["VIB-KLN-01"] = main ? vk(1.6) : VIB_STOPPED;
+  v["VIB-KLN-05"] = main ? vk(1.45) : VIB_STOPPED;
   v["VIB-KLN-02"] = vk(1.85);
   v["VIB-KLN-03"] = vk(1.51);
   v["VIB-KLN-04"] = vk(2.33);
@@ -859,96 +934,122 @@ function physics(p: PhysicsIn): Values {
   v["GAS-KLN-01"] = o2In;
   v["GAS-KLN-02"] = 420 + 2600 * Math.max(0, 1.6 - o2In);
   v["GAS-KLN-03"] = Math.max(60, 950 + 4.5 * (tbz - BZ0) + 120 * (o2In - 2.4));
-  v["STS-KLN-08"] = 95.9;
+  v["GAS-BGH-03"] = 0.63 * v["GAS-KLN-03"];
   v["TMP-KLN-14"] = tbz;
   v["TMP-KLN-27"] = 1030 + 0.6 * (tSec - 1100) + 0.1 * (tbz - BZ0);
   // Hood: held slightly negative by the ID fan; without draft the cooler air (and without the vent fan its excess) blows back (D5 FP-30).
   v["PRS-KLN-03"] = -0.147 * dr + 0.074 * (Aeff - 1) + 0.17 * (1 - Math.min(1, dr)) * Math.min(1, Aeff) + (vent ? 0 : 0.2);
   const outFan = run("kln-outlet-fan");
-  v["TMP-KLN-25"] = rise("TMP-KLN-25", outFan ? 60 : 140, 15);
-  v["TMP-KLN-26"] = 250 + 0.16 * (tbz - BZ0) + 0.5 * (Ta - TA0) + th("TMP-KLN-26", outFan ? 0 : 115, 30);
+  v["TMP-KLN-25"] = rise("TMP-KLN-25", outFan ? 55 : 135, 15);
+  v["TMP-KLN-26"] = 245 + 0.16 * (tbz - BZ0) + 0.5 * (Ta - TA0) + th("TMP-KLN-26", outFan ? 0 : 115, 30);
   v["LAB-KLN-01"] = 22;
 
-  // BRN-01 · primary air on a controlled header, coal on its own line.
+  // BRN-01 · primary air on a controlled header (Rev. 02 HP-04: PRS-BRN-01 header, -02 swirl, -03 axial), coal on its own line.
   const pa = run("brn-pafan");
   const blower = run("brn-coal-blower");
-  v["PRS-BRN-03"] = pa ? 675 : 2;
-  v["PRS-BRN-01"] = pa ? 65 : 1.5;
-  v["PRS-BRN-02"] = pa ? 625 : 2;
+  v["PRS-BRN-01"] = pa ? 660 : 2;
+  v["PRS-BRN-02"] = pa ? 70 : 1.5;
+  v["PRS-BRN-03"] = pa ? 625 : 2;
   v["VIB-BRN-01"] = pa ? 1.9 : VIB_STOPPED;
   v["TMP-BRN-01"] = rise("TMP-BRN-01", pa ? 30 : 0);
-  v["ELE-BRN-01"] = pa ? 142 + 0.1 * (Ta - TA0) : 0;
-  v["TMP-BRN-05"] = wdg("TMP-BRN-05", pa, v["ELE-BRN-01"] / 142);
+  v["ELE-BRN-01"] = pa ? I0 + 0.05 * (Ta - TA0) : 0;
+  v["TMP-BRN-05"] = wdg("TMP-BRN-05", pa, v["ELE-BRN-01"] / I0);
   v["TMP-BRN-02"] = tSec;
-  v["TMP-BRN-04"] = Ta + 26;
+  v["TMP-BRN-04"] = Ta + 22;
   v["GAS-BRN-01"] = 18;
   v["LEV-BRN-01"] = inv.coalBin / COALBIN_T_PER_PCT;
+  v["ELE-BRN-03"] = run("brn-bin-blower") ? I0 : 0;
   v["FLO-BRN-01"] = d.coal;
   // Line pressure: conveying air alone carries ≈ 10 %, the coal load the rest.
   v["PRS-BRN-04"] = blower ? 410 * (0.1 + 0.9 * Math.pow(Math.max(0, c), 0.7)) : 3;
-  v["VIB-BRN-02"] = blower ? 2.6 : VIB_STOPPED;
-  v["ELE-BRN-02"] = blower ? 205 * (1 + 0.08 * (c - 1)) : 0;
-  v["TMP-BRN-06"] = wdg("TMP-BRN-06", blower, v["ELE-BRN-02"] / 205);
+  v["VIB-BRN-02"] = blower ? 2.2 : VIB_STOPPED;
+  v["ELE-BRN-02"] = blower ? I0 * (1 + 0.08 * (c - 1)) : 0;
+  v["TMP-BRN-06"] = wdg("TMP-BRN-06", blower, v["ELE-BRN-02"] / I0);
   // Calciner coal runs on its own outlet-temperature control (steady here), interlocked with the meal feed (elevator);
-  // tertiary air comes hot from the cooler hood.
-  v["FLO-BRN-02"] = run("kfs-elevator") ? 14.5 : 0;
+  // tertiary air comes hot from the cooler hood through the damper.
+  v["FLO-BRN-02"] = elev ? 14.5 : 0;
   v["POS-BRN-01"] = 65;
-  v["TMP-BRN-03"] = 880 + 0.5 * (tSec - 1100);
-  v["PRS-BRN-05"] = -3.43 * dr;
+  v["TMP-BRN-03"] = 885 + 0.5 * (tSec - 1100);
+  v["TMP-BRN-07"] = v["TMP-BRN-03"] - 5;
+  v["PRS-BRN-05"] = -4.2 * dr;
+  v["PRS-BRN-06"] = -5.0 * dr;
 
-  // CLR-01 · grate stroke follows the clinker rate so the bed stays at depth; a stopped fan's chamber only sees leakage.
+  // CLR-01 · grate strokes follow the clinker rate so the bed stays at depth; a stopped fan's chamber only sees leakage.
   CLR_BASE.forEach((b, i) => {
     const res = bedResistance(i < 3 ? z.bedHot : z.bedCold);
     // A centrifugal fan cannot push past its shut-off pressure (≈ 1.45 × design), however deep the bed gets.
     v[`PRS-CLR-0${i + 1}`] = (fanRun[i] ? A * A : 0.08) * b * Math.min(Math.pow(res, 0.8), FAN_SHUTOFF);
-    v[`ELE-CLR-0${i + 1}`] = fanRun[i] ? CLR_FAN_I[i] * A * A * A * Math.pow(res, 0.3) : 0;
+    v[`ELE-CLR-0${i + 1}`] = fanRun[i] ? CLR_FAN_FLA[i] * A * A * A * Math.pow(res, 0.3) : 0;
+    v[`SPD-CLR-0${i + 1}`] = fanRun[i] ? CLR_FAN_RPM[i] * A : 0;
     v[`TMP-CLR-0${i + 1}`] = rise(`TMP-CLR-0${i + 1}`, fanRun[i] ? CLR_FAN_T[i] + 4 * (A - 1) : 0);
+    v[`VIB-CLR-0${i + 1}`] = fanRun[i] ? CLR_FAN_VIB[i] * A : VIB_STOPPED;
+    // Cooling-fan windings follow the fan's run state (its load moves with the bed, which the reference model cannot see).
+    v[`TMP-CLR-${17 + i}`] = wdg(`TMP-CLR-${17 + i}`, fanRun[i]);
   });
-  CLR_FAN_V.forEach((b, i) => (v[`VIB-CLR-0${i + 1}`] = fanRun[i] ? b * A : VIB_STOPPED));
-  // Cooling-fan windings follow the fan's run state (its load moves with the bed, which the reference model cannot see).
-  CLR_FAN_I.forEach((_, i) => (v[`TMP-CLR-${17 + i}`] = wdg(`TMP-CLR-${17 + i}`, fanRun[i])));
-  // Under-grate hoppers (DCS read-only): fine clinker falling through the grate; hotter where the bed is hot.
-  [95, 86, 115, 115, 115, 115].forEach((b, i) => (v[`TMP-CLR-${11 + i}`] = gas(`TMP-CLR-${11 + i}`, b + 0.6 * (Ta - TA0) + (fanRun[i] ? 0 : 25))));
-  const grate = run("clr-grate-hpu");
-  v["SPD-CLR-01"] = 10.5 * z.sr;
-  // Hydraulic working pressure: moving the empty grate frame takes about 60 %, the clinker load the rest.
-  v["PRS-CLR-07"] = th("p:PRS-CLR-07", grate ? 118 * (0.6 + 0.4 * Math.pow(bedResistance((z.bedHot + z.bedCold) / 2), 0.8) * Math.pow(Math.max(z.sr, STROKE_MIN), 0.3)) : 8, PUMP_BLEED);
-  v["TMP-CLR-07"] = rise("TMP-CLR-07", grate ? 18 : 0);
+  // Grate drives 1 (hot zone) and 2–3 (cold zone): stroke rate, and a motor current that moves the empty grate frame
+  // (≈ 60 %) plus the clinker bed on it.
+  [z.srHot, z.srCold2, z.srCold3].forEach((sr, i) => {
+    const k = i + 1;
+    const on = run(`clr-grate-${k}` as EquipmentId);
+    const bed = i === 0 ? z.bedHot : z.bedCold;
+    v[`SPD-CLR-1${k}`] = 10.5 * sr;
+    v[`ELE-CLR-1${k}`] = on ? GRATE_FLA[i] * (0.6 + 0.4 * Math.pow(bedResistance(bed), 0.8) * Math.pow(Math.max(sr, STROKE_MIN), 0.3)) : 0;
+    v[`VIB-CLR-1${k}`] = on ? GRATE_VIB[i] * (0.9 + 0.1 * Math.max(sr, STROKE_MIN)) : VIB_STOPPED;
+    v[`TMP-CLR-3${k}`] = rise(`TMP-CLR-3${k}`, on ? 28 : 0);
+  });
   // Discharge: clinker heat left after cooling; a lost hot-zone fan or a backed-up bed sends hot clinker downstream (D5 FP-36 / FP-37).
   v["TMP-CLR-08"] =
     0.6 * Ta + 12 + 82 * Math.pow(Math.max(0, z.fDis), 1.95) * (1 - 1.1 * (Aeff - 1)) * Math.pow(clamp(z.bedCold, 0.5, BED_MAX), 0.3) + 80 * (1 - hotShare) * z.fDis;
-  v["TMP-CLR-09"] = gas("TMP-CLR-09", 255 + 180 * (z.fIn - 1) - 60 * (Aeff - 1));
+  // Vent air line (Rev. 02 HP-06): middle vent → WHRS → ESP → vent exhaust fan → recirculation to the fans.
+  v["TMP-CLR-09"] = gas("TMP-CLR-09", 350 + 180 * (z.fIn - 1) - 60 * (Aeff - 1));
+  v["TMP-CLR-24"] = 20 + 0.379 * (v["TMP-CLR-09"] - 20);
+  v["PRS-CLR-21"] = vent ? -12.5 * A : -0.5;
+  v["PRS-CLR-22"] = vent ? v["PRS-CLR-21"] - 6 * A * A : -0.6;
+  v["PRS-CLR-20"] = v["PRS-CLR-21"] - v["PRS-CLR-22"];
+  v["TMP-CLR-25"] = vent ? 20 + 0.72 * (v["TMP-CLR-24"] - 20) : Ta + 5;
   v["VIB-CLR-07"] = vent ? 2.2 : VIB_STOPPED;
   v["TMP-CLR-10"] = rise("TMP-CLR-10", vent ? 34 : 0);
-  v["ELE-CLR-07"] = vent ? 385 * (1 + 0.1 * (A - 1)) : 0;
-  v["TMP-CLR-23"] = wdg("TMP-CLR-23", vent, v["ELE-CLR-07"] / 385);
+  v["ELE-CLR-07"] = vent ? I0 * (1 + 0.1 * (A - 1)) : 0;
+  v["TMP-CLR-23"] = wdg("TMP-CLR-23", vent, v["ELE-CLR-07"] / I0);
 
   // HMR-01 · crusher load follows the clinker rate (no-load current when empty).
   const crush = run("hmr-crusher");
-  const iHmr = crush ? 96 * (0.4 + 0.6 * z.fHmr) : 0;
+  const iHmr = crush ? 70 * (0.4 + 0.6 * z.fHmr) : 0;
   v["ELE-HMR-01"] = iHmr;
-  v["TMP-HMR-03"] = rise("TMP-HMR-03", 52 * Math.pow(iHmr / 96, 2));
+  v["TMP-HMR-03"] = rise("TMP-HMR-03", 62 * Math.pow(iHmr / 70, 2));
   v["VIB-HMR-01"] = crush ? 3.1 : VIB_STOPPED;
   v["VIB-HMR-02"] = crush ? 2.8 : VIB_STOPPED;
+  v["VIB-HMR-03"] = crush ? 1.8 : VIB_STOPPED;
+  v["VIB-HMR-04"] = crush ? 1.6 : VIB_STOPPED;
   // Hot clinker from the cooler warms the crusher (D5 FP-36 "hot clinker downstream").
   const hotClinker = 0.04 * Math.max(0, v["TMP-CLR-08"] - 112) * z.fHmr;
   v["TMP-HMR-01"] = rise("TMP-HMR-01", crush ? 36 + 3 * (z.fHmr - 1) + hotClinker : 0);
   v["TMP-HMR-02"] = rise("TMP-HMR-02", crush ? 32 + 3 * (z.fHmr - 1) + hotClinker : 0);
-  v["SPD-HMR-01"] = crush ? 345 : 0;
+  v["TMP-HMR-04"] = rise("TMP-HMR-04", crush ? 30 + 2 * (z.fHmr - 1) : 0);
+  v["TMP-HMR-05"] = rise("TMP-HMR-05", crush ? 27 + 2 * (z.fHmr - 1) : 0);
+  // Crusher outlet and pan conveyor clinker temperatures: the discharge heat while clinker flows, ambient once empty.
+  const flowing = (f: number) => clamp(f / 0.3, 0, 1);
+  v["TMP-HMR-06"] = gas("TMP-HMR-06", Ta + (0.85 * v["TMP-CLR-08"] + 35 - Ta) * flowing(z.fHmr));
 
   // CSL-01 · conveyor, silo inventory and its pulse-jet filter.
   const conv = run("csl-conveyor");
   const dust = run("csl-dust-fan");
   // A broken chain unloads the drive to no-load and the tail shaft stops (D5 FP-42).
   const brk = clamp(p.chainBreak, 0, 1);
-  v["ELE-CSL-01"] = conv ? 74 * (0.45 + 0.55 * z.fCsl * (1 - brk)) : 0;
+  v["ELE-CSL-01"] = conv ? I0 * (0.45 + 0.55 * z.fCsl * (1 - brk)) : 0;
   v["VIB-CSL-01"] = conv ? 1.9 : VIB_STOPPED;
-  v["SPD-CSL-01"] = conv ? 6.2 * (1 - brk) : 0;
+  v["VIB-CSL-03"] = conv ? 1.7 : VIB_STOPPED;
+  v["VIB-CSL-02"] = conv ? 2.0 : VIB_STOPPED;
+  v["TMP-CSL-03"] = rise("TMP-CSL-03", conv ? 28 : 0);
+  v["TMP-CSL-04"] = rise("TMP-CSL-04", conv ? 25 : 0);
   v["TMP-CSL-02"] = wdg("TMP-CSL-02", conv);
-  // Baghouse ΔP: saw-tooth with the pulse-cleaning cycle; without cleaning the cake builds and ΔP stops cycling.
+  v["TMP-CSL-01"] = gas("TMP-CSL-01", Ta + (0.85 * v["TMP-CLR-08"] + 25 - Ta) * flowing(z.fCsl));
+  // Baghouse ΔP (= inlet − outlet): saw-tooth with the pulse-cleaning cycle; without cleaning the cake builds and ΔP stops cycling.
   const pulse = clamp(p.pulseStop, 0, 1);
-  v["PRS-CSL-01"] = dust ? 11.4 + 2.2 * (1 - pulse) * ((((t % 30) + 30) % 30) / 30) + 3 * pulse : 0.4;
-  v["ELE-CSL-02"] = dust ? 58 : 0;
+  v["PRS-CSL-02"] = dust ? -3 : -0.1;
+  v["PRS-CSL-03"] = dust ? v["PRS-CSL-02"] - (11.4 + 2.2 * (1 - pulse) * saw(30) + 3 * pulse) : -0.2;
+  v["PRS-CSL-01"] = v["PRS-CSL-02"] - v["PRS-CSL-03"];
+  v["ELE-CSL-02"] = dust ? I0 : 0;
   v["LEV-CSL-01"] = inv.cSilo / CSILO_T_PER_PCT;
   return v;
 }
@@ -977,7 +1078,8 @@ interface LineControl {
  * the line interlocks, and move the commanded feed, coal and kiln speed:
  * - duty / standby aeration change-over (standby starts 1 min after the duty blower is lost);
  * - gearbox lube-oil loss trips the main drive; the auxiliary drive turns the kiln 5 min after the main drive is lost;
- * - ID fan, kiln drive or flame loss stops the kiln feed and the fuel at once; an elevator / air-slide stop,
+ * - ID fan, kiln drive or flame loss stops the kiln feed and the fuel at once; an elevator stop, both bin air
+ *   slides, the common slide or the preheater-top slide lost,
  *   an empty feed bin or a long cooler back-up stops the feed, and the fuel is cut over 5 min (D5 9.4.5);
  * - a backed-up cooler cuts the kiln feed 30 % after 15 min and stops it after 45 min (D5 9.4.5 "kiln output cut");
  * - on a stop the kiln is turned down; on a restart feed, coal and speed ramp back at 2 % / min.
@@ -1001,7 +1103,10 @@ function controlLine(P: PlantState, t: number, forced: Partial<Record<EquipmentI
     }
   }
   if (!cause && forced["kfs-elevator"]) cause = "bucket elevator";
-  if (!cause && forced["kfs-airslide-blower"]) cause = "air-slide blower";
+  // One bin slide alone carries the feed; both lost, or the common slide or the preheater-top slide, stops it.
+  if (!cause && forced["kfs-slide-blower-a"] && forced["kfs-slide-blower-b"]) cause = "air-slide blowers A and B";
+  if (!cause && forced["kfs-common-blower"]) cause = "common air-slide blower";
+  if (!cause && forced["kfs-top-blower"]) cause = "preheater-top air-slide blower";
   const binEmpty = P.lineStopCause === "feed bin empty" ? P.binLevel < 30 : P.binLevel < 2;
   if (!cause && binEmpty) cause = "feed bin empty";
   const backedFor = P.backupSince === null ? 0 : t - P.backupSince;
@@ -1057,13 +1162,13 @@ const LIVE_LIMIT_CLEAR_N = 300;
  * minute where the finding sits firmly at that severity (and machine health on
  * the same side of 60). Calibrated headless against the D5 physics: every entry
  * holds ≥ 90 % of the time at its profile's condition (seed 20261014). The
- * elevator slip never turns critical (D5 FP-06 slip is advisory evidence), so
- * the FED critical rotation uses the torn aeration pad instead.
+ * OSW-PE-SNL-PYR-01 Rev. 02 register has no elevator rpm (zero-speed switch), so
+ * the FED rotations use the aeration pads and the elevator choke instead of slip.
  */
 export const PYRO_HOLDS: Record<string, { advisory: Array<{ id: string; at: number }>; critical: Array<{ id: string; at: number }> }> = {
   "PYR-FED-01": {
-    advisory: [{ id: "kfs-head-bearing", at: 225 }, { id: "fsl-blower-trip", at: 60 }, { id: "kfs-elevator-slip", at: 115 }],
-    critical: [{ id: "kfs-head-bearing", at: 330 }, { id: "fsl-blower-trip", at: 160 }, { id: "fsl-pad-torn", at: 210 }],
+    advisory: [{ id: "kfs-head-bearing", at: 225 }, { id: "fsl-blower-trip", at: 60 }, { id: "fsl-pad-blinding", at: 180 }],
+    critical: [{ id: "kfs-head-bearing", at: 330 }, { id: "kfs-elevator-choke", at: 60 }, { id: "fsl-pad-torn", at: 210 }],
   },
   "PYR-PHC-01": {
     advisory: [{ id: "phc-idfan-buildup", at: 130 }, { id: "phc-false-air", at: 165 }, { id: "phc-idfan-bearing", at: 240 }],
@@ -1071,7 +1176,7 @@ export const PYRO_HOLDS: Record<string, { advisory: Array<{ id: string; at: numb
   },
   "PYR-KLN-01": {
     advisory: [{ id: "kln-tyre2-tight", at: 200 }, { id: "kln-filter-clog", at: 212 }, { id: "kln-spray-circuit", at: 150 }, { id: "kln-inlet-false-air", at: 120 }],
-    critical: [{ id: "kln-hot-spot", at: 265 }, { id: "kln-roller-oil-bath", at: 155 }, { id: "kln-filter-clog", at: 320 }],
+    critical: [{ id: "kln-hot-spot", at: 265 }, { id: "kln-roller-oil-bath", at: 220 }, { id: "kln-filter-clog", at: 320 }],
   },
   "PYR-BRN-01": {
     advisory: [{ id: "brn-coal-bin-smoulder", at: 210 }, { id: "brn-flame-swirl", at: 50 }, { id: "brn-pafan-bearing", at: 245 }],
@@ -1079,7 +1184,7 @@ export const PYRO_HOLDS: Record<string, { advisory: Array<{ id: string; at: numb
     critical: [{ id: "brn-pafan-bearing", at: 360 }, { id: "brn-coal-line-plug", at: 140 }, { id: "brn-flame-swirl", at: 120 }],
   },
   "PYR-CLR-01": {
-    advisory: [{ id: "clr-fan2-bearing", at: 245 }, { id: "clr-hydraulic", at: 185 }, { id: "clr-vent-imbalance", at: 170 }, { id: "clr-fan5-bearing", at: 215 }],
+    advisory: [{ id: "clr-fan2-bearing", at: 245 }, { id: "clr-grate-overload", at: 185 }, { id: "clr-vent-imbalance", at: 170 }, { id: "clr-fan5-bearing", at: 215 }],
     // SW-CLR-01 (grate plate) is a suspicion capped at Alert (no flow / bed-depth / damper inputs), so it is not a critical hold.
     critical: [{ id: "clr-red-river", at: 170 }, { id: "clr-fan2-bearing", at: 330 }],
   },
@@ -1663,7 +1768,7 @@ export function thawLine(f: FrozenLine): LineState {
   adoptLineMemory(s, mem);
   // A snapshot from before the OSW-PE-SNL-PYR-01 sensor list: WGT-KFS-01 was the whole bin (now load cell 1),
   // FLO-KFS-01 the whole kiln feed (now SFM A, half) and POS-KFS-01 a % dosing gate (now gate A open / closed).
-  if (!s.hist["WGT-KFS-02"]) {
+  if (!s.hist["WGT-KFS-02"] && !s.hist["WGT-KFS-04"]) {
     for (const h of [s.hist, s.modelHist]) {
       if (h["WGT-KFS-01"]) h["WGT-KFS-01"] = h["WGT-KFS-01"].map((v) => v * LOAD_CELL_SHARE[0]);
       if (h["FLO-KFS-01"]) h["FLO-KFS-01"] = h["FLO-KFS-01"].map((v) => v / 2);
@@ -1671,9 +1776,23 @@ export function thawLine(f: FrozenLine): LineState {
     }
     for (const [i, k] of LOAD_CELL_SHARE.entries()) if (i > 0) for (const h of [s.hist, s.modelHist]) h[`WGT-KFS-0${i + 1}`] = (h["WGT-KFS-01"] ?? []).map((v) => (v / LOAD_CELL_SHARE[0]) * k);
   }
-  // Signals added to the catalogue after the snapshot was taken start with a flat history at their base value.
+  migrateRev02(s);
+  migrateEquipment(s.plant);
+  // Rules added to (or dropped from) the library since the snapshot: start quiet / forget them.
+  for (const ms of Object.values(s.machines)) {
+    const ids = new Set((PYRO_RULES_BY_MACHINE[ms.id] ?? []).map((r) => r.id));
+    for (const id of ids) ms.rules[id] ??= emptyRule();
+    for (const id of Object.keys(ms.rules)) if (!ids.has(id)) delete ms.rules[id];
+  }
+  s.thermal.coverageHist ??= [];
+  // Signals added to the catalogue after the snapshot was taken start with a history at their base value carrying
+  // their normal scatter (a dead-flat history would read as a stuck transmitter to the variability screen).
   for (const def of SERIES_SIGNALS) {
-    const flat = () => s.times.map(() => (def.type === "state" ? 1 : def.base));
+    const jitter = (i: number) => {
+      const u = Math.sin((i + 1) * 12.9898 + def.tag.length * 78.233) * 43758.5453;
+      return (u - Math.floor(u) - 0.5) * 2 * def.sigma;
+    };
+    const flat = () => s.times.map((_, i) => (def.type === "state" ? 1 : def.base + jitter(i)));
     if (!s.hist[def.tag]) s.hist[def.tag] = flat();
     if (!s.modelHist[def.tag]) s.modelHist[def.tag] = flat();
     if (!s.qualHist[def.tag]) s.qualHist[def.tag] = s.times.map(() => 0);
@@ -1686,6 +1805,87 @@ export function thawLine(f: FrozenLine): LineState {
     s.nextEventAt = Math.min(s.nextEventAt, s.t + 1);
   }
   return s;
+}
+
+/** Bases (normal values) of the Rev. 01 catalogue that Rev. 02 moved: a thawed history is rescaled onto the new base. */
+const REV01_BASE: Record<string, number> = {"TMP-FSL-01": 84, "PRS-FSL-01": 420, "ELE-FSL-01": 66, "ELE-FSL-02": 34, "PRS-KFS-05": 10, "ELE-KFS-03": 22, "PRS-KFS-01": 39.2, "TMP-KFS-02": 86, "ELE-KFS-01": 118, "TMP-PHC-07": 850, "VIB-PHC-01": 2.3, "VIB-PHC-02": 2, "TMP-PHC-09": 68, "TMP-PHC-10": 63, "ELE-PHC-01": 1850, "PRS-PHC-10": -11, "PRS-BGH-02": -18, "PRS-BGH-01": 14, "ELE-BGH-01": 310, "TMP-KLN-01": 52, "TMP-KLN-02": 53, "TMP-KLN-03": 52, "TMP-KLN-04": 53, "TMP-KLN-05": 52, "TMP-KLN-06": 53, "TMP-KLN-07": 52, "TMP-KLN-08": 53, "TMP-KLN-09": 52, "TMP-KLN-10": 53, "TMP-KLN-11": 52, "TMP-KLN-12": 53, "TMP-KLN-25": 90, "TMP-KLN-26": 250, "ELE-BRN-01": 142, "TMP-BRN-05": 88, "TMP-BRN-04": 56, "VIB-BRN-02": 2.6, "ELE-BRN-02": 205, "TMP-BRN-03": 880, "PRS-BRN-05": -3.43, "ELE-CLR-01": 215, "TMP-CLR-17": 86, "ELE-CLR-02": 196, "TMP-CLR-18": 86, "ELE-CLR-03": 172, "TMP-CLR-19": 86, "TMP-CLR-04": 54, "ELE-CLR-04": 148, "TMP-CLR-20": 86, "TMP-CLR-05": 54, "ELE-CLR-05": 126, "TMP-CLR-21": 86, "TMP-CLR-06": 54, "ELE-CLR-06": 104, "TMP-CLR-22": 86, "TMP-CLR-09": 255, "ELE-CLR-07": 385, "TMP-HMR-03": 82, "ELE-HMR-01": 96, "TMP-CSL-02": 80, "ELE-CSL-01": 74, "ELE-CSL-02": 58};
+
+/**
+ * A line saved before the OSW-PE-SNL-PYR-01 Rev. 02 register (it still has the hydraulic grate PRS-CLR-07): carry its
+ * histories over to the Rev. 02 meanings so the trends continue, map its equipment and rules, and drop the removed points.
+ * - load cells WGT-KFS-01/02/03 → WGT-KFS-02/03/04, WGT-KFS-01 = bin weight in % of capacity (HP-03);
+ * - burner PRS-BRN-01 swirl / -02 axial / -03 header → -02 swirl / -03 axial / -01 header (HP-04);
+ * - cyclone gas outlet temperatures (C n) → riser duct temperatures (gas into C n−1), C1 outlet → preheater exit gas;
+ *   the old riser gas → C6 riser duct; stage drafts → riser duct pressures; C4–C6 cone taps PRS-PHC-07…09 → PRS-PHC-14…16;
+ * - shell map maximum CAL-KLN-03 → STS-KLN-08 (coverage moves to the scanner's own quality history);
+ * - grate stroke SPD-CLR-01 → grate drives SPD-CLR-11…13, SPD-CLR-01 = cooling fan 1 speed; TMP-KLN-21 → TMP-KLN-41…46;
+ * - currents in A (and the ID fan power in kW) → % FLA / % rated, and every moved base by the ratio of the bases;
+ * - zero-speed switches and gate positions keep their run evidence as states / openings.
+ */
+function migrateRev02(s: LineState): void {
+  if (!s.hist["PRS-CLR-07"] && !s.hist["CAL-KLN-03"]) return;
+  const hs = [s.hist, s.modelHist];
+  const scale = (h: Record<string, number[]>, tag: string, k: number) => {
+    if (h[tag]) h[tag] = h[tag].map((v) => v * k);
+  };
+  for (const h of hs) {
+    const old = { ...h };
+    const take = (from: string, k = 1) => (old[from] ? old[from].map((v) => v * k) : undefined);
+    const put = (to: string, xs: number[] | undefined) => {
+      if (xs) h[to] = xs;
+      else delete h[to];
+    };
+    const w1 = old["WGT-KFS-01"];
+    put("WGT-KFS-02", take("WGT-KFS-01"));
+    put("WGT-KFS-03", take("WGT-KFS-02"));
+    put("WGT-KFS-04", take("WGT-KFS-03"));
+    if (w1 && old["WGT-KFS-02"] && old["WGT-KFS-03"]) h["WGT-KFS-01"] = w1.map((v, i) => (v + old["WGT-KFS-02"][i] + old["WGT-KFS-03"][i]) / BIN_T_PER_PCT);
+    else delete h["WGT-KFS-01"];
+    put("PRS-BRN-01", take("PRS-BRN-03", 660 / 675));
+    put("PRS-BRN-02", take("PRS-BRN-01", 70 / 65));
+    put("PRS-BRN-03", take("PRS-BRN-02"));
+    put("TMP-PHC-30", take("TMP-PHC-01", 325 / 330));
+    for (let k = 1; k <= 5; k++) put(`TMP-PHC-0${k}`, take(`TMP-PHC-0${k + 1}`, CYC_T[k - 1] / [505, 650, 775, 832, 866][k - 1]));
+    put("TMP-PHC-06", take("TMP-PHC-08", CYC_T[5] / 892));
+    put("TMP-PHC-08", take("TMP-PHC-08", 885 / 892));
+    for (let k = 1; k <= 6; k++) put(`PRS-PHC-0${k}`, take(`PRS-PHC-0${k}`, CYC_P[k - 1] / [-62, -51, -40, -30, -21, -11.2][k - 1]));
+    for (let k = 4; k <= 6; k++) put(`PRS-PHC-1${k}`, take(`PRS-PHC-0${k + 3}`, CYC_CONE_P[k - 1] / [-5.9, -4.9, -7][k - 4]));
+    put("STS-KLN-08", take("CAL-KLN-03"));
+    for (let k = 1; k <= 3; k++) put(`SPD-CLR-1${k}`, take("SPD-CLR-01"));
+    delete h["SPD-CLR-01"];
+    for (let k = 1; k <= 6; k++) put(`TMP-KLN-4${k}`, take("TMP-KLN-21", PYRO_SIGNAL_BY_TAG[`TMP-KLN-4${k}`].base / 92));
+    // Zero-speed switches: running (1) while the old speed showed the shaft turning.
+    for (const [tag, b] of [["SPD-KFS-01", 24.5], ["SPD-HMR-01", 345], ["SPD-CSL-01", 6.2]] as const) if (old[tag]) h[tag] = h === s.modelHist ? old[tag].map(() => 1) : old[tag].map((v) => (v > 0.2 * b ? 1 : 0));
+    // Motorised gate openings: open gates at the design demand, closed ones at zero.
+    for (let k = 1; k <= 6; k++) if (old[`POS-FSL-0${k}`]) h[`POS-FSL-0${k}`] = old[`POS-FSL-0${k}`].map((v) => (v > 0 ? PYRO_SIGNAL_BY_TAG[`POS-FSL-0${k}`].base : 0));
+    for (const [tag, b] of Object.entries(REV01_BASE)) scale(h, tag, PYRO_SIGNAL_BY_TAG[tag].base / b);
+  }
+  if (s.qualHist["CAL-KLN-03"]) s.qualHist["STS-KLN-08"] = s.qualHist["CAL-KLN-03"];
+  // The coverage history of the scanner's own quality figure.
+  s.thermal.coverageHist ??= [];
+  // Instrument noise restarts from zero: a re-meant tag must not carry the noise state of its old meaning.
+  for (const key of Object.keys(s.ar)) if (key.startsWith("n:")) delete s.ar[key];
+  // Removed points (and any other tag no longer in the register) leave the histories, flags and holds.
+  const keep = new Set(SERIES_SIGNALS.map((d) => d.tag));
+  for (const h of [s.hist, s.modelHist, s.qualHist]) for (const tag of Object.keys(h)) if (!keep.has(tag)) delete h[tag];
+  for (const tag of Object.keys(s.flags)) if (!PYRO_SIGNAL_BY_TAG[tag]) delete s.flags[tag];
+  for (const tag of Object.keys(s.holds)) if (!PYRO_SIGNAL_BY_TAG[tag]) delete s.holds[tag];
+  for (const tag of Object.keys(s.staleSince)) if (!PYRO_SIGNAL_BY_TAG[tag]) delete s.staleSince[tag];
+  for (const ms of Object.values(s.machines)) for (const tag of Object.keys(ms.limits)) if (!PYRO_SIGNAL_BY_TAG[tag]) delete ms.limits[tag];
+}
+
+/** Equipment of an older snapshot onto the current units (the hydraulic grate unit → grate drives 1–3, the bin air-slide blower → slides A / B). */
+function migrateEquipment(P: PlantState): void {
+  const RENAMED: Record<string, EquipmentId[]> = { "clr-grate-hpu": ["clr-grate-1", "clr-grate-2", "clr-grate-3"], "kfs-airslide-blower": ["kfs-slide-blower-a", "kfs-slide-blower-b"] };
+  const eq = P.eq as Record<string, EquipmentState>;
+  const down = P.downSince as Record<string, number | undefined>;
+  for (const [from, to] of Object.entries(RENAMED)) {
+    if (eq[from] !== undefined) for (const id of to) eq[id] ??= eq[from];
+    if (down[from] !== undefined) for (const id of to) down[id] ??= down[from];
+  }
+  const fresh = defaultEquipment();
+  P.eq = Object.fromEntries(EQUIPMENT_IDS.map((id) => [id, eq[id] ?? fresh[id]])) as EquipmentStates;
+  for (const id of Object.keys(down)) if (!(EQUIPMENT_IDS as readonly string[]).includes(id)) delete down[id];
 }
 
 /* ------------------------------------------------------------------ */
@@ -1893,10 +2093,15 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
   const aeration = lagStep(P.lag, "T:aer", run("fsl-blower-duty") ? 1 : run("fsl-blower-standby") ? 0.92 : 0, 0, 3);
   const extractionCap = 1.5 * F0 * aeration * clamp(1 + (driverDelta.extraction ?? 0), 0, 1.5) * (run("fsl-gate") ? 1 : 0);
   // Bin weight for the extraction control from the valid load cells (a flagged cell is left out, the others scaled up).
-  const okCells = LOAD_CELL_SHARE.map((k, i) => [k, `WGT-KFS-0${i + 1}`] as const).filter(([, tg]) => !s.flags[tg]);
+  const okCells = LOAD_CELL_SHARE.map((k, i) => [k, CELLS[i]] as const).filter(([, tg]) => !s.flags[tg]);
   const okShare = okCells.reduce((acc, [k]) => acc + k, 0);
   const wgtPrev = okCells.length ? okCells.reduce((acc, [k, tg]) => acc + (s.hist[tg]?.at(-1) ?? BIN_SP * k), 0) / okShare : BIN_SP;
-  const extraction = clamp(truthDrivers.feed + BIN_GAIN * (BIN_SP - wgtPrev), 0, Math.min(extractionCap, TI.silo * 60));
+  // Extraction demand of the bin-weight controller; the motorised gates open to it (Rev. 02 "per demand"), the meal
+  // actually extracted is limited by the aeration, the gates and bridging.
+  const demand = Math.max(0, truthDrivers.feed + BIN_GAIN * (BIN_SP - wgtPrev));
+  // The gates' mechanical end stop sits at 97 % of the position transmitter's span.
+  const gateOpen = run("fsl-gate") ? clamp((100 * demand) / GATE_CAP, 0, GATE_MAX) : 0;
+  const extraction = clamp(demand, 0, Math.min(extractionCap, TI.silo * 60));
   P.rawMill = P.rawMill ? TI.silo / SILO_T_PER_PCT < 74 : TI.silo / SILO_T_PER_PCT < 52;
   TI.silo = clamp(TI.silo + ((P.rawMill ? RAW_MILL : 0) - extraction) / 60, 0, 98.5 * SILO_T_PER_PCT);
   TI.bin = clamp(TI.bin + (extraction - truthDrivers.feed) / 60, 0, 98.5 * BIN_T_PER_PCT);
@@ -1924,8 +2129,12 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
     chainBreak: chainBreak,
     pulseStop: driverDelta.pulseStop ?? 0,
     coalSurge: truthDrivers.coal > 0 ? (driverDelta.coalSurge ?? 0) : 0,
+    gateOpen,
   });
   for (const [tag, dlt] of Object.entries(physDelta)) if (tag in truth) truth[tag] += dlt;
+  // The stack CEMS sees the kiln NOx and the preheater CO that reach it (after the scripted process changes too).
+  truth["GAS-BGH-03"] = 0.63 * truth["GAS-KLN-03"] + (physDelta["GAS-BGH-03"] ?? 0);
+  truth["GAS-BGH-04"] = STACK_CO * truth["GAS-PHC-02"] + (physDelta["GAS-BGH-04"] ?? 0);
   // A scripted red river (discharge physically hotter) also reaches the crusher bearings.
   if ((physDelta["TMP-CLR-08"] ?? 0) > 0 && run("hmr-crusher")) {
     const heat = lagStep(P.lag, "T:hotClinker", 0.04 * physDelta["TMP-CLR-08"] * zT.fHmr, 0, TAU_BEARING);
@@ -1933,7 +2142,12 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
     truth["TMP-HMR-02"] += heat;
   }
   // A physical load change on a drive heats its motor winding with the winding's thermal lag (D5 9.4.2 physical neighbours).
-  for (const [load, wdg, base, k] of [["ELE-KLN-01", "TMP-KLN-21", 64, 62], ["ELE-HMR-01", "TMP-HMR-03", 96, 52]] as const) {
+  const WINDING_LOADS: Array<readonly [string, string, number, number]> = [
+    ...[1, 2, 3, 4, 5, 6].map((k) => ["ELE-KLN-01", `TMP-KLN-4${k}`, 64, PYRO_SIGNAL_BY_TAG[`TMP-KLN-4${k}`].base - TA0] as const),
+    ["ELE-HMR-01", "TMP-HMR-03", 70, 62],
+    ["ELE-CSL-01", "TMP-CSL-02", 75, 62],
+  ];
+  for (const [load, wdg, base, k] of WINDING_LOADS) {
     // A scenario that scripts the winding itself keeps its own value.
     if (physDelta[wdg] !== undefined) continue;
     const i0 = truth[load] - (physDelta[load] ?? 0);
@@ -1979,12 +2193,19 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
   };
   if (Math.abs(truth["POS-KLN-01"]) >= 40) setState("POS-KLN-02", "LIMIT");
   // Status points follow the equipment run states (D5 Table 6.13 controller status).
-  setState("STS-FSL-02", run("fsl-blower-duty") ? "DUTY RUN" : run("fsl-blower-standby") ? "STANDBY RUN" : "NOT AVAILABLE");
-  for (const k of [1, 2, 3, 4, 5, 6]) setState(`POS-FSL-0${k}`, run("fsl-gate") ? "OPEN" : eq["fsl-gate"] === "tripped" ? "FAULT" : "CLOSED");
-  setState("STS-FSL-03", run("fsl-blower-duty") || run("fsl-blower-standby") ? "SEQUENCE RUN" : "HOLD");
-  // Discharge gates A / B close when the kiln feed stops; the slide blower reports its own run state.
-  for (const g of ["POS-KFS-01", "POS-KFS-02"]) setState(g, truth["FLO-KFS-01"] + truth["FLO-KFS-02"] > 0.02 * F0 ? "OPEN" : "CLOSED");
-  setState("STS-KFS-01", run("kfs-airslide-blower") ? "RUNNING" : eq["kfs-airslide-blower"] === "tripped" ? "TRIPPED" : "STOPPED");
+  setState("STS-FSL-03", run("fsl-blower-duty") || run("fsl-blower-standby") ? "RUNNING" : "STOPPED");
+  // Discharge gates A / B close when their slide stops carrying meal (kiln feed stopped, or the slide's blower lost).
+  setState("POS-KFS-01", truth["FLO-KFS-01"] > 0.01 * F0 ? "OPEN" : "CLOSED");
+  setState("POS-KFS-02", truth["FLO-KFS-02"] > 0.01 * F0 ? "OPEN" : "CLOSED");
+  // Zero-speed switches (Rev. 02 HP-05): STOPPED with the drive off; a stopped shaft with the drive on is the alarm state.
+  setState("SPD-KFS-01", run("kfs-elevator") ? "RUNNING" : "STOPPED");
+  setState("SPD-HMR-01", run("hmr-crusher") ? "RUNNING" : "STOPPED");
+  setState("SPD-CSL-01", run("csl-conveyor") ? (chainBreak ? "STOPPED WHILE RUNNING" : "RUNNING") : "STOPPED");
+  setState("STS-KLN-14", run("kln-motor-fan") ? "RUNNING" : "STOPPED");
+  if (!run("kln-motor-fan") && run("kln-main-drive")) setState("STS-KLN-12", "WARNING");
+  setState("STS-BRN-01", run("brn-bin-blower") ? "RUNNING" : eq["brn-bin-blower"] === "tripped" ? "TRIPPED" : "STOPPED");
+  // Coal-bin nitrogen purge: on standby, active on high CO or a hot bin (Rev. 02: "not active on high CO" is the fault).
+  setState("STS-BRN-02", truth["GAS-BRN-01"] > 200 || truth["TMP-BRN-04"] > 75 ? "ACTIVE" : "STANDBY");
   setState("STS-KLN-11", run("kln-aux-drive") ? "RUNNING" : eq["kln-aux-drive"] === "tripped" ? "NOT READY" : states["STS-KLN-11"]);
   if (!run("kln-lube-pump")) setState("FLO-KLN-05", "NO FLOW");
   if (!run("kln-spray")) {
@@ -1994,9 +2215,11 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
   // Gas analysers: hourly probe blowback holds their values; a scenario may force an analyser status (D5 Table 6.6).
   applyAnalyserCycle({ t, s, measured, states, stateOverride });
 
-  // Dust on the scanner optics reads low (D5 §5.4.7, FP-27): about 3 K per % of coverage lost to the fouled window.
-  // A scanner calibration / emissivity offset is a sensor effect on the map maximum (CAL-KLN-03).
-  const scanBias = Math.min(0, measured["STS-KLN-08"] - 95.9) * 3 + (sensorDelta["CAL-KLN-03"] ?? 0);
+  // Scanner coverage (share of the shell in view, the scanner's own quality figure; not a Rev. 02 register point): dust on
+  // the optics (driver `scannerCoverage`) shrinks it and reads low (D5 §5.4.7, FP-27), about 3 K per % of coverage lost.
+  // A scanner calibration / emissivity offset is a sensor effect on the shell maximum STS-KLN-08.
+  const coverage = clamp(SCANNER_COVERAGE0 + ar("n:scanner-coverage", 0.15, 0.75) + (driverDelta.scannerCoverage ?? 0), 0, 100);
+  const scanBias = Math.min(0, coverage - SCANNER_COVERAGE0) * 3 + (sensorDelta["STS-KLN-08"] ?? 0);
   const shellProfile = shellTrue.map((v, i) => v + ar(`sh:${i % 8}`, 1.2, 0.6) + scanBias);
 
   /* ---------------- witnesses & measured drivers ---------------- */
@@ -2014,7 +2237,7 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
   // response"). The kiln torque and the burning zone see the feed after the kiln transport lag (meter feed lagged the same way).
   const wMeal = lagStep(P.lag, "W:meal", feedMeter / F0, LAG.meal[0], LAG.meal[1]);
   const wBz = lagStep(P.lag, "W:burn", wMeal, LAG.burn[0], LAG.burn[1]);
-  const feedElev = run("kfs-elevator") ? F0 * Math.pow(Math.max(0, (measured["ELE-KFS-01"] / 118 - 0.35) / 0.65), 1 / 1.1) : feedMeter;
+  const feedElev = run("kfs-elevator") ? F0 * Math.pow(Math.max(0, (measured["ELE-KFS-01"] / I0 - 0.35) / 0.65), 1 / 1.1) : feedMeter;
   const torqueRel = measured["ELE-KLN-01"] / 64 / Math.pow(Math.max(nM, 0.05), 0.3);
   // The torque witness is the kiln's lagged load: during a real feed change it disagrees with the elevator and the vote
   // abstains; a meter step at a steady feed is out-voted at once.
@@ -2032,7 +2255,7 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
   // Inventories: mass balance on the measured / commanded flows, held to the readings by a slow observer.
   {
     // No level sensor: the bin is observed through its three load cells; a flagged cell is replaced by the other two.
-    const okCells = LOAD_CELL_SHARE.map((k, i) => [k, `WGT-KFS-0${i + 1}`] as const).filter(([, tg]) => !flagged(tg));
+    const okCells = LOAD_CELL_SHARE.map((k, i) => [k, CELLS[i]] as const).filter(([, tg]) => !flagged(tg));
     const shareOk = okCells.reduce((acc, [k]) => acc + k, 0);
     const binObs = okCells.length ? okCells.reduce((acc, [, tg]) => acc + measured[tg], 0) / shareOk : MI.bin;
     const aerationM = lagStep(P.lag, "M:aer", run("fsl-blower-duty") ? 1 : run("fsl-blower-standby") ? 0.92 : 0, 0, 3);
@@ -2046,11 +2269,13 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
     MI.coalBin = clamp(MI.coalBin + ((P.coalMill ? COAL_MILL : 0) - coalForModel) / 60, 0, 98.5 * COALBIN_T_PER_PCT);
     MI.cSilo = clamp(MI.cSilo + ((F0 / CLINKER_FACTOR) * zM.fCsl - (P.cementMill ? CEMENT_MILL_DRAW : 0)) / 60, 0, 99 * CSILO_T_PER_PCT);
   }
-  // Cooler air from the running fans' currents (cube-root fan law over the bed's load share).
+  // Cooler air from the running fans' speeds (OSW-PE-SNL-PYR-01 Rev. 02 SPD-CLR-01…06: flow ∝ speed); where no valid
+  // speed is left, from their currents (cube-root fan law over the bed's load share).
+  const fanS = [1, 2, 3, 4, 5, 6].filter((k) => !flagged(`SPD-CLR-0${k}`) && runObs(`clr-fan-${k}` as EquipmentId)).map((k) => measured[`SPD-CLR-0${k}`] / CLR_FAN_RPM[k - 1]);
   const fanI = [1, 2, 3, 4, 5, 6]
     .filter((k) => !flagged(`ELE-CLR-0${k}`) && runObs(`clr-fan-${k}` as EquipmentId))
-    .map((k) => Math.cbrt(measured[`ELE-CLR-0${k}`] / CLR_FAN_I[k - 1] / Math.pow(bedResistance(k <= 3 ? zM.bedHot : zM.bedCold), 0.3)));
-  const airEst = fanI.length ? median(fanI) : 1;
+    .map((k) => Math.cbrt(measured[`ELE-CLR-0${k}`] / CLR_FAN_FLA[k - 1] / Math.pow(bedResistance(k <= 3 ? zM.bedHot : zM.bedCold), 0.3)));
+  const airEst = fanS.length ? median(fanS) : fanI.length ? median(fanI) : 1;
 
   const modelDrivers: Drivers = {
     feed: feedForModel,
@@ -2079,6 +2304,8 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
     chainBreak: 0,
     pulseStop: 0,
     coalSurge: 0,
+    // The gate command: the same bin-weight controller on the measured feed.
+    gateOpen: run("fsl-gate") ? clamp((100 * Math.max(0, feedForModel + BIN_GAIN * (BIN_SP - wgtPrev))) / GATE_CAP, 0, GATE_MAX) : 0,
   });
   // Oil pressure and filter ΔP follow the *measured* oil temperature; CO follows measured O₂.
   if (!flagged("TMP-KLN-15")) {
@@ -2087,17 +2314,25 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
   }
   model["GAS-KLN-02"] = 420 + 2600 * Math.max(0, 1.6 - measured["GAS-KLN-01"]);
   model["GAS-PHC-02"] = 300 + 1600 * Math.max(0, 2.6 - measured["GAS-PHC-01"]);
-  model["FLO-KFS-01"] = feedSp / 2;
-  model["FLO-KFS-02"] = feedSp / 2;
+  // Each meter carries half of the kiln-feed set-point while both slides run, all of it while only its own slide runs.
+  {
+    const a = runObs("kfs-slide-blower-a");
+    const b = runObs("kfs-slide-blower-b");
+    model["FLO-KFS-01"] = feedSp * (a ? (b ? 0.5 : 1) : 0);
+    model["FLO-KFS-02"] = feedSp * (b ? (a ? 0.5 : 1) : 0);
+  }
   model["FLO-BRN-01"] = coalSp;
   // Speed references are the commands (main drive / aux drive / stopped); a tripped fan's reference is zero.
   model["SPD-KLN-01"] = speedRef;
   model["SPD-PHC-01"] = fanRef;
-  model["STS-KLN-08"] = 95.9;
-  // The grate stroke is controlled: its reference is the DCS controller's target, set on the clinker that actually reaches
-  // the cooler (bed-depth control, minimum stroke on an emptying cooler). The controller has no run feedback from the
-  // hydraulic unit (process-only unit), so a tripped grate still has its target: the stroke falls away from it.
-  model["SPD-CLR-01"] = 10.5 * Math.max(zT.fIn, STROKE_MIN);
+  // The grate strokes are controlled: their reference is the DCS controller's target, set on the clinker that actually
+  // reaches the cooler (bed-depth control, minimum stroke on an emptying cooler); a stopped drive has none.
+  for (const k of [1, 2, 3]) model[`SPD-CLR-1${k}`] = runObs(`clr-grate-${k}` as EquipmentId) ? 10.5 * Math.max(zT.fIn, STROKE_MIN) : 0;
+  // Cooling-fan speeds follow their VFD set-points (the commanded cooler air).
+  for (const k of [1, 2, 3, 4, 5, 6]) model[`SPD-CLR-0${k}`] = runObs(`clr-fan-${k}` as EquipmentId) ? CLR_FAN_RPM[k - 1] * (1 + (driverDelta.coolerAir ?? 0)) : 0;
+  // Stack CEMS: NOx and CO follow the measured kiln-inlet NOx and preheater-exit CO they come from (while those are valid).
+  if (!flagged("GAS-KLN-03")) model["GAS-BGH-03"] = 0.63 * measured["GAS-KLN-03"];
+  if (!flagged("GAS-PHC-02")) model["GAS-BGH-04"] = STACK_CO * measured["GAS-PHC-02"];
 
   /* ---------------- operating state (D4 §8.2 comparable state) ---------------- */
   // Running evidence: the machine's main unit runs (MCC run feedback, D5 Table 9.4.1 "motor run states").
@@ -2115,9 +2350,10 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
   // Thermal-map processing (D5 Table 9.5): the scan unrolled into the 0.5 m × 5° map, section statistics against the
   // expected profile, the hottest visible cell and the model value at that position, area above alert, cold / warm
   // bands, outlet end, and the last-good value of every cell (hidden cells keep it with its age).
-  const shellMap = buildShellMap(shellProfile, shellModel, measured["STS-KLN-08"], t, shellLocal);
-  measured["CAL-KLN-03"] = shellMap.max;
-  model["CAL-KLN-03"] = shellModel[shellMap.maxI];
+  const shellMap = buildShellMap(shellProfile, shellModel, coverage, t, shellLocal);
+  // STS-KLN-08 (Rev. 02): the scanner's shell maximum, its position along the kiln part of the same reading.
+  measured["STS-KLN-08"] = instrumentReading(PYRO_SIGNAL_BY_TAG["STS-KLN-08"], shellMap.max);
+  model["STS-KLN-08"] = shellModel[shellMap.maxI];
   const shellThermal: ShellThermal = (() => {
     const th = s.thermal;
     for (let j = 0; j < shellMap.temp.length; j++) {
@@ -2128,6 +2364,8 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
     const areaAboveAlert = shellAreaAbove(shellMap, SHELL_ALERT);
     th.areaHist.push(areaAboveAlert);
     if (th.areaHist.length > 61) th.areaHist.shift();
+    th.coverageHist.push(coverage);
+    if (th.coverageHist.length > 61) th.coverageHist.shift();
     const i = shellMap.maxI;
     return {
       local: shellLocal,
@@ -2143,20 +2381,21 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
       warmBand: shellWarmBand(shellMap),
       outletResidual: shellSpanResidual(shellMap, 66, 74),
       coverageTarget: SHELL_COVERAGE_TARGET,
+      coverage,
+      coverageHist: th.coverageHist.slice(),
       lastGood: th.lastGood,
       lastGoodAt: th.lastGoodAt,
       handheld: null,
       findingMaps: th.findingMaps,
     };
   })();
-  measured["CAL-KLN-06"] = measured["GAS-KLN-01"] - model["GAS-KLN-01"];
-  model["CAL-KLN-06"] = 0;
-  measured["CAL-PHC-01"] = measured["GAS-PHC-01"] - measured["GAS-KLN-01"];
-  model["CAL-PHC-01"] = model["GAS-PHC-01"] - model["GAS-KLN-01"];
-  // Coal-to-feed ratio: not computed while the kiln feed is off (below 5 % of design).
-  const feedAB = measured["FLO-KFS-01"] + measured["FLO-KFS-02"];
-  measured["CAL-BRN-01"] = feedAB >= 0.05 * F0 ? (measured["FLO-BRN-01"] / feedAB) * 100 : 0;
-  model["CAL-BRN-01"] = feedSp * headSp >= 0.05 * F0 ? (coalSp / (feedSp * headSp)) * 100 : 0;
+  // Calculated register points (Rev. 02 CALC.): filter / ESP ΔP = inlet − outlet, bin weight = sum of the three load cells.
+  for (const [dp, inlet, outlet] of DP_CALC) {
+    measured[dp] = measured[inlet] - measured[outlet];
+    model[dp] = model[inlet] - model[outlet];
+  }
+  measured["WGT-KFS-01"] = binWeight(measured) / BIN_T_PER_PCT;
+  model["WGT-KFS-01"] = binWeight(model) / BIN_T_PER_PCT;
   {
     // Laboratory oil sample twice a day; handheld shell round every four hours.
     const lab = s.manual["LAB-KLN-01"];
@@ -2246,8 +2485,6 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
       model[tag] = s.manual[tag].model;
     }
   }
-  // Residual coupling the model cannot see for the coal-to-feed ratio when a meter is out-voted.
-  if ((sfmA || sfmB || flagged("FLO-BRN-01")) && feedForModel >= 0.05 * F0) model["CAL-BRN-01"] = (coalForModel / feedForModel) * 100;
 
   /* ---------------- history ---------------- */
   s.times.push(t);
@@ -2304,6 +2541,7 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
     // Units stopped by the line interlocks are already "stopped" here; the cooler, burner air and kiln keep running at a line stop.
     equipment: eqObs,
     witnesses: { feedElev, feedTorque, feedMeter, coalLine, coalBz, coalMeter },
+    coverage,
     notify: (tag, severity, title, detail) => {
       const ms = ownerOf(tag);
       if (ms && t > 0) pushEvent(s, ms, { kind: "quality", severity, title, detail });
@@ -2325,7 +2563,7 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
   // Scanner map history: one map per scan interval, so zones can be compared scan to scan and shift to shift.
   const scanNow = (((t % SCAN_EVERY) + SCAN_EVERY) % SCAN_EVERY) === 0;
   if (scanNow) {
-    s.shellScans.push({ t, profile: shellProfile, coverage: measured["STS-KLN-08"], valid: !scannerSuspect && quality("STS-KLN-08") === "Good", local: shellLocal, model: shellModel });
+    s.shellScans.push({ t, profile: shellProfile, coverage, valid: !scannerSuspect && quality("STS-KLN-08") === "Good", local: shellLocal, model: shellModel });
     if (s.shellScans.length > SCAN_KEEP) s.shellScans.shift();
   }
   // Maps around every shell finding kept at full resolution (D5 Table 5.4.7a storage, Table 9.5 "map snapshot attached
@@ -2338,11 +2576,11 @@ export function stepLine(s: LineState, emit = true): Record<string, SimFrame> {
       if (!mem || mem.status !== "ACTIVE" || mem.since === null || fm.some((f) => f.ruleId === id && f.since === mem.since)) continue;
       const since = mem.since;
       const maps = s.shellScans.filter((sc) => sc.t >= since - 60).map((sc) => ({ t: sc.t, profile: sc.profile, model: sc.model, local: sc.local, coverage: sc.coverage }));
-      if (!scanNow) maps.push({ t, profile: shellProfile, model: shellModel, local: shellLocal, coverage: measured["STS-KLN-08"] });
+      if (!scanNow) maps.push({ t, profile: shellProfile, model: shellModel, local: shellLocal, coverage });
       fm.unshift({ ruleId: id, since, maps });
       if (fm.length > FINDING_MAPS_KEEP) fm.length = FINDING_MAPS_KEEP;
     }
-    if (scanNow) for (const f of fm) if (t <= f.since + 60 && f.maps.at(-1)?.t !== t) f.maps.push({ t, profile: shellProfile, model: shellModel, local: shellLocal, coverage: measured["STS-KLN-08"] });
+    if (scanNow) for (const f of fm) if (t <= f.since + 60 && f.maps.at(-1)?.t !== t) f.maps.push({ t, profile: shellProfile, model: shellModel, local: shellLocal, coverage });
   }
   // Shell residual along the kiln (scanner minus profile model), for the localised-gradient and burner shell checks.
   const shellRes = shellProfile.map((v, i) => v - shellModel[i]);

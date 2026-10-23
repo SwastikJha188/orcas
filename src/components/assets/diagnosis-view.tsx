@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { PillButton, Loading } from "@/components/ui";
+import { NextActions, PillButton, Loading } from "@/components/ui";
+import { usePmsLine } from "@/components/maintenance/pms-model";
+import { ruleActions, sensorActions } from "./next-actions-model";
 import type { AssetMachine } from "./assets-data";
 import type { AssetsSubPage } from "./assets-view";
 import { useIndustrialData } from "@/providers/industrial-data-context";
@@ -248,6 +250,25 @@ export function DiagnosisView({
   );
   const inAlarm = rows.filter((r) => r.inAlarm).length;
 
+  // Next actions: acknowledge, ask for a repair, check a doubtful sensor (the picked part only).
+  const pms = usePmsLine();
+  const ruleSubsOf = (id: string) => frame?.rules.find((r) => r.id === id)?.subs ?? frame?.defs.ruleById[id]?.subs ?? [];
+  const inPart = (id: string) => !subFilter || ruleSubsOf(id).includes(subFilter);
+  const next = [
+    ...(frame
+      ? ruleActions({
+          machineId: machine.id,
+          rules: frame.rules.filter((r) => inPart(r.id)),
+          acked,
+          cleared: new Map([...journal.cleared].filter(([id]) => inPart(id))),
+          ruleName: (id) => frame.defs.ruleById[id]?.plainTitle || frame.defs.ruleById[id]?.name || id,
+          acknowledge,
+          pms,
+        })
+      : []),
+    ...sensorActions(subFilter ? sensors.filter((x) => subOf({ s: x }) === subFilter) : sensors, openTrend),
+  ];
+
   /* ------------------------------- Header -------------------------------- */
   // One machine condition everywhere: the same source as the header on every machine page.
   const live = useLiveMachineStatus(machine.id, { health: machine.health, status: machine.status });
@@ -363,6 +384,12 @@ export function DiagnosisView({
 
       {/* Until the machine's sensors load, its totals wait instead of reading 0. */}
       <KpiStrip page items={loading || starting ? kpis.map((k) => ({ ...k, loading: true })) : kpis} label="Diagnosis totals" />
+
+      {!loading && next.length > 0 && (
+        <Section id="dx-next" title="Next actions">
+          <NextActions items={next} />
+        </Section>
+      )}
 
       {subRows.length > 0 && !subFilter && (
         <Section id="dx-health" title="Parts">

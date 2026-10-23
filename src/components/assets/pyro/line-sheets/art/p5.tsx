@@ -6,7 +6,8 @@
  * analyser (O₂ / CO) on a sample line, hot meal from C5 through the meal split
  * gate (split leg to the kiln riser), calciner coal from the fine-coal bin
  * through its flowmeter, and the tertiary-air duct from the cooler with its
- * pressure and temperature taps and damper.
+ * damper, a pressure and a temperature tap before it (cooler side) and after
+ * it (calciner side).
  */
 import React from "react";
 import { GroundLine, MX, PAINT } from "@/components/assets/machine-kit/machine-kit";
@@ -57,7 +58,7 @@ function Art() {
       {/* tertiary air from the cooler: pressure and temperature taps, damper with actuator */}
       <Pipe pts={[[CAL.x1 - 2, TA_Y], [726, TA_Y]]} d={33} elbows={false} />
       <rect x={CAL.x1} y={TA_Y - 5} width={351} height={10} fill={MX.deep} opacity={0.4} />
-      {[442.3, 523.3].map((x) => (
+      {[442.3, 523.3, 683, 707].map((x) => (
         <rect key={x} x={x - 9} y={TA_Y - 9} width={18} height={18} rx={4} {...PAINT.raised} />
       ))}
       <Damper x={591} y={384} w={27} h={41} />
@@ -104,30 +105,34 @@ function Art() {
   );
 }
 
-/** Pad centre per point, at the group-image pads. */
+/** Pad centre per point, at the group-image pads; tertiary-air taps before the damper on the cooler side, after it on the calciner side. */
 const pads: LineSheetArt["pads"] = {
-  "PRS-PHC-10": [233, 107.5],
   "TMP-PHC-08": [327.5, 171],
+  "PRS-PHC-10": [233, 107.5],
   "GAS-PHC-03": [473.3, 206.3],
   "GAS-PHC-04": [524.7, 206.3],
   "POS-PHC-02": [253.3, 344.3],
-  "PRS-BRN-05": [442.3, 405],
-  "TMP-BRN-03": [523.3, 405],
-  "POS-BRN-01": [644, 405],
   "FLO-BRN-02": [141.7, 459],
+  "TMP-BRN-03": [707, 405],
+  "TMP-BRN-07": [523.3, 405],
+  "PRS-BRN-05": [683, 405],
+  "PRS-BRN-06": [442.3, 405],
+  "POS-BRN-01": [644, 405],
 };
 
 /** Plates along the gooseneck, meal and coal lines and the tertiary-air duct; analyser cells split left / right. */
 const callouts: LineSheetArt["callouts"] = {
-  "PRS-PHC-10": [181, 135.5, "end"],
   "TMP-PHC-08": [285, 170.7, "end"],
+  "PRS-PHC-10": [181, 135.5, "end"],
   "GAS-PHC-03": [502, 170.7, "end"],
   "GAS-PHC-04": [568.5, 206, "start"],
   "POS-PHC-02": [290.5, 317.5, "end"],
-  "PRS-BRN-05": [493.5, 432, "end"],
-  "TMP-BRN-03": [477.5, 379.3, "start"],
-  "POS-BRN-01": [598, 432, "start"],
   "FLO-BRN-02": [96, 485, "start"],
+  "TMP-BRN-03": [745, 380, "end"],
+  "TMP-BRN-07": [477.5, 379.3, "start"],
+  "PRS-BRN-05": [645, 447, "start"],
+  "PRS-BRN-06": [493.5, 432, "end"],
+  "POS-BRN-01": [598, 447, "end"],
 };
 
 export const sheet: LineSheetArt = { id: "P-5", ready: true, width: W, height: H, Art, pads, callouts };

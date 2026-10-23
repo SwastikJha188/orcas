@@ -5,15 +5,15 @@
  * machine group images, page 2 (panel box 842.5, 105.5 → 1605.5, 777.5 in
  * page units): the kiln feed bin in plan with its outlet, discharge gates A
  * and B at the heads of air slides A and B down to SFM A / SFM B, the
- * air-slide air connection at the bin bottom with the P1 transmitter, the air
- * line from the single air-slide blower (motor + volute on a skid) and the
- * blower starter cabinet.
+ * air-slide air header at the bin bottom (split between slides A and B, one
+ * pressure transmitter each), and the air lines from the slide A blower
+ * (motor + volute on a skid) and the smaller slide B blower beside it.
  *
  * Units: page units of the group-image page minus the panel origin.
  */
 import React from "react";
 import { Bolt, GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
-import { Cabinet, Pipe } from "../../drawings/fkp-parts";
+import { Pipe } from "../../drawings/fkp-parts";
 import type { LineSheetArt } from "../types";
 import { MealDashes, ScrollFan, SideMotor } from "./parts-f2";
 
@@ -50,9 +50,11 @@ function BinPlan() {
       <MachineLabel x={381} y={186} size={6}>
         BIN OUTLET
       </MachineLabel>
-      {/* air-slide air header across the bin bottom, P1 transmitter */}
+      {/* air-slide air header across the bin bottom, split between slides A and B, one transmitter each */}
       <rect x={294} y={305.5} width={175} height={9.5} rx={1.5} {...PAINT.cylinder} />
-      <rect x={388.5} y={289} width={26.5} height={21} rx={3} {...PAINT.body} />
+      <rect x={391.5} y={302.5} width={3} height={15.5} rx={1} {...PAINT.raised} />
+      <rect x={348.75} y={289} width={26.5} height={21} rx={3} {...PAINT.body} />
+      <rect x={411.75} y={289} width={26.5} height={21} rx={3} {...PAINT.body} />
       <DischargeLine x={280.3} name="SFM A" />
       <DischargeLine x={482.7} name="SFM B" />
       <MachineLabel x={227.5} y={249} size={7.5}>
@@ -61,9 +63,6 @@ function BinPlan() {
       <MachineLabel x={534} y={249} size={7.5}>
         AIR SLIDE B
       </MachineLabel>
-      <MachineLabel x={442.5} y={331} anchor="start" size={7}>
-        P1 · BIN BOTTOM
-      </MachineLabel>
     </g>
   );
 }
@@ -71,13 +70,23 @@ function BinPlan() {
 function Blower() {
   return (
     <g>
-      {/* air line: blower outlet up and across to the bin-bottom header */}
+      {/* air lines: blower A up into the slide A half of the header, blower B into the slide B end */}
       <Pipe
         pts={[
-          [381.5, 315],
-          [381.5, 465],
+          [335, 315],
+          [335, 465],
           [156, 465],
           [156, 474],
+        ]}
+        d={9}
+      />
+      <Pipe
+        pts={[
+          [586, 500],
+          [586, 450],
+          [540, 450],
+          [540, 310.25],
+          [469, 310.25],
         ]}
         d={9}
       />
@@ -88,13 +97,14 @@ function Blower() {
       <ScrollFan cx={166} cy={520} r={40} outTop={472} outW={38} />
       <SideMotor x={213.5} y={504} w={112.5} h={46} shaft="l" box={0.6} />
       <MachineLabel x={219} y={594} size={7.5}>
-        AIR-SLIDE BLOWER (ONE BLOWER SERVES A AND B)
+        SLIDE A BLOWER
       </MachineLabel>
-      {/* blower starter */}
-      <rect x={585} y={587.5} width={92.5} height={7.5} rx={1.5} {...PAINT.raised} />
-      <Cabinet x={590} y={472} w={82.5} h={115.5} />
-      <MachineLabel x={631} y={608} size={7.5}>
-        BLOWER STARTER
+      {/* slide B blower on its own skid */}
+      <rect x={560} y={556} width={150} height={8} rx={2} {...PAINT.body} />
+      <ScrollFan cx={594} cy={528} r={26} outTop={500} outW={25} />
+      <SideMotor x={629} y={516} w={72} h={30} shaft="l" box={0.6} />
+      <MachineLabel x={635} y={594} size={7.5}>
+        SLIDE B BLOWER
       </MachineLabel>
     </g>
   );
@@ -114,18 +124,20 @@ function Art() {
 const pads: LineSheetArt["pads"] = {
   "POS-KFS-01": [280.3, 182],
   "POS-KFS-02": [482.7, 182],
-  "PRS-KFS-01": [401.7, 299.5],
-  "STS-KFS-01": [631.3, 499.3],
-  "ELE-KFS-02": [280.3, 499.5],
+  "PRS-KFS-01": [362, 299.5],
+  "PRS-KFS-03": [425, 299.5],
+  "ELE-KFS-04": [280.3, 499.5],
+  "ELE-KFS-05": [672.2, 510],
 };
 
-/** Gates run outward, P1 along the air header, blower current along the motor, starter status back over the cabinet. */
+/** Gates run outward, slide A pressure under the header, slide B pressure right of slide B, blower currents along their motors. */
 const callouts: LineSheetArt["callouts"] = {
   "POS-KFS-01": [265, 182, "end"],
   "POS-KFS-02": [498, 182, "start"],
-  "PRS-KFS-01": [416, 299.5, "start"],
-  "STS-KFS-01": [615, 499.3, "end"],
-  "ELE-KFS-02": [295, 499.5, "start"],
+  "PRS-KFS-01": [362, 345, "middle"],
+  "PRS-KFS-03": [515, 285, "start"],
+  "ELE-KFS-04": [295, 499.5, "start"],
+  "ELE-KFS-05": [660, 480, "middle"],
 };
 
 export const sheet: LineSheetArt = { id: "F-5", ready: true, width: W, height: H, Art, pads, callouts };

@@ -158,8 +158,8 @@
   margin: 0;
   font-size: var(--fs-xl);
   font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: -0.01em;
+  line-height: var(--lh-tight);
+  letter-spacing: var(--tracking-heading);
   color: var(--dx-ink);
   white-space: nowrap;
 }
@@ -172,7 +172,7 @@
 }
 
 .pg-ov-hero-head .pg-frame-meta {
-  gap: 4px 18px;
+  gap: 4px 20px;
   font-size: var(--fs-sm);
 }
 
@@ -180,7 +180,7 @@
   color: var(--text-muted);
 }
 
-/* One typeface in the bar: Inter with tabular figures, values in ink. */
+/* One typeface in the bar: the UI font with tabular figures, values in ink. */
 .pg-ov-hero-head .ast-num {
   font-family: inherit;
 }
@@ -328,7 +328,7 @@
 .pg-ov-label {
   font-size: var(--fs-xs);
   font-weight: 500;
-  letter-spacing: 0;
+  letter-spacing: var(--tracking-small);
   color: var(--text-muted);
 }
 
@@ -362,6 +362,7 @@
   flex-wrap: wrap;
   gap: 16px;
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   color: var(--text-muted);
 }
 
@@ -466,11 +467,13 @@
   flex-shrink: 0;
   margin: 0;
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
 }
 
 .pg-ov-note > .lsh-note p {
   min-width: 0;
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
 }
 
 .pg-ov-note[data-clamp] > .lsh-note p {
@@ -488,6 +491,7 @@
   color: var(--page-fg);
   font: inherit;
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   font-weight: 500;
   cursor: pointer;
 }
@@ -573,7 +577,7 @@
   color: var(--page-fg);
   font: inherit;
   font-size: var(--fs-md);
-  line-height: 1;
+  line-height: var(--lh-none);
   cursor: pointer;
   transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), transform 60ms var(--ease-out);
 }
@@ -598,6 +602,7 @@
   color: var(--page-fg);
   font: inherit;
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   font-weight: 500;
   cursor: pointer;
 }
@@ -701,6 +706,7 @@
 .pg-ov-callout-value {
   font-family: var(--font-mono);
   font-size: var(--fs-4xl);
+  line-height: var(--lh-tight);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--dx-ink, var(--page-fg));
@@ -721,6 +727,7 @@
   color: var(--text-muted);
   font: inherit;
   font-size: var(--fs-xl);
+  letter-spacing: var(--tracking-heading);
   cursor: pointer;
 }
 

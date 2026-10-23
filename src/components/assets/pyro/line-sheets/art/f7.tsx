@@ -5,8 +5,10 @@
  * 842.5, 105.5 → 1605.5, 777.5 in page units): the boot with its tail pulley
  * fed by the common air slide (boot level switch), the casing with belt and
  * buckets (inspection door, belt-sway switches), the head with the head
- * pulley and the discharge spout to the preheater, and the head drive on the
- * right: head-shaft bearing, gearbox, coupling and motor.
+ * pulley and the discharge spout onto the preheater-top air slide (its blower
+ * underneath) and down through two rotary airlocks in series to the
+ * preheater, and the head drive on the right: head-shaft DE bearing, gearbox,
+ * coupling and motor (the NDE bearing sits behind the head pulley).
  *
  * Units: page units of the group-image page minus the panel origin.
  */
@@ -15,6 +17,8 @@ import { CornerBolts, GroundLine, MX, MachineLabel, PAINT } from "@/components/a
 import { AirSlide } from "../../drawings/fkp-parts";
 import type { LineSheetArt } from "../types";
 import { FlowArrow, Instr, SideMotor } from "./parts-f2";
+import { FanSet } from "./parts-d";
+import { AirLine, Airlock } from "./parts-fd";
 
 const W = 763;
 const H = 672;
@@ -33,7 +37,7 @@ function Casing() {
       {/* inspection door (right), belt-sway switch (left) */}
       <rect x={381.5} y={229} width={17} height={18.5} rx={3} {...PAINT.body} />
       <Instr x={312.5} y={238.3} w={13} h={15} />
-      <MachineLabel x={178.5} y={226.5} size={7}>
+      <MachineLabel x={250} y={237} size={7}>
         BELT-SWAY SWITCHES
       </MachineLabel>
       <line x1={385} y1={459} x2={436.5} y2={457} {...PAINT.hair} />
@@ -68,9 +72,19 @@ function Head() {
     <g>
       {/* discharge spout to the preheater */}
       <path d="M 296 122.5 L 206 175 L 206 205 L 296 150 Z" {...PAINT.body} />
-      <FlowArrow x1={203} y1={195.5} x2={154} y2={195.5} head={8} />
-      <MachineLabel x={229.5} y={168} size={7.5}>
-        TO PREHEATER (C1 / C2 DUCT)
+      {/* preheater-top air slide with its blower, two rotary airlocks in series down to the preheater */}
+      <AirLine pts={[[150, 249], [150, 207]]} />
+      <AirSlide x1={48} y1={216} x2={206} y2={192} d={11} />
+      <FanSet cx={150} cy={258} r={7} />
+      <rect x={61.2} y={221} width={1.6} height={80} {...PAINT.material} />
+      <Airlock cx={62} cy={244} />
+      <Airlock cx={62} cy={284} />
+      <FlowArrow x1={62} y1={300} x2={62} y2={332} head={7} />
+      <MachineLabel x={125} y={176} size={7}>
+        PREHEATER-TOP AIR SLIDE
+      </MachineLabel>
+      <MachineLabel x={36} y={348} anchor="start" size={7}>
+        TO PREHEATER · 2 AIRLOCKS IN SERIES
       </MachineLabel>
       {/* head shaft to the bearing */}
       <rect x={380} y={126} width={66} height={7} {...PAINT.shaft} />
@@ -121,26 +135,38 @@ function Art() {
   );
 }
 
-/** Pad centre per point: PDF pad centres; the winding RTD a little lower on the motor so its plate clears the bearing's. */
+/** Pad centre per point: PDF pad centres; zero-speed switch on the boot (tail) pulley, DE points on the head-shaft bearing, NDE points behind the head pulley, the winding RTD a little lower on the motor; preheater-top slide air box, blower motor and airlocks. */
 const pads: LineSheetArt["pads"] = {
-  "SPD-KFS-01": [351, 129],
-  "TMP-KFS-01": [420, 129],
-  "VIB-KFS-01": [496.3, 99.5],
-  "ELE-KFS-01": [622.5, 95.5],
-  "TMP-KFS-02": [649.5, 153],
-  "LIM-KFS-01": [312.5, 238.3],
   "LEV-KFS-04": [290.3, 599.5],
+  "LIM-KFS-01": [312.5, 238.3],
+  "SPD-KFS-01": [351, 598.5],
+  "VIB-KFS-01": [420.75, 117],
+  "VIB-KFS-04": [351, 105],
+  "TMP-KFS-01": [420.75, 140],
+  "TMP-KFS-03": [351, 129.5],
+  "TMP-KFS-02": [649.5, 153],
+  "ELE-KFS-01": [622.5, 95.5],
+  "PRS-KFS-07": [130, 203.5],
+  "ELE-KFS-07": [171.7, 250.5],
+  "SPD-KFS-02": [62, 244],
+  "SPD-KFS-03": [62, 284],
 };
 
-/** Head speed over the spout, bearing over the gearbox, vibration back over the head, motor points along the motor. */
+/** NDE points back over the spout, DE vibration over the head, DE bearing over the gearbox, motor points along the motor; boot points either side of the boot; slide and airlock plates round the slide. */
 const callouts: LineSheetArt["callouts"] = {
-  "SPD-KFS-01": [336, 129, "end"],
-  "TMP-KFS-01": [435, 129, "start"],
-  "VIB-KFS-01": [480, 99.5, "end"],
-  "ELE-KFS-01": [637, 95.5, "start"],
-  "TMP-KFS-02": [634, 153, "end"],
-  "LIM-KFS-01": [297, 238.3, "end"],
   "LEV-KFS-04": [275, 599.5, "end"],
+  "LIM-KFS-01": [297, 216, "end"],
+  "SPD-KFS-01": [415, 598.5, "start"],
+  "VIB-KFS-01": [480, 99.5, "end"],
+  "VIB-KFS-04": [336, 100, "end"],
+  "TMP-KFS-01": [435, 145, "start"],
+  "TMP-KFS-03": [336, 129.5, "end"],
+  "TMP-KFS-02": [634, 153, "end"],
+  "ELE-KFS-01": [637, 95.5, "start"],
+  "PRS-KFS-07": [40, 150, "start"],
+  "ELE-KFS-07": [172, 320, "middle"],
+  "SPD-KFS-02": [195, 254, "start"],
+  "SPD-KFS-03": [195, 290, "start"],
 };
 
 export const sheet: LineSheetArt = { id: "F-7", ready: true, width: W, height: H, Art, pads, callouts };

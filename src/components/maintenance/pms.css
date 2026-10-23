@@ -13,7 +13,7 @@
 .pm-split {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--pm-side);
-  gap: var(--pg-frame-gap, 16px);
+  gap: var(--gap-group);
   align-items: start;
 }
 
@@ -24,7 +24,7 @@
 .pm-stack {
   display: flex;
   flex-direction: column;
-  gap: var(--pg-frame-gap, 16px);
+  gap: var(--gap-group);
   min-width: 0;
 }
 
@@ -119,7 +119,7 @@
 .pm-def dt {
   font-size: var(--fs-xs);
   font-weight: 500;
-  letter-spacing: 0;
+  letter-spacing: var(--tracking-small);
   color: var(--text-muted);
   padding-top: 2px;
 }
@@ -143,16 +143,17 @@
 .pm-detail-title {
   margin: 0 0 8px;
   font-size: var(--fs-lg);
+  letter-spacing: var(--tracking-heading);
   font-weight: 500;
   color: var(--dx-ink);
-  line-height: 1.35;
+  line-height: var(--lh-snug);
 }
 
 .pm-note {
   margin: 8px 0 0;
   font-size: var(--fs-sm);
   color: var(--text-muted);
-  line-height: 1.5;
+  line-height: var(--lh-body);
 }
 
 .pm-callout {
@@ -217,6 +218,7 @@
 
 .pm-up-state {
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   color: var(--text-muted);
   white-space: nowrap;
 }
@@ -330,7 +332,7 @@
   padding: 4px 8px;
   font-size: var(--fs-xs);
   font-weight: 500;
-  letter-spacing: 0;
+  letter-spacing: var(--tracking-small);
   color: var(--text-muted);
 }
 
@@ -372,6 +374,7 @@
 
 .pm-cal-date {
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   color: var(--text-muted);
 }
 
@@ -382,8 +385,9 @@
 
 .pm-cal-routine {
   font-size: var(--fs-2xs);
+  letter-spacing: var(--tracking-small);
   color: var(--text-muted);
-  line-height: 1.35;
+  line-height: var(--lh-snug);
 }
 
 .pm-cal-item {
@@ -429,7 +433,8 @@
 
 .pm-cal-item-title {
   font-size: var(--fs-xs);
-  line-height: 1.3;
+  letter-spacing: var(--tracking-small);
+  line-height: var(--lh-snug);
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -447,6 +452,7 @@
   align-items: center;
   gap: 4px;
   font-size: var(--fs-2xs);
+  letter-spacing: var(--tracking-small);
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -464,6 +470,7 @@
 
 .pm-cal-more {
   font-size: var(--fs-2xs);
+  letter-spacing: var(--tracking-small);
   color: var(--text-muted);
   padding-left: 4px;
 }
@@ -545,11 +552,13 @@
 
 .pm-step-num {
   font-size: var(--fs-2xs);
+  letter-spacing: var(--tracking-small);
   color: var(--text-muted);
 }
 
 .pm-step-label {
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -567,6 +576,7 @@
 
 .pm-step-flag {
   font-size: var(--fs-2xs);
+  letter-spacing: var(--tracking-small);
   color: var(--status-warning);
   white-space: nowrap;
 }
@@ -775,6 +785,7 @@
   fill: var(--text-muted);
   font-family: var(--font-ui);
   font-size: var(--fs-2xs);
+  letter-spacing: var(--tracking-small);
 }
 
 .pm-trend-label {
@@ -802,7 +813,7 @@
 .pm-workspace {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--gap-section);
 }
 
 .pm-workspace .ast-head {
@@ -901,6 +912,7 @@
 .pm-machine-state {
   grid-column: 2;
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   color: var(--text-muted);
 }
 
@@ -1059,6 +1071,7 @@ td[data-tone] .pm-value {
   font-style: normal;
   font-family: inherit;
   font-size: var(--fs-2xs);
+  letter-spacing: var(--tracking-small);
   color: var(--dx-ink);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1097,11 +1110,13 @@ button.pm-cal-more {
 
 button.pm-cal-date {
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   color: var(--text-muted);
 }
 
 button.pm-cal-more {
   font-size: var(--fs-2xs);
+  letter-spacing: var(--tracking-small);
   color: var(--text-muted);
   padding-left: 4px;
 }
@@ -1170,6 +1185,7 @@ button.pm-cal-more:hover {
   grid-column: 1;
   grid-row: 2;
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1226,6 +1242,7 @@ button.pm-cal-more:hover {
   color: var(--dx-ink);
   font: inherit;
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   font-weight: 500;
   text-align: left;
   cursor: pointer;
@@ -1271,14 +1288,28 @@ button.pm-cal-more:hover {
    from row to row, and cards in a row share their height.
    ========================================================================== */
 
+/* Keep in step with --gap-columns: rows below the KPI band split on the same line as its last
+   figure, so the side column's edge is the one the band already drew. */
 .pm-split,
 .pm-split.is-wide-side,
 .pm-split.is-even {
   grid-template-columns: minmax(0, 1fr) var(--pm-side, 360px);
+  column-gap: var(--gap-columns);
   align-items: stretch;
 }
 
+/* The KPI band shares the page's column lines: three figures over the main column, the fourth
+   over the side column. */
+.pm-page:has(.pm-split) > .pg-frame-kpis {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) var(--pm-side, 360px);
+  column-gap: var(--gap-columns);
+}
+
 @media (max-width: 1180px) {
+  .pm-page:has(.pm-split) > .pg-frame-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .pm-split,
   .pm-split.is-wide-side,
   .pm-split.is-even {
@@ -1311,7 +1342,7 @@ button.pm-cal-more:hover {
 
 .pm-up-day {
   font-size: var(--fs-xs);
-  letter-spacing: 0;
+  letter-spacing: var(--tracking-small);
 }
 
 .pm-nofault {
@@ -1351,6 +1382,7 @@ button.pm-cal-more:hover {
 
 .pm-step-label {
   font-size: var(--fs-2xs);
+  letter-spacing: var(--tracking-small);
   text-overflow: clip;
 }
 
@@ -1394,4 +1426,418 @@ button.pm-cal-more:hover {
 .pm-life > .ast-num {
   min-width: 40px;
   text-align: right;
+}
+
+/* ---- shutdown (Maintenance › Shutdown) ---- */
+
+.pm-sd-bar {
+  justify-content: flex-start;
+  gap: 8px 12px;
+}
+
+.pm-sd-pick {
+  min-width: 240px;
+  max-width: 360px;
+}
+
+.pm-sd-right {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pm-sd-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.pm-sd-blocker {
+  max-width: 360px;
+  text-align: right;
+}
+
+.pm-sd-checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 4px 16px;
+}
+
+.pm-sd-checks.is-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.pm-sd-check {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: var(--fs-md);
+  color: var(--dx-ink);
+  cursor: pointer;
+}
+
+.pm-sd-check input {
+  accent-color: var(--accent-primary);
+  transform: translateY(1px);
+}
+
+.pm-sd-check > .ast-num {
+  margin-left: auto;
+}
+
+.pm-sd-check-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pm-sd-collect {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 56vh;
+  overflow: auto;
+}
+
+.pm-sd-collect-group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.pm-sd-collect-group legend {
+  padding: 0 0 4px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--dx-ink);
+}
+
+/* Small number field inside a table cell (hours, people, cool-down). */
+.ui-input.pm-sd-num {
+  width: 64px;
+  height: 28px;
+  padding: 0 8px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  text-align: right;
+}
+
+.pm-table .ui-table tr.pm-sd-group th {
+  padding-top: 16px;
+  padding-bottom: 4px;
+  text-align: left;
+  font-weight: 500;
+  border-bottom: 1px solid var(--separator);
+}
+
+.pm-table .ui-table tbody:first-of-type tr.pm-sd-group th {
+  padding-top: 4px;
+}
+
+.pm-sd-group-name {
+  margin-right: 12px;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--dx-ink);
+}
+
+.pm-table .ui-table tr[data-moved] .pm-item {
+  opacity: 0.55;
+}
+
+.pm-sd-cellbtn {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pm-sd-cellbtn:hover .ast-cell-title {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.pm-sd-cellbtn:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  border-radius: var(--corner-row);
+}
+
+.pm-table .ui-table td.pm-sd-act {
+  text-align: right;
+}
+
+.pm-sd-act {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pm-table .ui-table td.pm-sd-act {
+  display: table-cell;
+}
+
+.pm-table .ui-table td.pm-sd-act > * + * {
+  margin-left: 8px;
+}
+
+.pm-table .ui-table td[data-tone="warn"],
+.pm-table .ui-table td span[data-tone="warn"] {
+  color: var(--status-warning);
+}
+
+.pm-sd-work .ui-select {
+  min-width: 96px;
+}
+
+.pm-sd-partcell .ui-select {
+  max-width: 200px;
+}
+
+.pm-sd-progress-col {
+  width: 160px;
+}
+
+.pm-sd-progress-col .pm-life-bar {
+  display: block;
+  width: 100%;
+}
+
+/* Timeline: one row per machine; blocks are placed by time across the track. */
+.pm-sd-gantt {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pm-sd-gantt-row {
+  display: grid;
+  grid-template-columns: 160px 80px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 32px;
+}
+
+.pm-sd-gantt-row.is-axis {
+  min-height: 20px;
+}
+
+.pm-sd-gantt-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-md);
+  color: var(--dx-ink);
+}
+
+.pm-sd-gantt-track {
+  --lanes: 1;
+  --lane-h: 16px;
+  position: relative;
+  height: calc(var(--lanes) * var(--lane-h) + 8px);
+  border-bottom: 1px solid var(--separator);
+}
+
+.is-axis .pm-sd-gantt-track {
+  height: 20px;
+  border-bottom: 0;
+}
+
+.pm-sd-tick {
+  position: absolute;
+  top: 2px;
+  transform: translateX(-50%);
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--tracking-small);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.pm-sd-tick:first-child {
+  transform: none;
+}
+
+.pm-sd-tick[data-edge="end"] {
+  transform: translateX(-100%);
+}
+
+.pm-sd-grid {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--separator);
+}
+
+.pm-sd-block {
+  --tone: var(--dx-ink);
+  --lane: 0;
+  position: absolute;
+  top: calc(4px + var(--lane) * var(--lane-h));
+  height: calc(var(--lane-h) - 2px);
+  min-width: 2px;
+  padding: 0 4px;
+  border-left: 2px solid var(--tone);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--tone) 16%, var(--card-bg));
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--tracking-small);
+  line-height: calc(var(--lane-h) - 2px);
+  color: var(--dx-ink);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.pm-sd-block[data-tone="warn"] {
+  --tone: var(--status-warning);
+}
+
+.pm-sd-block.is-cool {
+  top: 4px;
+  height: calc(var(--lanes) * var(--lane-h) - 2px);
+  border-left-color: var(--text-muted);
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--text-muted) 22%, transparent) 0 2px, transparent 2px 6px);
+}
+
+.pm-sd-mark {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 0;
+  border-left: 1px dashed var(--dx-ink);
+}
+
+.pm-sd-mark.is-now {
+  border-left: 2px solid var(--accent-primary);
+}
+
+.pm-sd-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.pm-sd-key {
+  display: inline-block;
+  width: 12px;
+  height: 8px;
+  margin-left: 8px;
+  border-left: 2px solid var(--dx-ink);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--dx-ink) 16%, transparent);
+}
+
+.pm-sd-key:first-child {
+  margin-left: 0;
+}
+
+.pm-sd-key.is-cool {
+  border-left-color: var(--text-muted);
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--text-muted) 30%, transparent) 0 2px, transparent 2px 4px);
+}
+
+.pm-sd-key.is-end {
+  width: 0;
+  border-left: 1px dashed var(--dx-ink);
+  background: none;
+}
+
+.pm-sd-key.is-now {
+  width: 0;
+  border-left: 2px solid var(--accent-primary);
+  background: none;
+}
+
+/* Change against the reading's range: a bar either side of the centre. */
+.pm-sd-shift {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pm-sd-shift-track {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  min-width: 48px;
+  border-radius: var(--corner-pill);
+  background: var(--separator);
+}
+
+/* Centre line: no change. */
+.pm-sd-shift-track::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: var(--text-muted);
+}
+
+.pm-sd-shift-track > i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: inherit;
+  background: var(--dx-ink);
+  opacity: 0.8;
+}
+
+.pm-sd-shift > .ast-num {
+  width: 56px;
+  text-align: right;
+}
+
+.pm-sd-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-sm);
+}
+
+.pm-sd-sort .pm-link {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.pm-sd-sort .pm-link[aria-pressed="true"] {
+  color: var(--dx-ink);
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .pm-sd-gantt-row {
+    grid-template-columns: 96px 64px minmax(0, 1fr);
+    gap: 8px;
+  }
+  .pm-sd-pick {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+}
+
+/* Row actions show on the row's hover or focus (pointer devices); always on touch. */
+@media (hover: hover) and (pointer: fine) {
+  .pm-sd-work td.pm-sd-act > * {
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-out);
+  }
+  .pm-sd-work tr:hover td.pm-sd-act > *,
+  .pm-sd-work tr:focus-within td.pm-sd-act > *,
+  .pm-sd-work td.pm-sd-act > .ui-confirm {
+    opacity: 1;
+  }
 }

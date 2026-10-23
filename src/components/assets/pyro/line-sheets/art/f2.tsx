@@ -115,7 +115,6 @@ function Art() {
 
 /** Pad centre per point: PDF pad centres (duty / standby a little higher on the display so its plate clears the motor terminal box). */
 const pads: LineSheetArt["pads"] = {
-  "STS-FSL-02": [77.8, 276],
   "STS-FSL-03": [77.8, 333.3],
   "ELE-FSL-01": [224.5, 300],
   "TMP-FSL-01": [248, 360.7],
@@ -124,7 +123,6 @@ const pads: LineSheetArt["pads"] = {
 
 /** Plates run right along the cabinet door and the motor; the header pressure runs left above the riser. */
 const callouts: LineSheetArt["callouts"] = {
-  "STS-FSL-02": [95, 276, "start"],
   "STS-FSL-03": [95, 333.3, "start"],
   "ELE-FSL-01": [240, 300, "start"],
   "TMP-FSL-01": [265, 360.7, "start"],

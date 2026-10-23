@@ -21,7 +21,12 @@ export type PmsPage =
   | "calendar"
   | "machine"
   | "resources"
-  | "history";
+  | "history"
+  | "shutdown"
+  | "shutdown-ready"
+  | "shutdown-lockoff"
+  | "shutdown-live"
+  | "shutdown-restart";
 
 export const PMS_PAGES: { id: PmsPage; label: string }[] = [
   { id: "overview", label: "Overview" },
@@ -31,13 +36,18 @@ export const PMS_PAGES: { id: PmsPage; label: string }[] = [
   { id: "work", label: "Work orders" },
   { id: "calendar", label: "Calendar" },
   { id: "machine", label: "Machines" },
-  { id: "resources", label: "People, parts & shutdowns" },
+  { id: "resources", label: "People & parts" },
   { id: "history", label: "History & performance" },
+  { id: "shutdown", label: "Plan" },
+  { id: "shutdown-ready", label: "Ready" },
+  { id: "shutdown-lockoff", label: "Lock-off" },
+  { id: "shutdown-live", label: "Live" },
+  { id: "shutdown-restart", label: "Restart" },
 ];
 
 /**
  * The workspace sections. Some pages share a section with more views: history with Work
- * orders, people / parts / shutdowns with Calendar. Every page id stays valid, so stored
+ * orders, people and parts with Calendar, a shutdown's plan to restart with Shutdown. Every page id stays valid, so stored
  * pages and links from other pages still open the right section. `planned` sections need
  * the plant's planned maintenance (checklists).
  */
@@ -49,6 +59,7 @@ export const PMS_TABS: { id: PmsPage; label: string; views: PmsPage[]; planned: 
   { id: "work", label: "Work orders", views: ["work", "history"], planned: true },
   { id: "calendar", label: "Calendar", views: ["calendar", "resources"], planned: true },
   { id: "machine", label: "Machines", views: ["machine"], planned: true },
+  { id: "shutdown", label: "Shutdown", views: ["shutdown", "shutdown-ready", "shutdown-lockoff", "shutdown-live", "shutdown-restart"], planned: true },
 ];
 
 /** Asks the Maintenance workspace (mounted or not) to open a page. */
@@ -66,7 +77,7 @@ export function requestMaintenancePage(page: PmsPage) {
 /** The tab a page belongs to. */
 export const pmsTabOf = (page: PmsPage) => PMS_TABS.find((t) => t.views.includes(page)) ?? PMS_TABS[0];
 
-/** View switch for a tab that holds more pages (Work orders · History, Calendar · People, parts & shutdowns). */
+/** View switch for a tab that holds more pages (Work orders · History, Calendar · People & parts, Shutdown's five). */
 export function PmsViewNav({ page }: { page: PmsPage }) {
   const nav = usePmsNav();
   const tab = pmsTabOf(page);

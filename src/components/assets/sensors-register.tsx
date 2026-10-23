@@ -340,7 +340,7 @@ function rowFacts(s: SensorRow, ctx: SensorsCtx) {
   const tag = tagOf(s);
   const calc = isCalculated(s);
   const manual = !calc && isManual(s);
-  // Pyro CAL-KLN-03: map maximum of the scanner entry K-K33, not a gateway calculation.
+  // A value derived from the shell scanner entry, not a gateway calculation.
   const scanner = calc ? scannerEntryOf(ctx.defs, tag) : undefined;
   const { slot, module } = slotOf(s.cardId);
   return {
@@ -569,7 +569,7 @@ function SensorPanel({ sensor, ctx, onClose }: { sensor: SensorRow; ctx: Sensors
   const { setActiveSubPage } = useIndustrialData();
   // Fault library (OSW-PE-FLT-PYR-01): the problems this reading is main evidence for, and those it helps confirm.
   const finds = faultsForTag(useFaultLibrary(ctx.machine.id), tag);
-  // D4 K-K33 "STS-KLN-08 / CAL-KLN-03": one scanner entry delivering status plus the shell temperature map.
+  // The shell scanner entry (D4 K-K33; pyro Rev. 02 STS-KLN-08): one entry delivering the shell maximum and the temperature map.
   const scannerEntry = scannerEntryOf(ctx.defs, tag);
   const shellMap = Boolean(scannerEntry && ctx.defs?.hasShell);
   const mapMax = d4 && scannerEntry ? Object.values(calcDefs).find((c) => c.inputs.includes(tag))?.tag : undefined;

@@ -15,6 +15,9 @@ import "@/styles/responsive/machine-diagnostics.css";
 import "@/styles/responsive/machine-insights.css";
 import "@/styles/responsive/machine-condition.css";
 import "@/styles/responsive/devices-assetiq-configure.css";
+import "@/styles/responsive/open-sections.css";
+import "@/styles/responsive/headings.css";
+import "@/styles/dark-palettes.css";
 import Script from "next/script";
 import type { Viewport } from "next";
 import { ThemeProvider } from "@/providers/theme-provider";
@@ -34,7 +37,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body><Script id="theme-init" strategy="beforeInteractive">{`(function(){var saved=localStorage.getItem('ultron-theme');var dark=saved?saved==='dark':matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.dataset.theme=dark?'dark':'light';document.documentElement.style.colorScheme=dark?'dark':'light';})();`}</Script><ThemeProvider>{children}</ThemeProvider></body>
+      <body><Script id="theme-init" strategy="beforeInteractive">{`(function(){var saved=localStorage.getItem('ultron-theme');var dark=saved?saved==='dark':matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.dataset.theme=dark?'dark':'light';document.documentElement.style.colorScheme=dark?'dark':'light';var p=localStorage.getItem('ultron-dark-palette');document.documentElement.dataset.palette=p==='green'||p==='blue'?p:'grey';})();`}</Script><ThemeProvider>{children}</ThemeProvider></body>
     </html>
   );
 }

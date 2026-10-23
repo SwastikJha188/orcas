@@ -10,6 +10,9 @@
  */
 import { drv, list, prof, sig, type PyroScenario } from "./common";
 
+/** Main motor stator winding RTDs (OSW-PE-SNL-PYR-01 Rev. 02: six, two per phase). */
+const WINDINGS = [1, 2, 3, 4, 5, 6].map((n) => `TMP-KLN-4${n}`);
+
 export const KLN_SCENARIOS: PyroScenario[] = list("PYR-KLN-01", [
   {
     id: "kln-hot-afternoon",
@@ -75,7 +78,7 @@ export const KLN_SCENARIOS: PyroScenario[] = list("PYR-KLN-01", [
     description: "The outlet seal starts rubbing: torque rises, the winding and the gearbox oil heat with it, and the shell map shows no cold band.",
     effects: [
       { target: sig("ELE-KLN-01"), delta: 8, onsetMin: 5, rampMin: 300, shape: "ramp" },
-      { target: sig("TMP-KLN-21"), delta: 18, onsetMin: 5, rampMin: 300, shape: "ramp" },
+      ...WINDINGS.map((tag) => ({ target: sig(tag), delta: 18, onsetMin: 5, rampMin: 300, shape: "ramp" as const })),
       { target: sig("TMP-KLN-15"), delta: 5, onsetMin: 5, rampMin: 300, shape: "ramp" },
     ],
   },
@@ -151,15 +154,12 @@ export const KLN_SCENARIOS: PyroScenario[] = list("PYR-KLN-01", [
   // ---------------------------------------------------------------- supports, tyres, thrust
   {
     id: "kln-roller-oil-bath",
-    name: "Station 2 roller oil-bath loss (FP-21)",
+    name: "Station 2 roller bearing lubrication loss (FP-21)",
     group: "Equipment fault",
     expected: ["R-KLN-07"],
     documentedDetection: "+2h 11m",
-    description: "The station 2 left oil bath leaks below its switch; bearing A heats fast on its own.",
-    effects: [
-      { target: sig("LEV-KLN-04"), state: "LOW LEVEL", onsetMin: 5, rampMin: 0, shape: "step" },
-      { target: sig("TMP-KLN-05"), delta: 24, onsetMin: 8, rampMin: 240, shape: "accel" },
-    ],
+    description: "The station 2 left oil bath leaks; bearing A heats fast on its own while its pair follows (OSW-PE-SNL-PYR-01 Rev. 02 has no oil-level switches: the bearing temperatures are the evidence).",
+    effects: [{ target: sig("TMP-KLN-05"), delta: 24, onsetMin: 8, rampMin: 240, shape: "accel" }],
   },
   {
     id: "kln-roller-skew",
@@ -167,7 +167,7 @@ export const KLN_SCENARIOS: PyroScenario[] = list("PYR-KLN-01", [
     group: "Equipment fault",
     expected: ["R-KLN-15"],
     documentedDetection: "+3h 51m",
-    description: "A station 2 roller is mis-adjusted: its bearing pair splits > 10 K with both baths full, and the thrust roller pressure rises as the kiln is pushed uphill.",
+    description: "A station 2 roller is mis-adjusted: its bearing pair splits > 10 K, and the thrust roller pressure rises as the kiln is pushed uphill.",
     effects: [
       { target: sig("PRS-KLN-07"), delta: 12, onsetMin: 5, rampMin: 360, shape: "ramp" },
       { target: sig("TMP-KLN-07"), delta: 16, onsetMin: 5, rampMin: 360, shape: "ramp" },
@@ -254,7 +254,7 @@ export const KLN_SCENARIOS: PyroScenario[] = list("PYR-KLN-01", [
     effects: [
       { target: prof("coldBand"), delta: -45, onsetMin: 5, rampMin: 360, shape: "ramp" },
       { target: sig("ELE-KLN-01"), delta: 7, onsetMin: 5, rampMin: 360, shape: "ramp" },
-      { target: sig("TMP-KLN-21"), delta: 15, onsetMin: 5, rampMin: 360, shape: "ramp" },
+      ...WINDINGS.map((tag) => ({ target: sig(tag), delta: 15, onsetMin: 5, rampMin: 360, shape: "ramp" as const })),
       { target: sig("TMP-KLN-15"), delta: 1, onsetMin: 5, rampMin: 360, shape: "ramp" },
     ],
   },
@@ -305,7 +305,7 @@ export const KLN_SCENARIOS: PyroScenario[] = list("PYR-KLN-01", [
     expected: ["SW-KLN-03"],
     documentedDetection: "+0h 17m",
     description: "Dust fouls the scanner window: coverage falls below the 95 % target, grey cells grow and the map reads low.",
-    effects: [{ target: sig("STS-KLN-08"), delta: -10, onsetMin: 5, rampMin: 90, shape: "ramp", sensor: true }],
+    effects: [{ target: drv("scannerCoverage"), delta: -10, onsetMin: 5, rampMin: 90, shape: "ramp" }],
   },
   {
     id: "kln-scanner-underread",
@@ -314,7 +314,7 @@ export const KLN_SCENARIOS: PyroScenario[] = list("PYR-KLN-01", [
     expected: ["SW-KLN-03"],
     documentedDetection: "+2h 01m",
     description: "A film on the scanner optics makes the whole map read 35 K low at full coverage; the next handheld round disagrees by more than 25 K.",
-    effects: [{ target: sig("CAL-KLN-03"), delta: -35, onsetMin: 5, rampMin: 120, shape: "ramp", sensor: true }],
+    effects: [{ target: sig("STS-KLN-08"), delta: -35, onsetMin: 5, rampMin: 120, shape: "ramp", sensor: true }],
   },
   {
     id: "kln-analyser-fault",
@@ -343,8 +343,8 @@ export const KLN_SCENARIOS: PyroScenario[] = list("PYR-KLN-01", [
     group: "Sensor validation",
     expected: ["R-DQ-02"],
     documentedDetection: "+0h 04m",
-    description: "The winding RTD connection degrades and the reading steps +18 K while torque and oil stay put.",
-    effects: [{ target: sig("TMP-KLN-21"), delta: 18, onsetMin: 2, rampMin: 0, shape: "step", sensor: true }],
+    description: "The connection of winding RTD 3 degrades and its reading steps +18 K while torque, oil and the other five windings stay put.",
+    effects: [{ target: sig("TMP-KLN-43"), delta: 18, onsetMin: 2, rampMin: 0, shape: "step", sensor: true }],
   },
   {
     id: "kln-speed-pickup-drift",

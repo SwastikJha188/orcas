@@ -86,6 +86,20 @@ export function AssetIQIcon({ className }: { className?: string }) {
   );
 }
 
+/** POLYCRON: versioned objects connected through evidence. */
+export function PolycronIcon({ className }: { className?: string }) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <circle cx="5" cy="12" r="2" />
+      <circle cx="12" cy="5" r="2" />
+      <circle cx="19" cy="12" r="2" />
+      <circle cx="12" cy="19" r="2" />
+      <path d="m6.5 10.5 4-4m3 0 4 4m0 3-4 4m-3 0-4-4" />
+      <circle cx="12" cy="12" r="1.5" />
+    </svg>
+  );
+}
+
 export function ConfigureIcon({ className }: { className?: string }) {
   return (
     <svg

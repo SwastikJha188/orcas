@@ -44,7 +44,7 @@ function corr(a: number[], b: number[]): number | null {
 }
 
 /** Drivers (rows) and the downstream signals they move (columns), D4 Table 8.1. */
-const DRIVERS = ["FLO-KFS-01", "FLO-BRN-01", "PRS-BRN-03", "SPD-PHC-01", "ELE-PHC-01", "SPD-KLN-01"];
+const DRIVERS = ["FLO-KFS-01", "FLO-BRN-01", "PRS-BRN-01", "SPD-PHC-01", "ELE-PHC-01", "SPD-KLN-01"];
 /** Driver rows that need their own reading note. */
 const DRIVER_NOTE: Record<string, string> = { "ELE-PHC-01": "Oxygen against exhaust fan power · context only, not a cause" };
 const EFFECTS = ["TMP-KLN-13", "PRS-KLN-01", "GAS-KLN-01", "TMP-KLN-14", "GAS-PHC-01", "ELE-PHC-01", "ELE-KLN-01", "PRS-PHC-01", "PRS-CLR-01", "TMP-CLR-08", "ELE-HMR-01", "ELE-CSL-01"];

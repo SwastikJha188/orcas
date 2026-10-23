@@ -1,249 +1,370 @@
 /**
- * Sheet H-0 — HMR-01 + CSL-01 · Crusher and clinker transport — Overview.
- * Composed as page 6 of the pyro stage-overview pack (1654 × 774): crusher
- * motor and coupling into the clinker hammer crusher between its rotor DE /
- * NDE bearing blocks, clinker fed from above and discharged along the floor
- * to the deep-pan conveyor tail; the inclined conveyor up to its head drive;
- * discharge into the clinker silo with the roof baghouse, level sensor and
- * dust fan.
+ * Sheet H-0 — HMR-01 + CSL-01 · Crusher and clinker transport — Overview (design Crusher_Conveyor_Silo).
+ *
+ * Drawn in the design's 2000 × 1125 frame, left → right: the crusher motor (NDE / DE end shields) with its MCC
+ * below, coupled to the hammer crusher between its rotor DE / NDE bearing blocks (speed pick-up on the NDE stub),
+ * clinker falling in down the chute from the cooler and out of the hopper onto the deep-pan conveyor; the conveyor
+ * running flat from its tail and rising to the head pulley, driven by the head drive (drive MCC, motor, gearbox);
+ * the discharge chute into the clinker silo, the silo baghouse on its roof with the clean-air duct to the dust fan
+ * (fan MCC below), the filter ΔP and the level sensor. Readout blocks stand along the top (`readouts`).
  */
 import React from "react";
-import { Bolt, GearWheel, GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
-import { Handrail, Pipe, Volute } from "../../drawings/fkp-parts";
+import { GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
 import type { LineSheetArt } from "../types";
-import { BearingBlock, Head, Stream } from "./parts-h2";
+import { volutePath } from "./parts-c";
+import { Head, Line, Tap } from "./parts-d";
 
-const W = 1654;
-const H = 774;
+const W = 2000;
+const H = 1125;
+const GROUND = 978;
+const CLK = MX.material;
+const AIR = MX.air;
 
-const GROUND = 713;
-const LABEL_Y = 735;
+type Box = [number, number, number, number];
 
-const TAIL: [number, number] = [772.5, 699];
-const HEAD: [number, number] = [1158.5, 302];
-const along = (t: number): [number, number] => [TAIL[0] + (HEAD[0] - TAIL[0]) * t, TAIL[1] + (HEAD[1] - TAIL[1]) * t];
+/** Wide-tracked sheet label, as the design prints them. */
+function Lbl({ x, y, size = 10.5, children }: { x: number; y: number; size?: number; children: React.ReactNode }) {
+  return (
+    <text x={x} y={y} fill={MX.label} fontSize={size} fontWeight={600} letterSpacing="0.24em" textAnchor="middle">
+      {children}
+    </text>
+  );
+}
 
-/** Side-elevation TEFC motor: fan cowl left, finned frame, terminal box, rating plate, base. */
-function SideMotor({ x, y, w, h, cowl, tb, fins }: { x: number; y: number; w: number; h: number; cowl: number; tb: [number, number, number]; fins: number }) {
-  const [tx, tw, th] = tb;
+const R = (b: Box, rx: number, paint: React.SVGProps<SVGRectElement>) => <rect x={b[0]} y={b[1]} width={b[2]} height={b[3]} rx={rx} {...paint} />;
+
+/**
+ * Side-elevation motor as the design draws it: finned frame with a dark terminal window, terminal box, base,
+ * optional NDE / DE end shields (with their bearing taps), DE end bell and shaft stubs. Absolute boxes.
+ */
+function BlockMotor({
+  frame,
+  tb,
+  win,
+  base,
+  bell,
+  nde,
+  de,
+  shafts,
+  fins,
+  taps = [],
+}: {
+  frame: Box;
+  tb: Box;
+  win: Box;
+  base: Box;
+  bell: Box;
+  nde?: Box;
+  de?: Box;
+  shafts: Box[];
+  fins: number;
+  taps?: Array<[number, number]>;
+}) {
+  const [fx, fy, fw, fh] = frame;
   return (
     <g aria-hidden="true">
-      <rect x={x - cowl} y={y + h * 0.11} width={cowl + 10} height={h * 0.78} rx={Math.min(14, cowl * 0.4)} {...PAINT.body} />
-      <rect x={tx} y={y - th} width={tw} height={th + 4} rx={3} {...PAINT.body} />
-      <rect x={x} y={y} width={w} height={h} rx={Math.min(18, h * 0.16)} {...PAINT.body} />
+      {shafts.map((s, i) => (
+        <React.Fragment key={i}>{R(s, 1.5, PAINT.shaft)}</React.Fragment>
+      ))}
+      {R(base, 2, PAINT.body)}
+      {R(tb, 4, PAINT.body)}
+      {R(bell, Math.min(bell[2], bell[3]) * 0.4, PAINT.body)}
+      {R(frame, Math.min(14, fh * 0.17), PAINT.body)}
       {Array.from({ length: fins }).map((_, i) => {
-        const fy = y + ((i + 1) * h) / (fins + 1);
-        return <line key={i} x1={x + w * 0.07} x2={x + w * 0.93} y1={fy} y2={fy} {...PAINT.hair} />;
+        const y = fy + ((i + 1) * fh) / (fins + 1);
+        return <line key={i} x1={fx + fw * 0.07} x2={fx + fw * 0.93} y1={y} y2={y} stroke={MX.fine} strokeWidth={1.4} />;
       })}
-      <rect x={x + w * 0.11} y={y + h} width={w * 0.81} height={Math.max(4, h * 0.07)} rx={1.5} {...PAINT.raised} />
+      {R(win, Math.min(4, win[3] * 0.3), { fill: MX.edge, stroke: MX.edge, strokeWidth: 1.5 })}
+      {nde && R(nde, 3, PAINT.raised)}
+      {de && R(de, 3, PAINT.raised)}
+      {taps.map(([x, y]) => (
+        <Tap key={`${x}-${y}`} x={x} y={y} r={5} />
+      ))}
     </g>
   );
 }
 
-function CrusherLine() {
-  const rot = { cx: 547.5, cy: 540, r: 71.5 };
+/** Motor control cabinet with the socket its current reading sits on. */
+function Mcc({ box, at }: { box: Box; at: [number, number] }) {
+  return (
+    <g aria-hidden="true">
+      {R(box, 4, PAINT.body)}
+      <rect x={at[0] - 7} y={at[1] - 7} width={14} height={14} rx={3} {...PAINT.raised} />
+    </g>
+  );
+}
+
+/** Pan of the conveyor strand: pan body with its clinker load, at (x, y) (bottom-left of the pan, local frame). */
+function Pan({ x, y }: { x: number; y: number }) {
+  return (
+    <g>
+      <path d={`M ${x + 5} ${y - 16} L ${x + 11} ${y - 26} L ${x + 26} ${y - 26} L ${x + 33} ${y - 16} Z`} fill={CLK} stroke={MX.edge} strokeWidth={1.3} strokeLinejoin="round" />
+      <rect x={x} y={y - 16} width={37.5} height={16} rx={3.5} {...PAINT.raised} />
+    </g>
+  );
+}
+
+function CrusherMotor() {
+  return (
+    <g>
+      <BlockMotor
+        frame={[130, 528, 144, 86]}
+        tb={[172, 509, 59, 22]}
+        win={[176, 561, 50, 22]}
+        base={[143, 614, 117, 9]}
+        bell={[262, 537, 32, 68]}
+        nde={[118, 536, 23, 71]}
+        de={[290, 536, 21, 71]}
+        shafts={[
+          [110, 564, 10, 13],
+          [309, 564, 15, 13],
+        ]}
+        fins={6}
+        taps={[]}
+      />
+      {/* coupling to the rotor shaft */}
+      <rect x={321} y={558} width={18} height={27} rx={3} {...PAINT.body} />
+      {[326, 330.5, 335].map((x) => (
+        <line key={x} x1={x} x2={x} y1={562} y2={581} stroke={MX.edge} strokeWidth={1.4} />
+      ))}
+      {/* supply cable to the MCC */}
+      <line x1={215} y1={623} x2={202} y2={672} stroke={MX.fine} strokeWidth={1.3} strokeDasharray="5 4" />
+      <Mcc box={[144, 672, 115, 50]} at={[193, 697]} />
+    </g>
+  );
+}
+
+function HammerCrusher() {
+  const cx = 460;
+  const cy = 562;
   const hammers: Array<[number, number]> = [
-    [522.5, 498],
-    [571.5, 498],
-    [498.5, 540],
-    [596.5, 540],
-    [522.5, 582.5],
-    [571.5, 582.5],
+    [433.6, 517],
+    [486, 517],
+    [407.7, 562],
+    [512, 562],
+    [433.6, 607],
+    [486, 607],
   ];
   return (
-    <g aria-hidden="true">
-      {/* floor bed carrying the crusher discharge to the conveyor tail */}
-      <rect x={90} y={694} width={710} height={15} rx={3} {...PAINT.body} />
-      <line x1={96} x2={794} y1={698.5} y2={698.5} {...PAINT.hair} />
+    <g>
+      {/* chute from the cooler, clinker falling in */}
+      <rect x={435.5} y={317} width={42.5} height={106} rx={3} {...PAINT.cylinderV} />
+      <rect x={454.8} y={326} width={2.4} height={92} fill={CLK} />
+      <Head x={456} y={383} dir="down" color={CLK} s={1.6} />
 
-      {/* crusher motor, shaft and coupling */}
-      <SideMotor x={150} y={540} w={204} h={112} cowl={39} tb={[211, 81.5, 24]} fins={6} />
-      <rect x={217.5} y={582.5} width={69} height={30} rx={3} {...PAINT.recess} />
-      <rect x={354} y={591} width={60} height={16.5} rx={2} {...PAINT.shaft} />
-      <rect x={372.5} y={586} width={30} height={29} rx={3} {...PAINT.body} />
-      <line x1={387.5} x2={387.5} y1={588} y2={613} stroke={MX.edge} strokeWidth={1} />
-      {[379, 396].map((bx) => (
-        <rect key={bx} x={bx - 2} y={589} width={4} height={23} rx={1} {...PAINT.recess} />
-      ))}
+      {/* housing, inner liner panel */}
+      <path d="M 397 423 H 522 L 551 451 V 672 H 368.6 V 451 Z" {...PAINT.body} />
+      <rect x={388} y={451} width={143} height={203} rx={5} fill={MX.flatRaised} stroke={MX.edge} strokeWidth={MX.w} />
+      {/* hopper under the housing */}
+      <path d="M 378.6 672 H 541 L 512 710 H 407 Z" {...PAINT.cylinderV} />
 
-      {/* feed chute from the cooler, clinker falling in */}
-      <rect x={512} y={134} width={30} height={122} rx={2} {...PAINT.body} />
-      <rect x={517} y={137} width={20} height={116} rx={1.5} {...PAINT.recess} />
-      <rect x={508} y={250} width={38} height={6} rx={1.5} {...PAINT.raised} />
-      <Stream x1={527} y1={82} x2={527} y2={246} w={2.4} />
-      <Head x={527} y={166} deg={90} s={14} />
-
-      {/* hammer crusher housing */}
-      <rect x={515} y={256} width={24} height={34} {...PAINT.body} />
-      <path d="M 496 286 H 599 L 639.5 336 V 662 H 455 V 336 Z" {...PAINT.body} />
-      <path d="M 499.5 291 H 595.5 L 634.5 338 V 657 H 460 V 338 Z" {...PAINT.hair} />
-      <line x1={457} x2={637.5} y1={338} y2={338} stroke={MX.fine} strokeWidth={1} />
-      {/* rotor disc with hammers */}
-      <circle cx={rot.cx} cy={rot.cy} r={rot.r} fill="none" stroke={MX.edge} strokeWidth={1.6} />
-      <circle cx={rot.cx} cy={rot.cy} r={rot.r - 5} {...PAINT.hair} />
+      {/* rotor with its hammers */}
+      <circle cx={cx} cy={cy} r={69.5} fill={MX.cylinderV} stroke={MX.fine} strokeWidth={2} />
       {hammers.map(([hx, hy]) => (
-        <g key={`${hx}-${hy}`}>
-          <rect x={hx - 9} y={hy - 9} width={18} height={18} rx={3.5} {...PAINT.raised} />
-          <rect x={hx - 5} y={hy - 5} width={10} height={10} rx={2} {...PAINT.hair} />
-        </g>
+        <line key={`s${hx}-${hy}`} x1={cx} y1={cy} x2={hx} y2={hy} stroke={MX.edge} strokeWidth={2.2} />
       ))}
-      <circle cx={rot.cx} cy={rot.cy} r={11} {...PAINT.raised} />
-      <circle cx={rot.cx} cy={rot.cy} r={4.5} {...PAINT.shaft} />
+      {hammers.map(([hx, hy]) => (
+        <rect key={`h${hx}-${hy}`} x={hx - 7.75} y={hy - 7.75} width={15.5} height={15.5} rx={3} {...PAINT.raised} />
+      ))}
+      <circle cx={cx} cy={cy} r={11} fill="none" stroke={MX.edge} strokeWidth={1.8} />
 
-      {/* rotor shaft through the DE / NDE bearing blocks, speed pick-up at the NDE stub */}
-      <rect x={414} y={596} width={41} height={11} rx={2} {...PAINT.shaft} />
-      <rect x={639.5} y={596} width={85.5} height={11} rx={2} {...PAINT.shaft} />
-      <BearingBlock x={414} y={560} w={41} h={84} split={601.5} />
-      <BearingBlock x={640} y={560} w={39} h={84} split={601.5} />
-      <rect x={706} y={590} width={24} height={23} rx={4} {...PAINT.body} />
-      <rect x={724} y={597} width={10} height={9} rx={1.5} {...PAINT.raised} />
-
-      {/* discharge to the floor bed */}
-      <rect x={526} y={662} width={43} height={10} rx={1.5} {...PAINT.body} />
-      <Stream x1={546} y1={683} x2={765} y2={697} w={2.2} />
-      <Head x={656} y={690} deg={3.6} s={15} />
-
-      <MachineLabel x={231.5} y={LABEL_Y} size={11.5}>CRUSHER MOTOR</MachineLabel>
-      <MachineLabel x={547} y={LABEL_Y} size={11.5}>CLINKER HAMMER CRUSHER</MachineLabel>
+      {/* rotor DE / NDE bearing blocks, NDE shaft stub with the speed pick-up */}
+      <rect x={339} y={533} width={29.6} height={58} rx={4} {...PAINT.raised} />
+      <rect x={551} y={533} width={28} height={58} rx={4} {...PAINT.raised} />
+      <rect x={579} y={557} width={29} height={10} rx={1.5} {...PAINT.shaft} />
+      <rect x={608} y={553} width={18} height={18} rx={3} {...PAINT.raised} />
     </g>
   );
 }
 
-/** Inclined deep-pan conveyor casing, tail to head: clinker stream over the pan strand, return strand, sprockets. */
-function DeepPan() {
-  const len = Math.hypot(HEAD[0] - TAIL[0], HEAD[1] - TAIL[1]);
-  const a = (Math.atan2(HEAD[1] - TAIL[1], HEAD[0] - TAIL[0]) * 180) / Math.PI;
-  const d = 24;
-  const pans = Math.floor((len - 30) / 34);
-  return (
-    <g transform={`translate(${TAIL[0]} ${TAIL[1]}) rotate(${a})`} aria-hidden="true">
-      <rect x={-12} y={-d / 2} width={len + 24} height={d} rx={d / 2} {...PAINT.body} />
-      <line x1={4} x2={len - 4} y1={-d / 2 + 4} y2={-d / 2 + 4} {...PAINT.hair} />
-      <line x1={4} x2={len - 4} y1={d / 2 - 4} y2={d / 2 - 4} stroke={MX.fine} strokeWidth={0.8} strokeDasharray="5 3" />
-      {/* pans riding under the clinker stream */}
-      {Array.from({ length: pans }).map((_, i) => (
-        <rect key={i} x={24 + i * 34} y={1} width={11} height={6} rx={1.5} fill={MX.material} opacity={0.5} stroke={MX.edge} strokeWidth={0.6} />
-      ))}
-      <rect x={8} y={-2.2} width={len - 16} height={2.4} rx={1.2} fill={MX.material} />
-      {[0, len].map((sx) => (
-        <g key={sx}>
-          <circle cx={sx} cy={0} r={13} {...PAINT.raised} />
-          <circle cx={sx} cy={0} r={8.5} {...PAINT.hair} />
-          <circle cx={sx} cy={0} r={4} {...PAINT.shaft} />
-        </g>
-      ))}
-    </g>
-  );
-}
+/** Incline of the strand: from A, at the given angle. */
+const A: [number, number] = [775, 739.5];
+const ANG = -31;
+const cosA = Math.cos((ANG * Math.PI) / 180);
+const sinA = Math.sin((ANG * Math.PI) / 180);
+const onIncline = (u: number, v = 0): [number, number] => [A[0] + u * cosA + v * sinA, A[1] + u * sinA - v * cosA];
 
-function Conveyor() {
-  const ang = (Math.atan2(HEAD[1] - TAIL[1], HEAD[0] - TAIL[0]) * 180) / Math.PI;
-  const arrows = [0.3, 0.72];
+function DeepPanConveyor() {
+  const flatPans = Array.from({ length: 9 }, (_, i) => 409 + 42 * i);
+  const tiltPans = Array.from({ length: 11 }, (_, i) => 18 + 48.2 * i);
+  const flatRollers = Array.from({ length: 12 }, (_, i) => 406.5 + 30.37 * i);
+  const ret0: [number, number] = [800, 779];
+  const ret1: [number, number] = [1262.5, 491];
+  const rl = Math.hypot(ret1[0] - ret0[0], ret1[1] - ret0[1]);
+  const incRollers = Array.from({ length: 12 }, (_, i) => 9.5 + 43.4 * i).filter((s) => s < rl - 20);
+  const top1 = onIncline(533);
+  const [m0, m1] = [onIncline(60, 18), onIncline(470, 18)];
+  const tip = onIncline(292, 13);
+  const mLen = Math.hypot(m1[0] - m0[0], m1[1] - m0[1]);
   return (
-    <g aria-hidden="true">
-      <DeepPan />
-      {arrows.map((t) => {
-        const [ax, ay] = along(t);
-        return <Head key={t} x={ax} y={ay - 1} deg={ang} s={15} />;
+    <g>
+      {/* strands: carrying line under the pans, return strand with its rollers */}
+      <path d={`M 382.5 739.5 H ${A[0]} L ${top1[0]} ${top1[1]}`} fill="none" stroke={MX.fine} strokeWidth={2.4} strokeLinejoin="round" />
+      <path d={`M 382.5 779 H ${ret0[0]} L ${ret1[0]} ${ret1[1]}`} fill="none" stroke={MX.fine} strokeWidth={2.4} strokeLinejoin="round" />
+      {flatRollers.map((x) => (
+        <circle key={x} cx={x} cy={779} r={3.6} fill={MX.fine} stroke={MX.fine} strokeWidth={1} />
+      ))}
+      {incRollers.map((s) => (
+        <circle
+          key={s}
+          cx={ret0[0] + ((ret1[0] - ret0[0]) * s) / rl}
+          cy={ret0[1] + ((ret1[1] - ret0[1]) * s) / rl}
+          r={3.6}
+          fill={MX.fine}
+          stroke={MX.fine}
+          strokeWidth={1}
+        />
+      ))}
+
+      {/* tail pulley (chain speed on its shaft) and head pulley */}
+      <circle cx={382.5} cy={758.5} r={19} {...PAINT.raised} />
+      <circle cx={1254} cy={466} r={25} {...PAINT.cylinderV} />
+      <circle cx={1254} cy={466} r={7} fill="none" stroke={MX.edge} strokeWidth={1.6} />
+
+      {/* pans along the flat run, then up the incline */}
+      {flatPans.map((x) => (
+        <Pan key={x} x={x} y={737.5} />
+      ))}
+      {tiltPans.map((u) => {
+        const [px, py] = onIncline(u - 18.75, 2);
+        return (
+          <g key={u} transform={`translate(${px} ${py}) rotate(${ANG})`}>
+            <Pan x={0} y={0} />
+          </g>
+        );
       })}
-      {/* head discharge into the silo roof */}
-      <Stream x1={1166} y1={297} x2={1269} y2={330} w={2} />
-      <Stream x1={1166} y1={303} x2={1267} y2={336} w={2} />
-      <Head x={1218} y={314} deg={18} s={16} />
 
-      {/* head drive: motor, coupling, reducer and chain guard down to the head sprocket */}
-      <path d="M 1104 262 L 1146 300 L 1156 291 L 1116 258 Z" fill="none" stroke={MX.fine} strokeWidth={1} strokeDasharray="4 3" />
-      <SideMotor x={979} y={222.5} w={77} h={42.5} cowl={15} tb={[995, 37.5, 10]} fins={4} />
-      <rect x={1002.5} y={238.5} width={27.5} height={9} rx={2} {...PAINT.recess} />
-      <rect x={1056} y={240} width={15} height={7.5} rx={1.5} {...PAINT.shaft} />
-      <rect x={1072.5} y={202.5} width={57.5} height={10} rx={3} {...PAINT.raised} />
-      <rect x={1065} y={210} width={72.5} height={56} rx={6} {...PAINT.body} />
-      <rect x={1069} y={214} width={64.5} height={48} rx={4} {...PAINT.hair} />
-      {[
-        [1070, 215],
-        [1132.5, 215],
-        [1070, 261],
-        [1132.5, 261],
-      ].map(([bx, by]) => (
-        <Bolt key={`${bx}-${by}`} x={bx} y={by} r={1.6} />
-      ))}
-      <circle cx={1085} cy={243.5} r={6.5} {...PAINT.raised} />
-      <circle cx={1085} cy={243.5} r={2.5} {...PAINT.shaft} />
-      <GearWheel cx={1110} cy={236} r={13} teeth={12} hub={4.5} />
-
-      <MachineLabel x={1050} y={292} size={11.5}>HEAD DRIVE</MachineLabel>
-      <MachineLabel x={943} y={520} size={11.5}>DEEP-PAN CONVEYOR</MachineLabel>
-      <MachineLabel x={861} y={LABEL_Y} size={11.5}>TAIL</MachineLabel>
+      {/* clinker flow along the conveyor */}
+      <rect x={435} y={705.3} width={289} height={2.4} fill={CLK} />
+      <Head x={589} y={706.5} dir="right" color={CLK} s={1.5} />
+      <rect x={m0[0]} y={m0[1] - 1.2} width={mLen} height={2.4} fill={CLK} transform={`rotate(${ANG} ${m0[0]} ${m0[1]})`} />
+      <g transform={`translate(${tip[0]} ${tip[1]}) rotate(${ANG})`}>
+        <Head x={0} y={0} dir="right" color={CLK} s={1.4} />
+      </g>
     </g>
   );
 }
 
-function Silo() {
-  const cx = 1360;
-  const win = { x: 1281.5, y: 392.5, w: 157, h: 101.5 };
+function HeadDrive() {
   return (
-    <g aria-hidden="true">
-      {/* legs and bracing */}
-      {[1267, 1454.5].map((lx) => (
-        <g key={lx}>
-          <rect x={lx - 5.5} y={556} width={11} height={GROUND - 556} rx={1.5} {...PAINT.body} />
-          <line x1={lx} x2={lx} y1={560} y2={GROUND - 3} {...PAINT.hair} />
-          <rect x={lx - 10} y={GROUND - 5} width={20} height={5} rx={1.5} {...PAINT.raised} />
-        </g>
-      ))}
-      <path d={`M 1272.5 632.5 L ${cx} 705 L 1449 632.5`} fill="none" stroke={MX.fine} strokeWidth={1.6} />
-      {/* cone and outlet */}
-      <path d="M 1260 558 H 1462.5 L 1387.5 641.5 H 1335 Z" {...PAINT.cylinderV} />
-      <rect x={1340} y={641.5} width={42.5} height={7} rx={1.5} {...PAINT.raised} />
-      {/* ring beam */}
-      <rect x={1240} y={544} width={241} height={15} rx={3} {...PAINT.raised} />
-      {/* shell */}
-      <rect x={1249} y={347.5} width={223.5} height={196.5} rx={3} {...PAINT.cylinderV} />
-      {[387.5, 510].map((by) => (
-        <line key={by} x1={1252} x2={1469.5} y1={by} y2={by} {...PAINT.detail} />
-      ))}
-      {[429, 470].map((by) => (
-        <g key={by}>
-          <line x1={1252} x2={win.x - 3} y1={by} y2={by} {...PAINT.detail} />
-          <line x1={win.x + win.w + 3} x2={1469.5} y1={by} y2={by} {...PAINT.detail} />
-        </g>
-      ))}
-      {/* level window */}
-      <rect x={win.x} y={win.y} width={win.w} height={win.h} rx={6} {...PAINT.recess} />
-      <path
-        d={`M ${win.x + 5} 447 Q ${win.x + 50} 441 ${cx} 441.5 T ${win.x + win.w - 5} 447 V ${win.y + win.h - 5} H ${win.x + 5} Z`}
-        fill={MX.material}
-        opacity={0.55}
+    <g>
+      {/* drive MCC and its cable to the motor */}
+      <line x1={968} y1={381} x2={993} y2={381} stroke={MX.fine} strokeWidth={1.3} strokeDasharray="5 4" />
+      <Mcc box={[876, 358, 92, 45]} at={[923, 381]} />
+
+      {/* chain / drive arm from the gearbox down to the head pulley */}
+      <line x1={1217} y1={404} x2={1243} y2={447} stroke={MX.fine} strokeWidth={5.5} strokeLinecap="round" />
+
+      <BlockMotor
+        frame={[1012, 351, 102, 58]}
+        tb={[1042, 338, 42, 16]}
+        win={[1045, 373, 36, 15]}
+        base={[1020, 409, 85, 8]}
+        bell={[1110, 356, 20, 48]}
+        nde={[1003, 354, 16, 52]}
+        de={[1127, 355, 16, 51]}
+        shafts={[
+          [993, 376, 12, 9],
+          [1141, 376, 16, 9],
+        ]}
+        fins={5}
+        taps={[]}
       />
-      <MachineLabel x={cx} y={466} size={13} tone="ink">
+
+      {/* gearbox: casing, lid, corner bolts, gear pair */}
+      <rect x={1162} y={339} width={53} height={15} rx={3} {...PAINT.body} />
+      <rect x={1155} y={352} width={69} height={56} rx={5} {...PAINT.body} />
+      {[
+        [1159, 357],
+        [1220, 357],
+        [1159, 403],
+        [1220, 403],
+      ].map(([x, y]) => (
+        <circle key={`${x}-${y}`} cx={x} cy={y} r={2.6} fill={MX.edge} />
+      ))}
+      <circle cx={1196} cy={372} r={18} {...PAINT.raised} />
+      <circle cx={1196} cy={372} r={6.5} fill="none" stroke={MX.fine} strokeWidth={1.5} />
+      <circle cx={1172} cy={383} r={10} {...PAINT.raised} />
+      <circle cx={1172} cy={383} r={3.5} fill="none" stroke={MX.fine} strokeWidth={1.5} />
+    </g>
+  );
+}
+
+function DustFan() {
+  const cx = 1608;
+  const cy = 441;
+  const v = volutePath(cx, cy, 27.5, 411, 1);
+  return (
+    <g>
+      {/* clean air out of the fan */}
+      <rect x={1606.8} y={384} width={2.5} height={28} fill={AIR} />
+      <Head x={1608} y={372.5} dir="up" color={AIR} s={1.15} />
+      <BlockMotor
+        frame={[1645, 426, 50, 30]}
+        tb={[1660, 419, 21, 9]}
+        win={[1661, 438, 17, 8]}
+        base={[1650, 456, 40, 8]}
+        bell={[1635, 430, 13, 24]}
+        shafts={[[1693, 439.5, 19, 4.5]]}
+        fins={4}
+      />
+      <path d={v.d} {...PAINT.body} />
+      <circle cx={cx} cy={cy} r={18} {...PAINT.raised} />
+      <circle cx={cx} cy={cy} r={14.5} fill={MX.edge} stroke={MX.edge} strokeWidth={1} />
+      {[45, 135, 225, 315].map((a) => (
+        <path
+          key={a}
+          d={`M ${cx} ${cy} q ${3} ${-9} ${10} ${-4}`}
+          fill={MX.flatRaised}
+          stroke={MX.fine}
+          strokeWidth={0.8}
+          transform={`rotate(${a} ${cx} ${cy})`}
+        />
+      ))}
+      <circle cx={cx} cy={cy} r={2.6} {...PAINT.shaft} />
+      {[45, 135, 225, 315].map((a) => (
+        <circle key={`b${a}`} cx={cx + Math.cos((a * Math.PI) / 180) * 22.5} cy={cy + Math.sin((a * Math.PI) / 180) * 22.5} r={2.3} fill={MX.edge} />
+      ))}
+      <Mcc box={[1624, 499.5, 70, 41.5]} at={[1659, 521]} />
+    </g>
+  );
+}
+
+function SiloAndBaghouse() {
+  return (
+    <g>
+      {/* silo shell, cone, outlet */}
+      <path d="M 1326 863 H 1567 L 1481 959 H 1412.5 Z" {...PAINT.cylinderV} />
+      <rect x={1422.5} y={959} width={47.5} height={12} rx={2} {...PAINT.raised} />
+      <rect x={1326} y={529} width={241} height={334} rx={8} {...PAINT.cylinderV} />
+      {/* level window with the clinker heap */}
+      <rect x={1356} y={586} width={181.5} height={219} rx={6} fill={MX.flatRaised} stroke={MX.fine} strokeWidth={1.6} />
+      <path d="M 1360.6 748.8 L 1446.9 729.4 L 1532.5 748.8 V 805.6 H 1360.6 Z" fill={CLK} stroke={MX.edge} strokeWidth={1.3} strokeLinejoin="round" />
+      <MachineLabel x={1446} y={768} size={10.5} tone="ink">
         CLINKER SILO
       </MachineLabel>
-      {/* roof with handrail */}
-      <Handrail x1={1257} x2={1463} y={338} h={14} step={21} />
-      <path d={`M 1237.5 346 L ${cx} 327.5 L 1482.5 346 V 350 H 1237.5 Z`} {...PAINT.raised} />
-      {/* roof inlet from the conveyor head */}
-      <rect x={1262} y={326} width={18} height={14} rx={2} {...PAINT.body} />
 
-      {/* baghouse, clean-air riser to the dust fan, return duct */}
-      <rect x={1330} y={326} width={60} height={8} rx={1.5} {...PAINT.body} />
-      <rect x={1309} y={246} width={112.5} height={80} rx={6} {...PAINT.body} />
-      <rect x={1313.5} y={250.5} width={103.5} height={71} rx={4} {...PAINT.hair} />
-      {[1322, 1334, 1396, 1408].map((bx) => (
-        <rect key={bx} x={bx - 3} y={262} width={6} height={50} rx={3} {...PAINT.hair} />
+      {/* level sensor on the roof, its beam into the silo */}
+      <line x1={1539} y1={529} x2={1528} y2={585} stroke={MX.fine} strokeWidth={1.2} strokeDasharray="5 4" />
+      <rect x={1532} y={507} width={15} height={22} rx={2} {...PAINT.body} />
+
+      {/* discharge chute from the head pulley into the silo roof */}
+      <path d="M 1262 452 L 1299 439 L 1375 517 L 1356 526 Z" {...PAINT.cylinderV} />
+      <rect x={1276.5} y={456.8} width={Math.hypot(1355 - 1278, 521 - 458)} height={2.4} fill={CLK} transform={`rotate(${(Math.atan2(521 - 458, 1355 - 1278) * 180) / Math.PI} 1278 458)`} />
+      <g transform={`translate(1325 495) rotate(${(Math.atan2(521 - 458, 1355 - 1278) * 180) / Math.PI})`}>
+        <Head x={0} y={0} dir="right" color={CLK} s={1.5} />
+      </g>
+
+      {/* baghouse on its pedestal, filter bags, inlet tap */}
+      <rect x={1411} y={511} width={14} height={18} rx={1.5} {...PAINT.body} />
+      <rect x={1356} y={420.5} width={125} height={92.5} rx={6} {...PAINT.body} />
+      {[1373, 1394, 1415, 1436.5, 1457].map((x) => (
+        <rect key={x} x={x} y={439} width={11.5} height={58} rx={5.75} {...PAINT.raised} />
       ))}
-      <Pipe pts={[[1421.5, 275], [1497, 275], [1497, 236]]} d={8} />
-      <line x1={cx} x2={cx} y1={246} y2={205} stroke={MX.air} strokeWidth={2} />
-      <line x1={cx} x2={1490} y1={205} y2={205} stroke={MX.air} strokeWidth={2} />
-      <Head x={cx} y={226} deg={-90} s={15} fill={MX.air} />
-      <Head x={1428} y={205} deg={0} s={15} fill={MX.air} />
-      <Volute cx={1514} cy={207} r={18} outH={4} dir={-1} rotor={false} />
-      <MachineLabel x={1352} y={240} anchor="end" size={11.5}>
-        BAGHOUSE
-      </MachineLabel>
 
-      {/* level sensor nozzle on the roof */}
-      <rect x={1451} y={322} width={15} height={22} rx={2} {...PAINT.body} />
-      <rect x={1448} y={334} width={21} height={5} rx={1.5} {...PAINT.raised} />
+      {/* clean-air duct to the dust fan, outlet tap, ΔP across the bags */}
+      <Line pts={[[1481, 443], [1590, 443]]} color={AIR} w={14} core={2} heads={[[1539, 443, "right"]]} />
+      <rect x={1535 - 8.3} y={470.5 - 8.3} width={16.6} height={16.6} fill={MX.padPanel} stroke={MX.edge} strokeWidth={1.5} transform="rotate(45 1535 470.5)" />
     </g>
   );
 }
@@ -251,58 +372,131 @@ function Silo() {
 function Art() {
   return (
     <g>
-      <GroundLine x1={70} x2={1581} y={GROUND} />
-      <CrusherLine />
-      <Conveyor />
-      <Silo />
+      <GroundLine x1={90} x2={1700} y={GROUND} />
+      <DeepPanConveyor />
+      <HammerCrusher />
+      <CrusherMotor />
+      <HeadDrive />
+      <SiloAndBaghouse />
+      <DustFan />
+
+      <Lbl x={129} y={522} size={8.5}>NDE</Lbl>
+      <Lbl x={299} y={522} size={8.5}>DE</Lbl>
+      <Lbl x={354} y={521} size={8.5}>DE</Lbl>
+      <Lbl x={565} y={521} size={8.5}>NDE</Lbl>
+      <Lbl x={214} y={643}>CRUSHER MOTOR</Lbl>
+      <Lbl x={202} y={739} size={8.5}>MOTOR MCC</Lbl>
+      <Lbl x={456} y={308} size={9}>FROM COOLER</Lbl>
+      <Lbl x={502} y={818} size={10}>HAMMER CRUSHER · HMR-01</Lbl>
+      <Lbl x={1010} y={797} size={10}>DEEP-PAN CONVEYOR</Lbl>
+      <Lbl x={922} y={349} size={8.5}>DRIVE MCC</Lbl>
+      <Lbl x={1106} y={333} size={10}>HEAD DRIVE</Lbl>
+      <Lbl x={1010} y={423} size={8.5}>NDE</Lbl>
+      <Lbl x={1135} y={423} size={8.5}>DE</Lbl>
+      <Lbl x={1306} y={423} size={8.5}>DISCHARGE CHUTE</Lbl>
+      <Lbl x={1417} y={414} size={9}>SILO BAGHOUSE</Lbl>
+      <Lbl x={1662} y={404} size={8.5}>DUST FAN</Lbl>
+      <Lbl x={1536} y={500} size={8.5}>ΔP</Lbl>
+      <Lbl x={1660} y={557} size={8.5}>MCC</Lbl>
+      <Lbl x={1446} y={998} size={10}>CLINKER SILO</Lbl>
     </g>
   );
 }
 
-/**
- * Pad centre per point (sheet units), as on PDF page 6. On the crusher the
- * bearing-block pads sit at the block ends (blocks drawn a little taller than
- * printed) and the winding pad on the shaft line, so the vibration, speed /
- * winding and temperature plates run in three clear rows.
- */
 const pads: LineSheetArt["pads"] = {
-  "ELE-HMR-01": [227, 518],
-  "TMP-HMR-03": [201.5, 601.5],
-  "VIB-HMR-01": [435.5, 571.5],
-  "TMP-HMR-01": [435.5, 631.5],
-  "VIB-HMR-02": [659, 571.5],
-  "TMP-HMR-02": [659, 631.5],
-  "SPD-HMR-01": [718, 601.5],
-  "SPD-CSL-01": [772.5, 699],
-  "ELE-CSL-01": [1009.5, 213],
-  "TMP-CSL-02": [1031.8, 252.8],
-  "VIB-CSL-01": [1101, 215.2],
-  "PRS-CSL-01": [1365, 286.2],
-  "LEV-CSL-01": [1458.8, 316.8],
-  "ELE-CSL-02": [1512.5, 205],
+  // crusher motor: NDE (left) and DE (right) bearing housings — vibration high, temperature low; winding on the terminal box, current at the MCC
+  "VIB-HMR-03": [300, 548],
+  "VIB-HMR-04": [130, 548],
+  "TMP-HMR-04": [300, 596],
+  "TMP-HMR-05": [130, 596],
+  "TMP-HMR-03": [213, 538],
+  "ELE-HMR-01": [193, 697],
+  // hammer crusher: outlet temperature at the discharge, rotor bearings, zero-speed switch on the NDE shaft
+  "TMP-HMR-06": [527.5, 694.5],
+  "VIB-HMR-01": [353.6, 542],
+  "VIB-HMR-02": [564.5, 542],
+  "TMP-HMR-01": [353.6, 580],
+  "TMP-HMR-02": [564.5, 580],
+  "SPD-HMR-01": [617, 562],
+  // deep-pan conveyor: strand temperature, head-drive motor NDE / DE, gearbox, MCC, tail zero-speed switch
+  "TMP-CSL-01": [971.7, 614],
+  "VIB-CSL-01": [1135, 363],
+  "VIB-CSL-03": [1011, 363],
+  "VIB-CSL-02": [1188, 381],
+  "TMP-CSL-03": [1135, 396],
+  "TMP-CSL-04": [1011, 396],
+  "TMP-CSL-02": [1074, 352],
+  "ELE-CSL-01": [923, 381],
+  "SPD-CSL-01": [382.5, 758.5],
+  // clinker silo and its baghouse: inlet / outlet taps, ΔP, dust-fan MCC
+  "LEV-CSL-01": [1539, 504],
+  "PRS-CSL-02": [1364, 498],
+  "PRS-CSL-03": [1508, 443],
+  "PRS-CSL-01": [1535, 470.5],
+  "ELE-CSL-02": [1659, 521],
 };
 
-/**
- * Plate side per point (embedded plates) and stand-off slot. DE plates run
- * left over the motor, NDE and speed plates right towards the conveyor, so no
- * reading sits over the crusher housing; head-drive and silo plates run left
- * over their equipment to stay inside the frame.
- */
-const callouts: LineSheetArt["callouts"] = {
-  "ELE-HMR-01": [228.5, 486, "middle"],
-  "TMP-HMR-03": [202, 676, "start"],
-  "VIB-HMR-01": [420, 571.5, "end"],
-  "TMP-HMR-01": [420, 631.5, "end"],
-  "VIB-HMR-02": [683.5, 571.5, "start"],
-  "SPD-HMR-01": [743, 601.5, "start"],
-  "TMP-HMR-02": [683.5, 631.5, "start"],
-  "SPD-CSL-01": [810, 700.8, "start"],
-  "ELE-CSL-01": [1009, 183, "end"],
-  "TMP-CSL-02": [1033.5, 281.8, "end"],
-  "VIB-CSL-01": [1137.5, 215, "start"],
-  "PRS-CSL-01": [1364, 317, "end"],
-  "LEV-CSL-01": [1440, 317, "end"],
-  "ELE-CSL-02": [1500, 165, "end"],
+/** Box height for n rows, as the design spaces them. */
+const bh = (n: number) => 42 + 25 * n;
+
+const readouts: LineSheetArt["readouts"] = {
+  frame: [0, 0, W, H],
+  blocks: [
+    {
+      title: "Crusher motor",
+      box: [13, 13, 262, bh(6)],
+      leader: [213, 509],
+      rows: [
+        ["VIB-HMR-03", "VIBRATION DE"],
+        ["VIB-HMR-04", "VIBRATION NDE"],
+        ["TMP-HMR-04", "BEARING TEMP. DE"],
+        ["TMP-HMR-05", "BEARING TEMP. NDE"],
+        ["TMP-HMR-03", "WINDING TEMP."],
+        ["ELE-HMR-01", "MOTOR CURRENT"],
+      ],
+    },
+    {
+      title: "Hammer rotor & bearings",
+      box: [331, 13, 308, bh(6)],
+      leader: [460, 317],
+      rows: [
+        ["TMP-HMR-06", "CRUSHER OUTLET TEMP."],
+        ["VIB-HMR-01", "VIBRATION DE"],
+        ["VIB-HMR-02", "VIBRATION NDE"],
+        ["TMP-HMR-01", "BEARING TEMP. DE"],
+        ["TMP-HMR-02", "BEARING TEMP. NDE"],
+        ["SPD-HMR-01", "ZERO-SPEED SWITCH"],
+      ],
+    },
+    {
+      title: "Conveyor motor & head drive",
+      box: [650, 13, 338, bh(9)],
+      leader: [1074, 380],
+      rows: [
+        ["TMP-CSL-01", "CONVEYOR TEMP."],
+        ["VIB-CSL-01", "VIBRATION DE"],
+        ["VIB-CSL-03", "VIBRATION NDE"],
+        ["VIB-CSL-02", "GEARBOX VIBRATION"],
+        ["TMP-CSL-03", "BEARING TEMP. DE"],
+        ["TMP-CSL-04", "BEARING TEMP. NDE"],
+        ["TMP-CSL-02", "WINDING TEMP."],
+        ["ELE-CSL-01", "MOTOR CURRENT"],
+        ["SPD-CSL-01", "ZERO-SPEED SWITCH"],
+      ],
+    },
+    { title: "Clinker silo", box: [1000, 13, 197, bh(1)], leader: [1539, 497], rows: [["LEV-CSL-01", "SILO LEVEL"]] },
+    {
+      title: "Silo dust collection",
+      box: [1625, 13, 325, bh(4)],
+      leader: [1412, 468],
+      rows: [
+        ["PRS-CSL-02", "INLET PRESSURE"],
+        ["PRS-CSL-03", "OUTLET PRESSURE"],
+        ["PRS-CSL-01", "ΔP (CALCULATED)"],
+        ["ELE-CSL-02", "DUST FAN MOTOR CURRENT"],
+      ],
+    },
+  ],
 };
 
-export const sheet: LineSheetArt = { id: "H-0", ready: true, width: W, height: H, Art, pads, callouts };
+export const sheet: LineSheetArt = { id: "H-0", ready: true, width: W, height: H, Art, pads, readouts };

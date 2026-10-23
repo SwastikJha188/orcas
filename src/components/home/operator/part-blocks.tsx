@@ -34,6 +34,12 @@ export interface PartGroup {
   name: string;
   rows: BlockRow[];
   pads: Array<[number, number]>;
+  /** Designed sheets: the block's top-left corner as the design places it on this canvas; it stays near there. */
+  prefer?: [number, number];
+  /** Designed sheets: where the block's dashed leader meets its equipment. */
+  leader?: [number, number];
+  /** Header shown even for a single reading (designed blocks always name their equipment). */
+  head?: boolean;
 }
 
 export interface BlockMetrics {
@@ -64,7 +70,7 @@ export function linkColor(tone: Tone): string {
 }
 
 /** A block names its part only when it holds several readings; a lone reading is just its own row. */
-const hasHead = (g: PartGroup) => Boolean(g.name) && g.rows.length > 1;
+const hasHead = (g: PartGroup) => Boolean(g.name) && (g.head || g.rows.length > 1);
 
 export function blockMetrics(fontSz: number): BlockMetrics {
   return { fontSz, rowH: fontSz * 1.5, headH: fontSz * 1.55, padX: fontSz * 0.7, padY: fontSz * 0.3, colGap: fontSz * 0.9, rx: fontSz * 0.4 };
@@ -102,16 +108,16 @@ export function clusterPads<T extends { px: number; py: number }>(items: T[], re
     }
     out.push(group);
   }
-  // A stray one or two readings join the nearest larger cluster of their part when it is within twice the
-  // reach: one block per part reads better than a scatter of tiny ones.
+  // A stray one or two readings join the nearest cluster of their part at least as large within 2.5 × the
+  // reach: a block per piece of equipment reads better than a scatter of one-line chips.
   const centre = (g: T[]): [number, number] => [g.reduce((n, p) => n + p.px, 0) / g.length, g.reduce((n, p) => n + p.py, 0) / g.length];
   for (let i = out.length - 1; i >= 0; i--) {
     if (out[i].length > 2 || out.length === 1) continue;
     const [cx, cy] = centre(out[i]);
     let best = -1;
-    let bestD = reach * 2;
+    let bestD = reach * 2.5;
     out.forEach((g, j) => {
-      if (j === i || g.length <= 2) return;
+      if (j === i || g.length < out[i].length) return;
       const [gx, gy] = centre(g);
       const d = Math.hypot(gx - cx, gy - cy);
       if (d < bestD) {
@@ -130,13 +136,28 @@ export function clusterPads<T extends { px: number; py: number }>(items: T[], re
 type Box = { l: number; t: number; r: number; b: number };
 const hits = (a: Box, b: Box, gap = 0) => a.l < b.r + gap && b.l < a.r + gap && a.t < b.b + gap && b.t < a.b + gap;
 
+/** Cost of a block per share of plain equipment body under it, and per share of drawn lines it hides. */
+const BODY_COST = 110;
+const LINE_COST = 220;
+
+/** The straight segment (x0, y0)–(x1, y1) passes through `b` (sampled; leaders are short). */
+function segmentHits(x0: number, y0: number, x1: number, y1: number, b: Box): boolean {
+  for (let i = 1; i < 8; i++) {
+    const x = x0 + ((x1 - x0) * i) / 8;
+    const y = y0 + ((y1 - y0) * i) / 8;
+    if (x > b.l && x < b.r && y > b.t && y < b.b) return true;
+  }
+  return false;
+}
+
 /**
  * Places each block beside its own part, in free sheet: every spot of a grid over the canvas (and a band
  * just past it) is scored by distance from the block's pads (growing steeply, so a block stays by its
  * part), how much machine body it would sit on (heavy) or drawn line it would cross (light), the drawing's
  * words and pads it would hide, overlap with other blocks, and leaving the canvas (which shrinks the
  * sheet). Largest blocks go first, then every block is re-placed against the rest a couple of times so an
- * early block does not keep the spot another part needed.
+ * early block does not keep the spot another part needed. Blocks the operator placed by hand (`pinned`,
+ * top-left corner by block id) stay where they were put and the others make room for them.
  */
 export function layoutPartBlocks(
   groups: PartGroup[],
@@ -145,47 +166,76 @@ export function layoutPartBlocks(
   m: BlockMetrics,
   busy: BusyMap | null,
   allPads: Array<[number, number]>,
+  pinned?: Record<string, [number, number]>,
+  /** coarse: a quick trial (a grid step of a row, one re-placing pass, no swaps), to compare sizes. */
+  opts: { coarse?: boolean } = {},
 ): { blocks: PlacedBlock[]; viewBox: [number, number, number, number] } {
   const [sx, sy, sw, sh] = space;
-  const gap = m.rowH * 0.5;
+  const gap = m.rowH * 0.35;
   const u = m.rowH;
   const density = busy?.density ?? (() => 0);
   const words = busy?.text ?? (() => 0);
   const cover = busy?.cover ?? (() => 0);
   const order = [...groups].sort((a, b) => b.rows.length - a.rows.length);
-  // Candidate grid: the canvas plus a band of a few rows past each edge, for when the sheet has no room left.
-  const band = u * 4;
+  // Candidate grid: the canvas only. A block past its edge would make the whole sheet zoom out and every reading
+  // smaller; a crowded sheet puts blocks on quiet parts of the drawing instead.
+  const band = 0;
 
-  const place = (g: PartGroup, others: PlacedBlock[]): PlacedBlock => {
-    const size = measureBlock(g, m);
+  /** Cost of `g` (its size `size`) with its top-left corner at (x, y), among `others`; stops early past `bound`. */
+  const costAt = (
+    g: PartGroup,
+    size: { w: number; h: number },
+    x: number,
+    y: number,
+    others: PlacedBlock[],
+    bound = Infinity,
+  ): number => {
     const xs = g.pads.map((p) => p[0]);
     const ys = g.pads.map((p) => p[1]);
     const pb: Box = { l: Math.min(...xs), t: Math.min(...ys), r: Math.max(...xs), b: Math.max(...ys) };
+    const box: Box = { l: x, t: y, r: x + size.w, b: y + size.h };
+    // Distance from its sensors grows steeply: a block belongs beside the equipment it measures. A designed block
+    // keeps to its spot in the design instead (its leader names the equipment).
+    const d = g.prefer
+      ? Math.hypot(x - g.prefer[0], y - g.prefer[1]) / u
+      : Math.hypot(Math.max(0, pb.l - box.r, box.l - pb.r), Math.max(0, pb.t - box.b, box.t - pb.b)) / u;
+    let cost = g.prefer ? 2.5 * d + 0.3 * d * d : 1.5 * d + 0.2 * d * d;
+    if (cost >= bound) return cost;
+    const out = Math.max(0, sx - box.l) + Math.max(0, box.r - (sx + sw)) + Math.max(0, sy - box.t) + Math.max(0, box.b - (sy + sh));
+    if (out > 0) cost += 120 + (3 * out) / u;
+    // Hiding drawn lines (edges, pipes, flows) costs most; resting on a plain body face is allowed when it keeps
+    // the block beside its sensors (a block far away, its leaders across the drawing, reads worse).
+    const [cl, ct, cr, cb] = [box.l - gap / 2, box.t - gap / 2, box.r + gap / 2, box.b + gap / 2];
+    const lines = density(cl, ct, cr, cb);
+    cost += BODY_COST * Math.max(0, cover(cl, ct, cr, cb) - lines) + LINE_COST * lines;
+    const ws = words(box.l, box.t, box.r, box.b);
+    if (ws > 0.002) cost += 300 + 400 * ws;
+    if (cost >= bound) return cost;
+    for (const [px, py] of allPads) if (px > box.l - u * 0.4 && px < box.r + u * 0.4 && py > box.t - u * 0.4 && py < box.b + u * 0.4) cost += 200;
+    for (const o of others) {
+      const ob: Box = { l: o.x, t: o.y, r: o.x + o.w, b: o.y + o.h };
+      if (hits(box, ob, gap)) {
+        const ox = Math.min(box.r, ob.r) - Math.max(box.l, ob.l) + gap;
+        const oy = Math.min(box.b, ob.b) - Math.max(box.t, ob.t) + gap;
+        cost += 2000 + (ox * oy) / (u * u);
+      }
+      // A leader from this block to one of its pads running through another block.
+      for (const [px, py] of g.pads) {
+        const qx = Math.min(box.r, Math.max(box.l, px));
+        const qy = Math.min(box.b, Math.max(box.t, py));
+        if (segmentHits(px, py, qx, qy, ob)) cost += 40;
+      }
+    }
+    return cost;
+  };
+
+  const place = (g: PartGroup, others: PlacedBlock[]): PlacedBlock => {
+    const size = measureBlock(g, m);
     let best: { x: number; y: number; cost: number } | null = null;
-    for (let y = Math.round((sy - band) / u) * u; y + size.h <= sy + sh + band; y += u / 2) {
-      for (let x = Math.round((sx - band) / u) * u; x + size.w <= sx + sw + band; x += u / 2) {
-        const box: Box = { l: x, t: y, r: x + size.w, b: y + size.h };
-        const d = Math.hypot(Math.max(0, pb.l - box.r, box.l - pb.r), Math.max(0, pb.t - box.b, box.t - pb.b)) / u;
-        let cost = d + 0.15 * d * d;
-        if (best && cost >= best.cost) continue;
-        const out = Math.max(0, sx - box.l) + Math.max(0, box.r - (sx + sw)) + Math.max(0, sy - box.t) + Math.max(0, box.b - (sy + sh));
-        if (out > 0) cost += 120 + (3 * out) / u;
-        // Machine body under the block (with a thin clearance) weighs far more than a pipe or flow line crossing it.
-        const [cl, ct, cr, cb] = [box.l - gap / 2, box.t - gap / 2, box.r + gap / 2, box.b + gap / 2];
-        const lines = density(cl, ct, cr, cb);
-        cost += 600 * Math.max(0, cover(cl, ct, cr, cb) - lines) + 60 * lines;
-        const ws = words(box.l, box.t, box.r, box.b);
-        if (ws > 0.002) cost += 300 + 400 * ws;
-        if (best && cost >= best.cost) continue;
-        for (const [px, py] of allPads) if (px > box.l - u * 0.4 && px < box.r + u * 0.4 && py > box.t - u * 0.4 && py < box.b + u * 0.4) cost += 200;
-        for (const o of others) {
-          const ob: Box = { l: o.x, t: o.y, r: o.x + o.w, b: o.y + o.h };
-          if (hits(box, ob, gap)) {
-            const ox = Math.min(box.r, ob.r) - Math.max(box.l, ob.l) + gap;
-            const oy = Math.min(box.b, ob.b) - Math.max(box.t, ob.t) + gap;
-            cost += 2000 + (ox * oy) / (u * u);
-          }
-        }
+    const step = opts.coarse ? u : u / 2;
+    for (let y = Math.round((sy - band) / u) * u; y + size.h <= sy + sh + band; y += step) {
+      for (let x = Math.round((sx - band) / u) * u; x + size.w <= sx + sw + band; x += step) {
+        const cost = costAt(g, size, x, y, others, best?.cost ?? Infinity);
         if (!best || cost < best.cost) best = { x, y, cost };
       }
     }
@@ -194,9 +244,43 @@ export function layoutPartBlocks(
   };
 
   const placed: PlacedBlock[] = [];
-  for (const g of order) placed.push(place(g, placed));
-  for (let pass = 0; pass < 2; pass++) {
-    for (let i = 0; i < placed.length; i++) placed[i] = place(placed[i].group, placed.filter((_, j) => j !== i));
+  const isPinned = (g: PartGroup) => Boolean(pinned?.[g.id]);
+  for (const g of order.filter(isPinned)) {
+    const size = measureBlock(g, m);
+    const [x, y] = pinned![g.id];
+    placed.push({ group: g, x, y, w: size.w, h: size.h, labelW: size.labelW, valueW: size.valueW });
+  }
+  for (const g of order.filter((g) => !isPinned(g))) placed.push(place(g, placed));
+  const replace = () => {
+    for (let i = 0; i < placed.length; i++) if (!isPinned(placed[i].group)) placed[i] = place(placed[i].group, placed.filter((_, j) => j !== i));
+  };
+  replace();
+  // Blocks are placed one at a time, so an early one can hold the spot a later one needed (fan blocks under
+  // the fans before the compartment blocks): two blocks trade places (centre for centre) when that lowers
+  // their summed cost, then everything is re-placed once more.
+  const snap = (v: number) => Math.round(v / (u / 2)) * (u / 2);
+  // A dense sheet (a combined sheet's forty blocks) gets one round: each round re-places every block.
+  for (let round = 0; round < (opts.coarse ? 0 : groups.length > 30 ? 1 : 2); round++) {
+    let swapped = false;
+    for (let i = 0; i < placed.length; i++) {
+      for (let j = i + 1; j < placed.length; j++) {
+        const a = placed[i];
+        const b = placed[j];
+        if (isPinned(a.group) || isPinned(b.group)) continue;
+        const rest = placed.filter((_, k) => k !== i && k !== j);
+        const before = costAt(a.group, a, a.x, a.y, [...rest, b]) + costAt(b.group, b, b.x, b.y, [...rest, a]);
+        const a2 = { ...a, x: snap(b.x + b.w / 2 - a.w / 2), y: snap(b.y + b.h / 2 - a.h / 2) };
+        const b2 = { ...b, x: snap(a.x + a.w / 2 - b.w / 2), y: snap(a.y + a.h / 2 - b.h / 2) };
+        const after = costAt(a.group, a2, a2.x, a2.y, [...rest, b2]) + costAt(b.group, b2, b2.x, b2.y, [...rest, a2]);
+        if (after < before - 1) {
+          placed[i] = a2;
+          placed[j] = b2;
+          swapped = true;
+        }
+      }
+    }
+    if (!swapped) break;
+    replace();
   }
 
   const margin = u * 0.5;
@@ -212,6 +296,22 @@ export function layoutPartBlocks(
     maxY = Math.max(maxY, b.y + b.h + margin);
   }
   return { blocks: placed, viewBox: [minX, minY, maxX - minX, maxY - minY] };
+}
+
+/**
+ * A designed block's leader: a straight dashed line from the point of the block's edge nearest its equipment to
+ * the leader point (null when that point lies under the block).
+ */
+export function blockLeader(block: PlacedBlock): [number, number, number, number] | null {
+  const at = block.group.leader;
+  if (!at) return null;
+  const [px, py] = at;
+  const l = block.x;
+  const r = block.x + block.w;
+  const t = block.y;
+  const b = block.y + block.h;
+  if (px >= l && px <= r && py >= t && py <= b) return null;
+  return [Math.min(r, Math.max(l, px)), Math.min(b, Math.max(t, py)), px, py];
 }
 
 /**
@@ -258,6 +358,7 @@ export function PartBlock({
   onHoverPart,
   onSelect,
   titleOf,
+  onGrab,
 }: {
   block: PlacedBlock;
   m: BlockMetrics;
@@ -272,6 +373,8 @@ export function PartBlock({
   onHoverPart: (id: string | null) => void;
   onSelect: (tag: string) => void;
   titleOf: (tag: string) => string;
+  /** Arranging: the block is a handle the operator drags (its rows are not clickable meanwhile). */
+  onGrab?: (e: React.PointerEvent<SVGRectElement>) => void;
 }) {
   const g = block.group;
   const labelSz = m.fontSz * LABEL_SCALE;
@@ -325,9 +428,13 @@ export function PartBlock({
               height={m.rowH}
               style={{ fill: hot ? `color-mix(in srgb, ${linkColor(r.tone)} 14%, transparent)` : "transparent" }}
             />
+            {/* Critical: the row's band blinks (steady under reduced motion) so it is found at once; the text stays put. */}
+            {r.tone === "bad" && (
+              <rect className="opc-blink" x={block.x + 1} y={y} width={block.w - 2} height={m.rowH} style={{ fill: `color-mix(in srgb, ${MX.bad} 24%, transparent)` }} />
+            )}
             {/* The linked row carries its link's status colour, so row, link and pad read as one. */}
             {hot && <rect x={block.x + 1} y={y + m.rowH * 0.15} width={m.fontSz * 0.22} height={m.rowH * 0.7} rx={m.fontSz * 0.1} fill={linkColor(r.tone)} />}
-            {bad && <circle cx={lx + m.fontSz * 0.3} cy={y + m.rowH / 2} r={m.fontSz * 0.26} fill={color} />}
+            {bad && <circle className={r.tone === "bad" ? "opc-blink" : undefined} cx={lx + m.fontSz * 0.3} cy={y + m.rowH / 2} r={m.fontSz * 0.26} fill={color} />}
             {!bad && r.run && (
               <circle
                 cx={lx + m.fontSz * 0.3}
@@ -354,6 +461,22 @@ export function PartBlock({
           </g>
         );
       })}
+      {onGrab && (
+        <rect
+          className="opc-arrange-grip"
+          x={block.x}
+          y={block.y}
+          width={block.w}
+          height={block.h}
+          rx={m.rx}
+          fill="transparent"
+          stroke="var(--accent-primary)"
+          strokeWidth={m.fontSz * 0.12}
+          strokeDasharray={`${m.fontSz * 0.5} ${m.fontSz * 0.35}`}
+          onPointerDown={onGrab}
+          aria-hidden="true"
+        />
+      )}
     </g>
   );
 }

@@ -23,8 +23,8 @@ export const FAN = {
   duct: { x: 61, w: 25 },
   bearing: { x: 173.25, y: 408.75, w: 18.5, h: 43.75 },
   motor: { x: 182.5, y: 398, w: 68.25, h: 60.75 },
-  /** Pads: motor terminal box (current), bearing top (vibration), bearing bottom, motor winding. */
-  pads: { ele: [222.7, 391.5], vib: [182.3, 415], brg: [182.3, 442], wdg: [214, 443] } as Record<string, [number, number]>,
+  /** Pads: motor terminal box (current), bearing top (vibration), bearing bottom, motor winding, fan cowl (speed). */
+  pads: { ele: [222.7, 391.5], vib: [182.3, 415], brg: [182.3, 442], wdg: [214, 443], spd: [259.9, 428.4] } as Record<string, [number, number]>,
 };
 const RAIL = { y: 499, h: 10, x0: 37.5, x1: 712.5 };
 const GROUND = 621;

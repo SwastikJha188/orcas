@@ -1,9 +1,10 @@
 /**
- * Sheet P-3 — PHC-01 · Exit gas analysis and fan damper. Group images page
+ * Sheet P-3 — PHC-01 · Exit gas, WHRS dampers and fan damper. Group images page
  * 2A, right panel (page box 1106, 91 → 1612, 540.5): C1 (top stage), the
  * preheater exit gas duct with its blow-back air line and sample probe, the
- * exit-gas analyser (O₂ / CO cells; false-air rise calculated with the
- * kiln-inlet O₂) and the ID fan inlet damper with its actuator.
+ * exit-gas analyser (O₂ / CO cells), the waste-heat recovery boiler (WHRS)
+ * beside the down-duct with its inlet and outlet dampers and the main-line
+ * bypass damper between them (Rev 02), and the ID fan inlet damper with its actuator.
  */
 import React from "react";
 import { GroundLine, MX, PAINT } from "@/components/assets/machine-kit/machine-kit";
@@ -47,7 +48,20 @@ function Art() {
       <rect x={216} y={72.5} width={4} height={25} rx={1} {...PAINT.shaft} />
       <rect x={230.5} y={74} width={2} height={24} {...PAINT.shaft} />
       <Tap pts={[[231.5, 98], [231.5, 139]]} dashed />
-      {/* exit-gas analyser: O₂ and CO cells, false-air calculation display */}
+      {/* WHRS: inlet branch off the down-duct, boiler, outlet branch back; bypass damper on the main line between */}
+      <Pipe pts={[[357, 105], [435, 105], [435, 121]]} d={12} />
+      <Pipe pts={[[435, 231], [435, 245], [357, 245]]} d={12} />
+      <rect x={402} y={120} width={66} height={112} rx={4} {...PAINT.cylinderV} />
+      {[142, 164, 186, 208].map((y) => (
+        <line key={y} x1={406} x2={464} y1={y} y2={y} stroke={MX.fine} strokeWidth={1} />
+      ))}
+      <Damper x={376} y={96} w={18} h={18} />
+      <Damper x={386} y={236} w={18} h={18} />
+      <Damper x={338} y={150} w={18.5} h={25} />
+      <Caps x={435} y={177} anchor="middle">
+        WHRS
+      </Caps>
+      {/* exit-gas analyser: O₂ and CO cells */}
       <Analyser x={186.5} y={139} w={116} h={84.5} cells={[214.5, 259]} cy={162} cw={36} ch={22} />
       <rect x={196.5} y={194} width={96} height={18} rx={2.5} {...PAINT.recess} />
       <Caps x={214.5} y={180} anchor="middle" size={4.5} spacing="0.05em">
@@ -80,19 +94,27 @@ function Art() {
   );
 }
 
-/** Pad centre per point, at the group-image pads; the calculated false-air rise sits on the analyser's display. */
+/** Pad centre per point, at the group-image pads; gas temperatures on the duct before and after the WHRS, each damper on its blade. */
 const pads: LineSheetArt["pads"] = {
+  "TMP-PHC-30": [150, 85],
   "GAS-PHC-01": [214.5, 161.2],
   "GAS-PHC-02": [258.5, 161.2],
-  "CAL-PHC-01": [206, 203],
+  "POS-PHC-03": [385, 105],
+  "POS-PHC-04": [395, 245],
+  "POS-PHC-05": [347, 162.5],
+  "TMP-PHC-31": [347, 258],
   "POS-PHC-01": [384.2, 284],
 };
 
-/** O₂ runs left, CO right, the false-air rise along the display, the damper back over its actuator and duct. */
+/** O₂ runs left, CO right; WHRS dampers off to the boiler side, bypass and after-WHRS temperature left of the duct; the fan damper back over its actuator and duct. */
 const callouts: LineSheetArt["callouts"] = {
+  "TMP-PHC-30": [150, 55, "middle"],
   "GAS-PHC-01": [241.5, 132.2, "end"],
   "GAS-PHC-02": [248, 132.2, "start"],
-  "CAL-PHC-01": [213, 203, "start"],
+  "POS-PHC-03": [395, 62, "start"],
+  "POS-PHC-04": [468, 266, "end"],
+  "POS-PHC-05": [330, 106, "end"],
+  "TMP-PHC-31": [330, 258, "end"],
   "POS-PHC-01": [377, 284, "end"],
 };
 

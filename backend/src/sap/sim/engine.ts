@@ -630,6 +630,51 @@ export async function simCreateMeasurementDocument(plantId: string, body: Record
   return { MeasurementDocument: document, MeasuringPoint: point, MeasurementReading: reading };
 }
 
+/** "/Date(ms)/" + "PThhHmmMssS" (OData v2) as an instant; null when either is not given. */
+function v2Instant(date: unknown, time: unknown): Date | null {
+  const d = /\/Date\((-?\d+)\)\//.exec(String(date ?? ""));
+  if (!d) return null;
+  const t = /^PT(\d{1,2})H(\d{1,2})M(\d{1,2})S$/.exec(String(time ?? "PT00H00M00S"));
+  return new Date(Number(d[1]) + (t ? (Number(t[1]) * 3600 + Number(t[2]) * 60 + Number(t[3])) * 1000 : 0));
+}
+
+/** A planned maintenance order created from outside (a shutdown's work list): released now, worked in its basic dates. */
+export async function simCreateMaintenanceOrder(plantId: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const type = typeof body.MaintenanceOrderType === "string" ? body.MaintenanceOrderType.trim().toUpperCase() : "";
+  if (type !== "PM01" && type !== "PM02") throw new SimODataError(400, `Order type ${type || "(blank)"} is not defined`);
+  const text = typeof body.MaintenanceOrderDesc === "string" ? body.MaintenanceOrderDesc.trim() : "";
+  if (!text) throw new SimODataError(400, "Enter a description for the order");
+  if (text.length > 40) throw new SimODataError(400, "Description is longer than 40 characters");
+  const eq = typeof body.Equipment === "string" ? body.Equipment.trim() : "";
+  const found = (await query<{ equipment: string }>("SELECT equipment FROM sap_sim_equipment WHERE plant_id = $1 AND ltrim(equipment, '0') = ltrim($2, '0')", [plantId, eq])).rows[0];
+  if (!found) throw new SimODataError(400, `Equipment ${eq || "(blank)"} does not exist`);
+  const start = v2Instant(body.MaintOrdBasicStartDate, body.MaintOrdBasicStartTime);
+  const finish = v2Instant(body.MaintOrdBasicEndDate, body.MaintOrdBasicEndTime);
+  if (!start || !finish || finish <= start) throw new SimODataError(400, "Basic start and end dates are not valid");
+  const ops = (body.to_MaintenanceOrderOperation as { results?: unknown[] } | undefined)?.results;
+  const priority = typeof body.MaintPriority === "string" && /^[1-4]$/.test(body.MaintPriority) ? body.MaintPriority : null;
+  const client = await getClient();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT 1 FROM sap_sim_systems WHERE plant_id = $1 FOR UPDATE", [plantId]);
+    const n = (await client.query<{ n: string | null }>("SELECT max(maintenance_order::bigint) AS n FROM sap_sim_orders WHERE plant_id = $1", [plantId])).rows[0].n;
+    const number = String(n ? Number(n) + 1 : 4_000_100);
+    const now = new Date();
+    await client.query(
+      `INSERT INTO sap_sim_orders (plant_id, maintenance_order, order_type, equipment, notification, description, priority, created_at, released_at, start_at, finish_at, closed_at)
+       VALUES ($1,$2,$3,$4,NULL,$5,$6,$7,$7,$8,$9,$10)`,
+      [plantId, number, type, found.equipment, text, priority, now, start, finish, new Date(finish.getTime() + 2 * H)],
+    );
+    await client.query("COMMIT");
+    return { MaintenanceOrder: number, MaintenanceOrderType: type, MaintenanceOrderDesc: text, Equipment: found.equipment, OperationCount: Array.isArray(ops) ? ops.length : 0 };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 /** An error SAP itself would answer, with its HTTP status. */
 export class SimODataError extends Error {
   status: number;

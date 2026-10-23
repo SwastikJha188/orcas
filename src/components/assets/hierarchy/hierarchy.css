@@ -11,7 +11,7 @@
   padding: 0 8px;
   font-size: var(--fs-sm);
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   color: var(--dx-ink);
 }
 
@@ -118,6 +118,7 @@
   background: var(--bg-canvas);
   color: var(--text-muted);
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -127,7 +128,7 @@
   flex-direction: column;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 18px;
+  padding: 12px 16px;
   border-radius: var(--corner-card);
   background: var(--card-bg);
   border: 1px solid var(--card-border);
@@ -146,7 +147,7 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--dx-ink);
-  line-height: 1;
+  line-height: var(--lh-none);
 }
 
 .hx-legend {
@@ -267,6 +268,7 @@
 
 .hx-facts dt {
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   color: var(--text-muted);
 }
 
@@ -297,6 +299,7 @@
   color: var(--dx-ink);
   font-weight: 500;
   font-size: var(--fs-lg);
+  letter-spacing: var(--tracking-heading);
 }
 
 .hx-register-table.ui-table-container .ui-table :is(th, td):first-child {

@@ -1,12 +1,15 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
-import { Table, type Column } from "@/components/ui";
+import React, { useMemo } from "react";
+import { RestLine, Table, useFold, type Column } from "@/components/ui";
 import { defsFor } from "@/lib/live-defs";
 import { logPos, rangeText, roundHours, type RulRow } from "./prognosis-derive";
 import { buildRecs, type Rec } from "./prog-maintenance";
 import { useWorkOrderPriorities } from "@/lib/reference-data";
 import { TimeTicks, toneFor, type ProgSectionProps } from "./prog-ui";
+
+/** A part whose limit is closer than this stays on the list even when nothing is to be done yet. */
+const SOON_H = 30 * 24;
 
 const MAX_H = 8760 * 1.1;
 const LABELS = [
@@ -32,13 +35,12 @@ export function ProgRul({ machine, focusedComponent, data, analysis, rows, onSee
   const priorities = useWorkOrderPriorities();
   const recs = useMemo(() => buildRecs(data, analysis, rows, priorities), [data, analysis, rows, priorities]);
   const recFor = (r: RulRow): Rec | undefined => recs.find((x) => x.component.toLowerCase().includes(r.name.toLowerCase()));
-  // Parts with nothing ahead (no limit, nothing to do) fold into one line; the picked part always shows.
-  const [showAll, setShowAll] = useState(false);
-  const needs = (r: RulRow) => r.hours !== null || r.status !== "Normal" || Boolean(recFor(r)) || r.id === focused?.id;
+  // Parts with nothing to do and no limit within 30 days fold into one line; the picked part always shows.
+  const needs = (r: RulRow) => r.status !== "Normal" || Boolean(recFor(r)) || r.id === focused?.id || (r.hours !== null && r.hours <= SOON_H);
   // One part picked: its own row always shows, whatever it holds.
   const one = sorted.length === 1;
-  const shown = showAll || one ? sorted : sorted.filter(needs);
-  const rest = one ? 0 : sorted.length - sorted.filter(needs).length;
+  const fold = useFold(sorted, (r) => !one && !needs(r));
+  const shown = fold.shown;
   const riskFor = (r: RulRow) =>
     data.risks.find((k) => !k.id.startsWith("base-") && k.component.toLowerCase().includes(r.name.toLowerCase())) ??
     data.risks.find((k) => k.id === `base-${r.id}` || k.component.toLowerCase().includes(r.name.toLowerCase())) ??
@@ -136,16 +138,7 @@ export function ProgRul({ machine, focusedComponent, data, analysis, rows, onSee
           selectedKey={focused?.id}
         />
       )}
-      {rest > 0 && (
-        <p className="pg-table-rest">
-          {showAll
-            ? `${rest} of these parts have no limit ahead and need nothing.`
-            : `${shown.length ? `${rest} other part${rest === 1 ? "" : "s"}` : `All ${rest} parts`}: no limit ahead, nothing needed.`}{" "}
-          <button type="button" className="pg-diag-inline-link" onClick={() => setShowAll((v) => !v)} aria-expanded={showAll}>
-            {showAll ? "Hide them" : "Show them"}
-          </button>
-        </p>
-      )}
+      <RestLine rest={fold.rest} shown={shown.length} noun="part" note="no limit within 30 days, nothing needed" open={fold.open} onToggle={fold.toggle} />
     </section>
   );
 }

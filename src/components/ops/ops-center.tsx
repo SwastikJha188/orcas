@@ -110,7 +110,7 @@ export function OpsAlertRows({ alerts, limit }: { alerts: OpsAlert[]; limit?: nu
             )}
             <div className="ops-row-actions">
               {!a.acknowledged && a.status === "ACTIVE" && (
-                <PillButton variant="secondary" onClick={() => void acknowledge(a.ruleId)}>
+                <PillButton variant="secondary" onClick={() => acknowledge(a.ruleId)}>
                   {ACTION.acknowledge}
                 </PillButton>
               )}
@@ -120,7 +120,7 @@ export function OpsAlertRows({ alerts, limit }: { alerts: OpsAlert[]; limit?: nu
                 </span>
               ) : (
                 a.status === "ACTIVE" && (
-                  <PillButton variant="primary" onClick={() => void createWorkOrder(a.ruleId)}>
+                  <PillButton variant="primary" onClick={() => createWorkOrder(a.ruleId).then((w) => w !== null)}>
                     {ACTION.workOrder}
                   </PillButton>
                 )
@@ -198,14 +198,14 @@ export function OpsWorkOrderRows({ orders }: { orders: OpsWorkOrder[] }) {
             {live && (
               <div className="ops-row-actions">
                 {w.status === "open" && (
-                  <PillButton variant="secondary" onClick={() => void updateWorkOrder(w.id, { status: "in_progress" })}>
+                  <PillButton variant="secondary" onClick={() => updateWorkOrder(w.id, { status: "in_progress" })}>
                     {w.actionKind === "mitigate" ? "Start short-term fix" : "Start work"}
                   </PillButton>
                 )}
-                <PillButton variant="primary" onClick={() => void updateWorkOrder(w.id, { status: "done" })}>
+                <PillButton variant="primary" onClick={() => updateWorkOrder(w.id, { status: "done" })}>
                   Mark done
                 </PillButton>
-                <PillButton variant="secondary" onClick={() => void updateWorkOrder(w.id, { status: "cancelled" })}>
+                <PillButton variant="secondary" onClick={() => updateWorkOrder(w.id, { status: "cancelled" })}>
                   Cancel
                 </PillButton>
               </div>

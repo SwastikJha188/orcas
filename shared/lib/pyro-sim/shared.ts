@@ -10,12 +10,18 @@ export const PROFILE_N = 149;
 export const HANDHELD_EMISSIVITY = 0.85;
 export const SCANNER_EMISSIVITY = 0.85;
 /**
- * Cooler compartment under-grate pressures at the design point (mbar), compartments 1–6. Compartments 2, 3, 5 and 6 sit
- * at the OSW-PE-SNL-PYR-01 Rev. 01 nominal mid-points (500–650, 400–550, 250–350, 150–250 mmWG).
+ * Cooler compartment under-grate pressures at the design point (mbar), compartments 1–6. All six sit inside the
+ * OSW-PE-SNL-PYR-01 Rev. 02 zone nominals (70–95, 45–60, 40–55, 38–50, 25–35, 15–25 mbar).
  */
 export const CLR_BASE = [78, 56.4, 46.6, 44, 29.4, 19.6];
+/** Cooling fans 1–6 at the design point: motor current (% FLA, Rev. 02 nominal 60–90), vibration (mm/s) and speed (rpm). */
+export const CLR_FAN_FLA = [78, 76, 74, 72, 70, 68];
+export const CLR_FAN_VIB = [2.1, 2.4, 1.9, 2.0, 1.8, 1.7];
+export const CLR_FAN_RPM = [1480, 1480, 1480, 1185, 1185, 990];
+/** Air share of each cooling fan (hot-zone fans are the larger ones), relative weights. */
+export const CLR_FAN_AIR = [215, 196, 172, 148, 126, 104];
 /** Signed channels: shown with a sign and spanning both sides of zero. */
-export const SIGNED = new Set(["POS-KLN-01", "PRS-KLN-01", "PRS-KLN-03", "CAL-KLN-06"]);
+export const SIGNED = new Set(["POS-KLN-01", "PRS-KLN-01", "PRS-KLN-03"]);
 
 export const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 

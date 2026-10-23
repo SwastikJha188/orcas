@@ -96,7 +96,7 @@
   :root .pg-frame:is(.pg-analysis, .pg-prog) .ast-table.ui-table-container {
     --stack-cols: repeat(2, minmax(0, 1fr));
     overflow-x: visible;
-    margin-inline: -6px;
+    margin-inline: -8px;
   }
   :root .pg-frame:is(.pg-analysis, .pg-prog) .ast-table .ui-table,
   :root .pg-frame:is(.pg-analysis, .pg-prog) .ast-table .ui-table tbody {
@@ -145,7 +145,8 @@
   :root .pg-frame:is(.pg-analysis, .pg-prog) .ast-table .ui-table tbody td::before {
     content: attr(data-label);
     font-size: var(--fs-xs);
-    line-height: 1.2;
+    letter-spacing: var(--tracking-small);
+    line-height: var(--lh-tight);
     color: var(--text-muted);
   }
   :root .pg-frame:is(.pg-analysis, .pg-prog) .ast-table .ui-table tbody td:first-child {

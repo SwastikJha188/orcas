@@ -1,11 +1,13 @@
 /**
- * Sheet C-5 — CLR-01 · Clinker cooler — Discharge, exhaust and vent fan
+ * Sheet C-5 — CLR-01 · Clinker cooler — Discharge, vent air, ESP and vent fan
  * (group-images PDF page 12 "5A", panel DISCHARGE, EXHAUST AND VENT FAN).
  *
  * The end of the grate drops the clinker down the discharge chute to the
  * crusher, watched by the IR pyrometer. Excess cooler air leaves through the
- * cooler exhaust duct (thermocouple in the duct roof) down to the vent fan:
- * volute, bearing housing, motor on the base rail, out to dedusting.
+ * middle-vent duct (thermocouple in the duct roof), through the WHRS and the
+ * ESP (dust removal, inlet / outlet pressure taps) on its top run (Rev 02),
+ * down to the vent fan: volute, bearing housing, motor on the base rail, out
+ * to the stack; part of the air returns to the cooler (return-air line).
  */
 import { Bolt, GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
 import type { LineSheetArt } from "../types";
@@ -29,12 +31,27 @@ function ExhaustDuct() {
       <path d="M 153.5 95 V 51.5 Q 153.5 43.5 161.5 43.5 H 402 Q 410 43.5 410 51.5 V 160" fill="none" stroke={MX.edge} strokeWidth={MX.w} />
       <path d="M 165 95 V 58 Q 165 55 168 55 H 395.5 Q 398.5 55 398.5 58 V 158" fill="none" stroke={MX.deep} strokeWidth={7.5} />
       <path d="M 174.5 95 V 65 H 389 V 156" fill="none" stroke={MX.fine} strokeWidth={MX.wFine} />
-      <MachineLabel x={275} y={45.5} size={4.6}>
-        COOLER EXHAUST DUCT
+      <MachineLabel x={215} y={45.5} size={4.6}>
+        MIDDLE VENT
       </MachineLabel>
       {/* exhaust gas thermocouple from the duct roof */}
       <rect x={274} y={63} width={1.8} height={14} {...PAINT.shaft} />
       <circle cx={274.7} cy={80} r={5} {...PAINT.raised} />
+      {/* WHRS, then the ESP on the duct's top run */}
+      <rect x={285} y={34} width={40} height={40} rx={4} {...PAINT.body} />
+      {[44, 54, 64].map((y) => (
+        <line key={y} x1={289} x2={321} y1={y} y2={y} stroke={MX.fine} strokeWidth={0.8} />
+      ))}
+      <rect x={347} y={31} width={48} height={46} rx={4} {...PAINT.body} />
+      {[357, 366, 375, 384].map((x) => (
+        <line key={x} x1={x} x2={x} y1={36} y2={72} stroke={MX.fine} strokeWidth={0.8} />
+      ))}
+      <MachineLabel x={305} y={29} size={4.6}>
+        WHRS
+      </MachineLabel>
+      <MachineLabel x={371} y={26} size={4.6}>
+        ESP
+      </MachineLabel>
     </g>
   );
 }
@@ -123,7 +140,13 @@ function VentFan() {
       <rect x={478} y={203} width={7.5} height={13} rx={1.5} {...PAINT.recess} />
       <rect x={472} y={231} width={19} height={31.5} rx={1.5} {...PAINT.body} />
       <MachineLabel x={408} y={279} size={4.6}>
-        VENT FAN → DEDUSTING
+        VENT FAN → STACK
+      </MachineLabel>
+      {/* return air (recirculated) from the vent fan back under the cooler */}
+      <path d="M 362 269 V 330 H 120 V 210" fill="none" stroke={MX.air} strokeWidth={1.4} strokeDasharray="4 3" strokeLinejoin="round" />
+      <Head x={120} y={209} deg={-90} c={MX.air} />
+      <MachineLabel x={124} y={346} size={4.6} anchor="start">
+        RETURN AIR (RECIRCULATED)
       </MachineLabel>
     </g>
   );
@@ -144,23 +167,34 @@ function Art() {
 /**
  * Pads as on the panel. The vent-fan points sit one per lane (motor top,
  * bearing top, motor, bearing bottom) so every plate runs left over the
- * volute.
+ * volute. Vent-air points along the duct: before the WHRS, between WHRS and
+ * ESP, the ESP inlet / outlet taps and its ΔP; return-air temperature on its line.
  */
 const pads: LineSheetArt["pads"] = {
-  "TMP-CLR-08": [315, 200.5],
   "TMP-CLR-09": [274.7, 80],
-  "ELE-CLR-07": [479, 183],
+  "TMP-CLR-24": [336, 55],
+  "PRS-CLR-21": [352.5, 54],
+  "PRS-CLR-22": [389.5, 54],
+  "PRS-CLR-20": [371, 54],
   "VIB-CLR-07": [456.7, 197.8],
-  "TMP-CLR-23": [485.3, 208.5],
   "TMP-CLR-10": [456.7, 219.5],
+  "TMP-CLR-23": [485.3, 208.5],
+  "ELE-CLR-07": [479, 183],
+  "TMP-CLR-25": [200, 330],
+  "TMP-CLR-08": [315, 200.5],
 };
 const callouts: NonNullable<LineSheetArt["callouts"]> = {
-  "TMP-CLR-08": [308, 200.5, "end"],
-  "TMP-CLR-09": [282, 80, "start"],
-  "ELE-CLR-07": [472, 183, "end"],
+  "TMP-CLR-09": [266, 92, "end"],
+  "TMP-CLR-24": [336, 100, "middle"],
+  "PRS-CLR-21": [340, 16, "end"],
+  "PRS-CLR-22": [402, 16, "start"],
+  "PRS-CLR-20": [371, 120, "middle"],
   "VIB-CLR-07": [450, 197.8, "end"],
-  "TMP-CLR-23": [478, 208.5, "end"],
   "TMP-CLR-10": [450, 219.5, "end"],
+  "TMP-CLR-23": [478, 208.5, "end"],
+  "ELE-CLR-07": [472, 183, "end"],
+  "TMP-CLR-25": [180, 312, "middle"],
+  "TMP-CLR-08": [308, 200.5, "end"],
 };
 
 export const sheet: LineSheetArt = { id: "C-5", ready: true, width: W, height: H, Art, pads, callouts };

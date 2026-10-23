@@ -103,7 +103,12 @@ async function table(inner: string, width: number, height: number, w: number, h:
 
 /** The busy map of a sheet's art (null until it is built; built once per sheet and cached). */
 export function useArtBusyMap(key: string | null, Art: React.ComponentType | undefined, width: number, height: number): BusyMap | null {
-  const [map, setMap] = useState<BusyMap | null>(() => (key ? cache.get(key) ?? null : null));
+  // The map is held with its key: after a sheet change the previous sheet's map is never returned for the new one.
+  const [held, setHeld] = useState<{ key: string; map: BusyMap } | null>(() => {
+    const hit = key ? cache.get(key) : undefined;
+    return key && hit ? { key, map: hit } : null;
+  });
+  const setMap = (m: BusyMap | null) => setHeld(key && m ? { key, map: m } : null);
   useEffect(() => {
     if (!key || !Art) {
       setMap(null);
@@ -130,6 +135,8 @@ export function useArtBusyMap(key: string | null, Art: React.ComponentType | und
     return () => {
       live = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setMap only closes over `key`
   }, [key, Art, width, height]);
-  return map;
+  if (!key) return null;
+  return held?.key === key ? held.map : cache.get(key) ?? null;
 }

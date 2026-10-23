@@ -14,6 +14,7 @@
  * The draft saves itself; while uploads wait it refreshes every 30 s.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ModelSwitch } from "../model-switch";
 import { ConfirmAction, Field, FieldGrid, FormNote, PillButton, PillNav, Select, StatusTag, TextArea, TextInput, normalizeNumberText, rowActivate, type PillNavItem, Loading } from "@/components/ui";
 import type { Tone } from "@/components/assets/assets-shell-ui";
 import { DIAGRAM_SHEETS } from "@/components/assets/diagrams";
@@ -290,7 +291,7 @@ function OnboardingEditor({ id, onBack, onCommitted }: { id: string; onBack: () 
     call<typeof stored>("/api/diagrams").then(setStored, () => setStored([]));
   }, [load]);
 
-  // Claude Code (Haiku) on this computer reads the uploads: its latest run, refreshed every 5 s while it works.
+  // Claude Code (the model chosen in ModelSwitch) on this computer reads the uploads: its latest run, refreshed every 5 s while it works.
   const [proc, setProc] = useState<ProcState | null>(null);
   const procRef = useRef<ProcState | null>(null);
   procRef.current = proc;
@@ -541,7 +542,7 @@ function OnboardingEditor({ id, onBack, onCommitted }: { id: string; onBack: () 
             onChanged={() => load(false)}
             onUploaded={() => void afterUpload()}
             setError={setError}
-            reader={<ReaderCard pkgId={pkg.id} proc={proc} waiting={pkg.files.filter((f) => f.status === "waiting").length} onStart={startReading} onStop={stopReading} />}
+            reader={<ReaderCard pkgId={pkg.id} proc={proc} waiting={pkg.files.filter((f) => f.status === "waiting").length} onStart={startReading} onStop={stopReading} onModel={() => void loadProc()} />}
           />
         )}
         {step === "plant" && <PlantStep draft={draft} edit={change} />}
@@ -887,12 +888,15 @@ function ReaderCard({
   waiting,
   onStart,
   onStop,
+  onModel,
 }: {
   pkgId: string;
   proc: ProcState | null;
   waiting: number;
   onStart: () => void;
   onStop: () => void;
+  /** The model that reads uploads was switched. */
+  onModel?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   if (!proc) return null;
@@ -956,6 +960,7 @@ function ReaderCard({
         ) : null}
         {details}
       </span>
+      <ModelSwitch onChange={onModel} />
     </div>
   );
 }

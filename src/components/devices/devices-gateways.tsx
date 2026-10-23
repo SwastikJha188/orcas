@@ -94,11 +94,11 @@ export function GatewayBody(props: GatewayBodyProps) {
           </span>
         ),
       },
-      { key: "kind", header: "Type", width: "120px", render: (r) => <span className="ast-cell-text">{r.kind}</span> },
+      { key: "kind", header: "Type", width: "96px", render: (r) => <span className="ast-cell-text">{r.kind}</span> },
       {
         key: "conn",
         header: "How it connects",
-        width: "200px",
+        width: "176px",
         render: (r) =>
           r.rack.source ? <Stack title={r.rack.source.protocol} sub={r.rack.source.endpoint ?? "No address recorded"} /> : <span className="ast-muted">—</span>,
       },
@@ -110,7 +110,7 @@ export function GatewayBody(props: GatewayBodyProps) {
       {
         key: "channels",
         header: "Linked to a machine",
-        width: "130px",
+        width: "104px",
         render: (r) => (
           <span className="ast-num">
             {r.linked}
@@ -118,12 +118,12 @@ export function GatewayBody(props: GatewayBodyProps) {
           </span>
         ),
       },
-      { key: "status", header: "Status", width: "110px", render: (r) => <StatusTag tone={r.tone} label={r.status} title={r.reason ?? undefined} /> },
-      { key: "seen", header: "Last reading", width: "110px", render: (r) => <span className="ast-num ast-muted">{ago(r.lastSeenAt, now)}</span> },
+      { key: "status", header: "Status", width: "104px", render: (r) => <StatusTag tone={r.tone} label={r.status} title={r.reason ?? undefined} /> },
+      { key: "seen", header: "Last reading", width: "104px", render: (r) => <span className="ast-num ast-muted">{ago(r.lastSeenAt, now)}</span> },
       {
         key: "act",
         header: "",
-        width: "120px",
+        width: "1%",
         render: (r) => (
           <span className="dvp-actions">
             {r.rack.source ? (

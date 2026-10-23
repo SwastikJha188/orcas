@@ -34,9 +34,10 @@ import { useMachineComponents, type Component as MachineComponent } from "@/comp
 import { KilnSubAssemblyArt } from "@/components/assets/kiln-component-diagrams";
 import { useContentBox } from "@/components/assets/use-content-box";
 import { calloutElbowPath, calloutLeaderPath, layoutSensorCallouts } from "@/components/assets/sensor-callout-layout";
-import { stageMetrics, usePxPerUnit, useStageLayout } from "@/components/assets/pyro/line-sheets/stage-callouts";
+import { VALUE_PX, stageMetrics, usePxPerUnit, useStageLayout } from "@/components/assets/pyro/line-sheets/stage-callouts";
 import { useArtBusyMap } from "@/components/assets/art-busy-map";
-import { PartBlock, blockMetrics, clusterPads, layoutPartBlocks, linkColor, rowLeader, type PartGroup } from "./part-blocks";
+import { textWidth } from "@/components/assets/pyro/line-sheets/text-width";
+import { PartBlock, blockLeader, blockMetrics, clusterPads, layoutPartBlocks, linkColor, measureBlock, rowLeader, type BlockMetrics, type PartGroup, type PlacedBlock } from "./part-blocks";
 import { MachineHealthShade, useSheetBox } from "@/components/assets/pyro/line-sheets/line-sheet";
 import { HealthOutline, type OutlineOwner } from "@/components/assets/pyro/line-sheets/health-outline";
 import { MX, MachinePad, MachineSvg } from "@/components/assets/machine-kit/machine-kit";
@@ -53,7 +54,7 @@ import { useOverviewDigest, type OverviewDigest } from "@/components/assets/over
 import { OV_SECTIONS, OVERVIEW_SECTION_KEY, OvAreasSection, OvOperatingSection, areaRows } from "@/components/assets/overview-sections";
 import type { KilnSimulation } from "@/components/assets/kiln-seals-simulation";
 import { formatClock, type LiveSignal, type SimFrame } from "@shared/lib/kiln-sim/engine";
-import { OperatorAlarmLog, OperatorTrendPanel, rateFromSamples, useLatchedAlarms } from "./operator-telemetry";
+import { AlarmPanelToggle, OperatorAlarmLog, OperatorTrendPanel, rateFromSamples, useAlarmPanel, useLatchedAlarms } from "./operator-telemetry";
 import { ValuePill, pillContentWidth, stateWords, type PillContent, type RunState } from "./value-pill";
 import { hmiLabel } from "@/lib/hmi-label";
 import { LineHealthLayer, LineHealthTint, type LineHealthCell } from "./line-health-layer";
@@ -61,6 +62,17 @@ import { AlertPopupLayer, AlertPopupToggle, useAlertPopupControl, type AlertPopu
 import { ComponentQuickLook } from "./component-quick-look";
 import { componentOptions, type ComponentOption } from "@/components/assets/component-scope";
 import { MachineQuickLook } from "./machine-quick-look";
+import {
+  ArrangeBar,
+  CanvasViewMenu,
+  READING_PX,
+  ShortcutsPanel,
+  useCanvasPrefs,
+  useCanvasShortcuts,
+  useSheetLayouts,
+  type CanvasPrefs,
+  type SheetLayout,
+} from "./canvas-prefs";
 import type { HealthPoint } from "@shared/lib/health-recorder";
 import { isLiveMachine, useKilnFleet, useKilnSimulationFor, useLivePlantStarting, usePlantEngineOf, usePrimaryMachineId } from "@/providers/kiln-simulation-context";
 import { useIndustrialData } from "@/providers/industrial-data-context";
@@ -78,9 +90,12 @@ import {
   MachinePageToggle,
   MachineTopbar,
   PlantStatusBar,
+  StatusSummary,
   usePlantStatus,
+  PYRO_COMBO_TABS,
   PYRO_SECTION_TABS,
   VPC_DIAGRAM,
+  comboTabs,
   isPyroLineDiagram,
   machineTabs,
   type PyroSectionId,
@@ -502,6 +517,10 @@ export function OperatorConsole({
     PYRO_SECTION_TABS.forEach((t, i) => {
       if (ids[i]) out[t.id] = ids[i];
     });
+    // A combined sheet stands for its primary machine, when the plant has all of its machines.
+    for (const c of PYRO_COMBO_TABS) {
+      if (c.sections.every((sec) => out[sec])) out[c.id] = out[c.primary];
+    }
     return out;
   }, [sectionSig]);
   const machineToSection = useMemo(() => {
@@ -559,8 +578,14 @@ export function OperatorConsole({
   const [pickedUnitId, setPickedUnitId] = useState<string | null>(() => initialMachineId);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
-  // Point value callouts next to measurement points on the machine (Default: "value" so all sensor values appear next to their points!)
-  const [pointLabelMode] = useState<PointLabelMode>("value");
+  // What the drawing shows and how (View menu, kept per browser): readings all / alerts only / none, short or
+  // full names, size, alarm links, hidden parts; and how each drawing was arranged.
+  const [canvasPrefs, setCanvasPrefs] = useCanvasPrefs();
+  const sheetLayouts = useSheetLayouts();
+  const [arranging, setArranging] = useState(false);
+  const [keysOpen, setKeysOpen] = useState(false);
+  const pointLabelMode: PointLabelMode =
+    canvasPrefs.readings === "none" ? "off" : canvasPrefs.readings === "alerts" ? "alerts" : canvasPrefs.names === "full" ? "tag-value" : "value";
 
   // Contextual Detail Popup Modal (eliminates separate sub-pages in a second navbar)
   type DetailModalId =
@@ -794,9 +819,14 @@ export function OperatorConsole({
     return () => window.removeEventListener("ultron:open-operator-machine", onOpenMachine);
   }, [machineToSection]);
 
+  /** Combined sheet open in place of one machine's (several stages drawn together). */
+  const activeCombo = useMemo(() => PYRO_COMBO_TABS.find((t) => t.id === pyroSection) ?? null, [pyroSection]);
   const activeTabSpec = useMemo(
-    () => PYRO_SECTION_TABS.find((t) => t.id === pyroSection) ?? PYRO_SECTION_TABS[0],
-    [pyroSection],
+    () =>
+      activeCombo
+        ? { id: activeCombo.id, label: activeCombo.label, code: "", sheetId: activeCombo.sheetId, diagramType: null }
+        : PYRO_SECTION_TABS.find((t) => t.id === pyroSection) ?? PYRO_SECTION_TABS[0],
+    [activeCombo, pyroSection],
   );
 
   const isFullLine = useMemo(() => {
@@ -945,13 +975,15 @@ export function OperatorConsole({
         (s): s is NonNullable<typeof s> => Boolean(s && LINE_SHEET_ART[s.id]?.ready),
       );
     }
+    // A combined sheet is one drawing: no part drawings to step through.
+    if (isPyroPlant && activeCombo) return [LINE_SHEET_BY_ID[activeCombo.sheetId]].filter((s) => Boolean(s && LINE_SHEET_ART[s.id]?.ready));
     if (isPyroPlant || isVpcPlant) {
       return lineSheetsForMachine(activeMachineId).filter((s) => LINE_SHEET_ART[s.id]?.ready);
     }
     return [];
     // A copy of a line machine resolves its sheets once the live plant's configuration is in (its first frame).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPyroPlant, isVpcPlant, pyroSection, activeMachineId, activeFrame !== null]);
+  }, [isPyroPlant, isVpcPlant, pyroSection, activeCombo, activeMachineId, activeFrame !== null]);
 
   // Honor sessionStorage focus sheet key (when navigating from sheet index)
   useEffect(() => {
@@ -1144,6 +1176,9 @@ export function OperatorConsole({
       if (st.length > 0) return st;
     }
     const tagsOf = (id: string | undefined) => (id ? defsFor(id)?.signals.map((s) => s.tag) ?? [] : []);
+    if (isPyroPlant && activeCombo) {
+      return [...new Set(activeCombo.sections.flatMap((sec) => tagsOf(sectionMachineIds[sec])))];
+    }
     if (isPyroPlant) {
       const targetSec = pyroSection === "line" ? appleUnitFilter : pyroSection;
       if (targetSec === "line") {
@@ -1155,7 +1190,7 @@ export function OperatorConsole({
       return tagsOf(activeMachineId);
     }
     return activeCatalog.sensors.length ? activeCatalog.sensors.map((s) => s.tag) : tagsOf(activeMachineId);
-  }, [activePart, detailSheetId, isPyroPlant, isVpcPlant, pyroSection, appleUnitFilter, activeCatalog.sensors, activeMachineId, sectionMachineIds]);
+  }, [activePart, detailSheetId, isPyroPlant, isVpcPlant, pyroSection, activeCombo, appleUnitFilter, activeCatalog.sensors, activeMachineId, sectionMachineIds]);
 
   const visibleSubpageSignals = useMemo(() => {
     return scopeTags.map((t) => resolveTag(t));
@@ -1193,11 +1228,18 @@ export function OperatorConsole({
   // Problem messages on the drawing: on/off and the ones closed one by one, kept across sheets.
   const activeAlerts = useMemo(() => alerts.filter((a) => !a.cleared), [alerts]);
   const popupControl = useAlertPopupControl(useMemo(() => activeAlerts.map((a) => a.id), [activeAlerts]));
-  const viewAlertCount = isFullLine ? activeAlerts.length : activeAlerts.filter((a) => a.machineId === activeMachineId).length;
-  const sidebarAlarms = useMemo(
-    () => (isFullLine ? latchedAlarms : latchedAlarms.filter((a) => a.machineId === activeMachineId)),
-    [latchedAlarms, isFullLine, activeMachineId],
+  // The machines on the drawing: one, or every machine of a combined sheet.
+  const viewMachineIds = useMemo(
+    () => new Set(activeCombo ? activeCombo.sections.flatMap((sec) => sectionMachineIds[sec] ?? []) : [activeMachineId]),
+    [activeCombo, sectionMachineIds, activeMachineId],
   );
+  const viewAlertCount = isFullLine ? activeAlerts.length : activeAlerts.filter((a) => viewMachineIds.has(a.machineId)).length;
+  const sidebarAlarms = useMemo(
+    () => (isFullLine ? latchedAlarms : latchedAlarms.filter((a) => viewMachineIds.has(a.machineId))),
+    [latchedAlarms, isFullLine, viewMachineIds],
+  );
+  // The alarm list floats over the drawing; the operator's open / closed choice is remembered.
+  const alarmPanel = useAlarmPanel();
 
   const selectedResolved = useMemo(() => (selectedTag ? resolveTag(selectedTag) : null), [selectedTag, resolveTag]);
   const [rateWindowMin, setRateWindowMin] = useState(60);
@@ -1486,6 +1528,22 @@ export function OperatorConsole({
     });
   }, [isPyroPlant, fleet, nonPyroUnitIds, lookup, contextMachines, activeMachineId, sectionMachineIds, plantCatalog, healthModels]);
 
+  /** A combined sheet's status from its machines, as the Full line's: health 0.6 × worst + 0.4 × mean. */
+  const comboStatus = useMemo(() => {
+    if (!activeCombo) return null;
+    const units = factoryRollupUnits.filter((u) => u.secId && (activeCombo.sections as string[]).includes(u.secId));
+    const scores = units.map((u) => u.health).filter((h): h is number => h !== null);
+    const health = scores.length ? Math.round(0.6 * Math.min(...scores) + (0.4 * scores.reduce((n, v) => n + v, 0)) / scores.length) : null;
+    const tone: Tone = units.some((u) => u.tone === "bad") ? "bad" : units.some((u) => u.tone === "warn") ? "warn" : units.some((u) => u.tone === "good") ? "good" : "idle";
+    return {
+      units,
+      health,
+      tone,
+      offNormal: units.reduce((n, u) => n + u.offNormal, 0),
+      alarms: units.reduce((n, u) => n + u.findingsCount, 0),
+    };
+  }, [activeCombo, factoryRollupUnits]);
+
   // Component-specific Diagnostic & Prognostic rollup when a Component/Sheet is selected in Row 1
   const componentRollup = useMemo(() => {
     if (!activeComponentScope) return null;
@@ -1552,12 +1610,114 @@ export function OperatorConsole({
     subbarRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [detailSheetId, detailPartId, activeMachineId, isFullLine]);
 
+  /* ------------------------------------------------------------------------
+     CANVAS CHOICES, ARRANGING AND KEYS
+     ------------------------------------------------------------------------ */
+  const activeSheetArt = activeSheetId ? LINE_SHEET_ART[activeSheetId] : undefined;
+  // Composed sheets move their machines; sheets with readout blocks move their blocks.
+  const sheetHasBlocks = Boolean(activeSheetArt?.callouts || activeSheetArt?.readouts) && LINE_SHEET_BY_ID[activeSheetId ?? ""]?.kind !== "line";
+  const canArrange = Boolean(activeSheetArt?.arrange) || sheetHasBlocks;
+  const activeLayout = sheetLayouts.of(activeSheetId);
+  useEffect(() => {
+    setArranging(false);
+  }, [activeSheetId]);
+  // Parts with readings on the drawing, for hiding their readout blocks (View › Parts).
+  const sheetParts = useMemo(() => {
+    if (!activeSheetId || isFullLine) return [];
+    const out = new Map<string, string>();
+    for (const t of lineSheetTags(activeSheetId)) {
+      const p = resolveTag(t).part;
+      if (p && !out.has(p.id)) out.set(p.id, p.name);
+    }
+    return [...out].map(([id, name]) => ({ id, name }));
+  }, [activeSheetId, isFullLine, resolveTag]);
+
+  // Top-bar tabs in the order shown (machines, then the combined sheets): digits and [ ] walk them.
+  const keyTabs = useMemo(
+    () => [...topbarTabs, ...(isPyroPlant && !focusMachine ? comboTabs(plantCatalog) : [])],
+    [topbarTabs, isPyroPlant, focusMachine, plantCatalog],
+  );
+  const activeTabKey = effectiveLayer === "overview" ? "line" : isPyroPlant ? pyroSection : activeMachineId;
+  const openTab = (t: (typeof keyTabs)[number]) => (isPyroPlant ? handleSelectPyroSection(t.key as PyroSectionId) : handleSelectUnitById(t.machineId));
+  useCanvasShortcuts(
+    {
+      tab: (i) => keyTabs[i] && openTab(keyTabs[i]),
+      machine: (d) => {
+        if (!keyTabs.length) return;
+        const i = keyTabs.findIndex((t) => t.key === activeTabKey);
+        openTab(keyTabs[(Math.max(0, i) + d + keyTabs.length) % keyTabs.length]);
+      },
+      sheet: (d) => {
+        if (totalStepCount > 1) stepSheet(d);
+      },
+      nextAlarm: (d) => {
+        // Full line: the next component with an active alarm opens its quick look.
+        if (isFullLine) {
+          const places = activeAlerts.flatMap((a) => (a.subs?.[0] ? [{ machineId: a.machineId, subId: a.subs[0] }] : []));
+          if (!places.length) return;
+          const i = partLook ? places.findIndex((p) => p.machineId === partLook.machineId && p.subId === partLook.subId) : -1;
+          setPartLook(places[i < 0 ? (d > 0 ? 0 : places.length - 1) : (i + d + places.length) % places.length]);
+          return;
+        }
+        // A drawing: the next reading in alarm (Critical first) is selected and linked to its sensor.
+        const tags = (activeSheetId ? lineSheetTags(activeSheetId) : scopeTags)
+          .map((t) => resolveTag(t))
+          .filter((r) => r.status !== "Normal")
+          .sort((a, b) => (a.status === b.status ? 0 : a.status === "Critical" ? -1 : 1))
+          .map((r) => r.tag);
+        if (!tags.length) return;
+        const i = selectedTag ? tags.indexOf(selectedTag) : -1;
+        setSelectedTag(tags[i < 0 ? (d > 0 ? 0 : tags.length - 1) : (i + d + tags.length) % tags.length]);
+      },
+      view: () => onChangeView?.(view === "operator" ? "twin" : "operator"),
+      readings: () =>
+        setCanvasPrefs({ readings: canvasPrefs.readings === "all" ? "alerts" : canvasPrefs.readings === "alerts" ? "none" : "all" }),
+      arrange: () => {
+        if (canArrange && view === "operator") setArranging((a) => !a);
+      },
+      alarms: () => {
+        if (showAlarmRail) alarmPanel.setOpen(!alarmPanel.open);
+      },
+      messages: () => popupControl.setShow(!popupControl.show),
+      fullscreen: toggleFullscreen,
+      zoom: (dir) => (dir === 0 ? resetZoom() : setZoom((z) => clampZoom(z + dir * 0.15))),
+      help: () => setKeysOpen((o) => !o),
+      escape: () => {
+        if (keysOpen) {
+          setKeysOpen(false);
+          return true;
+        }
+        if (arranging) {
+          setArranging(false);
+          return true;
+        }
+        return false;
+      },
+    },
+    view === "operator" || view === "twin",
+  );
+
   // The sheet's key and its controls (messages, zoom, full screen) sit at the right end of navbar 2, off the
   // drawing; in full screen, where the navbars are hidden, they float on the drawing's bottom edge instead.
   const drawingTools = (
     <>
       {activeSheetId && !isFullLine && <SheetKey />}
       <div className="opc-stage-toggles opc-canvas-controls" role="toolbar" aria-label="Drawing controls">
+        {activeSheetId && (
+          <CanvasViewMenu
+            prefs={canvasPrefs}
+            onChange={setCanvasPrefs}
+            parts={sheetParts}
+            readingsOnSheet={!isFullLine}
+            canArrange={canArrange}
+            arranging={arranging}
+            onArrange={setArranging}
+            arranged={Boolean(activeLayout)}
+            onReset={() => activeSheetId && sheetLayouts.reset(activeSheetId)}
+            onShowKeys={() => setKeysOpen(true)}
+            up={paneFullscreen}
+          />
+        )}
         {activeSheetId && <AlertPopupToggle control={popupControl} activeCount={viewAlertCount} />}
         <div className="opc-zoom-group" role="group" aria-label="Drawing zoom">
           <button
@@ -1590,6 +1750,9 @@ export function OperatorConsole({
             </svg>
           </button>
         </div>
+        {showAlarmRail && (
+          <AlarmPanelToggle open={alarmPanel.open} onToggle={() => alarmPanel.setOpen(!alarmPanel.open)} alarms={sidebarAlarms} />
+        )}
       </div>
     </>
   );
@@ -1603,6 +1766,7 @@ export function OperatorConsole({
       {/* Row 1 (shared with Assets): the plant's machines and the view toggle. */}
       <MachineTopbar
         tabs={topbarTabs}
+        combos={isPyroPlant && !focusMachine ? comboTabs(plantCatalog) : undefined}
         activeKey={effectiveLayer === "overview" ? "line" : isPyroPlant ? pyroSection : activeMachineId}
         onSelect={(t) => (isPyroPlant ? handleSelectPyroSection(t.key as PyroSectionId) : handleSelectUnitById(t.machineId))}
         view={view}
@@ -1773,26 +1937,29 @@ export function OperatorConsole({
                       )}
                     </>
                   ) : (
-                    <div className="opc-pill-group opc-subassembly-pills" role="tablist" aria-label="Machines on the line">
-                      <button
-                        type="button"
-                        role="tab"
-                        aria-selected={isFullLine}
-                        className="opc-pill-btn"
-                        data-active={isFullLine || undefined}
-                        onClick={() => handleSelectUnitById(null)}
-                      >
-                        All
-                      </button>
-                      {/* The stand-in plant before the real one loads has a nameless unit: no pill for it. */}
-                      {factoryRollupUnits.filter((u) => u.name).map((u) => (
+                    <div className="opc-pill-group opc-subassembly-pills" role="tablist" aria-label={comboStatus ? "Machines on this drawing" : "Machines on the line"}>
+                      {!comboStatus && (
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={isFullLine}
+                          className="opc-pill-btn"
+                          data-active={isFullLine || undefined}
+                          onClick={() => handleSelectUnitById(null)}
+                        >
+                          All
+                        </button>
+                      )}
+                      {/* The stand-in plant before the real one loads has a nameless unit: no pill for it. A combined
+                          sheet lists its own machines, each opening that machine's drawing. */}
+                      {(comboStatus ? comboStatus.units : factoryRollupUnits.filter((u) => u.name)).map((u) => (
                         <button
                           key={u.id}
                           type="button"
                           role="tab"
-                          aria-selected={!isFullLine && activeMachineId === u.id}
+                          aria-selected={!isFullLine && !comboStatus && activeMachineId === u.id}
                           className="opc-pill-btn"
-                          data-active={(!isFullLine && activeMachineId === u.id) || undefined}
+                          data-active={(!isFullLine && !comboStatus && activeMachineId === u.id) || undefined}
                           onClick={() => {
                             if (u.secId) handleSelectPyroSection(u.secId);
                             else handleSelectUnitById(u.id);
@@ -1833,88 +2000,85 @@ export function OperatorConsole({
               {!isFullLine && effectiveLayer === "machine" && (
                 <div className="opc-context-bar" role="region" aria-label="Machine status, quick views and pages">
                   <div className="opc-context-left">
-                    <div className="opc-subbar-summary">
-                      <span
-                        className="ph-unit-dot"
-                        data-tone={componentRollup ? componentRollup.tone : conditionTone(conditionLabel)}
-                        aria-hidden="true"
-                      />
-                      <span className="opc-tag-bar-id">
-                        {componentRollup ? componentRollup.scope.label : activeTabSpec.label}
-                      </span>
-                      <span
-                        className="opc-tag-bar-val ast-num"
-                        data-tone={componentRollup ? componentRollup.tone : conditionTone(conditionLabel)}
-                      >
-                        Health {stageHealth !== null ? `${stageHealth}%` : "—"}
-                      </span>
-                      {offNormalCount > 0 && (
-                        <span className="opc-tag-bar-band ast-num">
-                          {offNormalCount} {offNormalCount === 1 ? "sensor" : "sensors"} out of range
-                        </span>
-                      )}
-                    </div>
+                    {/* Same summary as Full line and Assets; a picked component shows its own health and sensors. */}
+                    {(() => {
+                      const off = componentRollup ? componentRollup.offNormalSigs.length : comboStatus ? comboStatus.offNormal : offNormalCount;
+                      return (
+                        <StatusSummary
+                          tone={componentRollup ? componentRollup.tone : comboStatus ? comboStatus.tone : conditionTone(conditionLabel)}
+                          label={componentRollup ? componentRollup.scope.label : activeTabSpec.label}
+                          health={comboStatus && !componentRollup ? comboStatus.health : stageHealth}
+                          offNormal={off > 0 ? `${off} ${off === 1 ? "sensor needs" : "sensors need"} attention` : null}
+                        />
+                      );
+                    })()}
                   </div>
 
                   <div className="opc-context-right">
-                    <div className="opc-pill-group opc-subassembly-pills" role="group" aria-label="Quick views">
-                      {showSubassemblies && (
-                        <button
-                          type="button"
-                          className="opc-pill-btn"
-                          onClick={() => setActiveDetailModal("subassemblies")}
-                        >
-                          {levelWord(digestGroups.level, true)} ({digestGroups.rows.length}) ↗
-                        </button>
-                      )}
-                      {showOperating && (
-                        <button
-                          type="button"
-                          className="opc-pill-btn"
-                          onClick={() => setActiveDetailModal("operating")}
-                        >
-                          Running conditions ↗
-                        </button>
-                      )}
-                      {showAreas && (
-                        <button
-                          type="button"
-                          className="opc-pill-btn"
-                          onClick={() => setActiveDetailModal("areas")}
-                        >
-                          Areas ↗
-                        </button>
-                      )}
-                      {hasShell && (
-                        <button
-                          type="button"
-                          className="opc-pill-btn"
-                          onClick={() => setActiveDetailModal("thermal")}
-                        >
-                          Shell temperature ↗
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        className="opc-pill-btn"
-                        onClick={() => setActiveDetailModal("trends")}
-                      >
-                        Trends ↗
-                      </button>
-                      <button
-                        type="button"
-                        className="opc-pill-btn"
-                        onClick={() => setActiveDetailModal("rack")}
-                      >
-                        Rack ↗
-                      </button>
-                    </div>
+                    {/* Quick views are one machine's: a combined sheet has none. */}
+                    {!comboStatus && (
+                      <>
+                        <div className="opc-pill-group opc-subassembly-pills" role="group" aria-label="Quick views">
+                          {showSubassemblies && (
+                            <button
+                              type="button"
+                              className="opc-pill-btn"
+                              onClick={() => setActiveDetailModal("subassemblies")}
+                            >
+                              {levelWord(digestGroups.level, true)} ({digestGroups.rows.length}) ↗
+                            </button>
+                          )}
+                          {showOperating && (
+                            <button
+                              type="button"
+                              className="opc-pill-btn"
+                              onClick={() => setActiveDetailModal("operating")}
+                            >
+                              Running conditions ↗
+                            </button>
+                          )}
+                          {showAreas && (
+                            <button
+                              type="button"
+                              className="opc-pill-btn"
+                              onClick={() => setActiveDetailModal("areas")}
+                            >
+                              Areas ↗
+                            </button>
+                          )}
+                          {hasShell && (
+                            <button
+                              type="button"
+                              className="opc-pill-btn"
+                              onClick={() => setActiveDetailModal("thermal")}
+                            >
+                              Shell temperature ↗
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="opc-pill-btn"
+                            onClick={() => setActiveDetailModal("trends")}
+                          >
+                            Trends ↗
+                          </button>
+                          <button
+                            type="button"
+                            className="opc-pill-btn"
+                            onClick={() => setActiveDetailModal("rack")}
+                          >
+                            Rack ↗
+                          </button>
+                        </div>
 
-                    <span className="opc-bar-sep" aria-hidden="true" />
+                        <span className="opc-bar-sep" aria-hidden="true" />
+                      </>
+                    )}
 
-                    {/* Row 2 (shared with Assets): Overview is this view, the other pages open in Assets. */}
+                    {/* Row 2 (shared with Assets): Overview is this view, the other pages open in Assets (a combined
+                        sheet's open on its primary machine). */}
                     <MachinePageToggle
-                      alarms={digestFindings.active.length}
+                      alarms={comboStatus ? comboStatus.alarms : digestFindings.active.length}
                       active="overview"
                       onSelect={(page) => page !== "overview" && selectLayer(page)}
                     />
@@ -1926,10 +2090,14 @@ export function OperatorConsole({
                   <div
                     className="opc-integrated"
                     data-no-sensor-rail="true"
-                    data-full-stage={(!showAlarmRail && effectiveLayer === "overview") || undefined}
+                    data-full-stage={(showAlarmRail || effectiveLayer === "overview") || undefined}
                   >
                     <div className="opc-center-stage">
-                      <div ref={diagramPaneRef} className={`opc-diagram-pane${paneFullscreen ? " mx-canvas" : ""}`}>
+                      <div
+                        ref={diagramPaneRef}
+                        className={`opc-diagram-pane${paneFullscreen ? " mx-canvas" : ""}`}
+                        data-alarm-panel={(showAlarmRail && alarmPanel.open) || undefined}
+                      >
                     {paneFullscreen && (
                       <button type="button" className="opc-fullscreen-exit" onClick={toggleFullscreen} aria-label="Leave full screen">
                         Exit full screen
@@ -1937,10 +2105,24 @@ export function OperatorConsole({
                     )}
 
                     {paneFullscreen && drawingTools}
+                    {arranging && activeSheetId && (
+                      <ArrangeBar
+                        machines={Boolean(activeSheetArt?.arrange)}
+                        arranged={Boolean(activeLayout)}
+                        onReset={() => sheetLayouts.reset(activeSheetId)}
+                        onDone={() => setArranging(false)}
+                      />
+                    )}
+                    {keysOpen && <ShortcutsPanel onClose={() => setKeysOpen(false)} />}
                     {activeSheetId ? (
                       <SheetMimicCanvas
                         sheetId={activeSheetId}
                         pointLabelMode={pointLabelMode}
+                        prefs={canvasPrefs}
+                        layout={activeLayout}
+                        arranging={arranging}
+                        onMovePiece={(id, off) => sheetLayouts.movePiece(activeSheetId, id, off)}
+                        onMoveBlock={(id, at) => sheetLayouts.moveBlock(activeSheetId, id, at)}
                         selectedTag={selectedTag}
                         onSelectTag={toggleTag}
                         resolveTag={resolveTag}
@@ -1982,17 +2164,19 @@ export function OperatorConsole({
                         onResetView={resetZoom}
                       />
                     )}
+
+                    {/* Alarms panel on the drawing's right edge (also in full screen): while it is open the drawing re-fits
+                        to the space left of it; the toolbar button brings it back. */}
+                    {showAlarmRail && alarmPanel.open && (
+                      <OperatorAlarmLog
+                        alarms={sidebarAlarms}
+                        loading={alertsLoading || !plantFrame}
+                        onDiagnose={(machineId) => navigateWithinConsole(machineId, "diagnosis")}
+                        onClose={() => alarmPanel.setOpen(false)}
+                      />
+                    )}
                   </div>
                 </div>
-
-                {/* Right-hand sidebar: latched alarm list */}
-                {showAlarmRail && (
-                  <OperatorAlarmLog
-                    alarms={sidebarAlarms}
-                    loading={alertsLoading || !plantFrame}
-                    onDiagnose={(machineId) => navigateWithinConsole(machineId, "diagnosis")}
-                  />
-                )}
               </div>
             </div>
             </>
@@ -2895,6 +3079,53 @@ function stateBlockSplits(members: ResolvedTag[]): boolean {
 
 const NO_CLOSED: ReadonlySet<string> = new Set();
 
+/**
+ * Title of a readout block: the part's name, or — for one piece of a part spread over the sheet — what its
+ * readings' labels share when that names the piece ("FAN 1" of Cooling fans 1–3).
+ */
+function clusterTitle(part: string, labels: string[], whole: boolean): string {
+  if (whole || labels.length < 2) return part;
+  const words = labels.map((l) => l.split(/\s+/));
+  const common: string[] = [];
+  for (let i = 0; i < words[0].length && words.every((w) => w[i] === words[0][i]); i++) common.push(words[0][i]);
+  const prefix = common.join(" ");
+  return /\d/.test(prefix) ? prefix : part;
+}
+/** Stage sheets: blocks pack with gaps (area they need × PACKING), may use INSIDE_USE of the drawing's empty
+ * space, and the drawing keeps at least MIN_DRAWING of its fitted size. */
+const PACKING = 1.15;
+const INSIDE_USE = 0.5;
+const MIN_DRAWING = 0.78;
+/** At most this share of the readout blocks' area may lie on drawn equipment before the drawing gives way. */
+const BURY_MAX = 0.11;
+/** Each drawing size tried is this share of the one before. */
+const DRAWING_STEP = 0.95;
+/** Reading sizes tried (shares of the operator's size) when a sheet's readings do not fit the canvas. */
+const READING_STEPS = [1, 0.94, 0.88, 0.83, 0.78];
+
+/** Two placed blocks overlap (not merely touch). */
+function blocksOverlap(blocks: PlacedBlock[]): boolean {
+  for (let i = 0; i < blocks.length; i++) {
+    const a = blocks[i];
+    for (let j = i + 1; j < blocks.length; j++) {
+      const b = blocks[j];
+      if (a.x < b.x + b.w - 1 && b.x < a.x + a.w - 1 && a.y < b.y + b.h - 1 && b.y < a.y + a.h - 1) return true;
+    }
+  }
+  return false;
+}
+
+/** A combined sheet's staircase drawing is mostly empty corners (where its blocks sit): it may go smaller. */
+const MIN_COMBINED = 0.68;
+/** Designed sheets: the drawing keeps at least this share of the size at which the whole design fits the canvas. */
+const MIN_DESIGN = 0.62;
+/** Designed sheets: the blocks stand round the drawing, so they may cover less of it. */
+const DESIGN_BURY_MAX = 0.06;
+/** Designed sheets: the smallest share of the chosen reading size taken to keep the drawing large. */
+const DESIGN_READING_MIN = 0.88;
+/** Half-size of the area round a pad in alarm whose equipment outline is drawn (sheet units). */
+const ALARM_REACH = 60;
+
 function SheetMimicCanvas({
   sheetId,
   pointLabelMode,
@@ -2914,6 +3145,11 @@ function SheetMimicCanvas({
   onSelectPart,
   alerts,
   alertPopups,
+  prefs,
+  layout,
+  arranging = false,
+  onMovePiece,
+  onMoveBlock,
 }: {
   sheetId: string;
   pointLabelMode: PointLabelMode;
@@ -2939,9 +3175,30 @@ function SheetMimicCanvas({
   alerts?: HomeAlert[];
   /** The operator's message choices (all on/off, closed ones); without it every message shows. */
   alertPopups?: AlertPopupControl;
+  /** The operator's canvas choices: readings shown, names, size, alarm links, hidden parts. */
+  prefs: CanvasPrefs;
+  /** How the operator arranged this drawing (machines moved, blocks placed by hand). */
+  layout?: SheetLayout;
+  /** Arrange mode: machines and readout blocks are dragged instead of clicked. */
+  arranging?: boolean;
+  onMovePiece?: (id: string, offset: [number, number]) => void;
+  onMoveBlock?: (id: string, at: [number, number]) => void;
 }) {
-  const art = LINE_SHEET_ART[sheetId];
+  const registered = LINE_SHEET_ART[sheetId];
+  const pieceOffsets = layout?.pieces;
+  // A composed sheet as the operator arranged it: its machines where they were moved to (flows follow).
+  const art = useMemo(
+    () => (registered?.arrange && pieceOffsets && Object.keys(pieceOffsets).length ? registered.arrange.with(pieceOffsets) : registered),
+    [registered, pieceOffsets],
+  );
   const meta = LINE_SHEET_BY_ID[sheetId];
+  // Readings carry the operator's name choice; which ones show is filtered below.
+  const nameMode: PointLabelMode = prefs.names === "full" ? "tag-value" : "value";
+  const hiddenParts = useMemo(() => new Set(prefs.hiddenParts), [prefs.hiddenParts]);
+  const sizeK = READING_PX[prefs.size] / VALUE_PX;
+  /** A drag in arrange mode: what moves and by how much so far (sheet units). */
+  const [drag, setDrag] = useState<{ kind: "piece" | "block"; id: string; dx: number; dy: number } | null>(null);
+  const grabRef = React.useRef<{ x0: number; y0: number; k: number } | null>(null);
   const [hoverTag, setHoverTag] = useState<string | null>(null);
   /** Readout block whose header is hovered: its part is outlined on the drawing. */
   const [hoverPart, setHoverPart] = useState<string | null>(null);
@@ -2949,7 +3206,7 @@ function SheetMimicCanvas({
   const dragRef = React.useRef<{ x: number; y: number; px: number; py: number } | null>(null);
 
   const sheetTags = useMemo(() => lineSheetTags(sheetId), [sheetId]);
-  const { box, measure } = useSheetBox(sheetId, false);
+  const { box, measure } = useSheetBox(sheetId, false, art);
 
   const artBox = useMemo<[number, number, number, number]>(
     () => box ?? [0, 0, art?.width ?? 824, art?.height ?? 704],
@@ -2991,43 +3248,73 @@ function SheetMimicCanvas({
     [averages, resolveMember],
   );
   // Stage and part sheets with authored slots: readings embedded as plates on their pads, text at a readable on-screen size.
-  const isStage = Boolean(art?.callouts) && meta?.kind !== "line";
-  const [pxPerUnit, wrapRef, canvasAspect] = usePxPerUnit(artBox);
-
-  /** A block opens its first member; a member selected elsewhere lights its block. */
-  const selectTag = (tag: string) => onSelectTag(averages?.[tag]?.tags[0] ?? tag);
-  const selectedKey = selectedTag ? blockFor(selectedTag) ?? selectedTag : null;
-  const stageWidth = useCallback(
-    (tag: string, sz: number) => pillContentWidth(pillContentOf(resolveTag(tag), pointLabelMode), sz),
-    [resolveTag, pointLabelMode],
-  );
-  // Stage sheets show their readings as one readout block per part (part-blocks.tsx), so the layout of
-  // single plates runs only for the other sheet kinds.
-  const stage = useStageLayout(art, [], artBox, pxPerUnit, stageWidth, canvasAspect);
+  const isStage = Boolean(art?.callouts || art?.readouts) && meta?.kind !== "line";
   const sheetW = art?.width ?? 1654;
   const sheetH = art?.height ?? 774;
   const busy = useArtBusyMap(art && isStage ? `art:v3:${art.id}` : null, art?.Art, sheetW, sheetH);
-  const bm = useMemo(() => blockMetrics(stageMetrics(pxPerUnit, sheetW, visibleTags.length).fontSz), [pxPerUnit, sheetW, visibleTags.length]);
-  const blockSpace = useMemo<[number, number, number, number]>(() => {
-    const [x, y, w, h] = artBox;
-    if (!canvasAspect) return [x, y, w, h];
-    const W = Math.max(w, h * canvasAspect);
-    const H = Math.max(h, w / canvasAspect);
-    const pad = bm.rowH * 0.6;
-    return [x - (W - w) / 2 + pad, y - (H - h) / 2 + pad, W - 2 * pad, H - 2 * pad];
-  }, [artBox, canvasAspect, bm.rowH]);
-  const blockLayout = useMemo(() => {
+  /** A combined sheet: several machines' stages drawn together. */
+  const composed = isStage && Boolean(registered?.arrange);
+
+  // Stage sheets: the readings shown, grouped into one readout block per piece of equipment.
+  const blockGroups = useMemo(() => {
     if (!isStage || !art) return null;
     const pads = art.pads;
+    const pointOf = (tag: string, label?: string) => {
+      const res = resolveTag(tag);
+      const c = pillContentOf(res, nameMode);
+      const [px, py] = pads[tag] ?? [NaN, NaN];
+      return { tag, px, py, part: res.part, row: { tag, label: nameMode === "value" && label ? label : c.label, value: c.value, tone: res.tone, run: res.run, state: Boolean(c.state), sp: c.sp } };
+    };
+    // The operator's choice: none, only the rows that need a look, or all but the parts they hid (whose
+    // readings in alarm still show).
+    const shown = (p: ReturnType<typeof pointOf>) => {
+      const abnormal = p.row.tone === "warn" || p.row.tone === "bad";
+      if (prefs.readings === "none") return false;
+      if (prefs.readings === "alerts") return abnormal;
+      return abnormal || !(p.part && hiddenParts.has(p.part.id));
+    };
+    const design = art.readouts;
+    if (design) {
+      // A designed sheet: its blocks, titles and labels as the design has them. A reading of the sheet the design
+      // leaves out joins the block whose equipment is nearest its pad, so every reading still shows.
+      const listed = new Set(design.blocks.flatMap((b) => b.rows.map(([t]) => t)));
+      const anchor = (b: (typeof design.blocks)[number]): [number, number] => b.leader ?? [b.box[0] + b.box[2] / 2, b.box[1] + b.box[3] / 2];
+      const extra = new Map<number, string[]>();
+      for (const t of visibleTags) {
+        if (listed.has(t) || averages?.[t]?.tags.every((m) => listed.has(m)) || !pads[t]) continue;
+        let best = 0;
+        design.blocks.forEach((b, i) => {
+          const [ax, ay] = anchor(b);
+          const [bx, by] = anchor(design.blocks[best]);
+          if (Math.hypot(ax - pads[t][0], ay - pads[t][1]) < Math.hypot(bx - pads[t][0], by - pads[t][1])) best = i;
+        });
+        extra.set(best, [...(extra.get(best) ?? []), t]);
+      }
+      const all: Array<ReturnType<typeof pointOf>> = [];
+      const groups: PartGroup[] = [];
+      const boxes = new Map<string, [number, number, number, number]>();
+      design.blocks.forEach((b, i) => {
+        const pts = [...b.rows.map(([t, label]) => pointOf(t, label)), ...(extra.get(i) ?? []).map((t) => pointOf(t))].filter(shown);
+        if (!pts.length) return;
+        all.push(...pts);
+        const id = `d:${b.title}`;
+        const padded = pts.filter((p) => Number.isFinite(p.px));
+        boxes.set(id, b.box);
+        groups.push({
+          id,
+          name: b.title,
+          head: true,
+          rows: pts.map((p) => p.row),
+          pads: padded.length ? padded.map((p) => [p.px, p.py]) : [anchor(b)],
+          leader: b.leader,
+        });
+      });
+      return { groups, pads: all.filter((p) => Number.isFinite(p.px)).map((p): [number, number] => [p.px, p.py]), design: boxes };
+    }
     const points = visibleTags
       .filter((t) => pads[t])
-      .map((tag) => {
-        const res = resolveTag(tag);
-        const c = pillContentOf(res, pointLabelMode);
-        return { tag, px: pads[tag][0], py: pads[tag][1], part: res.part, row: { tag, label: c.label, value: c.value, tone: res.tone, run: res.run, state: Boolean(c.state), sp: c.sp } };
-      })
-      // "Alerts only" keeps the rows that need a look.
-      .filter((p) => pointLabelMode !== "alerts" || p.row.tone === "warn" || p.row.tone === "bad");
+      .map((tag) => pointOf(tag))
+      .filter(shown);
     const byPart = new Map<string, typeof points>();
     for (const p of points) {
       const key = p.part?.id ?? `tag:${p.tag}`;
@@ -3035,13 +3322,191 @@ function SheetMimicCanvas({
     }
     const groups: PartGroup[] = [];
     for (const [key, pts] of byPart) {
-      // A part spread over the sheet (a tyre on the shell and its station plan below) gets one block per cluster.
-      clusterPads(pts, sheetW / 11).forEach((cluster, k) => {
-        groups.push({ id: `${key}#${k}`, name: cluster[0].part?.name ?? "", rows: cluster.map((p) => p.row), pads: cluster.map((p) => [p.px, p.py]) });
+      // One block per piece of equipment: a part spread over the sheet (three fans, a tyre on the shell and its
+      // station plan below) gets one block per cluster of pads, beside where it is measured.
+      // A combined sheet (several machines, twice the readings) keeps one block per part: fewer headers, so its
+      // readings fit the canvas at full size.
+      const clusters = composed ? [pts] : clusterPads(pts, Math.min(sheetW, 1654) / 22);
+      clusters.forEach((cluster, k) => {
+        const name = clusterTitle(cluster[0].part?.name ?? "", cluster.map((p) => p.row.label), clusters.length === 1);
+        groups.push({ id: `${key}#${k}`, name, rows: cluster.map((p) => p.row), pads: cluster.map((p) => [p.px, p.py]) });
       });
     }
-    return layoutPartBlocks(groups, artBox, blockSpace, bm, busy, points.map((p) => [p.px, p.py]));
-  }, [isStage, art, visibleTags, resolveTag, pointLabelMode, sheetW, artBox, blockSpace, bm, busy]);
+    return { groups, pads: points.map((p): [number, number] => [p.px, p.py]), design: null };
+  }, [isStage, art, visibleTags, resolveTag, nameMode, prefs.readings, hiddenParts, sheetW, composed, averages]);
+
+  const [measuredPx, wrapRef, canvasAspect] = usePxPerUnit(artBox);
+  // The canvas in screen px (UI zoom divided out), from the drawing's fitted scale and the canvas shape.
+  // Rounded to 24 px steps: the first measurements settle by a few px, and each change re-runs the layout.
+  const canvasRawW = measuredPx && canvasAspect ? (canvasAspect >= artBox[2] / artBox[3] ? measuredPx * artBox[3] * canvasAspect : measuredPx * artBox[2]) : null;
+  const canvasW = canvasRawW ? Math.round(canvasRawW / 24) * 24 : null;
+  const canvasH = canvasRawW && canvasAspect ? Math.round(canvasRawW / canvasAspect / 24) * 24 : null;
+  const readingPx = READING_PX[prefs.size];
+  // Block sizes on screen at the reading size; the layout keys on them (not on the values, whose widths are held
+  // in steps), so a 30 s value update keeps every block where it is and only refreshes its rows.
+  const pm = useMemo(() => blockMetrics(readingPx), [readingPx]);
+  const sizeSig = useMemo(
+    () =>
+      blockGroups
+        ? blockGroups.groups.map((g) => {
+            const m = measureBlock(g, pm);
+            return `${g.id}:${m.w.toFixed(0)}x${m.h.toFixed(0)}`;
+          }).join("|")
+        : "",
+    [blockGroups, pm],
+  );
+  const groupsRef = useRef(blockGroups);
+  groupsRef.current = blockGroups;
+  const pinnedBlocks = layout?.blocks;
+  // Stage sheets: the drawing is drawn as large as its readings allow. The blocks need a fixed area on screen at
+  // the reading size; the drawing gives up just enough of the canvas for them (counting part of its own empty
+  // space, where blocks may also sit), and never less than MIN_DRAWING of its fitted size — past that, blocks rest
+  // on quiet parts of the drawing. The frame is the whole canvas in sheet units: drawing, blocks and canvas share
+  // one scale.
+  const plan = useMemo(() => {
+    const bg = groupsRef.current;
+    // Laid out once the drawing's busy map is in (a layout without it would only be redone).
+    if (!isStage || !canvasW || !canvasH || !bg || !sizeSig || !busy || !box) return null;
+    const [x, y, w, h] = artBox;
+    const gap = pm.rowH * 0.5;
+    let need = 0;
+    // The drawing moves away from where most readings are (a cooler's fans along its bottom: the drawing goes
+    // up), so the crowded side gets the room: the blocks' area-weighted pad centre, as a share of the drawing,
+    // shifts the frame within its slack.
+    let vx = 0;
+    let vy = 0;
+    let total = 0;
+    for (const g of bg.groups) {
+      const m = measureBlock(g, pm);
+      const area = m.w * m.h;
+      need += (m.w + gap) * (m.h + gap);
+      vx += (area * (g.pads.reduce((a2, p) => a2 + p[0], 0) / g.pads.length - (x + w / 2))) / w;
+      vy += (area * (g.pads.reduce((a2, p) => a2 + p[1], 0) / g.pads.length - (y + h / 2))) / h;
+      total += area;
+    }
+    const free = 1 - busy.cover(x, y, x + w, y + h);
+    const room = (canvasW * canvasH - PACKING * need) / (w * h * (1 - INSIDE_USE * free));
+    const fit = Math.min(canvasW / (w * 1.02), canvasH / (h * 1.02));
+    const designFrame = art?.readouts?.frame;
+    const designScale = art?.readouts?.scale ?? 1;
+    // A designed sheet starts from its whole design on the canvas and gives way from there.
+    const designFit = designFrame ? Math.min(canvasW / designFrame[2], canvasH / designFrame[3]) : 0;
+    const minSc = designFrame ? designFit * MIN_DESIGN : fit * (composed ? MIN_COMBINED : MIN_DRAWING);
+    const shift = (v: number, slack: number) => Math.max(-slack / 2, Math.min(slack / 2, (total ? (2 * v) / total : 0) * slack));
+    /**
+     * A designed block's spot on this canvas: the design's frame stretched to the canvas, each block keeping its
+     * distance (as a share of the frame) from the frame edges nearest it, so a larger reading size grows a block
+     * toward the drawing and a wider canvas moves the side columns out.
+     */
+    const preferred = (g: PartGroup, frame: [number, number, number, number], m: BlockMetrics): PartGroup => {
+      const b = bg.design?.get(g.id);
+      if (!b || !designFrame) return g;
+      const [mx, my, mw, mh] = designFrame;
+      const size = measureBlock(g, m);
+      const kx = frame[2] / mw;
+      const ky = frame[3] / mh;
+      const left = b[0] + b[2] / 2 < mx + mw / 2;
+      const top = b[1] + b[3] / 2 < my + mh / 2;
+      const px = left ? frame[0] + (b[0] - mx) * kx : frame[0] + (b[0] + b[2] - mx) * kx - size.w;
+      const py = top ? frame[1] + (b[1] - my) * ky : frame[1] + (b[1] + b[3] - my) * ky - size.h;
+      return { ...g, prefer: [px, py] };
+    };
+    /** The frame (whole canvas, sheet units) with the drawing at `sc` px per unit, the readings at `k` × the size. */
+    const layoutAt = (sc: number, k: number, coarse: boolean) => {
+      const fw = canvasW / sc;
+      const fh = canvasH / sc;
+      // A designed sheet keeps its design's centre, moved only as far as needed to keep the whole drawing on the canvas.
+      const keep = (c: number, a: number, aw: number, f: number) => (f <= aw ? a + aw / 2 : Math.min(a + f / 2, Math.max(a + aw - f / 2, c)));
+      const cx = designFrame ? keep(designFrame[0] + designFrame[2] / 2, x, w, fw) : x + w / 2 + shift(vx, fw - w);
+      const cy = designFrame ? keep(designFrame[1] + designFrame[3] / 2, y, h, fh) : y + h / 2 + shift(vy, fh - h);
+      const frame: [number, number, number, number] = [cx - fw / 2, cy - fh / 2, fw, fh];
+      const m = blockMetrics((readingPx * k * designScale) / sc);
+      const pad = m.rowH * 0.5;
+      const space: [number, number, number, number] = [frame[0] + pad, frame[1] + pad, fw - 2 * pad, fh - 2 * pad];
+      const groups = designFrame ? bg.groups.map((g) => preferred(g, frame, m)) : bg.groups;
+      return { sc, frame, m, layout: layoutPartBlocks(groups, frame, space, m, busy, bg.pads, pinnedBlocks, { coarse }) };
+    };
+    // Readings keep the operator's size first: the drawing gives way, step by step from its fitted size (or a
+    // little above the estimate of what fits) down to its floor, until no block overlaps another and the blocks
+    // keep off the equipment. Only a sheet whose readings do not fit even then (a combined sheet on a short
+    // screen) has its readings step down. Quick trials choose; the full layout runs once and is checked again.
+    const tries: Array<[number, number]> = [];
+    // A designed sheet starts from its drawing as large as the canvas allows (the design's margins are what a 16:9
+    // screen leaves; a wider or busier canvas may need less), and gives way step by step until its blocks fit.
+    const start = designFrame ? Math.max(designFit, fit * 0.85) : Math.min(fit, Math.max(minSc, room > 0 ? Math.sqrt(room) * 1.12 : minSc));
+    // Designed sheets trade a step of reading size for drawing size: at each drawing size the readings may come down to
+    // DESIGN_READING_MIN before the drawing gives way, so the equipment stays large.
+    for (let sc = start; sc > minSc * 1.001; sc *= DRAWING_STEP) for (const k of designFrame ? [1, DESIGN_READING_MIN] : [1]) tries.push([sc, k]);
+    for (const k of READING_STEPS) tries.push([minSc, k]);
+    /** Share of the blocks' area lying on drawn equipment (lines and bodies). */
+    const buried = (blocks: PlacedBlock[]) => {
+      let on = 0;
+      let all = 0;
+      for (const b of blocks) {
+        const area = b.w * b.h;
+        on += area * busy.cover(b.x, b.y, b.x + b.w, b.y + b.h);
+        all += area;
+      }
+      return all ? on / all : 0;
+    };
+    // Quick trials, largest drawing first: the first with readings at full size, no block on another and the
+    // blocks (mostly) off the equipment wins; failing that, the full-size trial burying the least; only past
+    // that do the readings step down (first trial without overlaps).
+    let pick = -1;
+    let least: { i: number; buried: number } | null = null;
+    let nearly = -1;
+    for (let i = 0; i < tries.length; i++) {
+      const [tsc, k] = tries[i];
+      // A designed sheet keeps its blocks off the equipment first: its readings step down before they would bury it.
+      if (k < 1 && least && !designFrame) break;
+      const blocks = layoutAt(tsc, k, true).layout.blocks;
+      if (blocksOverlap(blocks)) continue;
+      if (k < 1 && !designFrame) {
+        pick = i;
+        break;
+      }
+      const b = buried(blocks);
+      if (b <= (designFrame ? DESIGN_BURY_MAX : BURY_MAX)) {
+        pick = i;
+        break;
+      }
+      if (!least || b < least.buried) least = { i, buried: b };
+      // A designed sheet that cannot keep fully clear takes the largest drawing that keeps nearly clear.
+      if (designFrame && nearly < 0 && b <= BURY_MAX) nearly = i;
+    }
+    if (pick < 0) pick = nearly >= 0 ? nearly : least?.i ?? tries.length - 1;
+    let chosen = layoutAt(tries[pick][0], tries[pick][1], false);
+    // The full layout can settle differently from the quick trial: a designed sheet whose blocks then cover its equipment
+    // takes the next smaller drawing (up to ten steps).
+    const misfit = (c: typeof chosen) => blocksOverlap(c.layout.blocks) || (Boolean(designFrame) && buried(c.layout.blocks) > BURY_MAX);
+    for (let i = pick + 1, n = 0; i < tries.length && misfit(chosen) && n < 10; i++, n++) chosen = layoutAt(tries[i][0], tries[i][1], false);
+    const { sc, frame } = chosen;
+    return { sc, frame, m: chosen.m, layout: chosen.layout };
+  }, [isStage, canvasW, canvasH, sizeSig, artBox, busy, box, readingPx, pm, pinnedBlocks, composed, art]);
+  const frameBox = plan?.frame ?? artBox;
+  const pxPerUnit = plan ? plan.sc : measuredPx;
+
+  /** A block opens its first member; a member selected elsewhere lights its block. */
+  const selectTag = (tag: string) => onSelectTag(averages?.[tag]?.tags[0] ?? tag);
+  const selectedKey = selectedTag ? blockFor(selectedTag) ?? selectedTag : null;
+  const stageWidth = useCallback(
+    (tag: string, sz: number) => pillContentWidth(pillContentOf(resolveTag(tag), nameMode), sz),
+    [resolveTag, nameMode],
+  );
+  // Stage sheets show their readings as one readout block per part (part-blocks.tsx), so the layout of
+  // single plates runs only for the other sheet kinds.
+  const stage = useStageLayout(art, [], artBox, pxPerUnit, stageWidth, canvasAspect);
+  // Block text at the operator's reading size on screen.
+  const bm = useMemo(
+    () => plan?.m ?? blockMetrics(stageMetrics(pxPerUnit, sheetW, visibleTags.length, readingPx).fontSz),
+    [plan, pxPerUnit, sheetW, visibleTags.length, readingPx],
+  );
+  // The kept layout with each block's rows as they read now.
+  const blockLayout = useMemo(() => {
+    if (!plan || !blockGroups) return null;
+    const byId = new Map(blockGroups.groups.map((g) => [g.id, g]));
+    return { ...plan.layout, blocks: plan.layout.blocks.map((b) => ({ ...b, group: byId.get(b.group.id) ?? b.group })) };
+  }, [plan, blockGroups]);
   const blockOfTag = useMemo(() => {
     const map = new Map<string, (typeof blockLayout extends null ? never : NonNullable<typeof blockLayout>)["blocks"][number]>();
     for (const b of blockLayout?.blocks ?? []) for (const r of b.group.rows) map.set(r.tag, b);
@@ -3057,6 +3522,21 @@ function SheetMimicCanvas({
     const r = (60 * sheetW) / 1654;
     return hotBlock.group.pads.map(([x, y]) => ({ box: [x - r, y - r, 2 * r, 2 * r], tone }));
   }, [hotBlock, sheetW]);
+  // Readings in alarm, tied to their sensor: a line from the row to the pad, a ring on the pad (blinking while
+  // Critical) and the equipment round the pad outlined in the status colour — whatever readings show.
+  const alarmPads = useMemo(() => {
+    if (!prefs.alarmLinks || !art) return [];
+    return visibleTags.flatMap((tag) => {
+      const pad = art.pads[tag];
+      const res = resolveTag(tag);
+      if (!pad || (res.tone !== "warn" && res.tone !== "bad")) return [];
+      return [{ tag, pad, tone: res.tone as "warn" | "bad" }];
+    });
+  }, [prefs.alarmLinks, art, visibleTags, resolveTag]);
+  const alarmOwners = useMemo<OutlineOwner[]>(
+    () => alarmPads.map(({ pad: [x, y], tone }) => ({ box: [x - ALARM_REACH, y - ALARM_REACH, 2 * ALARM_REACH, 2 * ALARM_REACH], tone })),
+    [alarmPads],
+  );
   const titleOf = (tag: string) => {
     const res = resolveTag(tag);
     return `${displayName(res.name)}: ${res.display} ${res.unit} (normal ${res.normalBand}; changing ${res.rocMinDisplay})`;
@@ -3068,9 +3548,10 @@ function SheetMimicCanvas({
   // The line sheet carries few points over a wide drawing: larger blocks, read across the room.
   const isLineSheet = meta?.kind === "line";
   const sm = stage.metrics;
-  const fontSz = isStage ? sm.fontSz : isDetailSheet ? 15.5 : isDenseLine ? 7.8 : isLineSheet ? 10 : 8.6;
-  const padW = isDetailSheet ? 22 : isDenseLine ? 10 : 14;
-  const cardH = isDetailSheet ? 26.5 : isDenseLine ? 14.5 : isLineSheet ? 18 : 16;
+  // Other sheets size their plates in sheet units, scaled by the operator's reading size.
+  const fontSz = isStage ? sm.fontSz : (isDetailSheet ? 15.5 : isDenseLine ? 7.8 : isLineSheet ? 10 : 8.6) * sizeK;
+  const padW = (isDetailSheet ? 22 : isDenseLine ? 10 : 14) * sizeK;
+  const cardH = (isDetailSheet ? 26.5 : isDenseLine ? 14.5 : isLineSheet ? 18 : 16) * sizeK;
   const padR = isStage ? sm.padR : isDetailSheet ? 7.5 : isDenseLine ? 4.5 : 5.5;
   const padScale = isStage ? sm.padScale : isDetailSheet ? 1.15 : isDenseLine ? 0.65 : 0.85;
   const cardRx = isStage ? sm.rx : isDetailSheet ? 6 : 4;
@@ -3081,7 +3562,7 @@ function SheetMimicCanvas({
     if (isStage) return null;
     return layoutSensorCallouts(
       visibleTags.map((tag) => {
-        const content = pillContentOf(resolveTag(tag), pointLabelMode);
+        const content = pillContentOf(resolveTag(tag), nameMode);
         return {
           tag,
           px: activePads[tag][0],
@@ -3095,7 +3576,7 @@ function SheetMimicCanvas({
       artBox,
       { cardH, padR, gapX: isDetailSheet ? 6 : 4, gapY: isDetailSheet ? 4.5 : 3 },
     );
-  }, [isStage, visibleTags, activePads, artBox, resolveTag, pointLabelMode, fontSz, padW, cardH, padR, isDetailSheet]);
+  }, [isStage, visibleTags, activePads, artBox, resolveTag, nameMode, fontSz, padW, cardH, padR, isDetailSheet]);
   const { callouts, viewBox: stageVb } = auto ?? stage;
   const vb = blockLayout?.viewBox ?? stageVb;
 
@@ -3110,7 +3591,36 @@ function SheetMimicCanvas({
     e.currentTarget.setPointerCapture(e.pointerId);
   };
 
+  /** Arrange mode: a machine or block is grabbed; it follows the pointer (in sheet units) until let go. */
+  const grab = (kind: "piece" | "block", id: string) => (e: React.PointerEvent<SVGElement>) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const ctm = (e.currentTarget as SVGGraphicsElement).ownerSVGElement?.getScreenCTM();
+    grabRef.current = { x0: e.clientX, y0: e.clientY, k: ctm ? Math.hypot(ctm.a, ctm.b) || 1 : 1 };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDrag({ kind, id, dx: 0, dy: 0 });
+  };
+  const dropGrab = (commit: boolean) => {
+    const d = drag;
+    grabRef.current = null;
+    setDrag(null);
+    if (!commit || !d || (Math.abs(d.dx) < 1 && Math.abs(d.dy) < 1)) return;
+    if (d.kind === "piece") {
+      const cur = art?.arrange?.offsets[d.id] ?? [0, 0];
+      onMovePiece?.(d.id, [cur[0] + d.dx, cur[1] + d.dy]);
+    } else {
+      const b = blockLayout?.blocks.find((x) => x.group.id === d.id);
+      if (b) onMoveBlock?.(d.id, [b.x + d.dx, b.y + d.dy]);
+    }
+  };
+
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const g = grabRef.current;
+    if (g && drag) {
+      setDrag({ ...drag, dx: (e.clientX - g.x0) / g.k, dy: (e.clientY - g.y0) / g.k });
+      return;
+    }
     if (!panning || !dragRef.current) return;
     onChangePan({
       x: dragRef.current.px + (e.clientX - dragRef.current.x),
@@ -3119,6 +3629,7 @@ function SheetMimicCanvas({
   };
 
   const onPointerUp = () => {
+    if (grabRef.current) dropGrab(true);
     setPanning(false);
     dragRef.current = null;
   };
@@ -3177,9 +3688,13 @@ function SheetMimicCanvas({
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
+      onPointerCancel={() => {
+        dropGrab(false);
+        onPointerUp();
+      }}
       onWheel={onWheel}
-      onDoubleClick={onResetView}
+      onDoubleClick={arranging ? undefined : onResetView}
+      data-arranging={arranging || undefined}
     >
       {measure}
       <div
@@ -3210,11 +3725,11 @@ function SheetMimicCanvas({
           {/* Clickable Unit Regions on PYR-0 */}
           {meta.kind === "line" && art.links && (
             <g>
-              {Object.entries(art.links).map(([mId, [x, y, w, h]]) => {
+              {Object.entries(art.links).flatMap(([mId, link]) => (art.areas?.[mId] ?? [link]).map((b, i) => [mId, b, i] as const)).map(([mId, [x, y, w, h], i]) => {
                 const unitLabel = unitName?.(mId) ?? mId;
                 return (
                   <g
-                    key={mId}
+                    key={`${mId}-${i}`}
                     className="lsh-link"
                     role="button"
                     tabIndex={0}
@@ -3254,34 +3769,136 @@ function SheetMimicCanvas({
             />
           )}
 
+          {/* Arrange mode: each machine of a composed sheet is a frame the operator drags (flows follow on drop). */}
+          {arranging && art.arrange && (
+            <g className="opc-arrange-pieces">
+              {art.arrange.pieces.map((p) => {
+                const d = drag?.kind === "piece" && drag.id === p.id ? drag : null;
+                const [x, y, w, h] = p.box;
+                const u = 1 / (pxPerUnit || 1);
+                return (
+                  <g key={p.id} transform={d ? `translate(${d.dx} ${d.dy})` : undefined}>
+                    <rect
+                      className="opc-arrange-piece"
+                      x={x}
+                      y={y}
+                      width={w}
+                      height={h}
+                      rx={6 * u}
+                      strokeWidth={1.5 * u}
+                      strokeDasharray={`${6 * u} ${4 * u}`}
+                      data-dragging={d ? true : undefined}
+                      onPointerDown={grab("piece", p.id)}
+                    />
+                  </g>
+                );
+              })}
+            </g>
+          )}
+
+          {/* Readings in alarm on sheets without readout blocks: a ring on the pad (blinking while Critical) and the
+              equipment round it outlined. */}
+          {!blockLayout && alarmPads.length > 0 && !isLineSheet && (
+            <g className="opc-alarm-links" pointerEvents="none" aria-hidden="true">
+              <g style={{ ["--mx-health-w" as string]: 1.6 }}>
+                <HealthOutline art={art} owners={alarmOwners} mute={false} />
+              </g>
+              {alarmPads.map(({ tag, pad: [x, y], tone }) => (
+                <circle
+                  key={tag}
+                  className={tone === "bad" ? "opc-blink" : undefined}
+                  cx={x}
+                  cy={y}
+                  r={padR * 2}
+                  fill="none"
+                  stroke={linkColor(tone)}
+                  strokeWidth={Math.max(1.4, padR * 0.35)}
+                />
+              ))}
+            </g>
+          )}
+
           {/* Sensor pads (stage sheets: on top of their embedded plates) */}
           {!isStage && padLayer}
 
           {/* Stage sheets: one readout block per part, beside its pads; the hovered or selected row is linked to its pad. */}
           {blockLayout && (
             <g className="opc-part-blocks">
-              {blockLayout.blocks.map((b) => (
-                <PartBlock
-                  key={b.group.id}
-                  block={b}
-                  m={bm}
-                  hoverTag={hoverTag}
-                  selectedTag={selectedKey}
-                  partHot={hoverPart === b.group.id}
-                  dimmed={Boolean(hotBlock) && hotBlock !== b}
-                  onHover={setHoverTag}
-                  onHoverPart={setHoverPart}
-                  onSelect={selectTag}
-                  titleOf={titleOf}
-                />
-              ))}
+              {/* Readings in alarm: each row tied to its pad by a line in its status colour, under the blocks. */}
+              {alarmPads.length > 0 && (
+                <g className="opc-alarm-links" pointerEvents="none" aria-hidden="true">
+                  {alarmPads.map(({ tag, pad, tone }) => {
+                    const b = blockOfTag.get(tag);
+                    if (!b || (drag?.kind === "block" && drag.id === b.group.id)) return null;
+                    const link = rowLeader(b, tag, pad, bm);
+                    if (!link) return null;
+                    const w = bm.fontSz * 0.14;
+                    const color = linkColor(tone);
+                    return (
+                      <g key={tag}>
+                        <path d={link.d} fill="none" stroke={MX.padPanel} strokeWidth={w * 3.2} strokeLinejoin="round" strokeLinecap="round" />
+                        <path d={link.d} fill="none" stroke={color} strokeWidth={w} strokeLinejoin="round" strokeLinecap="round" />
+                        <circle cx={link.start[0]} cy={link.start[1]} r={w * 1.7} fill={color} />
+                      </g>
+                    );
+                  })}
+                </g>
+              )}
+              {/* Designed sheets: each block's dashed leader to its equipment, under the blocks. */}
+              <g className="opc-block-leaders" pointerEvents="none" aria-hidden="true">
+                {blockLayout.blocks.map((b) => {
+                  const d = drag?.kind === "block" && drag.id === b.group.id ? drag : null;
+                  const ln = blockLeader(d ? { ...b, x: b.x + d.dx, y: b.y + d.dy } : b);
+                  if (!ln) return null;
+                  return (
+                    <line
+                      key={b.group.id}
+                      x1={ln[0]}
+                      y1={ln[1]}
+                      x2={ln[2]}
+                      y2={ln[3]}
+                      stroke={MX.label}
+                      strokeWidth={bm.fontSz * 0.065}
+                      strokeDasharray={`${bm.fontSz * 0.3} ${bm.fontSz * 0.24}`}
+                      opacity={hotBlock && hotBlock !== b ? 0.15 : 0.6}
+                    />
+                  );
+                })}
+              </g>
+              {blockLayout.blocks.map((b) => {
+                const d = drag?.kind === "block" && drag.id === b.group.id ? drag : null;
+                return (
+                  <g key={b.group.id} transform={d ? `translate(${d.dx} ${d.dy})` : undefined}>
+                    <PartBlock
+                      block={b}
+                      m={bm}
+                      hoverTag={hoverTag}
+                      selectedTag={selectedKey}
+                      partHot={hoverPart === b.group.id}
+                      dimmed={Boolean(hotBlock) && hotBlock !== b}
+                      onHover={setHoverTag}
+                      onHoverPart={setHoverPart}
+                      onSelect={selectTag}
+                      titleOf={titleOf}
+                      onGrab={arranging ? grab("block", b.group.id) : undefined}
+                    />
+                  </g>
+                );
+              })}
               {/* Hovered block header: the other blocks fade back and its part is outlined and its pads ringed above
                   them, so no block hides it; a copy of the hovered block sits on top (the original keeps the pointer).
                   The trace stays mounted so the hover is instant. */}
               <g style={{ ["--mx-health-w" as string]: 1.8 }}>
-                <HealthOutline art={art} owners={hotOwners} mute={false} />
+                <HealthOutline art={art} owners={hotBlock ? hotOwners : alarmOwners} mute={false} />
               </g>
-              {hotBlock && (
+              {/* Pads of readings in alarm: a ring above the blocks, blinking while Critical. */}
+              {alarmPads.map(({ tag, pad: [x, y], tone }) => (
+                <g key={`ring-${tag}`} pointerEvents="none" aria-hidden="true">
+                  <circle cx={x} cy={y} r={bm.fontSz * 0.95} fill="none" stroke={MX.padPanel} strokeWidth={bm.fontSz * 0.42} />
+                  <circle className={tone === "bad" ? "opc-blink" : undefined} cx={x} cy={y} r={bm.fontSz * 0.95} fill="none" stroke={linkColor(tone)} strokeWidth={bm.fontSz * 0.2} />
+                </g>
+              ))}
+              {hotBlock && !arranging && (
                 <g pointerEvents="none" aria-hidden="true">
                   {hotBlock.group.pads.map(([x, y], i) => (
                     <circle key={i} cx={x} cy={y} r={bm.fontSz * 0.95} fill="none" stroke={linkColor(hotBlock.group.rows[i]?.tone ?? "idle")} strokeWidth={bm.fontSz * 0.24} />
@@ -3328,11 +3945,11 @@ function SheetMimicCanvas({
             const res = resolveTag(c.tag);
             const isSel = selectedKey === c.tag;
             const isHot = isSel || hoverTag === c.tag;
+            const abnormal = res.status !== "Normal";
             const showCard =
               isHot ||
-              pointLabelMode === "value" ||
-              pointLabelMode === "tag-value" ||
-              (pointLabelMode === "alerts" && res.status !== "Normal");
+              ((pointLabelMode === "value" || pointLabelMode === "tag-value") && (abnormal || !(res.part && hiddenParts.has(res.part.id)))) ||
+              (pointLabelMode === "alerts" && abnormal);
             if (!showCard) return null;
 
             const leader = c.side ? null : isStage ? calloutElbowPath(c, padR - 1.5) : calloutLeaderPath(c, padR);
@@ -3358,7 +3975,7 @@ function SheetMimicCanvas({
                   />
                 )}
                 <ValuePill
-                  content={pillContentOf(res, pointLabelMode)}
+                  content={pillContentOf(res, nameMode)}
                   cx={c.textCx ?? c.cx}
                   cy={c.cy}
                   w={c.w}
@@ -3376,8 +3993,34 @@ function SheetMimicCanvas({
           })}
           {isStage && padLayer}
 
+          {/* Arrange mode: each machine's name, on its frame's top edge above the readout blocks, is a handle
+              that always shows (a frame may be covered by blocks). */}
+          {arranging && art.arrange && (
+            <g className="opc-arrange-handles">
+              {art.arrange.pieces.map((p) => {
+                const d = drag?.kind === "piece" && drag.id === p.id ? drag : null;
+                const u = 1 / (pxPerUnit || 1);
+                const name = unitName?.(p.id) ?? p.id;
+                const fs = 12 * u;
+                const hw = textWidth(name, fs, 600, 0.01) + 22 * u;
+                const hh = 22 * u;
+                const [x, y, w] = p.box;
+                const hx = Math.max(x, x + w / 2 - hw / 2);
+                return (
+                  <g key={p.id} transform={d ? `translate(${d.dx} ${d.dy})` : undefined} className="opc-arrange-handle" onPointerDown={grab("piece", p.id)}>
+                    <rect x={hx} y={y - hh / 2} width={hw} height={hh} rx={hh / 2} strokeWidth={1.2 * u} />
+                    <path d={`M ${hx + 8 * u} ${y - 3 * u} h ${6 * u} M ${hx + 8 * u} ${y} h ${6 * u} M ${hx + 8 * u} ${y + 3 * u} h ${6 * u}`} strokeWidth={1.2 * u} />
+                    <text x={hx + 18 * u} y={y + fs * 0.36} fontSize={fs} fontWeight={600}>
+                      {name}
+                    </text>
+                  </g>
+                );
+              })}
+            </g>
+          )}
+
           {/* Alert popups over the component / sensor that raised them, above everything else. */}
-          {alerts && alerts.length > 0 && (alertPopups?.show ?? true) && (
+          {alerts && alerts.length > 0 && (alertPopups?.show ?? true) && !arranging && (
             <AlertPopupLayer
               closed={alertPopups?.closed ?? NO_CLOSED}
               onClose={(ids) => alertPopups?.close(ids)}

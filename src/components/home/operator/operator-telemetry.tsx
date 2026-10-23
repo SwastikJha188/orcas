@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Loading, Skel } from "@/components/ui";
 import { formatClock } from "@shared/lib/kiln-sim/engine";
 import type { HomeAlert } from "../home-widgets";
@@ -249,31 +249,100 @@ export function useLatchedAlarms(scope: string, current: HomeAlert[], clock: str
   }, [scope, current, clock, ready]);
 }
 
-/** Operator sidebar: the latched alarm list. Active alarms red, cleared ones in normal text; a row opens its machine's Diagnosis. */
+/* ==========================================================================
+   Alarm panel: an overlay on the drawing, opened and closed from the toolbar
+   ========================================================================== */
+
+const PANEL_KEY = "ultron.operator.alarmPanel";
+export const ALARM_PANEL_ID = "opc-alarm-panel";
+
+/** Whether the Alarms overlay is open. Open until the operator closes it; the choice is kept in this browser. */
+export function useAlarmPanel() {
+  const [open, setOpenState] = useState(true);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(PANEL_KEY) === "closed") setOpenState(false);
+    } catch {
+      /* storage unavailable: open */
+    }
+  }, []);
+  const setOpen = useCallback((next: boolean) => {
+    setOpenState(next);
+    try {
+      localStorage.setItem(PANEL_KEY, next ? "open" : "closed");
+    } catch {
+      /* storage unavailable */
+    }
+  }, []);
+  return { open, setOpen };
+}
+
+/** Toolbar button that opens and closes the Alarms overlay; always there on the overview, with the open-alarm count. */
+export function AlarmPanelToggle({ open, onToggle, alarms }: { open: boolean; onToggle: () => void; alarms: LatchedAlarm[] }) {
+  const active = alarms.filter((a) => a.active);
+  const tone = active.some((a) => a.level === "danger") ? "bad" : active.length ? "warn" : undefined;
+  const said = `${active.length} open alarm${active.length === 1 ? "" : "s"}`;
+  return (
+    <div className="opc-zoom-group opc-alarm-toggle" role="group" aria-label="Alarms panel">
+      <button
+        type="button"
+        className="opc-zoom-btn"
+        onClick={onToggle}
+        aria-pressed={open}
+        aria-controls={ALARM_PANEL_ID}
+        aria-label={`${open ? "Hide" : "Show"} alarms, ${said}`}
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z" />
+          <path d="M10 21h4" />
+        </svg>
+        <span className="opc-alarm-toggle-label">Alarms</span>
+        <span className="opc-alarm-toggle-count ast-num" data-tone={tone}>{active.length}</span>
+      </button>
+    </div>
+  );
+}
+
+/** Operator alarm panel: the latched alarm list. Active alarms red, cleared ones in normal text; a row opens its machine's Diagnosis. */
 export function OperatorAlarmLog({
   alarms,
   loading = false,
   onDiagnose,
+  onClose,
 }: {
   alarms: LatchedAlarm[];
   /** The plant's alarms are still on their way (live frames or the server's list): never read as "none". */
   loading?: boolean;
   onDiagnose: (machineId: string) => void;
+  /** Shown as an overlay: closes the panel (Esc inside it does the same). */
+  onClose?: () => void;
 }) {
   const [openOnly, setOpenOnly] = useState(false);
   const active = alarms.filter((a) => a.active).length;
   const waiting = loading && alarms.length === 0;
   const shown = openOnly ? alarms.filter((a) => a.active) : alarms;
   return (
-    <aside className="opc-alarm-rail opc-alarm-log" aria-label="Alarms">
+    <aside
+      id={onClose ? ALARM_PANEL_ID : undefined}
+      className={`opc-alarm-rail opc-alarm-log${onClose ? " opc-alarm-overlay" : ""}`}
+      aria-label="Alarms"
+      onKeyDown={onClose ? (e) => e.key === "Escape" && (e.stopPropagation(), onClose()) : undefined}
+    >
       <div className="opc-rail-head">
         <strong>Alarms</strong>
         <span className="opc-al-counts">
           <span data-active={active > 0 || undefined}><b className="ast-num">{waiting ? <Skel width="1ch" /> : active}</b> open</span>
           <span><b className="ast-num">{waiting ? <Skel width="1ch" /> : alarms.length - active}</b> fixed</span>
-          <button type="button" className="opc-al-filter" aria-pressed={openOnly} onClick={() => setOpenOnly((v) => !v)} title={openOnly ? "Show open and fixed alarms" : "Show only open alarms"}>
+          <button type="button" className="opc-al-filter" aria-pressed={openOnly} onClick={() => setOpenOnly((v) => !v)}>
             Open only
           </button>
+          {onClose && (
+            <button type="button" className="opc-al-close" onClick={onClose} aria-label="Hide alarms">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          )}
         </span>
       </div>
       <ol className="opc-al-list">
@@ -283,17 +352,27 @@ export function OperatorAlarmLog({
             const defs = defsFor(a.machineId);
             return (
               <li key={a.id} className="opc-al-row" data-active={a.active || undefined} data-level={a.active ? (a.level === "danger" ? "critical" : "alert") : undefined}>
-                {/* Engineering name and reading stay in the tooltip; the row reads in everyday words (docs/plain-language.md). */}
-                <button type="button" onClick={() => onDiagnose(a.machineId)} title={`Details: ${a.finding} — ${a.reading}. Click to open this machine's diagnosis.`}>
-                  <span className="opc-al-meta">
-                    <span className="opc-al-dot" aria-hidden="true" />
+                {/* The row reads in everyday words (docs/plain-language.md); the engineering detail is on the machine's Diagnosis. */}
+                <button type="button" onClick={() => onDiagnose(a.machineId)}>
+                  {/* Event-log columns: when + state on the left, what happened on the right. */}
+                  <span className="opc-al-when">
                     <span className="ast-num">{a.raised ?? "—"}</span>
-                    <span className="opc-al-machine">{a.where ? `${a.where} · ${machine}` : machine}</span>
-                    <span className="opc-al-state">{a.active ? (a.level === "danger" ? "Critical" : "Alert") : `Fixed at ${a.clearedAt ?? "—"}`}</span>
+                    <span className="opc-al-state">
+                      <span className="opc-al-dot" aria-hidden="true" />
+                      {a.active ? (a.level === "danger" ? "Critical" : "Alert") : "Fixed"}
+                    </span>
+                    {!a.active && <span className="ast-num">{a.clearedAt ?? "—"}</span>}
                   </span>
-                  <strong>{a.plainTitle ?? nameIds(a.finding.replace(/\s*\([A-Z0-9-]+\)/g, ""), defs)}</strong>
-                  <span className="opc-al-reading">{a.plainWhat ?? nameIds(a.reading, defs)}</span>
-                  {a.active && a.plainTodo && <span className="opc-al-todo">What to do: {a.plainTodo}</span>}
+                  <span className="opc-al-body">
+                    <strong>{a.plainTitle ?? nameIds(a.finding.replace(/\s*\([A-Z0-9-]+\)/g, ""), defs)}</strong>
+                    <span className="opc-al-machine">{a.where ? `${a.where} · ${machine}` : machine}</span>
+                    <span className="opc-al-reading">{a.plainWhat ?? nameIds(a.reading, defs)}</span>
+                    {a.active && a.plainTodo && (
+                      <span className="opc-al-todo">
+                        <span>What to do</span> {a.plainTodo}
+                      </span>
+                    )}
+                  </span>
                 </button>
               </li>
             );

@@ -142,6 +142,7 @@
 .thm-est {
   margin-left: 4px;
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   font-weight: 400;
   color: var(--text-muted);
 }
@@ -178,7 +179,7 @@
 .thm-dl dt {
   font-size: var(--fs-xs);
   font-weight: 500;
-  letter-spacing: 0;
+  letter-spacing: var(--tracking-small);
   color: var(--text-muted);
 }
 
@@ -235,6 +236,7 @@
 .thm-tick {
   fill: var(--text-muted);
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   font-family: var(--font-ui);
 }
 
@@ -330,6 +332,7 @@
 .thm-spot-no text {
   fill: var(--dx-ink);
   font-size: var(--fs-3xs);
+  letter-spacing: var(--tracking-small);
   font-weight: 600;
   font-family: var(--font-ui);
 }
@@ -382,6 +385,7 @@
 .thm-readout {
   fill: var(--dx-ink);
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   font-weight: 600;
   font-family: var(--font-ui);
   pointer-events: none;
@@ -419,6 +423,7 @@
 
 .thm-tip-hint {
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
 }
 
 .thm-tip-row {
@@ -592,7 +597,7 @@
 }
 
 .thm-spots.is-single .thm-dl {
-  padding-top: 28px;
+  padding-top: 24px;
 }
 
 @media (max-width: 1180px) {
@@ -683,7 +688,7 @@
   color: var(--text-muted);
   font-size: var(--fs-2xs);
   font-weight: 500;
-  letter-spacing: 0;
+  letter-spacing: var(--tracking-small);
   white-space: nowrap;
 }
 
@@ -711,6 +716,7 @@
 :where(.thm-root) :where(.pg-analysis-verdict-headline) {
   margin: 0;
   font-size: var(--fs-xl);
+  letter-spacing: var(--tracking-heading);
   font-weight: 500;
   color: var(--dx-ink);
 }
@@ -732,6 +738,7 @@
 
 :where(.thm-root) :where(.pg-analysis-fact-value) {
   font-size: var(--fs-xl);
+  letter-spacing: var(--tracking-heading);
   font-weight: 500;
   color: var(--dx-ink);
 }
@@ -789,9 +796,9 @@
 }
 
 :where(.thm-root) :where(.pg-analysis-why-body) {
-  padding: 4px 0 0 18px;
+  padding: 4px 0 0 16px;
   font-size: var(--fs-sm);
-  line-height: 1.5;
+  line-height: var(--lh-body);
   color: var(--dx-ink-2);
 }
 

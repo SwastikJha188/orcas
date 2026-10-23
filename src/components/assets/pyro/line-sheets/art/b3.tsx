@@ -7,13 +7,16 @@
  * legs with cross bracing; the wall thermometer on the left; the CO / CO₂
  * analyser on its dashed sample line on the right; the kiln coal (weigh)
  * feeder under the cone and the coal line from the feeder to the conveying
- * line; the hazardous-area note under the ground line.
+ * line; the nitrogen purge line into the bin and the bin aeration blower with
+ * its air line to the cone (Rev 02); the hazardous-area note under the ground line.
  */
 import React from "react";
 import { GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
 import { Pipe } from "../../drawings/clk-parts";
 import type { LineSheetArt } from "../types";
 import { EndArrow, Flow, Head, ToneLabel } from "./parts-b2";
+import { FanSet } from "./parts-d";
+import { AirLine } from "./parts-fd";
 
 const W = 763;
 const H = 672;
@@ -64,6 +67,13 @@ function Bin() {
       <rect x={339} y={110} width={4} height={16} {...PAINT.shaft} />
       <rect x={331} y={96} width={20} height={16} rx={3} {...PAINT.body} />
 
+      {/* nitrogen purge line with its valve into the bin shell */}
+      <AirLine pts={[[64, 175], [SHELL.x, 175]]} />
+      <rect x={150} y={168} width={15} height={14} rx={2.5} {...PAINT.raised} />
+      {/* bin aeration blower and its air line into the cone */}
+      <AirLine pts={[[120, 416], [120, 395], [257.5, 395]]} />
+      <FanSet cx={120} cy={430} r={10} />
+
       {/* wall thermometer */}
       <rect x={182} y={248} width={31} height={3.5} {...PAINT.shaft} />
       <rect x={209} y={244} width={6} height={12} rx={1.5} {...PAINT.raised} />
@@ -109,6 +119,12 @@ function Art() {
       <MachineLabel x={341} y={262} size={10} tone="ink">
         FINE-COAL BIN
       </MachineLabel>
+      <MachineLabel x={66} y={195} anchor="start" size={7.5}>
+        N₂ PURGE
+      </MachineLabel>
+      <MachineLabel x={135} y={459} size={7.5}>
+        BIN AERATION BLOWER
+      </MachineLabel>
       <MachineLabel x={604} y={294} size={8.5}>
         CO / CO₂ ANALYSER
       </MachineLabel>
@@ -126,15 +142,16 @@ function Art() {
 }
 
 /**
- * Pad centre per point (sheet units), as on group image 4B, left panel. The
- * calculated coal-to-feed ratio sits on the feeder face beside the flow point.
+ * Pad centre per point (sheet units), as on group image 4B, left panel.
  */
 const pads: LineSheetArt["pads"] = {
   "LEV-BRN-01": [341, 88.7],
   "TMP-BRN-04": [174.7, 249.5],
   "GAS-BRN-01": [604.3, 222.5],
   "FLO-BRN-01": [381.3, 496],
-  "CAL-BRN-01": [307, 496],
+  "STS-BRN-02": [157.5, 175],
+  "STS-BRN-01": [120, 430],
+  "ELE-BRN-03": [151, 419.5],
 };
 
 /** Plate side per point (start = plate right of the pad, end = left); stand-off slot if both sides collide. */
@@ -143,7 +160,9 @@ const callouts: LineSheetArt["callouts"] = {
   "TMP-BRN-04": [167, 222, "end"],
   "GAS-BRN-01": [612, 170, "start"],
   "FLO-BRN-01": [389, 470, "start"],
-  "CAL-BRN-01": [299, 470, "end"],
+  "STS-BRN-02": [157.5, 150, "middle"],
+  "STS-BRN-01": [125, 477, "middle"],
+  "ELE-BRN-03": [125, 495, "middle"],
 };
 
 export const sheet: LineSheetArt = { id: "B-3", ready: true, width: W, height: H, Art, pads, callouts };

@@ -27,12 +27,16 @@ const SPRAY_CYCLE = 15;
 const VIB_ALARM = 7.1;
 const VIB_WARN = 4.5;
 const BEARING_LIMIT = 95;
-/** Support stations: roller bearing pairs (A / B of one roller) and the oil-bath level switch of each roller. */
+/** Support stations: roller bearing pairs (A / B of one roller); OSW-PE-SNL-PYR-01 Rev. 02 has no oil-bath level switches. */
 const STATIONS = [
-  { n: 1, sub: "kln-st1", pairs: [["TMP-KLN-01", "TMP-KLN-02", "LEV-KLN-02"], ["TMP-KLN-03", "TMP-KLN-04", "LEV-KLN-03"]] },
-  { n: 2, sub: "kln-st2", pairs: [["TMP-KLN-05", "TMP-KLN-06", "LEV-KLN-04"], ["TMP-KLN-07", "TMP-KLN-08", "LEV-KLN-05"]] },
-  { n: 3, sub: "kln-st3", pairs: [["TMP-KLN-09", "TMP-KLN-10", "LEV-KLN-06"], ["TMP-KLN-11", "TMP-KLN-12", "LEV-KLN-07"]] },
+  { n: 1, sub: "kln-st1", pairs: [["TMP-KLN-01", "TMP-KLN-02"], ["TMP-KLN-03", "TMP-KLN-04"]] },
+  { n: 2, sub: "kln-st2", pairs: [["TMP-KLN-05", "TMP-KLN-06"], ["TMP-KLN-07", "TMP-KLN-08"]] },
+  { n: 3, sub: "kln-st3", pairs: [["TMP-KLN-09", "TMP-KLN-10"], ["TMP-KLN-11", "TMP-KLN-12"]] },
 ] as const;
+/** Main motor stator winding RTDs (Rev. 02: six, two per phase). */
+const WINDINGS = [1, 2, 3, 4, 5, 6].map((n) => `TMP-KLN-4${n}`);
+/** Roller bearing OEM-type limit (Rev. 02 HH 80 °C). */
+const ROLLER_LIMIT = 80;
 const PRX = [1, 2, 3, 4, 5, 6].map((n) => `PRX-KLN-0${n}`);
 const BRN_AIR = ["PRS-BRN-01", "PRS-BRN-02", "PRS-BRN-03"];
 
@@ -57,6 +61,12 @@ export function evalKln(c: EvalContext): void {
   const zm = (tag: string, n = 10) => meanRes(tag, n) / sig(tag);
   const speed = measured["SPD-KLN-01"];
   const kilnTurning = speed > 0.2;
+  // The six motor windings as one thermal witness: the valid ones' mean residual and their hottest reading.
+  const wdgOk = WINDINGS.filter((tg) => good(tg));
+  const wdgRes = (n = 10) => (wdgOk.length ? wdgOk.reduce((a, tg) => a + meanRes(tg, n), 0) / wdgOk.length : 0);
+  const wdgNow = () => (wdgOk.length ? wdgOk.reduce((a, tg) => a + res(tg), 0) / wdgOk.length : 0);
+  const wdgMax = wdgOk.length ? Math.max(...wdgOk.map((tg) => measured[tg])) : 0;
+  const wdgHot = wdgOk.length ? wdgOk.reduce((a, b) => (measured[b] > measured[a] ? b : a)) : WINDINGS[0];
 
   /* ---------------- FP-24 tyre migration (SW-KLN-01) ---------------- */
   {
@@ -127,8 +137,10 @@ export function evalKln(c: EvalContext): void {
   }
 
   /* ---------------- FP-27 scanner cross-check (SW-KLN-03) ---------------- */
+  // Scanner coverage is the scanner's own quality figure (not a Rev. 02 register point): its per-minute history.
+  const covHist = s.thermal.coverageHist ?? [];
   {
-    const cov5 = meanOf("STS-KLN-08", 5);
+    const cov5 = covHist.length ? covHist.slice(-5).reduce((a, b) => a + b, 0) / Math.min(5, covHist.length) : 100;
     const hand = s.manual["MAN-KLN-01"];
     const usable = hand && hand.comparable === true && t - hand.at <= HANDHELD_VALID ? (hand.points ?? []).filter((p) => p.gap !== null) : [];
     const worst = usable.reduce<(typeof usable)[number] | null>((w, p) => (!w || Math.abs(p.gap!) > Math.abs(w.gap!) ? p : w), null);
@@ -136,7 +148,7 @@ export function evalKln(c: EvalContext): void {
     if (cov5 < SHELL_COVERAGE_TARGET || handBad) {
       const parts: string[] = [];
       if (cov5 < SHELL_COVERAGE_TARGET)
-        parts.push(`Scanner coverage ${cov5.toFixed(1)} % < ${SHELL_COVERAGE_TARGET} % target${cov5 < SHELL_COVERAGE_ALARM ? ` (< ${SHELL_COVERAGE_ALARM} % alarm)` : ""}, grey area ${fmtSigned(ratePerH("STS-KLN-08"), 1)} %/h — the map reads low where the window is fouled`);
+        parts.push(`Scanner coverage ${cov5.toFixed(1)} % < ${SHELL_COVERAGE_TARGET} % target${cov5 < SHELL_COVERAGE_ALARM ? ` (< ${SHELL_COVERAGE_ALARM} % alarm)` : ""}, grey area ${fmtSigned((slope(covHist, 30) ?? 0) * 60, 1)} %/h — the map reads low where the window is fouled`);
       if (handBad)
         parts.push(
           `Handheld ${worst!.hand.toFixed(0)} °C vs scanner ${worst!.scan!.toFixed(0)} °C at ${worst!.m} m · ${worst!.angle}° (${fmtSigned(worst!.gap!, 0)} K, emissivity ${HANDHELD_EMISSIVITY.toFixed(2)} / ${SCANNER_EMISSIVITY.toFixed(2)} matched), round ${clockLabel(hand!.at)}, steady running kiln`,
@@ -144,16 +156,16 @@ export function evalKln(c: EvalContext): void {
       H(M, "SW-KLN-03", {
         severity: cov5 < SHELL_COVERAGE_ALARM ? "Critical" : "Alert",
         evidence: `${parts.join(" · ")} — cleaning advisory`,
-        tags: ["STS-KLN-08", "CAL-KLN-03", "MAN-KLN-01"],
+        tags: ["STS-KLN-08", "MAN-KLN-01"],
         stateRule: true,
       });
     }
   }
 
   /* ---------------- shell thermal map (D5 Table 9.5) ---------------- */
-  const scanOk = !scannerSuspect && good("CAL-KLN-03", "STS-KLN-08");
+  const scanOk = !scannerSuspect && good("STS-KLN-08");
   const hotI = Math.round(th.hotPos * 2);
-  const shellRate = ratePerH("CAL-KLN-03", 20);
+  const shellRate = ratePerH("STS-KLN-08", 20);
   const bz = good("TMP-KLN-14") ? meanRes("TMP-KLN-14", 10) : null;
   const bzTxt = bz === null ? "burning-zone pyrometer not valid" : `burning zone TMP-KLN-14 ${fmtSigned(bz, 0)} K vs model`;
   // FP-26 refractory hot spot (SW-KLN-04): local maximum ≥ model + 40 K, or rising > 15 K/h (provisional, D5 Table 9.5).
@@ -165,11 +177,11 @@ export function evalKln(c: EvalContext): void {
     // axial gradient, so the gradient is reported, not used to decide).
     const local = th.hotSpread >= 12;
     const r = th.hotResidual;
-    const max = measured["CAL-KLN-03"];
+    const max = measured["STS-KLN-08"];
     if (local && (r >= SHELL_HOT_DELTA || (shellRate > SHELL_RATE_WARN && r > 10))) {
       const toDanger = shellRate > 0.5 && max < SHELL_DANGER ? (SHELL_DANGER - max) / shellRate : null;
       // Time to danger with a range from the rate's uncertainty (rate over 20 vs 60 samples, at least ± 25 %).
-      const rate60 = ratePerH("CAL-KLN-03", 60);
+      const rate60 = ratePerH("STS-KLN-08", 60);
       const rLo = Math.max(0.5, Math.min(shellRate * 0.8, rate60));
       const rHi = Math.max(shellRate * 1.25, rate60);
       const ttd = toDanger === null ? "" : ` · danger ${SHELL_DANGER} °C in ${formatDuration(toDanger * 60)} (${formatDuration(((SHELL_DANGER - max) / rHi) * 60)}–${formatDuration(((SHELL_DANGER - max) / rLo) * 60)})`;
@@ -180,9 +192,9 @@ export function evalKln(c: EvalContext): void {
       H(M, "SW-KLN-04", {
         severity: max >= SHELL_DANGER || (max >= SHELL_ALERT && shellRate > SHELL_RATE_WARN) ? "Critical" : "Alert",
         evidence: `Shell max ${max.toFixed(0)} °C at ${th.hotPos.toFixed(1)} m · ${th.hotAngle}°, model ${th.hotModel.toFixed(0)} °C there: ${fmtSigned(r, 0)} K (D5 ≥ +${SHELL_HOT_DELTA} K or > ${SHELL_RATE_WARN} K/h) · local: ${th.hotSpread.toFixed(0)} K above its section mean, ${grad.toFixed(1)} K/m axial · rising ${fmtSigned(shellRate, 0)} K/h · ${th.areaAboveAlert.toFixed(1)} m² ≥ ${SHELL_ALERT} °C${dA}${ttd} · ${bzTxt}${bz !== null && bz > 25 ? " (hotter flame: coating loss likely)" : " (flame on model: lining loss likely)"}${handTxt}`,
-        tags: ["CAL-KLN-03", "STS-KLN-08", "MAN-KLN-01", "TMP-KLN-14"],
+        tags: ["STS-KLN-08", "MAN-KLN-01", "TMP-KLN-14"],
         subs: ["kln-shell"],
-        lead: { tag: "CAL-KLN-03", target: max < SHELL_DANGER ? SHELL_DANGER : SHELL_DANGER + 40 },
+        lead: { tag: "STS-KLN-08", target: max < SHELL_DANGER ? SHELL_DANGER : SHELL_DANGER + 40 },
       });
     }
   }
@@ -207,9 +219,9 @@ export function evalKln(c: EvalContext): void {
     H(M, "R-KLN-19", {
       severity: bandMax >= SHELL_ALERT ? "Critical" : "Alert",
       evidence: `Warm band ${wb.from.toFixed(1)}–${wb.to.toFixed(1)} m ${fmtSigned(wb.residual, 0)} K above the model around the whole circumference (broad, not a local spot), band max ${bandMax.toFixed(0)} °C${dHour === null ? "" : `, ${fmtSigned(dHour, 0)} K in the last hour`} · ${bzTxt} · burner air pressures on model (not flame impingement)`,
-      tags: ["CAL-KLN-03", "STS-KLN-08", "TMP-KLN-14"],
+      tags: ["STS-KLN-08", "TMP-KLN-14"],
       subs: ["kln-shell"],
-      lead: { tag: "CAL-KLN-03", target: SHELL_ALERT },
+      lead: { tag: "STS-KLN-08", target: SHELL_ALERT },
     });
   }
   // FP-18 ring vs mechanical drag: torque up with a cold band = ring; without, with winding and oil heating = drag.
@@ -218,18 +230,18 @@ export function evalKln(c: EvalContext): void {
     const tq = measured["ELE-KLN-01"];
     H(M, "R-KLN-14", {
       severity: ratio("ELE-KLN-01") >= 1.2 || tq >= 90 ? "Critical" : "Alert",
-      evidence: `Cold band ${cb.from.toFixed(1)}–${cb.to.toFixed(1)} m ${fmtSigned(cb.residual, 0)} K below the model across the whole circumference (transition zone) · torque ${tq.toFixed(0)} % (${fmtZ(zm("ELE-KLN-01"))}, ×${ratio("ELE-KLN-01").toFixed(2)} model) · winding ${fmtSigned(res("TMP-KLN-21"))} K, oil ${fmtSigned(res("TMP-KLN-15"))} K following the load`,
-      tags: ["CAL-KLN-03", "STS-KLN-08", "ELE-KLN-01"],
+      evidence: `Cold band ${cb.from.toFixed(1)}–${cb.to.toFixed(1)} m ${fmtSigned(cb.residual, 0)} K below the model across the whole circumference (transition zone) · torque ${tq.toFixed(0)} % (${fmtZ(zm("ELE-KLN-01"))}, ×${ratio("ELE-KLN-01").toFixed(2)} model) · windings ${fmtSigned(wdgNow())} K (mean of ${wdgOk.length}), oil ${fmtSigned(res("TMP-KLN-15"))} K following the load`,
+      tags: ["STS-KLN-08", "ELE-KLN-01"],
       subs: ["kln-shell", "kln-motor"],
       lead: { tag: "ELE-KLN-01", target: tq < 90 ? 90 : 105 },
     });
   }
-  if (!cb && good("ELE-KLN-01", "TMP-KLN-21", "TMP-KLN-15") && zm("ELE-KLN-01", 5) > 4 && res("TMP-KLN-21") > 4 && res("TMP-KLN-15") > 1.5) {
+  if (!cb && wdgOk.length >= 3 && good("ELE-KLN-01", "TMP-KLN-15") && zm("ELE-KLN-01", 5) > 4 && wdgNow() > 4 && res("TMP-KLN-15") > 1.5) {
     const tq = measured["ELE-KLN-01"];
     H(M, "R-KLN-10", {
-      severity: ratio("ELE-KLN-01") >= 1.2 || tq >= 90 || measured["TMP-KLN-21"] >= 130 ? "Critical" : "Alert",
-      evidence: `Torque ${tq.toFixed(0)} % (${fmtZ(zm("ELE-KLN-01", 5))}, ×${ratio("ELE-KLN-01").toFixed(2)} model) with winding +${res("TMP-KLN-21").toFixed(1)} K and oil +${res("TMP-KLN-15").toFixed(1)} K following · ${scanOk ? `no cold band on the shell map (30–36 m ${fmtSigned(c.shellResMean(30, 36), 0)} K)` : "shell map not valid: a ring cannot be ruled out"}`,
-      tags: ["ELE-KLN-01", "TMP-KLN-21", "TMP-KLN-15"],
+      severity: ratio("ELE-KLN-01") >= 1.2 || tq >= 90 || wdgMax >= 130 ? "Critical" : "Alert",
+      evidence: `Torque ${tq.toFixed(0)} % (${fmtZ(zm("ELE-KLN-01", 5))}, ×${ratio("ELE-KLN-01").toFixed(2)} model) with the motor windings +${wdgNow().toFixed(1)} K (mean of ${wdgOk.length}, hottest ${wdgHot} ${wdgMax.toFixed(0)} °C) and oil +${res("TMP-KLN-15").toFixed(1)} K following · cooling fan ${states["STS-KLN-14"]} · ${scanOk ? `no cold band on the shell map (30–36 m ${fmtSigned(c.shellResMean(30, 36), 0)} K)` : "shell map not valid: a ring cannot be ruled out"}`,
+      tags: ["ELE-KLN-01", ...wdgOk, "TMP-KLN-15"],
       subs: ["kln-motor", "kln-gearbox"],
       lead: { tag: "ELE-KLN-01", target: tq < 90 ? 90 : 105 },
     });
@@ -288,7 +300,8 @@ export function evalKln(c: EvalContext): void {
   // inlet gas together — the alternative cause D5 names, not air drawn in at the seal.
   const flameSteady = !good("TMP-KLN-14") || resStd("TMP-KLN-14", 15) < 2.5 * sig("TMP-KLN-14");
   if (states["STS-KLN-06"] === "OK" && good("GAS-KLN-01", "TMP-KLN-13") && meanRes("GAS-KLN-01", 5) / sig("GAS-KLN-01") > 3.5 && meanRes("TMP-KLN-13", 5) < -8 && steadyFeed && steadyCoal && flameSteady) {
-    const fa = measured["CAL-KLN-06"];
+    // Inlet false-air index: inlet O₂ above its feed- and coal-normalised model (computed here; no register value).
+    const fa = res("GAS-KLN-01");
     const ctx = [
       good("GAS-KLN-02") ? `CO ${measured["GAS-KLN-02"].toFixed(0)} ppm` : "CO not valid",
       good("GAS-KLN-03") ? `NOₓ ${measured["GAS-KLN-03"].toFixed(0)} ppm (${fmtSigned(res("GAS-KLN-03"), 0)} vs model)` : "NOₓ not valid",
@@ -297,8 +310,8 @@ export function evalKln(c: EvalContext): void {
     H(M, "SW-KLN-06", {
       severity: fa >= 1.0 ? "Critical" : "Alert",
       evidence: `O₂ +${res("GAS-KLN-01").toFixed(2)} vol% above the feed- and coal-normalised model (feed ${(measured["FLO-KFS-01"] + measured["FLO-KFS-02"]).toFixed(0)} t/h, coal ${measured["FLO-BRN-01"].toFixed(2)} t/h, both steady) with inlet ${Math.abs(res("TMP-KLN-13")).toFixed(0)} K below · false-air index ${fa.toFixed(2)} · analyser OK · context: ${ctx}`,
-      tags: ["GAS-KLN-01", "TMP-KLN-13", "PRS-KLN-01", "CAL-KLN-06", "GAS-KLN-02", "GAS-KLN-03"],
-      lead: { tag: "CAL-KLN-06", target: fa < 0.5 ? 0.5 : 1.0 },
+      tags: ["GAS-KLN-01", "TMP-KLN-13", "PRS-KLN-01", "GAS-KLN-02", "GAS-KLN-03"],
+      lead: { tag: "GAS-KLN-01", target: model["GAS-KLN-01"] + (fa < 0.5 ? 0.5 : 1.0) },
     });
   }
 
@@ -307,28 +320,28 @@ export function evalKln(c: EvalContext): void {
   const thrustRise = good("PRS-KLN-07") ? meanRes("PRS-KLN-07", 30) : 0;
   const thrustRising = thrustRise >= 3;
   {
-    let best: { tag: string; r: number; st: (typeof STATIONS)[number]; lev: string } | null = null;
+    let best: { tag: string; r: number; st: (typeof STATIONS)[number] } | null = null;
     for (const st of STATIONS) {
-      for (const [a, b, lev] of st.pairs) {
+      for (const [a, b] of st.pairs) {
         for (const [x, y] of [[a, b], [b, a]]) {
           if (!good(x, y)) continue;
           const r = meanRes(x, 5);
-          // D5 FP-21: single bearing heating fast with the bath level low; without the level switch only a fast
-          // heating (> 5 K/h over the hour) away from a rising thrust (skew, FP-22) counts.
-          const fast = !thrustRising && ratePerH(x, 60) > 5;
-          if (r > 6 && meanRes(y, 5) < 2.5 && (states[lev] === "LOW LEVEL" || fast) && (!best || r > best.r)) best = { tag: x, r, st, lev };
+          // D5 FP-21: single bearing heating fast (> 5 K/h over the hour) while its pair follows, away from a rising thrust
+          // (skew, FP-22). OSW-PE-SNL-PYR-01 Rev. 02 HP-05 removes the oil-level switches: the temperatures are the evidence.
+          // A bearing already well above its pair (> 10 K) stays the finding once it stops climbing.
+          const fast = !thrustRising && (ratePerH(x, 60) > 5 || r > 10);
+          if (r > 6 && meanRes(y, 5) < 2.5 && fast && (!best || r > best.r)) best = { tag: x, r, st };
         }
       }
     }
     if (best) {
-      const low = states[best.lev] === "LOW LEVEL";
       const rate = ratePerH(best.tag);
       H(M, "R-KLN-07", {
-        severity: low || rate > 10 || best.r > 14 || measured[best.tag] >= 75 ? "Critical" : "Alert",
-        evidence: `${best.tag} +${best.r.toFixed(1)} K above model, heating ${fmtSigned(rate, 1)} K/h, its pair follows · oil bath ${states[best.lev]} · thrust ${fmtSigned(thrustRise, 1)} bar vs model (not skew)`,
-        tags: [best.tag, best.lev],
+        severity: rate > 10 || best.r > 14 || measured[best.tag] >= ROLLER_LIMIT ? "Critical" : "Alert",
+        evidence: `${best.tag} +${best.r.toFixed(1)} K above model, heating ${fmtSigned(rate, 1)} K/h, its pair follows · thrust ${fmtSigned(thrustRise, 1)} bar vs model (not skew)`,
+        tags: [best.tag],
         subs: [best.st.sub],
-        lead: { tag: best.tag, target: measured[best.tag] < 75 ? 75 : BEARING_LIMIT },
+        lead: { tag: best.tag, target: measured[best.tag] < 70 ? 70 : ROLLER_LIMIT },
       });
     }
   }
@@ -336,8 +349,8 @@ export function evalKln(c: EvalContext): void {
   {
     let best: { a: string; b: string; split: number; st: (typeof STATIONS)[number] } | null = null;
     for (const st of STATIONS) {
-      for (const [a, b, lev] of st.pairs) {
-        if (!good(a, b) || states[lev] !== "LEVEL OK") continue;
+      for (const [a, b] of st.pairs) {
+        if (!good(a, b)) continue;
         const split = meanRes(a, 10) - meanRes(b, 10);
         if (Math.abs(split) > 10 && (!best || Math.abs(split) > Math.abs(best.split))) best = { a, b, split, st };
       }
@@ -346,11 +359,11 @@ export function evalKln(c: EvalContext): void {
       skew = true;
       const hot = best.split > 0 ? best.a : best.b;
       H(M, "R-KLN-15", {
-        severity: Math.abs(best.split) > 20 || measured[hot] >= BEARING_LIMIT ? "Critical" : "Alert",
-        evidence: `Station ${best.st.n} roller bearings ${best.a} / ${best.b} split ${Math.abs(best.split).toFixed(1)} K (> 10 K, ${hot} hotter) with both oil baths OK · thrust pressure ${measured["PRS-KLN-07"].toFixed(0)} bar, ${fmtSigned(thrustRise, 1)} bar above model over 30 min · axial ${measured["POS-KLN-01"].toFixed(1)} mm`,
+        severity: Math.abs(best.split) > 20 || measured[hot] >= ROLLER_LIMIT ? "Critical" : "Alert",
+        evidence: `Station ${best.st.n} roller bearings ${best.a} / ${best.b} split ${Math.abs(best.split).toFixed(1)} K (> 10 K, ${hot} hotter) · thrust pressure ${measured["PRS-KLN-07"].toFixed(0)} bar, ${fmtSigned(thrustRise, 1)} bar above model over 30 min · axial ${measured["POS-KLN-01"].toFixed(1)} mm`,
         tags: [best.a, best.b, "PRS-KLN-07", "POS-KLN-01"],
         subs: [best.st.sub, "kln-thrust"],
-        lead: { tag: hot, target: measured[hot] < 85 ? 85 : BEARING_LIMIT },
+        lead: { tag: hot, target: measured[hot] < 70 ? 70 : ROLLER_LIMIT },
       });
     }
   }
@@ -367,11 +380,11 @@ export function evalKln(c: EvalContext): void {
       if (!others.length || !others.every((o) => o.mean < 2)) continue;
       const hottest = m.tags.reduce((a, b) => (measured[b] > measured[a] ? b : a));
       H(M, "R-KLN-16", {
-        severity: m.mean > 15 || measured[hottest] >= BEARING_LIMIT ? "Critical" : "Alert",
+        severity: m.mean > 15 || measured[hottest] >= ROLLER_LIMIT ? "Critical" : "Alert",
         evidence: `All four station ${m.st.n} bearings warming: ${m.tags.map((tg, k) => `${tg.slice(-2)} ${fmtSigned(m.r[k])}`).join(", ")} K (mean ${fmtSigned(m.mean)} K) while stations ${others.map((o) => `${o.st.n} ${fmtSigned(o.mean)} K`).join(", ")} follow the model (ambient ${c.drivers.ambient.toFixed(1)} °C, speed in the model)`,
         tags: m.tags,
         subs: [m.st.sub],
-        lead: { tag: hottest, target: measured[hottest] < 85 ? 85 : BEARING_LIMIT },
+        lead: { tag: hottest, target: measured[hottest] < 70 ? 70 : ROLLER_LIMIT },
       });
       break;
     }
@@ -381,7 +394,7 @@ export function evalKln(c: EvalContext): void {
   {
     const groups: Array<[string, string, string, string]> = [
       ["VIB-KLN-01", "TMP-KLN-19", "kln-motor", "Motor DE"],
-      ["VIB-KLN-01", "TMP-KLN-20", "kln-motor", "Motor NDE"],
+      ["VIB-KLN-05", "TMP-KLN-20", "kln-motor", "Motor NDE"],
       ["VIB-KLN-02", "TMP-KLN-22", "kln-gearbox", "Gearbox input"],
       ["VIB-KLN-03", "TMP-KLN-23", "kln-gearbox", "Gearbox output"],
     ];
@@ -509,7 +522,7 @@ export function evalKln(c: EvalContext): void {
       H(M, "R-KLN-17", {
         severity: r26 > 50 || measured["TMP-KLN-26"] >= 400 || measured["TMP-KLN-25"] >= 180 || fanDown ? "Critical" : "Alert",
         evidence: `Sector-plate cooling air ${measured["TMP-KLN-25"].toFixed(0)} °C (${fmtSigned(r25)} K vs baseline, ${fmtSigned(ratePerH("TMP-KLN-25"), 1)} K/h) · cow shell ${measured["TMP-KLN-26"].toFixed(0)} °C (${fmtSigned(r26, 0)} K vs model) · outlet end 66–74 m ${scanOk ? `${fmtSigned(th.outletResidual, 0)} K on the shell map` : "shell map not valid"}${fan ? ` · outlet cooling fan ${fan}` : ""}${flame ? ` · burning zone also ${fmtSigned(bz!, 0)} K: check the flame length` : ""}`,
-        tags: ["TMP-KLN-25", "TMP-KLN-26", "CAL-KLN-03"],
+        tags: ["TMP-KLN-25", "TMP-KLN-26", "STS-KLN-08"],
         subs: ["kln-outlet"],
         lead: r26 > 25 ? { tag: "TMP-KLN-26", target: measured["TMP-KLN-26"] < 350 ? 350 : 400 } : { tag: "TMP-KLN-25", target: measured["TMP-KLN-25"] < 150 ? 150 : 180 },
       });
@@ -534,21 +547,21 @@ export function evalKln(c: EvalContext): void {
   {
     const bad: Array<{ tag: string; note: string }> = [];
     // Drive vibration ≈ 0 when stopped.
-    if (!kilnTurning) for (const tag of ["VIB-KLN-01", "VIB-KLN-02", "VIB-KLN-03", "VIB-KLN-04"]) if (measured[tag] > 0.5) bad.push({ tag, note: `${measured[tag].toFixed(2)} mm/s while the kiln is stopped` });
+    if (!kilnTurning) for (const tag of ["VIB-KLN-01", "VIB-KLN-05", "VIB-KLN-02", "VIB-KLN-03", "VIB-KLN-04"]) if (measured[tag] > 0.5) bad.push({ tag, note: `${measured[tag].toFixed(2)} mm/s while the kiln is stopped` });
     // Comparisons only in a comparable running state (D5 Table 9.4.2 operating mode): not while the operating point moves.
     if (kilnTurning && c.running[M] && !c.transient) {
       // Speed feedback matches the VFD reference: the drive vibration (∝ speed) is the witness.
       const ref = model["SPD-KLN-01"];
       const nM = meanOf("SPD-KLN-01", 3);
-      const vibs = ["VIB-KLN-01", "VIB-KLN-02", "VIB-KLN-03"].filter((tg) => good(tg));
+      const vibs = ["VIB-KLN-01", "VIB-KLN-05", "VIB-KLN-02", "VIB-KLN-03"].filter((tg) => good(tg));
       if (good("SPD-KLN-01") && ref > 0.5 && vibs.length >= 2) {
         const nVib = nM * median(vibs.map((tg) => ratio10(tg)));
         if (Math.abs(nM - ref) / ref > 0.05 && Math.abs(nVib - ref) / ref < 0.03)
           bad.push({ tag: "SPD-KLN-01", note: `speed ${nM.toFixed(2)} rpm vs VFD reference ${ref.toFixed(2)} rpm while drive vibration implies ${nVib.toFixed(2)} rpm` });
       }
       // Torque agrees with winding and oil temperature.
-      if (good("ELE-KLN-01", "TMP-KLN-21", "TMP-KLN-15") && hist("ELE-KLN-01").length >= 60 && zm("ELE-KLN-01", 30) > 4 && meanRes("TMP-KLN-21", 30) < 1 && meanRes("TMP-KLN-15", 30) < 0.5)
-        bad.push({ tag: "ELE-KLN-01", note: `torque ${fmtZ(zm("ELE-KLN-01", 30))} over 30 min with winding ${fmtSigned(meanRes("TMP-KLN-21", 30))} K and oil ${fmtSigned(meanRes("TMP-KLN-15", 30))} K flat` });
+      if (wdgOk.length >= 3 && good("ELE-KLN-01", "TMP-KLN-15") && hist("ELE-KLN-01").length >= 60 && zm("ELE-KLN-01", 30) > 4 && wdgRes(30) < 1 && meanRes("TMP-KLN-15", 30) < 0.5)
+        bad.push({ tag: "ELE-KLN-01", note: `torque ${fmtZ(zm("ELE-KLN-01", 30))} over 30 min with the windings ${fmtSigned(wdgRes(30))} K and oil ${fmtSigned(meanRes("TMP-KLN-15", 30))} K flat` });
       // Bearing pairs agree (DE / NDE, input / output) while the vibration is on its model.
       for (const [a, b, vib] of [["TMP-KLN-19", "TMP-KLN-20", "VIB-KLN-01"], ["TMP-KLN-22", "TMP-KLN-23", "VIB-KLN-02"]]) {
         if (!good(a, b, vib)) continue;
@@ -558,9 +571,16 @@ export function evalKln(c: EvalContext): void {
       // Pyrometer window clean: burning zone far below what the hood and burner explain.
       if (good("TMP-KLN-14", "TMP-KLN-27") && meanRes("TMP-KLN-14", 10) < -40 && Math.abs(meanRes("TMP-KLN-27", 10)) < 15 && steadyCoal && brnAirSteady)
         bad.push({ tag: "TMP-KLN-14", note: `${fmtSigned(meanRes("TMP-KLN-14", 10), 0)} K vs model with hood ${fmtSigned(meanRes("TMP-KLN-27", 10), 0)} K and burner on model (window dirty?)` });
-      // Inlet gas temperature above the C6 stage.
+      // Inlet gas temperature above the C6 riser duct gas (the calciner cools it).
       if (good("TMP-KLN-13", "TMP-PHC-06") && measured["TMP-KLN-13"] <= measured["TMP-PHC-06"])
-        bad.push({ tag: "TMP-KLN-13", note: `${measured["TMP-KLN-13"].toFixed(0)} °C not above C6 ${measured["TMP-PHC-06"].toFixed(0)} °C` });
+        bad.push({ tag: "TMP-KLN-13", note: `${measured["TMP-KLN-13"].toFixed(0)} °C not above the C6 riser duct ${measured["TMP-PHC-06"].toFixed(0)} °C` });
+      // The six windings agree (two per phase): one far from the others while they follow the torque.
+      if (wdgOk.length >= 4) {
+        const rs = wdgOk.map((tg) => [tg, meanRes(tg, 10)] as const);
+        const med = median(rs.map(([, r]) => r));
+        const odd = rs.filter(([, r]) => Math.abs(r - med) > 12);
+        if (odd.length === 1) bad.push({ tag: odd[0][0], note: `${fmtSigned(odd[0][1])} K vs model while the other windings sit at ${fmtSigned(med)} K` });
+      }
       // The LVDT moves while the thrust pressure cycles with the floating.
       if (posRange !== null && presRange !== null && posRange < 1 && presRange >= 4) bad.push({ tag: "POS-KLN-01", note: `static (${posRange.toFixed(1)} mm over 4 h) while thrust pressure cycles ${presRange.toFixed(0)} bar` });
     }

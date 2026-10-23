@@ -108,10 +108,10 @@ function useThemeKey(): string {
   useEffect(() => {
     const el = document.documentElement;
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const read = () => setKey(`${el.getAttribute("data-theme") ?? ""}|${el.className}|${mq.matches}`);
+    const read = () => setKey(`${el.getAttribute("data-theme") ?? ""}|${el.getAttribute("data-palette") ?? ""}|${el.className}|${mq.matches}`);
     read();
     const obs = new MutationObserver(read);
-    obs.observe(el, { attributes: true, attributeFilter: ["data-theme", "class"] });
+    obs.observe(el, { attributes: true, attributeFilter: ["data-theme", "data-palette", "class"] });
     mq.addEventListener("change", read);
     return () => {
       obs.disconnect();
@@ -567,7 +567,7 @@ const KilnElevation = memo(function KilnElevation({ status, maxZ }: { status: Se
       <rect x={XT(SHELL_LEN) + 6} y={SHELL_Y - 17} width={13} height={34} rx={2} fill={MX.heat} />
       <rect x={XT(SHELL_LEN) + 2} y={SHELL_Y + 50} width={24} height={GROUND - SHELL_Y - 50} {...PAINT.body} />
 
-      {/* CAL-KLN-03 pad at the hottest section */}
+      {/* Shell-maximum pad at the hottest section */}
       <MachinePad x={XT(maxZ)} y={SHELL_Y} status={status} scale={0.9} />
     </g>
   );

@@ -2,8 +2,8 @@
 
 /**
  * Photos, drawings or layouts of a plant or a machine, in Configure's Add /
- * Edit dialogs. A picked photo uploads straight away and Claude Code (Haiku)
- * draws it (asset_images → photo-drawings skill → diagrams); when the drawing
+ * Edit dialogs. A picked photo uploads straight away and Claude Code (the
+ * model chosen under the photos, ModelSwitch) draws it (asset_images → photo-drawings skill → diagrams); when the drawing
  * is ready its 2D sheet and 3D model are previewed here, with "Draw again" and
  * a note on what to change — all before the plant or machine is added.
  *
@@ -15,6 +15,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { FormNote } from "@/components/ui";
 import { resetDbDiagrams } from "@/components/assets/diagrams/db-diagrams";
 import { DrawingPreview } from "./drawing-preview";
+import { ModelSwitch } from "./model-switch";
 
 interface StoredImage {
   id: number;
@@ -243,6 +244,7 @@ export function PhotoPicker({
         {waiting > 0 && running && <i className="cfg-dot" aria-hidden="true" />}
         {status}
       </span>
+      {listing?.processor.available && <ModelSwitch onChange={() => void load()} />}
       {run?.status === "failed" && waiting > 0 && (
         <FormNote tone="bad">
           {run.error ?? "Drawing stopped with a problem."}{" "}

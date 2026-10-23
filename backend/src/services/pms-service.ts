@@ -65,7 +65,7 @@ async function machineCode(machineId: string): Promise<string> {
   return res.rows[0].code;
 }
 
-async function canApprove(userId: string | null): Promise<boolean> {
+export async function canApprove(userId: string | null): Promise<boolean> {
   if (!userId) return false;
   const res = await query<{ ok: boolean }>(
     "SELECT r.can_manage_work_orders AS ok FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = $1",

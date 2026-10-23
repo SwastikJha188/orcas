@@ -32,7 +32,7 @@ export const CCT_SCENARIOS: PyroScenario[] = list("PYR-CCT-01", [
     description: "FP-41, bearing temperature up with current high. The NDE bearing runs short of grease: it heats and the motor load rises before any vibration change.",
     effects: [
       { target: sig("TMP-HMR-02"), delta: 18, onsetMin: 5, rampMin: 300, shape: "accel" },
-      { target: sig("ELE-HMR-01"), delta: 10, onsetMin: 5, rampMin: 300, shape: "accel" },
+      { target: sig("ELE-HMR-01"), delta: 7.3, onsetMin: 5, rampMin: 300, shape: "accel" },
     ],
   },
   {
@@ -41,10 +41,9 @@ export const CCT_SCENARIOS: PyroScenario[] = list("PYR-CCT-01", [
     group: "Equipment fault",
     expected: ["R-HMR-02"],
     documentedDetection: "+0h 35m",
-    description: "FP-41, jam. A coating fall sends large clinker into the crusher: the rotor slows under load, the motor current climbs and the winding heats.",
+    description: "FP-41, jam. A coating fall sends large clinker into the crusher: the motor current climbs past its 100 % FLA set-point and the winding heats (OSW-PE-SNL-PYR-01 Rev. 02: the rotor has a zero-speed switch, no rpm).",
     effects: [
-      { target: sig("SPD-HMR-01"), delta: -30, onsetMin: 5, rampMin: 40, shape: "accel" },
-      { target: sig("ELE-HMR-01"), delta: 42, onsetMin: 5, rampMin: 40, shape: "accel" },
+      { target: sig("ELE-HMR-01"), delta: 33, onsetMin: 5, rampMin: 40, shape: "accel" },
       { target: sig("TMP-HMR-03"), delta: 18, onsetMin: 10, rampMin: 80, shape: "ramp" },
     ],
   },
@@ -66,8 +65,8 @@ export const CCT_SCENARIOS: PyroScenario[] = list("PYR-CCT-01", [
     group: "Sensor validation",
     expected: ["R-DQ-01"],
     documentedDetection: "+0h 03m",
-    description: "D5 5.7.6 speed matches run state. The independent rotor speed pickup fails to zero while the crusher motor still draws its running current: a mismatch with the operating state, not an underspeed.",
-    effects: [{ target: sig("SPD-HMR-01"), delta: -345, onsetMin: 2, rampMin: 0, shape: "step", sensor: true }],
+    description: "D5 5.7.6 speed matches run state. The rotor zero-speed switch reports the shaft stopped while the crusher motor still draws its running current: a mismatch with the operating state, not a stall.",
+    effects: [{ target: sig("SPD-HMR-01"), state: "STOPPED WHILE RUNNING", onsetMin: 2, rampMin: 0, shape: "step", sensor: true }],
   },
   {
     id: "hmr-de-pickup-loose",
@@ -102,11 +101,10 @@ export const CCT_SCENARIOS: PyroScenario[] = list("PYR-CCT-01", [
     group: "Equipment fault",
     expected: ["R-CSL-01"],
     documentedDetection: "+2h 43m",
-    description: "FP-43, overload. Seized pan rollers drag on the track: motor current climbs and the chain sags in speed.",
+    description: "FP-43, overload. Seized pan rollers drag on the track: motor current climbs, the winding heats with it and the head drive runs a little rougher.",
     effects: [
-      { target: sig("ELE-CSL-01"), delta: 24, onsetMin: 5, rampMin: 260, shape: "accel" },
-      { target: sig("SPD-CSL-01"), delta: -0.7, onsetMin: 5, rampMin: 260, shape: "accel" },
-      { target: sig("VIB-CSL-01"), delta: 0.4, onsetMin: 5, rampMin: 260, shape: "ramp" },
+      { target: sig("ELE-CSL-01"), delta: 28, onsetMin: 5, rampMin: 260, shape: "accel" },
+      { target: sig("VIB-CSL-02"), delta: 0.4, onsetMin: 5, rampMin: 260, shape: "ramp" },
     ],
   },
   {
@@ -117,8 +115,8 @@ export const CCT_SCENARIOS: PyroScenario[] = list("PYR-CCT-01", [
     documentedDetection: "+3h 03m",
     description: "FP-43, head-drive vibration. The head-drive gearbox bearings wear: drive vibration climbs and the motor works a little harder.",
     effects: [
-      { target: sig("VIB-CSL-01"), delta: 2.8, onsetMin: 5, rampMin: 360, shape: "accel" },
-      { target: sig("ELE-CSL-01"), delta: 6, onsetMin: 5, rampMin: 360, shape: "accel" },
+      { target: sig("VIB-CSL-02"), delta: 2.8, onsetMin: 5, rampMin: 360, shape: "accel" },
+      { target: sig("ELE-CSL-01"), delta: 6.1, onsetMin: 5, rampMin: 360, shape: "accel" },
     ],
   },
   {
@@ -139,8 +137,8 @@ export const CCT_SCENARIOS: PyroScenario[] = list("PYR-CCT-01", [
     group: "Sensor validation",
     expected: ["R-DQ-01"],
     documentedDetection: "+0h 03m",
-    description: "D5 5.8.6 tail speed matches drive. The tail-shaft pickup fails to zero while the head drive still carries its full load: a pickup fault, not a chain break.",
-    effects: [{ target: sig("SPD-CSL-01"), delta: -6.2, onsetMin: 2, rampMin: 0, shape: "step", sensor: true }],
+    description: "D5 5.8.6 tail speed matches drive. The tail zero-speed switch reports the shaft stopped while the head drive still carries its full load: a switch fault, not a chain break.",
+    effects: [{ target: sig("SPD-CSL-01"), state: "STOPPED WHILE RUNNING", onsetMin: 2, rampMin: 0, shape: "step", sensor: true }],
   },
   {
     id: "csl-bag-blinding",
@@ -150,8 +148,9 @@ export const CCT_SCENARIOS: PyroScenario[] = list("PYR-CCT-01", [
     documentedDetection: "+1h 50m",
     description: "FP-44, rising ΔP. Damp air blinds the silo bags: filter ΔP climbs beyond the pulse-cleaning cycle and the dust-fan current falls as the extraction flow chokes.",
     effects: [
-      { target: sig("PRS-CSL-01"), delta: 9, onsetMin: 5, rampMin: 360, shape: "ramp" },
-      { target: sig("ELE-CSL-02"), delta: -6, onsetMin: 5, rampMin: 360, shape: "ramp" },
+      // ΔP is calculated (inlet − outlet): the blinded cloth deepens the outlet suction.
+      { target: sig("PRS-CSL-03"), delta: -9, onsetMin: 5, rampMin: 360, shape: "ramp" },
+      { target: sig("ELE-CSL-02"), delta: -7.8, onsetMin: 5, rampMin: 360, shape: "ramp" },
     ],
   },
   {
@@ -162,8 +161,8 @@ export const CCT_SCENARIOS: PyroScenario[] = list("PYR-CCT-01", [
     documentedDetection: "+0h 22m",
     description: "FP-44, falling ΔP. A bag tears at its cuff: air bypasses the cloth, the filter ΔP drops below the cleaning cycle and the dust fan moves more air (current up). Dust leaves through the stack.",
     effects: [
-      { target: sig("PRS-CSL-01"), delta: -5, onsetMin: 5, rampMin: 40, shape: "settle" },
-      { target: sig("ELE-CSL-02"), delta: 3, onsetMin: 5, rampMin: 40, shape: "settle" },
+      { target: sig("PRS-CSL-03"), delta: 5, onsetMin: 5, rampMin: 40, shape: "settle" },
+      { target: sig("ELE-CSL-02"), delta: 3.9, onsetMin: 5, rampMin: 40, shape: "settle" },
     ],
   },
   {

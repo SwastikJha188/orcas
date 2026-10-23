@@ -8,10 +8,10 @@
  * the tyre across the left and right support rollers, every roller with its
  * bearing housings A and B and its oil bath.
  *
- * Every station repeats one pattern so the 18 station readings stay regular:
- * left roller — oil bath above, bearing A pad high on its housing (plate runs
- * right along the roller), bearing B pad low on its housing (plate runs left);
- * right roller — bearing A high, bearing B low, oil bath below.
+ * Every station repeats one pattern so the 12 bearing readings stay regular:
+ * bearing A pad high on its housing (plate runs right along the roller),
+ * bearing B pad low on its housing (plate runs left). The oil baths carry no
+ * sensor (Rev 02).
  */
 import React from "react";
 import { GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
@@ -38,17 +38,16 @@ const PLAN = {
   left: { cy: 361, bath: 322, a: 348, b: 374 },
   right: { cy: 516, bath: 555, a: 503, b: 529 },
   bath: { x: 77.5, w: 61.5, h: 11 },
-  /** Pad x: bearing A, bearing B, oil bath. */
+  /** Pad x: bearing A, bearing B. */
   padA: 56,
   padB: 235,
-  padBath: 108.3,
 };
 
 const TAGS = [
-  /** [L brg A, L brg B, L bath, R brg A, R brg B, R bath] per station. */
-  ["TMP-KLN-01", "TMP-KLN-02", "LEV-KLN-02", "TMP-KLN-03", "TMP-KLN-04", "LEV-KLN-03"],
-  ["TMP-KLN-05", "TMP-KLN-06", "LEV-KLN-04", "TMP-KLN-07", "TMP-KLN-08", "LEV-KLN-05"],
-  ["TMP-KLN-09", "TMP-KLN-10", "LEV-KLN-06", "TMP-KLN-11", "TMP-KLN-12", "LEV-KLN-07"],
+  /** [L brg A, L brg B, R brg A, R brg B] per station. */
+  ["TMP-KLN-01", "TMP-KLN-02", "TMP-KLN-03", "TMP-KLN-04"],
+  ["TMP-KLN-05", "TMP-KLN-06", "TMP-KLN-07", "TMP-KLN-08"],
+  ["TMP-KLN-09", "TMP-KLN-10", "TMP-KLN-11", "TMP-KLN-12"],
 ];
 const TYRE_TAGS = [
   ["MIG-KLN-01", "TMP-KLN-28"],
@@ -147,19 +146,17 @@ TYRE_TAGS.forEach(([mig, tt], i) => {
   callouts[mig] = [x + 12, MIG_Y, "start"];
   callouts[tt] = [x + 12, TT_Y, "start"];
 });
-TAGS.forEach(([la, lb, lbath, ra, rb, rbath], i) => {
+TAGS.forEach(([la, lb, ra, rb], i) => {
   const dx = DX[i];
-  const { padA, padB, padBath, left, right } = PLAN;
+  const { padA, padB, left, right } = PLAN;
   const put = (tag: string, x: number, y: number, side: "start" | "end") => {
     pads[tag] = [x + dx, y];
     callouts[tag] = [x + dx + (side === "start" ? 12 : -12), y, side];
   };
-  put(lbath, padBath, left.bath, "start");
   put(la, padA, left.a, "start");
   put(lb, padB, left.b, "end");
   put(ra, padA, right.a, "start");
   put(rb, padB, right.b, "end");
-  put(rbath, padBath, right.bath, "start");
 });
 
 export const sheet: LineSheetArt = { id: "K-6", ready: true, width: W, height: H, Art, pads, callouts };

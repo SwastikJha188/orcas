@@ -14,7 +14,9 @@ import type { EquipmentId, EquipmentState } from "../equipment";
  * recuperation (secondary air), `clinkerDraw` change of the cement-mill draw from the clinker silo (−1 = stopped),
  * `chainBreak` pan-conveyor chain broken (≥ 0.5: no transport, drive at no-load, tail shaft stopped, cooler backs up),
  * `pulseStop` baghouse pulse cleaning stopped (1: ΔP stops cycling and the cake adds ≈ 3 mbar), `coalSurge` coal
- * reaching the flame in surges after the weigh feeder (t/h, use an `osc` shape; the feeder FLO-BRN-01 stays steady).
+ * reaching the flame in surges after the weigh feeder (t/h, use an `osc` shape; the feeder FLO-BRN-01 stays steady),
+ * `scannerCoverage` shell scanner coverage lost to a fouled window (% of the shell in view; the scanner's own quality
+ * figure, not a register point).
  */
 export type PyroDriver =
   | "feed"
@@ -31,7 +33,8 @@ export type PyroDriver =
   | "clinkerDraw"
   | "chainBreak"
   | "pulseStop"
-  | "coalSurge";
+  | "coalSurge"
+  | "scannerCoverage";
 
 /**
  * Kiln shell field features (thermal map, RULES-B): `hotSpot` refractory hot spot at 52 m (local around the

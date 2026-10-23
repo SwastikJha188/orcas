@@ -34,7 +34,7 @@
    .pg-frame-body > .pg-analysis-section (Section). One gap token between
    all of them. (0,2,0) selectors so page-local gap rules cannot drift. */
 .pg-frame {
-  --pg-frame-gap: 16px;
+  --pg-frame-gap: var(--gap-section);
 }
 
 .ast-root.pg-frame,
@@ -75,8 +75,8 @@
   margin: 0;
   font-size: var(--fs-2xl);
   font-weight: 500;
-  line-height: 1.3;
-  letter-spacing: -0.005em;
+  line-height: var(--lh-snug);
+  letter-spacing: var(--tracking-heading);
   color: var(--dx-ink);
   white-space: nowrap;
 }
@@ -174,7 +174,7 @@
   font-size: var(--fs-6xl);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  line-height: 1.1;
+  line-height: var(--lh-tight);
   letter-spacing: -0.02em;
   color: var(--dx-ink, var(--page-fg));
   white-space: nowrap;
@@ -214,7 +214,7 @@
 
 .pg-frame-kpi-value.is-text {
   font-family: var(--font-ui);
-  letter-spacing: -0.01em;
+  letter-spacing: var(--tracking-heading);
 }
 
 /* Sentence in the UI face; wraps to a second line rather than cutting words off. */
@@ -224,7 +224,7 @@
   -webkit-line-clamp: 2;
   line-clamp: 2;
   font-size: var(--fs-sm);
-  line-height: 1.35;
+  line-height: var(--lh-snug);
   color: var(--text-muted);
   overflow: hidden;
   overflow-wrap: anywhere;
@@ -270,6 +270,7 @@
 .pg-analysis-title {
   margin: 0;
   font-size: var(--fs-xl);
+  letter-spacing: var(--tracking-heading);
   font-weight: 500;
   color: var(--dx-ink);
 }
@@ -345,6 +346,7 @@
 .pg-analysis-section-title {
   margin: 0;
   font-size: var(--fs-lg);
+  letter-spacing: var(--tracking-heading);
   font-weight: 500;
   color: var(--dx-ink);
 }
@@ -425,7 +427,7 @@
 .pg-analysis-prose {
   margin: 0;
   font-size: var(--fs-md);
-  line-height: 1.5;
+  line-height: var(--lh-body);
   color: var(--page-fg);
   max-width: 720px;
 }
@@ -453,7 +455,7 @@
   color: var(--text-muted);
   font-size: var(--fs-xs);
   font-weight: 400;
-  letter-spacing: 0;
+  letter-spacing: var(--tracking-small);
   text-transform: none;
   white-space: nowrap;
 }
@@ -559,12 +561,12 @@
 
 .pg-analysis-why-list {
   margin: 0;
-  padding-left: 18px;
+  padding-left: 16px;
   display: flex;
   flex-direction: column;
   gap: 4px;
   font-size: var(--fs-md);
-  line-height: 1.5;
+  line-height: var(--lh-body);
   color: var(--text-muted);
   max-width: 760px;
 }
@@ -597,7 +599,7 @@
   font-family: var(--font-mono);
   font-size: var(--fs-5xl);
   font-weight: 600;
-  line-height: 1.15;
+  line-height: var(--lh-tight);
   color: var(--dx-ink);
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
@@ -611,7 +613,8 @@
 .pg-analysis-fact-text {
   font-family: var(--font-ui);
   font-size: var(--fs-lg);
-  line-height: 1.3;
+  letter-spacing: var(--tracking-heading);
+  line-height: var(--lh-snug);
 }
 
 .pg-analysis-fact-foot {
@@ -641,6 +644,7 @@
 .pg-analysis-verdict-headline {
   min-width: 0;
   font-size: var(--fs-lg);
+  letter-spacing: var(--tracking-heading);
   font-weight: 500;
   color: var(--dx-ink);
   overflow: hidden;
@@ -702,7 +706,7 @@
   gap: 8px;
   font-size: var(--fs-xs);
   font-weight: 500;
-  letter-spacing: 0;
+  letter-spacing: var(--tracking-small);
   color: var(--text-muted);
 }
 
@@ -812,7 +816,7 @@
   gap: 8px 24px;
   margin: 0;
   font-size: var(--fs-md);
-  line-height: 1.45;
+  line-height: var(--lh-body);
 }
 
 .pg-analysis-dl dt {
@@ -845,6 +849,7 @@
 
 .pg-analysis-axis {
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   fill: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -947,6 +952,7 @@
 
 .pg-analysis-heat-label {
   font-size: var(--fs-2xs);
+  letter-spacing: var(--tracking-small);
   fill: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -1160,6 +1166,8 @@
 
   .ui-tiles.is-compact .ui-tile-value {
     font-size: var(--fs-3xl);
+    line-height: var(--lh-tight);
+    letter-spacing: var(--tracking-heading);
   }
 
   .ui-tiles.is-compact .ui-tile-facts {
@@ -1332,7 +1340,7 @@
 }
 
 .ui-tile-sub {
-  margin-top: -6px;
+  margin-top: -8px;
   font-size: var(--fs-sm);
   color: var(--text-muted);
   white-space: nowrap;
@@ -1345,7 +1353,7 @@
   font-size: var(--fs-5xl);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  line-height: 1.1;
+  line-height: var(--lh-tight);
   letter-spacing: -0.02em;
   color: var(--dx-ink, var(--page-fg));
   white-space: nowrap;
@@ -1402,6 +1410,7 @@
 
 .ui-tile-fact dt {
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -1577,6 +1586,8 @@
 /* Two-sided headline (now → target, before → after) stays readable in narrow tiles. */
 .pg-an-pair .ui-tile-value {
   font-size: var(--fs-3xl);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--tracking-heading);
 }
 
 /* Analysis › Mechanism: the rule-input matrix is narrow, so from desktop width
@@ -1621,6 +1632,7 @@
 
 .pg-an-issue-title {
   font-size: var(--fs-lg);
+  letter-spacing: var(--tracking-heading);
   font-weight: 600;
   color: var(--dx-ink);
 }
@@ -1732,7 +1744,7 @@
 }
 
 .pg-in-window-count {
-  margin-left: 6px;
+  margin-left: 8px;
   color: var(--text-muted);
   font-size: var(--fs-sm);
 }
@@ -1760,6 +1772,8 @@
 .pg-in-subject-title {
   margin: 0;
   font-size: var(--fs-2xl);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--tracking-heading);
   font-weight: 600;
   color: var(--dx-ink);
 }
@@ -1826,7 +1840,8 @@
   color: var(--text-muted);
   font-size: var(--fs-xs);
   font-weight: 500;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-caps);
+  word-spacing: var(--word-caps);
   text-transform: uppercase;
   white-space: nowrap;
   cursor: help;

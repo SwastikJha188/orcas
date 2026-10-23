@@ -3,7 +3,7 @@ import type { AssetMachine } from "../assets-data";
 import { liveMachineStatus, useKilnFleet, useKilnLiveStatus } from "@/providers/kiln-simulation-context";
 import { useKilnOps } from "@/providers/kiln-ops-context";
 import { toCondition, type Condition } from "@/components/ui/status";
-import { journalState } from "@shared/lib/alarm-journal";
+import { journalState, type ClearedAlarm } from "@shared/lib/alarm-journal";
 import type { SimFrame } from "@shared/lib/kiln-sim/engine";
 import { ackedFromEvents, dxSensorsFromFrame, type DxSensor } from "../diagnosis-model";
 import { buildSensorRows, diagnosisTotals, inDefinitionOrder, type SensorRow } from "../diagnosis-rows";
@@ -25,6 +25,9 @@ export interface LineMachine {
 export interface LineDiagnosisMachine extends LineMachine {
   sensors: DxSensor[];
   rows: SensorRow[];
+  /** Rules someone acknowledged, and cleared alarms nobody acknowledged. */
+  acked: Set<string>;
+  cleared: Map<string, ClearedAlarm>;
   totals: ReturnType<typeof diagnosisTotals>;
   inAlarm: number;
 }
@@ -55,13 +58,13 @@ export function useLineDiagnosis(machines: LineMachine[]): LineDiagnosisMachine[
     () =>
       machines.map((lm) => {
         const f = lm.frame;
-        if (!f) return { ...lm, sensors: [], rows: [], totals: diagnosisTotals(null, new Set(), []), inAlarm: 0 };
+        if (!f) return { ...lm, sensors: [], rows: [], acked: new Set<string>(), cleared: new Map<string, ClearedAlarm>(), totals: diagnosisTotals(null, new Set(), []), inAlarm: 0 };
         const sensors = inDefinitionOrder(dxSensorsFromFrame(f), f.defs);
         const journal = journalState(f, ops.journal[lm.m.id] ?? []);
         const acked = ackedFromEvents(f);
         for (const id of journal.acked) acked.add(id);
         const rows = buildSensorRows(sensors, f, acked, journal.cleared);
-        return { ...lm, sensors, rows, totals: diagnosisTotals(f, acked, sensors, journal.cleared), inAlarm: rows.filter((r) => r.inAlarm).length };
+        return { ...lm, sensors, rows, acked, cleared: journal.cleared, totals: diagnosisTotals(f, acked, sensors, journal.cleared), inAlarm: rows.filter((r) => r.inAlarm).length };
       }),
     [machines, ops.journal],
   );

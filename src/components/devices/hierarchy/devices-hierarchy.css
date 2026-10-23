@@ -34,6 +34,7 @@
   background: color-mix(in srgb, var(--signal-blue) 14%, transparent);
   color: var(--signal-blue);
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   font-weight: 600;
   line-height: 18px;
   flex-shrink: 0;
@@ -103,6 +104,7 @@
 
 .dv-value {
   font-size: var(--fs-lg);
+  letter-spacing: var(--tracking-heading);
   font-weight: 500;
   color: var(--dx-ink);
 }
@@ -344,6 +346,7 @@ button.dv-tile-head:hover {
   grid-area: type;
   color: var(--text-muted);
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -353,6 +356,7 @@ button.dv-tile-head:hover {
   grid-area: count;
   color: var(--text-muted);
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
 }
 
 .dv-chlist {
@@ -478,7 +482,7 @@ button.dv-tile-head:hover {
 .dv-setup-k {
   font-size: var(--fs-xs);
   font-weight: 500;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--tracking-small);
   color: var(--text-muted);
 }
 
@@ -525,14 +529,14 @@ button.dv-tile-head:hover {
   color: var(--dx-ink);
   font-family: var(--font-ui);
   font-size: var(--fs-sm);
-  line-height: 1.6;
+  line-height: var(--lh-loose);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
 .dv-setup-foot {
   font-size: var(--fs-sm);
-  line-height: 1.45;
+  line-height: var(--lh-body);
   color: var(--text-muted);
 }
 
@@ -729,7 +733,7 @@ button.dv-tile-head:hover {
   overflow: auto;
   font-family: var(--font-ui);
   font-size: var(--fs-sm);
-  line-height: 1.5;
+  line-height: var(--lh-body);
   color: var(--dx-ink);
   white-space: pre-wrap;
   overflow-wrap: anywhere;

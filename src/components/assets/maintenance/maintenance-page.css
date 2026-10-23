@@ -153,6 +153,7 @@
 .mt-sheet-title h3 {
   margin: 0 0 2px;
   font-size: var(--fs-xl);
+  letter-spacing: var(--tracking-heading);
   font-weight: 500;
   color: var(--dx-ink);
 }
@@ -165,6 +166,8 @@
 
 .mt-sheet-count {
   font-size: var(--fs-4xl);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--tracking-display);
   font-weight: 500;
   color: var(--dx-ink);
   white-space: nowrap;
@@ -291,13 +294,13 @@
   font-size: var(--fs-md);
   font-weight: 500;
   color: var(--dx-ink);
-  line-height: 1.35;
+  line-height: var(--lh-snug);
 }
 
 .mt-cp-check {
   font-size: var(--fs-md);
   color: var(--page-fg);
-  line-height: 1.45;
+  line-height: var(--lh-body);
 }
 
 .mt-cp-check .mt-step-label {
@@ -391,6 +394,11 @@
   background: var(--btn-primary-bg);
   border-color: var(--btn-primary-bg);
   color: var(--btn-primary-fg);
+}
+
+/* Ticking a box: the mark pops in rather than appearing. */
+.mt-check input:checked + span svg {
+  animation: ui-tick-in 200ms var(--ease-out);
 }
 
 .mt-check input:focus-visible + span {
@@ -574,7 +582,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 4px 12px 12px 46px;
+  padding: 4px 12px 12px 40px;
 }
 
 .mt-cp-form .ui-form-note,
@@ -599,7 +607,7 @@
   display: block;
   font-size: var(--fs-xs, 11px);
   font-weight: 500;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--tracking-heading);
   color: var(--text-muted);
 }
 
@@ -612,7 +620,7 @@
 .mt-step p {
   margin: 4px 0 0;
   font-size: var(--fs-md);
-  line-height: 1.5;
+  line-height: var(--lh-body);
   color: var(--page-fg);
 }
 
@@ -654,7 +662,7 @@
   margin: 0;
   font-size: var(--fs-md);
   color: var(--page-fg);
-  line-height: 1.45;
+  line-height: var(--lh-body);
 }
 
 @media (max-width: 720px) {

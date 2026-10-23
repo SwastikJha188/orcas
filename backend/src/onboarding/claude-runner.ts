@@ -53,7 +53,48 @@ interface RunRow {
   finished_at: Date | null;
 }
 
-const MODEL = process.env.ONBOARDING_MODEL || "claude-opus-5-5";
+/** Used only until the ai_models table answers (or when it is missing). */
+const FALLBACK_MODEL = process.env.ONBOARDING_MODEL || "claude-opus-5-5";
+
+export interface AiModel {
+  id: string;
+  label: string;
+  description: string;
+}
+
+/** The model the next run uses: the current row of ai_models (migration 060), cached for the sync status calls. */
+let currentModel: string | null = null;
+
+/** The models an administrator can choose from, and the current one. */
+export async function aiModels(): Promise<{ models: AiModel[]; current: string }> {
+  const res = await pool
+    .query<AiModel & { is_current: boolean }>("SELECT id, label, description, is_current FROM ai_models ORDER BY sort")
+    .catch(() => null);
+  const rows = res?.rows ?? [];
+  currentModel = rows.find((r) => r.is_current)?.id ?? rows[0]?.id ?? FALLBACK_MODEL;
+  return { models: rows.map(({ id, label, description }) => ({ id, label, description })), current: currentModel };
+}
+
+/** Makes `id` the model for the next runs (a run already going keeps its model). */
+export async function setAiModel(id: string): Promise<{ models: AiModel[]; current: string }> {
+  const known = await pool.query("SELECT 1 FROM ai_models WHERE id = $1", [id]);
+  if (!known.rowCount) throw new InputError(`Unknown model "${id}".`);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("UPDATE ai_models SET is_current = FALSE WHERE is_current");
+    await client.query("UPDATE ai_models SET is_current = TRUE WHERE id = $1", [id]);
+    await client.query("COMMIT");
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+  return aiModels();
+}
+
+const modelNow = () => currentModel ?? FALLBACK_MODEL;
 const MAX_MINUTES = Number(process.env.ONBOARDING_MAX_MINUTES || 60);
 const LOG_LINES = 80;
 const g = globalThis as typeof globalThis & { __onboardingRuns?: Map<string, ChildProcess> };
@@ -69,6 +110,7 @@ function claudeBin(): string | null {
 
 /** Whether this server may start Claude Code (local / dev, or ONBOARDING_PROCESSOR=claude-code). */
 export function processorStatus(): { available: boolean; reason: string | null; model: string } {
+  const MODEL = modelNow();
   if (process.env.ONBOARDING_PROCESSOR === "off") return { available: false, reason: "Reading uploads is switched off on this server.", model: MODEL };
   if (process.env.NODE_ENV === "production" && process.env.ONBOARDING_PROCESSOR !== "claude-code")
     return { available: false, reason: "This server does not run Claude Code; uploads are read by an onboarding session.", model: MODEL };
@@ -223,6 +265,7 @@ export async function startRunFor(subject: RunSubject, baseUrl: string): Promise
   if (!Number(waiting.rows[0].n)) throw new InputError("Nothing is waiting to be read.");
 
   const bin = claudeBin()!;
+  const { current: MODEL } = await aiModels();
   const ins = await pool.query<RunRow>(
     `INSERT INTO onboarding_runs (${subjectColumn(subject)}, model, last_step) VALUES ($1, $2, 'Starting Claude Code') RETURNING *`,
     [subject.id, MODEL],

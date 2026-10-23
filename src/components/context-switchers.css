@@ -150,7 +150,7 @@
   border-block-end: 1px solid var(--separator);
 }
 .ctx-menu-title { font-size: var(--fs-sm); font-weight: 500; color: var(--text-muted); flex: 1; }
-.ctx-menu-meta { font-family: inherit; font-size: var(--fs-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.ctx-menu-meta { font-family: inherit; font-size: var(--fs-xs); letter-spacing: var(--tracking-small); color: var(--text-muted); font-variant-numeric: tabular-nums; }
 
 .ctx-crumbs { flex-wrap: wrap; font-size: var(--fs-sm); }
 .ctx-crumb,
@@ -235,6 +235,7 @@
 .ctx-row-meta {
   font-family: inherit;
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;

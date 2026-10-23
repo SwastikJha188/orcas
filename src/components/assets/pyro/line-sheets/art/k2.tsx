@@ -3,7 +3,8 @@
  *
  * Drawn as the "GEAR TRAIN: MOTOR, GEARBOX, PINION AND GIRTH GEAR" panel of
  * the machine-group images (page 8, panel box 48.5, 105.5 – 811.5, 777): the
- * VFD main motor with its drive-health box, the flexible coupling, the main
+ * VFD main motor with its drive-health box (six stator winding RTDs, cooling
+ * fan under the NDE cowl), the flexible coupling, the main
  * gearbox, the output coupling and the pinion shaft between its two bearing
  * blocks, meshing with the girth gear on the kiln shell; each on its pier.
  */
@@ -104,40 +105,47 @@ function Art() {
 
 /**
  * Pad centre per point (sheet units = page units − panel corner), at the
- * panel's pads. Nudged so the plates of the crowded motor fit side by side:
- * drive-health box 3 up, NDE bearing 2.5 up, winding RTD to the right half of
- * the stator-sensor window.
+ * panel's pads: NDE bearing (vibration, temperature) and the cooling fan on
+ * the NDE cowl, the six winding RTDs in two rows across the stator, DE points
+ * on the drive end; gearbox and pinion as in the panel.
  */
+const WINDING_X = [118, 150, 182];
+const WINDING_Y = [312, 352];
 const pads: LineSheetArt["pads"] = {
+  "VIB-KLN-01": [243.3, 299.5],
+  "VIB-KLN-05": [69, 303],
+  "TMP-KLN-19": [243, 360],
+  "TMP-KLN-20": [69, 322],
+  ...Object.fromEntries([41, 42, 43, 44, 45, 46].map((n, i) => [`TMP-KLN-${n}`, [WINDING_X[i % 3], WINDING_Y[Math.floor(i / 3)]] as [number, number]])),
+  "STS-KLN-14": [69, 352],
   "STS-KLN-12": [84.5, 248],
   "ELE-KLN-01": [168, 267.5],
-  "VIB-KLN-01": [243.3, 299.5],
-  "TMP-KLN-20": [71, 307.5],
   "SPD-KLN-01": [44.5, 330.3],
-  "TMP-KLN-21": [184.5, 331.5],
-  "TMP-KLN-19": [243, 360],
   "VIB-KLN-02": [307.3, 262.7],
   "VIB-KLN-03": [428.7, 262.7],
+  "VIB-KLN-04": [530, 285.7],
   "TMP-KLN-22": [307, 364],
   "TMP-KLN-23": [428.5, 364],
-  "VIB-KLN-04": [530, 285.7],
 };
 
 /**
- * Plate side per point; the gearbox input-side pair (VIB-KLN-02 above,
- * TMP-KLN-22 below) stands off over / under the gearbox, as in the panel.
+ * Plate side per point; the NDE-end plates stack above the motor, the winding RTDs and the DE bearing
+ * temperature stack on the motor pier; the gearbox input-side pair (VIB-KLN-02 above, TMP-KLN-22 below)
+ * stands off over / under the gearbox, as in the panel.
  */
 const callouts: LineSheetArt["callouts"] = {
+  "VIB-KLN-01": [253, 299.5, "start"],
+  "VIB-KLN-05": [30, 150, "start"],
+  "TMP-KLN-19": [148, 408, "middle"],
+  "TMP-KLN-20": [30, 168, "start"],
+  ...Object.fromEntries([41, 42, 43, 44, 45, 46].map((n, i) => [`TMP-KLN-${n}`, [148, 426 + i * 18, "middle"] as [number, number, "middle"]])),
+  "STS-KLN-14": [30, 186, "start"],
   "STS-KLN-12": [95, 248, "start"],
   "ELE-KLN-01": [178, 267.5, "start"],
+  "SPD-KLN-01": [30, 204, "start"],
   "VIB-KLN-02": [307.3, 226, "middle"],
   "VIB-KLN-03": [438, 262.7, "start"],
   "VIB-KLN-04": [540, 285.7, "start"],
-  "VIB-KLN-01": [253, 299.5, "start"],
-  "TMP-KLN-20": [81, 307.5, "start"],
-  "SPD-KLN-01": [55, 330.3, "start"],
-  "TMP-KLN-21": [194, 331.5, "start"],
-  "TMP-KLN-19": [233, 360, "end"],
   "TMP-KLN-22": [307, 420, "middle"],
   "TMP-KLN-23": [438, 364, "start"],
 };

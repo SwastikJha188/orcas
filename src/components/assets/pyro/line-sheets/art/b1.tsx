@@ -213,18 +213,18 @@ function Art() {
 /** Pad centre per point (sheet units), as on group image 4A, left panel. */
 const pads: LineSheetArt["pads"] = {
   "CAM-BRN-01": [108, 68.5],
-  "PRS-BRN-03": [685.3, 148.3],
-  "PRS-BRN-01": [590.7, 222.5],
-  "PRS-BRN-02": [638, 229.3],
+  "PRS-BRN-01": [685.3, 148.3],
+  "PRS-BRN-02": [590.7, 222.5],
+  "PRS-BRN-03": [638, 229.3],
   "TMP-BRN-02": [84.5, 528],
 };
 
 /** Plate side per point (start = plate right of the pad, end = left); stand-off slot if both sides collide. */
 const callouts: LineSheetArt["callouts"] = {
   "CAM-BRN-01": [100, 40, "start"],
-  "PRS-BRN-03": [692, 118, "end"],
-  "PRS-BRN-01": [583, 200, "end"],
-  "PRS-BRN-02": [646, 262, "start"],
+  "PRS-BRN-01": [692, 118, "end"],
+  "PRS-BRN-02": [583, 200, "end"],
+  "PRS-BRN-03": [646, 262, "start"],
   "TMP-BRN-02": [96, 500, "start"],
 };
 

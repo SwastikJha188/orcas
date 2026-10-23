@@ -72,7 +72,8 @@ const holder = `${hostname()}:${process.pid}:${randomBytes(3).toString("hex")}`;
 // 12: part service lives from the database (SW-ALL-01); alarms issue maintenance checks.
 // 13: the limit engine publishes for every machine without a dedicated model.
 // 14: copies of the pyro line publish their kiln as a machine of its own (engine pyro-kln).
-const RUNNER_VERSION = 14;
+// 15: pyro line on the OSW-PE-SNL-PYR-01 Rev. 02 register (294 points; saved lines are migrated when thawed).
+const RUNNER_VERSION = 15;
 
 interface Runner {
   engines: FleetEngines | null;

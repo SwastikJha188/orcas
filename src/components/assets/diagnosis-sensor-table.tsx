@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { PillButton, StatusTag, Table, type Column } from "@/components/ui";
+import { PillButton, RestLine, StatusTag, Table, useFold, type Column } from "@/components/ui";
 import { ACTION, ALARM_STATE, validityTone } from "@/components/ui/status";
 import type { OpsWorkOrder } from "@/providers/kiln-ops-context";
 import { formatDuration, type SimFrame } from "@shared/lib/kiln-sim/engine";
@@ -12,8 +12,8 @@ import { twoSided, twoSidedValues } from "./sensor-gauge";
 /* ==========================================================================
    Diagnosis sensor table: one row per mapped sensor, fixed catalog order.
    Sensor · Part (hidden while one part is picked) · Reading check · Now · Last 6 h ·
-   Alarm limit · Possible problems · In alarm since · trailing actions (Acknowledge /
-   Create work order, shown on row hover or keyboard focus). Failure chance lives on
+   Alarm limit · Possible problems (each with its Acknowledge / Create work order, shown on
+   row hover or keyboard focus) · In alarm since. Failure chance lives on
    Prognosis. The tag opens Trends; each fault's Investigate → opens it in Analysis. A row is red
    while the sensor is beyond its alarm limit or is evidence for a raised fault; nothing
    else is coloured.
@@ -121,12 +121,16 @@ function FaultList({
   fmtClock,
   workOrders,
   onWhy,
+  onAcknowledge,
+  onWorkOrder,
 }: {
   faults: FaultCandidate[];
   fmtClock: (ms: number) => string;
   workOrders: OpsWorkOrder[] | null;
   /** Open the fault's mechanism on Analysis. */
   onWhy: (f: FaultCandidate) => void;
+  onAcknowledge: (ruleId: string) => void;
+  onWorkOrder?: (ruleId: string) => void;
 }) {
   if (!faults.length) return <span className="ast-muted">—</span>;
   return (
@@ -162,6 +166,7 @@ function FaultList({
                 </span>
               )}
             </span>
+            <FaultActions f={f} workOrders={workOrders} onAcknowledge={onAcknowledge} onWorkOrder={onWorkOrder} />
           </li>
         );
       })}
@@ -170,44 +175,37 @@ function FaultList({
 }
 
 /**
- * Trailing row actions: Acknowledge / Create work order per fault that needs one. Hidden
- * until the row is hovered or holds keyboard focus (always shown on touch); each button
- * names its fault for screen readers.
+ * A fault's actions: Acknowledge / Create work order when it needs one. Hidden until the row
+ * is hovered or holds keyboard focus (always shown on touch); the group names its fault for
+ * screen readers.
  */
 function FaultActions({
-  faults,
+  f,
   workOrders,
   onAcknowledge,
   onWorkOrder,
 }: {
-  faults: FaultCandidate[];
+  f: FaultCandidate;
   workOrders: OpsWorkOrder[] | null;
   onAcknowledge: (ruleId: string) => void;
   onWorkOrder?: (ruleId: string) => void;
 }) {
-  const items = faults.flatMap((f) => {
-    const raised = isRaised(f.state);
-    const ack = (raised || f.cleared) && !f.acknowledged;
-    const order = raised && Boolean(onWorkOrder) && !openWorkOrder(workOrders, f.ruleId);
-    return ack || order ? [{ f, ack, order }] : [];
-  });
-  if (!items.length) return null;
+  const raised = isRaised(f.state);
+  const ack = (raised || f.cleared) && !f.acknowledged;
+  const order = raised && Boolean(onWorkOrder) && !openWorkOrder(workOrders, f.ruleId);
+  if (!ack && !order) return null;
   return (
-    <span className="pg-dx-row-actions">
-      {items.map(({ f, ack, order }) => (
-        <span key={f.ruleId} className="pg-dx-fault-actions" role="group" aria-label={f.name}>
-          {ack && (
-            <PillButton variant="secondary" className="pg-diag-sm" title={`${ACTION.acknowledge}: ${f.name}`} onClick={() => onAcknowledge(f.ruleId)}>
-              {ACTION.acknowledge}
-            </PillButton>
-          )}
-          {order && onWorkOrder && (
-            <PillButton variant="secondary" className="pg-diag-sm" title={`${ACTION.workOrder}: ${f.name}`} onClick={() => onWorkOrder(f.ruleId)}>
-              {ACTION.workOrder}
-            </PillButton>
-          )}
-        </span>
-      ))}
+    <span className="pg-dx-fault-actions pg-dx-row-actions" role="group" aria-label={f.name}>
+      {ack && (
+        <PillButton variant="secondary" className="pg-diag-sm" title={`${ACTION.acknowledge}: ${f.name}`} onClick={() => onAcknowledge(f.ruleId)}>
+          {ACTION.acknowledge}
+        </PillButton>
+      )}
+      {order && onWorkOrder && (
+        <PillButton variant="secondary" className="pg-diag-sm" title={`${ACTION.workOrder}: ${f.name}`} onClick={() => onWorkOrder(f.ruleId)}>
+          {ACTION.workOrder}
+        </PillButton>
+      )}
     </span>
   );
 }
@@ -335,13 +333,15 @@ export function SensorDiagnosisTable({
           fmtClock={fmtClock}
           workOrders={workOrders}
           onWhy={(f) => onWhy(f, r.s.tag)}
+          onAcknowledge={onAcknowledge}
+          onWorkOrder={onWorkOrder}
         />
       ),
     },
     {
       key: "since",
       header: "In alarm since",
-      width: "130px",
+      width: "96px",
       render: (r) =>
         r.since !== null && fr(r) ? (
           <span className="ast-cell-stack ast-num">
@@ -352,13 +352,13 @@ export function SensorDiagnosisTable({
           <span className="ast-muted">—</span>
         ),
     },
-    {
-      key: "actions",
-      header: "",
-      width: "1%",
-      render: (r) => <FaultActions faults={r.faults} workOrders={workOrders} onAcknowledge={onAcknowledge} onWorkOrder={onWorkOrder} />,
-    },
   ];
+
+  // Sensors with a good reading inside their limits and nothing to act on fold into one line: a
+  // possible problem keeps its sensor in view only while raised, confirming, waiting to be
+  // acknowledged or showing signs. With one part picked, all of its sensors show.
+  const live = (f: FaultCandidate) => isRaised(f.state) || f.state === "confirming" || (f.cleared && !f.acknowledged) || f.matched > 0 || f.fired;
+  const fold = useFold(rows, (r) => !hidePart && !r.inAlarm && !r.faults.some(live) && r.s.severity === "Normal" && r.s.validity === "valid");
 
   // A column that is empty on every row says nothing: leave it out until a row fills it.
   const filled: Record<string, boolean> = {
@@ -366,7 +366,13 @@ export function SensorDiagnosisTable({
     where: !hidePart,
     faults: rows.some((r) => r.faults.length > 0),
     since: rows.some((r) => r.since !== null),
-    actions: rows.some((r) => r.faults.some((f) => isRaised(f.state) || f.cleared)),
   };
-  return <Table className="pg-dx-table" columns={cols.filter((c) => filled[c.key] ?? true)} data={rows} keyExtractor={rowKey ?? ((r) => r.s.tag)} />;
+  return (
+    <>
+      {fold.shown.length > 0 && (
+        <Table className="pg-dx-table" columns={cols.filter((c) => filled[c.key] ?? true)} data={fold.shown} keyExtractor={rowKey ?? ((r) => r.s.tag)} />
+      )}
+      <RestLine rest={fold.rest} shown={fold.shown.length} noun="sensor" note="good readings, inside their limits" open={fold.open} onToggle={fold.toggle} />
+    </>
+  );
 }

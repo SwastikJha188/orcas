@@ -7,8 +7,7 @@
  * the gas-sample probe at the throat with its sample line to the extractive
  * gas analyser (O₂ / CO / NOx cells and the status cell, stacked so each
  * reading runs along its own row), the inlet seal with false air drawn in at a
- * worn seal, and the kiln shell feed end. The inlet false-air index
- * (CAL-KLN-06, gateway calculation) sits on the seal.
+ * worn seal, and the kiln shell feed end.
  */
 import React from "react";
 import { Bolt, CornerBolts, GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
@@ -157,7 +156,6 @@ const pads: LineSheetArt["pads"] = {
   "STS-KLN-06": [CELL_X, ROWS[3]],
   "TMP-KLN-13": [75.5, 200.5],
   "PRS-KLN-01": [66, 307],
-  "CAL-KLN-06": [186.5, 255],
 };
 
 /** Plate side per point: every plate runs right, along its analyser row or across the chamber / shell. */
@@ -168,7 +166,6 @@ const callouts: LineSheetArt["callouts"] = {
   "STS-KLN-06": [CELL_X + 12, ROWS[3], "start"],
   "TMP-KLN-13": [87, 200.5, "start"],
   "PRS-KLN-01": [78, 307, "start"],
-  "CAL-KLN-06": [198, 255, "start"],
 };
 
 export const sheet: LineSheetArt = { id: "K-1", ready: true, width: W, height: H, Art, pads, callouts };

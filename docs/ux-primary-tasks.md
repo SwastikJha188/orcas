@@ -13,7 +13,9 @@ Everything else on the screen is secondary and ranks below it (Hick, Occam, Visu
 | Assets › Analysis | Engineer | Understand why one problem is happening and what it affects. | Mark the cause / send to maintenance |
 | Assets › Sensors | Instrument technician | Check every sensor's reading quality and wiring. | Open a sensor's history |
 | Maintenance | Maintenance planner | Decide and schedule the next jobs. | Plan a job / open a work order |
+| Maintenance › Shutdown | Shutdown coordinator | Run one planned stop of the line from plan to restart: the right work, ready, locked off, done, signed off. | The shutdown's next step (Approve → Start → Start the work → Approve the restart → Close) |
 | AssetIQ | Anyone | Ask a question about the plant and get a direct answer. | Send the question |
+| POLYCRON | Engineer / knowledge steward | Trace direct connections in one graph, open object and link details, then stage another document for review. | Add documents |
 | Devices | Instrument / IT technician | Find where sensor data stops reaching ULTRON and fix the link. | Connect a data collector |
 | Configure | Plant administrator | Add and edit plants, machines, people and settings. | Add plant / machine |
 | Configure › Onboarding | Plant administrator | Bring a new plant in from its documents, step by step, to a working plant. | Next step → Create the plant |

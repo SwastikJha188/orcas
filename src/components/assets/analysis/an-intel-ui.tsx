@@ -24,12 +24,12 @@ export function Step({ n, title, right, children }: { n: number; title: string; 
   return (
     <section id={id} className="ast-card pg-analysis-section pg-in-step" aria-labelledby={`${id}-title`}>
       <header className="pg-analysis-section-head">
-        <h3 id={`${id}-title`} className="pg-analysis-section-title pg-in-step-title">
+        <h2 id={`${id}-title`} className="pg-analysis-section-title pg-in-step-title">
           <span className="pg-in-step-n" aria-hidden="true">
             {n}
           </span>
           {title}
-        </h3>
+        </h2>
         {right && <div className="pg-analysis-section-right">{right}</div>}
       </header>
       <div className="pg-analysis-section-body">{children}</div>

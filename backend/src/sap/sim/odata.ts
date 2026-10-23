@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { query } from "@backend/db";
 import { SIM_TOKEN_PATH as TOKEN_PATH } from "./origin";
-import { SimODataError, advanceSapSim, secretHash, simCreateMeasurementDocument, simCreateNotification, simRow, type SimRow } from "./engine";
+import { SimODataError, advanceSapSim, secretHash, simCreateMaintenanceOrder, simCreateMeasurementDocument, simCreateNotification, simRow, type SimRow } from "./engine";
 
 /**
  * The SAP simulator's front door: answers `fetch`-style requests to
@@ -12,7 +12,7 @@ import { SimODataError, advanceSapSim, secretHash, simCreateMeasurementDocument,
  *   GET  <resource path>[?$top&$skiptoken]  OData V2 (`d.results`, `/Date()/`)
  *                                        or V4 (`value`) like the real API
  *   GET  with x-csrf-token: Fetch         → a CSRF token for the next write
- *   POST notifications, measurement documents
+ *   POST notifications, measurement documents, maintenance orders
  *
  * Every answer waits the plant's latency; a share of them fail like an
  * overloaded SAP (503), and the "slow" API times out (504).
@@ -311,6 +311,7 @@ export async function handleSimRequest(plantId: string, request: Request): Promi
     try {
       if (resource === "notifications") return json(201, await simCreateNotification(plantId, body, s.client_id));
       if (resource === "measurementDocuments") return json(201, await simCreateMeasurementDocument(plantId, body));
+      if (resource === "maintenanceOrders") return json(201, await simCreateMaintenanceOrder(plantId, body));
       return sapError(405, "Create is not supported for this entity set");
     } catch (error) {
       if (error instanceof SimODataError) return sapError(error.status, error.message);

@@ -19,9 +19,9 @@
 .dvp-fact {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
-  padding: 14px 20px;
+  padding: 12px 20px;
   border-inline-start: 1px solid var(--separator);
   border-block-start: 1px solid var(--separator);
 }
@@ -50,7 +50,7 @@
 .dvp-fact-value {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
   font-size: var(--fs-md);
   font-weight: 500;
@@ -131,6 +131,19 @@
 /* Long names wrap and long second lines end in an ellipsis, instead of widening the table. */
 .dvp-racks .ast-cell-stack {
   max-inline-size: 220px;
+}
+
+/* The machine a rack feeds gets room for its name; the rack's camera / node line gives way. */
+.dvp-racks td[data-col="rack"] .ast-cell-stack {
+  max-inline-size: 152px;
+}
+
+.dvp-racks td[data-col="machine"] .ast-cell-stack {
+  min-inline-size: 168px;
+}
+
+.dvp-racks th[data-col="channels"] {
+  white-space: normal;
 }
 
 .dvp-table .ast-cell-stack > .ast-cell-title {
@@ -216,6 +229,7 @@
   background: color-mix(in srgb, var(--signal-blue) 14%, transparent);
   color: var(--signal-blue);
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   font-weight: 600;
 }
 

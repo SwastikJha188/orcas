@@ -1,10 +1,13 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { PillNav, Table, type Column, Loading } from "@/components/ui";
+import { NextActions, PillNav, Table, type Column, Loading } from "@/components/ui";
+import { usePmsLine } from "@/components/maintenance/pms-model";
+import { prognosisActions } from "../next-actions-model";
+import { buildRecs } from "../prognosis/prog-maintenance";
 import { StatusTag } from "@/components/assets/assets-shell-ui";
 import { useIndustrialData } from "@/providers/industrial-data-context";
-import { useHealthBands } from "@/lib/reference-data";
+import { useHealthBands, useWorkOrderPriorities } from "@/lib/reference-data";
 import { defsFor } from "@/lib/live-defs";
 import type { AssetMachine } from "../assets-data";
 import { KpiStrip, PageHeader, Section, type KpiItem } from "../analysis/an-ui";
@@ -119,6 +122,29 @@ export function LinePrognosis({ units, names }: { units: AssetMachine[]; names: 
 
   const alarmRows = forecasts.filter(reachesAlarm);
 
+  // Next actions: each machine's forecast work and readings heading for an alarm, soonest first.
+  const pms = usePmsLine();
+  const priorities = useWorkOrderPriorities();
+  const next = useMemo(
+    () =>
+      units.flatMap((m) => {
+        const d = ins.byMachine[m.id];
+        if (!d) return [];
+        return prognosisActions({
+          machineId: m.id,
+          machineLabel: names[m.id] ?? m.name,
+          recs: buildRecs(d.prognosis, d.analysis, rulRows(d.prognosis, d.analysis), priorities),
+          alarms: signalForecastRows(d.prognosis, defsFor(m.id)).filter(reachesAlarm),
+          pms,
+          openTrend: (tag) => {
+            focusSensorOn("trends", tag);
+            navigateToMachine(m.id, "trends");
+          },
+        });
+      }),
+    [units, ins.byMachine, names, priorities, pms, navigateToMachine],
+  );
+
   const openLife = (x: LifeRow) => {
     focusLayer({ ruleId: null, component: x.r.name, section: "prog-life" });
     navigateToMachine(x.machine.id, "prognosis");
@@ -181,6 +207,12 @@ export function LinePrognosis({ units, names }: { units: AssetMachine[]; names: 
       ) : (
         <>
           <KpiStrip page items={kpis} label="Full line forecast summary" />
+
+          {next.length > 0 && (
+            <Section id="prog-next" title="Next actions">
+              <NextActions items={next} />
+            </Section>
+          )}
 
           <Section id="prog-life" title="Time left before repair">
             {life.length ? (

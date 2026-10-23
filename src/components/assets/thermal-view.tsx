@@ -13,10 +13,12 @@
  *             with an engine scan history (pyro line), change since the last validated scan and the last shift
  *   Hot spots ranked R-SHL-01 regions → circumferential plot and trend of the selected section
  *   Rules     `defs.thermalRules` states (kiln fleet: R-SHL-01, R-SHL-02, R-DQ-01) → Diagnosis
- *   Scanner   STS-KLN-08 coverage, data validity, handheld record (if any), map timing → Sensors
+ *   Scanner   coverage (KLN fleet: STS-KLN-08; pyro line: the scanner's own quality figure), data validity,
+ *             handheld record (if any), map timing → Sensors
  *
  * Self-contained: takes only `machine`, reads its own live plant through
- * `useKilnSimulationFor`. The map's hottest cell is exactly CAL-KLN-03.
+ * `useKilnSimulationFor`. The map's hottest cell is exactly the shell-maximum tag (KLN fleet CAL-KLN-03; pyro line
+ * STS-KLN-08, OSW-PE-SNL-PYR-01 Rev. 02: the scanner's shell maximum and its position in one reading).
  */
 
 import React, { useMemo, useState } from "react";
@@ -68,6 +70,7 @@ import {
   fmt1,
   hiddenBreakdown,
   ruleStage,
+  shellTagsOf,
   signed,
   tempTone,
   thermalLimits,
@@ -209,10 +212,11 @@ function ThermalPage({ machine, simulation }: { machine: AssetMachine; simulatio
   // Pyro line: shell-temperature deviation only (D4 ENGINEERING LIMITATION 3); thresholds and derived values per D5
   // Tables 5.4.7a / 9.2 / 9.5, from the engine's thermal-map processing (`frame.shellThermal`).
   const pyro = defs.plant === "pyro";
+  const { maxTag, covTag } = shellTagsOf(defs.plant);
   // Shell maximum / scanner coverage limits and reference band from the DB measurements.
   const { byTag: measurements } = useMachineMeasurements(machine.id);
-  const shellMaxDb = measurements.get("CAL-KLN-03") ?? null;
-  const coverageDb = measurements.get("STS-KLN-08") ?? null;
+  const shellMaxDb = measurements.get(maxTag) ?? null;
+  const coverageDb = covTag ? (measurements.get(covTag) ?? null) : null;
   const lim = useMemo(() => thermalLimits(pyro, { shellMax: shellMaxDb, coverage: coverageDb }), [pyro, shellMaxDb, coverageDb]);
   const th = frame.shellThermal ?? null;
   // Map shown: live, or one of the maps kept around a finding (D5 Table 9.5: map snapshot attached to each finding).
@@ -223,23 +227,24 @@ function ThermalPage({ machine, simulation }: { machine: AssetMachine; simulatio
     ? (snapEntry.maps.find((x) => x.t === snapT) ?? snapEntry.maps.reduce((a, b) => (Math.abs(b.t - snapEntry.since) < Math.abs(a.t - snapEntry.since) ? b : a), snapEntry.maps[0]) ?? null)
     : null;
   const live = snapMap === null;
-  const shellMax = frame.signals["CAL-KLN-03"];
-  const coverageSig = frame.signals["STS-KLN-08"];
+  const shellMax = frame.signals[maxTag];
+  const coverageSig = covTag ? frame.signals[covTag] : undefined;
+  const covValue = covTag ? coverageSig?.value : th?.coverage;
   const torque = frame.signals["ELE-KLN-01"];
   const speed = defs.speedTag ? frame.signals[defs.speedTag] : undefined;
-  const shellSystem = defs.signalByTag["CAL-KLN-03"]?.system ?? "";
+  const shellSystem = defs.signalByTag[maxTag]?.system ?? "";
   // Thermal rules of this machine: the first is its hot-spot / refractory rule.
   const ruleIds = defs.thermalRules;
   const hotRuleId = ruleIds[0] ?? null;
   // Handheld scan of the shell, recorded by hand (manual record), if the machine has one.
-  const manualDef = defs.signals.find((d) => d.origin === "manual" && d.sub === defs.signalByTag["CAL-KLN-03"]?.sub) ?? null;
+  const manualDef = defs.signals.find((d) => d.origin === "manual" && d.sub === defs.signalByTag[maxTag]?.sub) ?? null;
 
   const map = useMemo(
     () =>
       snapMap
         ? buildShellMap(snapMap.profile, snapMap.model, snapMap.coverage, snapMap.t, snapMap.local)
-        : buildShellMap(frame.shellProfile, frame.shellModel, coverageSig?.value ?? SHELL_NORMAL_COVERAGE, frame.t, th?.local ?? null),
-    [snapMap, frame.shellProfile, frame.shellModel, coverageSig?.value, frame.t, th?.local],
+        : buildShellMap(frame.shellProfile, frame.shellModel, covValue ?? SHELL_NORMAL_COVERAGE, frame.t, th?.local ?? null),
+    [snapMap, frame.shellProfile, frame.shellModel, covValue, frame.t, th?.local],
   );
   // Map colours span the coolest to hottest visible cell; the legend shows the same range.
   const range = useMemo(() => heatRange(map), [map]);
@@ -261,7 +266,7 @@ function ThermalPage({ machine, simulation }: { machine: AssetMachine; simulatio
   const scanCmp = useMemo(() => (frame.shellScans ? zoneScanDeltas(frame.shellScans, SHELL_ZONES) : null), [frame.shellScans]);
 
   const status: Severity = shellMax?.status ?? "Normal";
-  const coverage = coverageSig?.value ?? map.coverage;
+  const coverage = covValue ?? map.coverage;
   const covTone = worst(coverageTone(coverage, lim.coverage), SEV_TONE[coverageSig?.status ?? "Normal"]);
   const slope = shellMax?.slopePerHour ?? null;
   const ttl = shellMax?.timeToLimit && shellMax.timeToLimit !== "—" ? shellMax.timeToLimit : null;
@@ -275,13 +280,13 @@ function ThermalPage({ machine, simulation }: { machine: AssetMachine; simulatio
   const shellRule = (hotRuleId && rulesById.get(hotRuleId)) || null;
   const thermalRules = useMemo(() => {
     // Pyro line: every rule that reads the shell map or the scanner is listed, quiet or not.
-    const shellInputs = pyro ? defs.rules.filter((d) => !ruleIds.includes(d.id) && d.inputs.some((tg) => tg === "CAL-KLN-03" || tg === "STS-KLN-08")).map((d) => d.id) : [];
+    const shellInputs = pyro ? defs.rules.filter((d) => !ruleIds.includes(d.id) && d.inputs.some((tg) => tg === maxTag || tg === covTag)).map((d) => d.id) : [];
     const ids = [...ruleIds, ...shellInputs];
     const base = ids.map((id) => rulesById.get(id)).filter((r): r is RuleState => Boolean(r));
-    const shellTags = new Set(["CAL-KLN-03", "STS-KLN-08", ...(manualDef ? [manualDef.tag] : [])]);
+    const shellTags = new Set([maxTag, ...(covTag ? [covTag] : []), ...(manualDef ? [manualDef.tag] : [])]);
     const extra = frame.rules.filter((r) => !ids.includes(r.id) && r.status !== "QUIET" && r.tags.some((t) => shellTags.has(t)));
     return [...base, ...extra];
-  }, [frame.rules, rulesById, ruleIds, manualDef, pyro, defs.rules]);
+  }, [frame.rules, rulesById, ruleIds, manualDef, pyro, defs.rules, maxTag, covTag]);
   const openRules = thermalRules.filter((r) => r.status !== "QUIET");
 
   /* Hot-spot rows with persistence and growth (hottest: engine; others: page history). */
@@ -319,12 +324,12 @@ function ThermalPage({ machine, simulation }: { machine: AssetMachine; simulatio
 
   const selTrend = useMemo<{ samples: TrendSample[]; source: string }>(() => {
     if (selI === map.maxI) {
-      const h = frame.history["CAL-KLN-03"] ?? [];
-      const mh = frame.modelHistory["CAL-KLN-03"] ?? [];
+      const h = frame.history[maxTag] ?? [];
+      const mh = frame.modelHistory[maxTag] ?? [];
       const n = Math.min(h.length, TREND_MIN);
       const out: TrendSample[] = [];
       for (let i = h.length - n; i < h.length; i++) out.push({ t: simTimeMs(frame.t - (h.length - 1 - i)), v: h[i], b: mh[i] });
-      return { samples: out, source: "CAL-KLN-03 · hottest point" };
+      return { samples: out, source: `${maxTag} · hottest point` };
     }
     const m = map.model[selI];
     const out: TrendSample[] = [];
@@ -342,7 +347,7 @@ function ThermalPage({ machine, simulation }: { machine: AssetMachine; simulatio
       if (v != null) out.push({ t: simTimeMs(s.t), v, b: m });
     }
     return { samples: out, source: `${selZ.toFixed(1)} m · since page opened` };
-  }, [selI, map.maxI, map.model, frame.history, frame.modelHistory, frame.shellScans, frame.t, history, selZ]);
+  }, [selI, map.maxI, map.model, frame.history, frame.modelHistory, frame.shellScans, frame.t, history, selZ, maxTag]);
 
   /* Overall state. */
   const rateTone: Tone = slope !== null && lim.rateWarn !== null && slope > lim.rateWarn ? "warn" : "good";
@@ -428,11 +433,11 @@ function ThermalPage({ machine, simulation }: { machine: AssetMachine; simulatio
         status={{ label: machineCondition, tone: conditionTone(machineCondition) }}
         meta={[
           { label: "Hottest", value: `${map.maxZ.toFixed(1)} m along the kiln · ${map.maxAngle}° round · ${hotZone}${live ? "" : " (saved map)"}` },
-          { label: "Scanner reading", value: qualityWord(coverageSig?.quality) },
+          { label: "Scanner reading", value: qualityWord((coverageSig ?? shellMax)?.quality) },
           { label: "Last scan", value: lastScan },
         ]}
         actions={
-          <PillButton variant="secondary" onClick={() => openTrend("CAL-KLN-03")} title={`CAL-KLN-03 · ${defs.signalByTag["CAL-KLN-03"]?.name ?? ""}`}>
+          <PillButton variant="secondary" onClick={() => openTrend(maxTag)} title={`${maxTag} · ${defs.signalByTag[maxTag]?.name ?? ""}`}>
             History of the hottest point
           </PillButton>
         }
@@ -649,7 +654,7 @@ function ThermalPage({ machine, simulation }: { machine: AssetMachine; simulatio
               variant="secondary"
               className="pg-analysis-link"
               onClick={() => {
-                focusSensorOn("sensors", "STS-KLN-08");
+                focusSensorOn("sensors", covTag ?? maxTag);
                 go("sensors");
               }}
             >
@@ -1027,23 +1032,25 @@ function ScannerHealth({
   manualTag: string | null;
   timeZone: string | undefined;
 }) {
-  const cov = frame.signals["STS-KLN-08"];
-  const cal = frame.signals["CAL-KLN-03"];
+  const { maxTag, covTag } = shellTagsOf(frame.defs.plant);
+  const cov = covTag ? frame.signals[covTag] : undefined;
+  const cal = frame.signals[maxTag];
   const man = manualTag ? frame.signals[manualTag] : undefined;
   const manDef = manualTag ? frame.defs.signalByTag[manualTag] : undefined;
-  const covDef = frame.defs.signalByTag["STS-KLN-08"];
+  const covDef = frame.defs.signalByTag[covTag ?? maxTag];
   // Latest matched handheld record (newest first), D4 Table 6.4 fields.
   const rec = manualTag ? (frame.records?.find((r) => r.tag === manualTag) ?? null) : null;
   const recField = (rx: RegExp) => rec?.fields.find((f) => rx.test(f.label))?.value ?? null;
   const recDate = rec ? formatLocalTime(simTimeMs(rec.t), { date: true, seconds: false, timeZone }) : null;
   const qTone = (q: string | undefined): Tone => (!q || q === "Good" ? "good" : validityTone(q));
   const trend = useMemo<TrendSample[]>(() => {
-    const h = frame.history["STS-KLN-08"] ?? [];
+    // Pyro line: coverage is the scanner's own quality figure (frame.shellThermal), not a register point.
+    const h = covTag ? (frame.history[covTag] ?? []) : (frame.shellThermal?.coverageHist ?? []);
     const n = Math.min(h.length, TREND_MIN);
     const out: TrendSample[] = [];
     for (let i = h.length - n; i < h.length; i++) out.push({ t: simTimeMs(frame.t - (h.length - 1 - i)), v: h[i], b: SHELL_NORMAL_COVERAGE });
     return out;
-  }, [frame.history, frame.t]);
+  }, [frame.history, frame.t, frame.shellThermal, covTag]);
   const rev = speedRpm && speedRpm > 0 ? 60 / speedRpm : null;
 
   const rows: Array<{ k: string; v: React.ReactNode; note?: string }> = [
@@ -1054,8 +1061,8 @@ function ScannerHealth({
     },
     { k: "Hidden by support tyres", v: <Num value={hidden.tyres.toFixed(1)} unit="%" />, note: "tyres at 11 m, 39 m and 60 m" },
     { k: "Hidden by other things", v: <ToneNum tone={hidden.other > 0.5 ? "warn" : undefined} value={hidden.other.toFixed(1)} unit="%" />, note: hidden.other > 0.5 ? "dirty lens or dust" : undefined },
-    { k: "CAL-KLN-03", v: <span className="thm-tone-text" data-tone={alarmTone(qTone(cal?.quality))}>{qualityWord(cal?.quality)}</span>, note: cal?.qualityNote ?? undefined },
-    { k: "STS-KLN-08", v: <span className="thm-tone-text" data-tone={alarmTone(qTone(cov?.quality))}>{qualityWord(cov?.quality)}</span>, note: cov?.qualityNote ?? undefined },
+    { k: maxTag, v: <span className="thm-tone-text" data-tone={alarmTone(qTone(cal?.quality))}>{qualityWord(cal?.quality)}</span>, note: cal?.qualityNote ?? undefined },
+    ...(covTag ? [{ k: covTag, v: <span className="thm-tone-text" data-tone={alarmTone(qTone(cov?.quality))}>{qualityWord(cov?.quality)}</span>, note: cov?.qualityNote ?? undefined }] : []),
     ...(rec
       ? [
           {
@@ -1123,8 +1130,8 @@ function ScannerHealth({
           ))}
         </dl>
         <div className="thm-scanner-trend">
-          <span className="thm-meta" title="STS-KLN-08">
-            {nameIds("STS-KLN-08", frame.defs)} · share of shell it can see
+          <span className="thm-meta" title={covTag ?? "Scanner coverage"}>
+            {covTag ? `${nameIds(covTag, frame.defs)} · share of shell it can see` : "Share of shell the scanner can see"}
           </span>
           {trend.length > 1 ? (
             <TrendTimeZoneContext.Provider value={timeZone}>

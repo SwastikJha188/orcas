@@ -36,7 +36,7 @@ export function evalClr(c: EvalContext): void {
       // Suspicion only (Table 8.3): pressure change is multi-causal and the inputs to separate the causes do not exist.
       H(M, "SW-CLR-01", {
         severity: "Alert",
-        evidence: `Compartment ${k} ${measured[`PRS-CLR-0${k}`].toFixed(0)} mbar (${fmtSigned(comp.rel * 100, 0)} % vs bed-corrected model) with fan ${k} current ${fmtSigned(res(`ELE-CLR-0${k}`), 0)} A (${fmtSigned(comp.relI * 100, 0)} %) — air short-circuiting at a steady fan · discharge ${fmtSigned(disR, 0)} K${disR > 10 ? " (corroborates)" : ""} · secondary air ${good("TMP-BRN-02") ? `${measured["TMP-BRN-02"].toFixed(0)} °C (trend only)` : "not valid"} · missing inputs: cooling-air flow, bed depth, fan damper position, tap validation — suspicion only`,
+        evidence: `Compartment ${k} ${measured[`PRS-CLR-0${k}`].toFixed(0)} mbar (${fmtSigned(comp.rel * 100, 0)} % vs bed-corrected model) with fan ${k} current ${fmtSigned(res(`ELE-CLR-0${k}`), 1)} % FLA (${fmtSigned(comp.relI * 100, 0)} %) — air short-circuiting at a steady fan · discharge ${fmtSigned(disR, 0)} K${disR > 10 ? " (corroborates)" : ""} · secondary air ${good("TMP-BRN-02") ? `${measured["TMP-BRN-02"].toFixed(0)} °C (trend only)` : "not valid"} · missing inputs: cooling-air flow, bed depth, fan damper position, tap validation — suspicion only`,
         tags: [`PRS-CLR-0${k}`, `ELE-CLR-0${k}`, "TMP-CLR-08"],
         subs: [k <= 3 ? "clr-hot" : "clr-cold"],
         lead: { tag: `PRS-CLR-0${k}`, target: CLR_BASE[k - 1] * 0.6 },
@@ -46,65 +46,75 @@ export function evalClr(c: EvalContext): void {
 
   /* ---- FP-37 R-CLR-02: cooling fan bearing defect, fans compared with each other ---- */
   {
-    const running13 = [1, 2, 3].filter(fanRun);
-    bearingHit(c, M, "R-CLR-02", running13.map((k) => [`VIB-CLR-0${k}`, `TMP-CLR-0${k}`, "clr-fans13", `Cooling fan ${k}`] as [string, string, string, string]), 4.5, 7.1);
+    // OSW-PE-SNL-PYR-01 Rev. 02: every cooling fan has a vibration pickup (fans 4–6 included).
+    const running = FANS.filter(fanRun);
+    bearingHit(c, M, "R-CLR-02", running.map((k) => [`VIB-CLR-0${k}`, `TMP-CLR-0${k}`, k <= 3 ? "clr-fans13" : "clr-fans46", `Cooling fan ${k}`] as [string, string, string, string]), 4.5, 7.1);
     const h = hits[M]["R-CLR-02"];
     if (h) {
       const k = Number(h.tags[0].slice(-1));
-      const others = running13.filter((j) => j !== k && good(`VIB-CLR-0${j}`));
+      const others = running.filter((j) => j !== k && good(`VIB-CLR-0${j}`));
       if (others.length) h.evidence += ` · ×${(ratio(`VIB-CLR-0${k}`) / median(others.map((j) => ratio(`VIB-CLR-0${j}`)))).toFixed(2)} the other fans' vibration`;
-    } else {
-      for (const k of [4, 5, 6]) {
-        const tmp = `TMP-CLR-0${k}`;
-        const ele = `ELE-CLR-0${k}`;
-        if (!fanRun(k) || !good(tmp, ele)) continue;
-        const dT = meanRes(tmp, 5);
-        if (dT > 6 && res(ele) > 2) {
-          const others = FANS.filter((j) => j !== k && good(`TMP-CLR-0${j}`)).map((j) => meanRes(`TMP-CLR-0${j}`, 5));
-          H(M, "R-CLR-02", {
-            severity: measured[tmp] >= 85 || dT > 16 ? "Critical" : "Alert",
-            evidence: `Fan ${k} bearing +${dT.toFixed(1)} K above model (other fan bearings ${fmtSigned(median(others), 1)} K) with current ${fmtSigned(res(ele), 0)} A (no vibration pickup on fan ${k})`,
-            tags: [tmp, ele],
-            subs: ["clr-fans46"],
-            lead: { tag: tmp, target: measured[tmp] < 85 ? 85 : 95 },
-          });
-          break;
-        }
+      if (good(`ELE-CLR-0${k}`)) {
+        h.evidence += ` · current ${fmtSigned(res(`ELE-CLR-0${k}`), 1)} % FLA`;
+        // The fan load following the defect is part of the pattern (third witness).
+        if (res(`ELE-CLR-0${k}`) > 1) h.tags = [...h.tags, `ELE-CLR-0${k}`];
       }
     }
   }
 
-  /* ---- FP-38 R-CLR-03: grate drive jam / hydraulic fault (rising or collapsing; stroke rate off) ---- */
-  if (unitRun(c, "clr-grate-hpu") === "run" && good("PRS-CLR-07", "SPD-CLR-01")) {
-    const p = measured["PRS-CLR-07"];
-    const pR = meanRes("PRS-CLR-07", 5);
-    const oilR = good("TMP-CLR-07") ? meanRes("TMP-CLR-07", 10) : 0;
-    const spd = measured["SPD-CLR-01"];
-    const spdRef = Math.max(0.5, model["SPD-CLR-01"]);
-    const spdR = meanRes("SPD-CLR-01", 5);
-    const rising = pR > 25 || oilR > 8;
-    const collapse = pR < -0.2 * Math.max(1, model["PRS-CLR-07"]) || p <= 70;
-    // Stroke rate off the controller's target (D5 Table 9.2: −5 %; the target follows the clinker reaching the cooler,
-    // so a kiln that loses feed or stops lowers it too); below 10 % it needs a corroborating effect (working pressure or
-    // cold-end bed moving), since the stroke scatters about its target.
+  /* ---- FP-38 R-CLR-03: grate drive jam / drive fault (motor-driven grate drives 1–3, Rev. 02 HP-05) ---- */
+  {
+    // Cold-end bed: compartments 4–6 against their model (bed build-up evidence).
     const bedNow = [4, 5, 6].filter((k) => good(`PRS-CLR-0${k}`)).map(rel);
     const bedRel = bedNow.length ? median(bedNow) : 0;
-    const strokeOff = Math.abs(spdR) > 0.05 * spdRef && (Math.abs(spdR) > 0.1 * spdRef || Math.abs(pR) > 8 || bedRel > 0.05);
-    const stalled = spd < 0.1 * spdRef && p > 50;
-    if (rising || collapse || strokeOff || stalled) {
+    type GrateHit = { score: number; sev: "Alert" | "Critical"; evidence: string; tags: string[]; lead: { tag: string; target: number }; stateRule?: boolean };
+    let best: GrateHit | null = null;
+    const offer = (g: GrateHit) => {
+      if (!best || (g.sev === "Critical" ? 10 : 0) + g.score > (best.sev === "Critical" ? 10 : 0) + best.score) best = g;
+    };
+    for (const n of [1, 2, 3]) {
+      const unit = `clr-grate-${n}`;
+      const ele = `ELE-CLR-1${n}`;
+      const spdTag = `SPD-CLR-1${n}`;
+      const st = unitRun(c, unit);
+      // A drive trip stops its grate: the bed builds behind it (D5 FP-38 effect).
+      if (st === "tripped") {
+        offer({ score: 1, sev: "Critical", evidence: `Grate drive ${n} tripped: its grate stops and the bed builds · cold-end compartments ${fmtSigned(bedRel * 100, 0)} % vs model`, tags: [ele, spdTag], lead: { tag: `PRS-CLR-0${n === 1 ? 1 : 4}`, target: CLR_BASE[n === 1 ? 0 : 3] * 1.35 }, stateRule: true });
+        continue;
+      }
+      if (st !== "run" || !good(ele)) continue;
+      const i = measured[ele];
+      const im = Math.max(1, model[ele]);
+      const iR = meanRes(ele, 5) / im;
+      const spdOk = good(spdTag);
+      const spd = measured[spdTag];
+      const spdRef = Math.max(0.5, model[spdTag]);
+      const spdR = spdOk ? meanRes(spdTag, 5) : 0;
+      const rising = iR > 0.15;
+      const slipping = iR < -0.2 && spdOk && spdR < -0.05 * spdRef;
+      // Stroke rate off the controller's target (D5 Table 9.2: −5 %; the target follows the clinker reaching the cooler,
+      // so a kiln that loses feed or stops lowers it too); below 10 % it needs a corroborating effect (drive current or
+      // cold-end bed moving), since the stroke scatters about its target.
+      const strokeOff = spdOk && Math.abs(spdR) > 0.05 * spdRef && (Math.abs(spdR) > 0.1 * spdRef || Math.abs(iR) > 0.06 || bedRel > 0.05);
+      const stalled = spdOk && spd < 0.1 * spdRef && i > 0.5 * im;
+      if (!(rising || slipping || strokeOff || stalled)) continue;
       const what = [
-        rising ? `pressure ${fmtSigned(pR, 0)} bar vs bed model${oilR > 8 ? `, oil ${fmtSigned(oilR, 1)} K` : ""} (heavy bed / jam)` : null,
-        collapse ? `pressure ${fmtSigned(pR, 0)} bar vs bed model (hydraulic ${p <= 70 ? "collapse" : "pressure loss"})` : null,
+        rising ? `motor current ${i.toFixed(0)} % FLA, ${fmtSigned(iR * 100, 0)} % vs bed model (heavy bed / jam)` : null,
+        slipping ? `motor current ${i.toFixed(0)} % FLA, ${fmtSigned(iR * 100, 0)} % vs bed model with the stroke slow (coupling / gearbox slip)` : null,
         strokeOff || stalled ? `stroke ${spd.toFixed(1)} /min vs ${spdRef.toFixed(1)} controller target (${fmtSigned((spdR / spdRef) * 100, 0)} %)${stalled ? " — grate stopped with the drive on" : ""}` : null,
       ].filter(Boolean);
-      H(M, "R-CLR-03", {
-        severity: p >= 175 || measured["TMP-CLR-07"] >= 62 || p <= 70 || stalled || spd <= 6 || spd >= 17 ? "Critical" : "Alert",
-        evidence: `Grate hydraulics ${p.toFixed(0)} bar · ${what.join(" · ")} · cold-end compartments ${bedNow.length ? `${fmtSigned(bedRel * 100, 0)} % vs model` : "not valid"} (bed build-up)`,
-        tags: ["PRS-CLR-07", "SPD-CLR-01", "TMP-CLR-07"],
-        subs: ["clr-drive"],
-        lead: collapse ? { tag: "PRS-CLR-07", target: p > 70 ? 70 : 50 } : strokeOff && !rising ? { tag: "SPD-CLR-01", target: spdR < 0 ? 6 : 17 } : { tag: "PRS-CLR-07", target: p < 175 ? 175 : 205 },
+      // OSW-PE-SNL-PYR-01 Rev. 02: drive current H 100 % FLA; stroke L 4 / H 20 /min.
+      const crit = i >= 100 || stalled || (spdOk && (spd <= 4 || spd >= 20)) || iR > 0.35;
+      offer({
+        score: Math.max(Math.abs(iR), Math.abs(spdR) / spdRef),
+        sev: crit ? "Critical" : "Alert",
+        evidence: `Grate drive ${n} · ${what.join(" · ")} · cold-end compartments ${bedNow.length ? `${fmtSigned(bedRel * 100, 0)} % vs model` : "not valid"} (bed build-up)`,
+        tags: [ele, spdTag],
+        lead: strokeOff && !rising ? { tag: spdTag, target: spdR < 0 ? 4 : 20 } : { tag: ele, target: i < 100 ? 100 : 110 },
       });
     }
+    const g = best as GrateHit | null;
+    if (g) H(M, "R-CLR-03", { severity: g.sev, evidence: g.evidence, tags: g.tags, subs: ["clr-drive"], lead: g.lead, stateRule: g.stateRule });
   }
 
   /* ---- FP-39 R-CLR-04: vent fan degradation (vibration, bearing temperature, current) ---- */
@@ -117,7 +127,7 @@ export function evalClr(c: EvalContext): void {
       const exh = good("TMP-CLR-09") ? meanRes("TMP-CLR-09", 10) : null;
       H(M, "R-CLR-04", {
         severity: measured["VIB-CLR-07"] >= 4.5 || measured["TMP-CLR-10"] >= 85 ? "Critical" : "Alert",
-        evidence: `Vent fan vibration ×${vr.toFixed(2)} model · bearing ${fmtSigned(dT, 1)} K · current ${fmtSigned(iR, 0)} A — ${heating ? "bearing defect" : iR < -8 ? "impeller build-up (less flow)" : "impeller build-up or looseness (current steady)"} · exhaust ${exh === null ? "not valid" : `${fmtSigned(exh, 0)} K vs model`}`,
+        evidence: `Vent exhaust fan vibration ×${vr.toFixed(2)} model · bearing ${fmtSigned(dT, 1)} K · current ${fmtSigned(iR, 1)} % FLA — ${heating ? "bearing defect" : iR < -1.5 ? "impeller build-up (less flow)" : "impeller build-up or looseness (current steady)"} · exhaust ${exh === null ? "not valid" : `${fmtSigned(exh, 0)} K vs model`}`,
         tags: heating ? ["VIB-CLR-07", "TMP-CLR-10", "ELE-CLR-07"] : ["VIB-CLR-07", "ELE-CLR-07"],
         subs: ["clr-vent"],
         lead: { tag: "VIB-CLR-07", target: measured["VIB-CLR-07"] < 4.5 ? 4.5 : 7.1 },

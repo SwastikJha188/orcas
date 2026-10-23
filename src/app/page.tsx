@@ -28,6 +28,7 @@ const MaintenanceWorkspace = dynamic(() => import("@/components/maintenance/main
 const AssetIqHubView = dynamic(() => import("@/components/assetiq/assetiq-hub-view").then((m) => m.AssetIqHubView), { loading: TabLoading });
 const ConfigureView = dynamic(() => import("@/components/configure/configure-view").then((m) => m.ConfigureView), { loading: TabLoading });
 const SimulationView = dynamic(() => import("@/components/simulation/simulation-view").then((m) => m.SimulationView), { loading: TabLoading });
+const PolycronView = dynamic(() => import("@/components/polycron/polycron-view").then((m) => m.PolycronView), { loading: TabLoading });
 
 function UltronWorkspaceContent() {
   const { activeTab, setActiveTab, setSelectedMachineId, setActiveSubPage, navigateToMachine, navigateToAssetsHome, currentUser } = useIndustrialData();
@@ -104,10 +105,11 @@ function UltronWorkspaceContent() {
             </div>
           )}
           {activeTab === "assets" && <AssetsView />}
-          {activeTab === "maintenance" && <MaintenanceWorkspace />}
           {activeTab === "sap" && <SapWorkspace />}
           {activeTab === "devices" && <IndustrialDevicesView />}
           {activeTab === "assetiq" && <AssetIqHubView />}
+          {activeTab === "polycron" && <PolycronView />}
+          {activeTab === "maintenance" && <MaintenanceWorkspace />}
           {activeTab === "configure" && <ConfigureView />}
           {activeTab === "simulation" && canSimulate && <SimulationView />}
         </Suspense>

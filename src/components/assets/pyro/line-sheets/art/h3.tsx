@@ -121,18 +121,23 @@ function Art() {
 /**
  * Pad centre per point (sheet units = page units − panel corner), as in the
  * panel; the ΔP pad sits on the transmitter head, at the printed chip row, so
- * its plate row clears the dust-fan plate.
+ * its plate row clears the dust-fan plate. Inlet pressure on the dirty plenum,
+ * outlet pressure on the clean-air duct to the fan.
  */
 const pads: LineSheetArt["pads"] = {
-  "PRS-CSL-01": [310.5, 93.5],
   "LEV-CSL-01": [301.5, 142.3],
+  "PRS-CSL-02": [190, 131],
+  "PRS-CSL-03": [300, 48],
+  "PRS-CSL-01": [310.5, 93.5],
   "ELE-CSL-02": [457, 116.5],
 };
 
 /** Plate side / stand-off slot per point: every plate runs left over the baghouse, fan and silo roof. */
 const callouts: LineSheetArt["callouts"] = {
-  "PRS-CSL-01": [290, 93.5, "end"],
   "LEV-CSL-01": [285, 142.3, "end"],
+  "PRS-CSL-02": [180, 75, "end"],
+  "PRS-CSL-03": [300, 25, "middle"],
+  "PRS-CSL-01": [290, 93.5, "end"],
   "ELE-CSL-02": [440, 96.3, "end"],
 };
 

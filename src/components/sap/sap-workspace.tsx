@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { PillButton, StatusTag, type Tone } from "@/components/ui";
+import { Crumbs, PillButton, StatusTag, type Crumb, type Tone } from "@/components/ui";
 import { Empty } from "@/components/assets/analysis/an-ui";
 import { Loading as LoadingState } from "@/components/ui";
 import { useApi } from "@/lib/api-cache";
@@ -30,7 +30,7 @@ import "./sap.css";
 
      Overview            what needs a decision in SAP, one problem's thread
      Equipment mapping   machine ↔ SAP equipment, readings ↔ measuring points
-     Maintenance         control tower: ULTRON review → notification → order → verification
+     Maintenance         lanes: to raise → notification open → order in progress → checking after repair
      Materials           spare-part readiness of SAP's orders against stock
      Production          SAP production orders against the machines' risk
      Sync & audit        API health, writes waiting, the full log
@@ -42,11 +42,11 @@ import "./sap.css";
 
 type View = "overview" | "mapping" | "maintenance" | "materials" | "production" | "audit";
 const VIEWS: { id: View; label: string; title: string; context: string }[] = [
-  { id: "overview", label: "Overview", title: "SAP", context: "What ULTRON found that needs a decision in SAP, and how each problem moves through it." },
+  { id: "overview", label: "Overview", title: "SAP overview", context: "What ULTRON found that needs a decision in SAP, and how each problem moves through it." },
   { id: "mapping", label: "Equipment mapping", title: "Equipment mapping", context: "Which SAP equipment each machine is, and which SAP measuring point each reading is written to." },
-  { id: "maintenance", label: "Maintenance", title: "Maintenance control tower", context: "Problems ULTRON found, followed through SAP notifications, maintenance orders and the check after the repair." },
-  { id: "materials", label: "Materials", title: "Material readiness", context: "Spare parts SAP's maintenance orders need, against the stock in each store." },
-  { id: "production", label: "Production", title: "Production command board", context: "SAP production orders on the main machine against how long it can safely run. Suggestions only; a planner decides." },
+  { id: "maintenance", label: "Maintenance", title: "Maintenance in SAP", context: "Each problem ULTRON found, followed through its SAP notification, maintenance order and the check after the repair." },
+  { id: "materials", label: "Materials", title: "Spare parts", context: "Spare parts SAP's maintenance orders need, against the stock in each store." },
+  { id: "production", label: "Production", title: "Production", context: "SAP's production orders on the main machine against how long it can safely run. Suggestions only; a planner decides." },
   { id: "audit", label: "Sync & audit", title: "Sync & audit", context: "How each SAP interface answers, writes waiting to be sent, and every exchange." },
 ];
 const FULL_LINE = "full-line";
@@ -104,7 +104,7 @@ export function SapWorkspace() {
               : { label: "Connected", tone: "good" };
 
   const sync = async () => {
-    if (!selectedPlantId || !dash) return;
+    if (!selectedPlantId || !dash) return false;
     setBusy("sync");
     setNotice(null);
     const out = await sapCall<{ records: number; failed: { resource: SapResourceName; message: string }[] }>("/sync", "POST", { plantId: selectedPlantId }, "The sync failed");
@@ -112,11 +112,18 @@ export function SapWorkspace() {
     if ("error" in out) setNotice({ tone: "bad", text: out.error });
     else if (out.data.failed.length) setNotice({ tone: "bad", text: `Read ${out.data.records} records. Not read: ${out.data.failed.map((f) => `${resourceLabel(dash, f.resource)} (${f.message})`).join(" · ")}` });
     else setNotice({ tone: "good", text: `Read ${out.data.records} records from SAP.` });
+    return !("error" in out) && out.data.failed.length === 0;
   };
 
   const head = VIEWS.find((v) => v.id === view)!;
   const machinePills = plantTabs.map((t) => ({ id: t.machineId ?? FULL_LINE, label: t.label }));
-  const ctx: ViewCtx | null = dash && selectedPlantId ? { dash, plantId: selectedPlantId, pms, machineId, when, setNotice, setMachineId, openSettings: () => setSettings(true), goTo: pick } : null;
+  // SAP / section / machine: each level above the last goes back up to it.
+  const crumbs: Crumb[] = [
+    { label: "SAP", onClick: view !== "overview" || machineId ? () => { pick("overview"); setMachineId(null); } : undefined },
+    { label: head.label, onClick: machineId ? () => setMachineId(null) : undefined },
+    ...(machineId ? [{ label: machinePills.find((m) => m.id === machineId)?.label ?? machineId }] : []),
+  ];
+  const ctx: ViewCtx | null = dash && selectedPlantId ? { dash, plantId: selectedPlantId, pms, machineId, when, notice, setNotice, crumbs, setMachineId, openSettings: () => setSettings(true), sync, goTo: pick } : null;
 
   return (
     <div className="cfg-shell pm-shell" aria-label="SAP">
@@ -152,7 +159,7 @@ export function SapWorkspace() {
             {conn ? "Connection" : "Link SAP"}
           </PillButton>
           {conn && (
-            <PillButton loading={busy === "sync"} onClick={() => void sync()}>
+            <PillButton loading={busy === "sync"} onClick={sync}>
               Sync now
             </PillButton>
           )}
@@ -163,6 +170,7 @@ export function SapWorkspace() {
         <div className="cfg-main">
           <header className="ast-head pg-head">
             <div className="ast-head-main">
+              <Crumbs items={crumbs} />
               <div className="ast-title-row">
                 <h1 className="ast-title">{head.title}</h1>
               </div>
@@ -171,7 +179,7 @@ export function SapWorkspace() {
                 {head.context}
               </p>
               {notice && (
-                <p className="ui-form-note sap-notice" data-tone={notice.tone} role="status">
+                <p key={notice.text} className="ui-form-note sap-notice" data-tone={notice.tone} role="status">
                   {notice.text}
                 </p>
               )}
@@ -193,14 +201,14 @@ export function SapWorkspace() {
                 </Empty>
               </section>
             ) : (
-              <>
+              <div className="ast-root pg-frame pm-page">
                 {view === "overview" && <SapOverview {...ctx} />}
                 {view === "mapping" && <SapMapping {...ctx} />}
                 {view === "maintenance" && <SapMaintenance {...ctx} />}
                 {view === "materials" && <SapMaterials {...ctx} />}
                 {view === "production" && <SapProduction {...ctx} />}
                 {view === "audit" && <SapAudit {...ctx} />}
-              </>
+              </div>
             )}
           </div>
         </div>

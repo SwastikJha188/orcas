@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { PillNav, Table, type Column, Loading } from "@/components/ui";
+import { NextActions, PillNav, Table, type Column, Loading, type NextAction } from "@/components/ui";
+import { ruleFacts } from "../next-actions-model";
 import { StatusTag } from "@/components/assets/assets-shell-ui";
 import { useIndustrialData } from "@/providers/industrial-data-context";
 import { defsFor } from "@/lib/live-defs";
@@ -10,7 +11,7 @@ import type { AssetMachine } from "../assets-data";
 import { Chevron, KpiStrip, PageHeader, Section, type KpiItem } from "../analysis/an-ui";
 import { buildIssues, deviationOrder, unexplained, type Issue } from "../analysis/an-issues";
 import { focusLayer, focusSensorOn } from "../sensor-focus";
-import { failureChance, FAILURE_HORIZONS, rulRows } from "../prognosis/prognosis-derive";
+import { durationText, failureChance, FAILURE_HORIZONS, rulRows } from "../prognosis/prognosis-derive";
 import { toneFor } from "../prognosis/prog-ui";
 import { useLineInsights } from "./line-insights";
 import { useLineMachines } from "./line-model";
@@ -134,6 +135,35 @@ export function LineAnalysis({ units, names }: { units: AssetMachine[]; names: R
     navigateToMachine(r.machine.id, "trends");
   };
 
+  // Next actions: find the cause of a confirmed problem, see why a part may fail, look at a reading nobody can explain.
+  const next: NextAction[] = [
+    ...faults
+      .filter((x) => x.issue.rule?.status === "ACTIVE")
+      .map((x) => ({
+        key: `fault|${x.key}`,
+        tone: x.issue.rule!.severity === "Critical" ? ("bad" as const) : ("warn" as const),
+        // Happening now: ahead of predicted failures in the same band.
+        rank: -1,
+        what: `${x.issue.title} · ${names[x.machine.id] ?? x.machine.name}`,
+        why: [x.issue.where, ...ruleFacts(x.issue.rule!)].filter(Boolean).join(" · "),
+        label: "Find the cause",
+        run: () => openIssue(x),
+      })),
+    ...predicted.map((x) => {
+      const h = x.issue.life[0]?.hours ?? null;
+      return {
+        key: `pred|${x.key}`,
+        tone: h !== null && h <= 168 ? ("warn" as const) : ("info" as const),
+        rank: h === null ? undefined : h * 60,
+        what: `${x.issue.title} · ${names[x.machine.id] ?? x.machine.name}`,
+        why: [x.issue.where, h !== null ? `time left ${durationText(h)}` : null].filter(Boolean).join(" · "),
+        label: "See why it may fail",
+        run: () => openIssue(x),
+      };
+    }),
+    ...unknown.map((u) => ({ key: `unk|${u.key}`, tone: "info" as const, what: `${u.name} · ${names[u.machine.id] ?? u.machine.name}`, why: [u.tag, "off expected, no known problem explains it"].join(" · "), label: "Open the trend", run: () => openTrend(u) })),
+  ];
+
   const issueCols: Column<LineIssue>[] = [
     {
       key: "problem",
@@ -199,6 +229,12 @@ export function LineAnalysis({ units, names }: { units: AssetMachine[]; names: R
       <PageHeader title="Analysis" meta={[{ label: "Machines", value: String(units.length) }]} />
 
       <KpiStrip page items={kpis} label="Full line analysis summary" />
+
+      {next.length > 0 && (
+        <Section id="an-next" title="Next actions">
+          <NextActions items={next} />
+        </Section>
+      )}
 
       <Section
         id="an-issues"

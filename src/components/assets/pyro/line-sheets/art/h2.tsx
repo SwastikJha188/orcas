@@ -4,7 +4,9 @@
  * panel box 574, 91.5 – 1080, 540.5): the inclined pan conveyor from the tail
  * shaft (fed from the crusher) up to the head drum on its three support
  * columns, and the head drive (motor over the reducer) discharging to the
- * clinker silo.
+ * clinker silo. Rev 02 adds the casing temperature, the motor's DE / NDE
+ * bearing vibration and temperature and the reducer (head-drive gearbox)
+ * vibration; the tail-shaft speed is a zero-speed switch.
  */
 import React from "react";
 import { Bolt, GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
@@ -108,21 +110,33 @@ function Art() {
 
 /**
  * Pad centre per point (sheet units = page units − panel corner), as in the
- * panel; the winding pad sits 3 units above its printed centre so its plate
- * row clears the head-drive vibration row.
+ * panel: motor DE (shaft end, right) and NDE (cowl end, left) bearing
+ * vibration high and temperature low, winding in the motor window, current on
+ * the terminal box, gearbox vibration on the reducer; casing temperature on the
+ * strand; the zero-speed switch on the tail shaft.
  */
 const pads: LineSheetArt["pads"] = {
+  "TMP-CSL-01": [278.3, 228.9],
+  "VIB-CSL-01": [474, 62],
+  "VIB-CSL-03": [419, 62],
+  "VIB-CSL-02": [459.2, 125],
+  "TMP-CSL-03": [474, 78],
+  "TMP-CSL-04": [419, 78],
+  "TMP-CSL-02": [446.5, 70],
   "ELE-CSL-01": [439.2, 50],
-  "TMP-CSL-02": [459.2, 73.5],
-  "VIB-CSL-01": [459.2, 96.3],
   "SPD-CSL-01": [71, 394.5],
 };
 
-/** Plate side / stand-off slot per point: head-drive plates run left over the motor, the chain speed along the strand. */
+/** Plate side / stand-off slot per point: motor plates stack left of the head drive, the gearbox plate under it, casing and tail-shaft plates along the strand. */
 const callouts: LineSheetArt["callouts"] = {
-  "ELE-CSL-01": [430, 27.7, "end"],
-  "TMP-CSL-02": [440, 73.5, "end"],
-  "VIB-CSL-01": [440, 96.3, "end"],
+  "TMP-CSL-01": [300, 262, "start"],
+  "VIB-CSL-01": [385, 96, "end"],
+  "VIB-CSL-03": [385, 42, "end"],
+  "VIB-CSL-02": [440, 205, "middle"],
+  "TMP-CSL-03": [385, 114, "end"],
+  "TMP-CSL-04": [385, 60, "end"],
+  "TMP-CSL-02": [385, 78, "end"],
+  "ELE-CSL-01": [385, 24, "end"],
   "SPD-CSL-01": [86, 394.5, "start"],
 };
 

@@ -4,7 +4,7 @@
  *
  *   node scripts/diagram-lab/eval.mjs run    <dir> [--only 003,017] [--jobs 6] [--model haiku] [--force]
  *   node scripts/diagram-lab/eval.mjs redraw <dir>
- *   node scripts/diagram-lab/eval.mjs sheet  <dir> [--per 12]
+ *   node scripts/diagram-lab/eval.mjs sheet  <dir> [--per 12] [--view 3d]
  *
  * <dir> holds one folder per image, each with source.png (onboarding-work/eval100).
  * run     draws every folder without a drawing.spec.json (or all with --force) the way production
@@ -33,7 +33,7 @@ const only = opt("only", "")
   .split(",")
   .filter(Boolean);
 const folders = readdirSync(dir)
-  .filter((f) => existsSync(path.join(dir, f, "source.png")))
+  .filter((f) => ["png", "jpg", "jpeg", "webp"].some((x) => existsSync(path.join(dir, f, `source.${x}`))))
   .filter((f) => !only.length || only.some((o) => f.startsWith(o)))
   .sort();
 const CLAUDE = process.env.CLAUDE_BIN ?? (existsSync("/opt/homebrew/bin/claude") ? "/opt/homebrew/bin/claude" : "claude");
@@ -119,15 +119,16 @@ for p in range(0, len(fs), per):
         x, y = (k % W) * 520, (k // W) * 700
         dr.text((x + 6, y + 4), fo, font=f, fill=(255, 230, 0))
         src = Image.open(os.path.join(d, fo, "source.png")).convert("RGB"); src.thumbnail((508, 300)); c.paste(src, (x + 6, y + 30))
-        pngs = [g for g in glob.glob(os.path.join(d, fo, "eval-*.png")) if not g.endswith(("-3d.png", "-overlay.png", "-compare.png"))]
+        view = sys.argv[4] if len(sys.argv) > 4 else "2d"
+        pngs = [g for g in glob.glob(os.path.join(d, fo, "eval-*-3d.png"))] if view == "3d" else [g for g in glob.glob(os.path.join(d, fo, "eval-*.png")) if not g.endswith(("-3d.png", "-overlay.png", "-compare.png"))]
         if pngs:
             im = Image.open(pngs[0]).convert("RGB"); im.thumbnail((508, 360)); c.paste(im, (x + 6, y + 335))
         else:
             dr.text((x + 6, y + 420), "no drawing", font=f, fill=(255, 90, 90))
-    c.save(os.path.join(d, f"review-{p // per + 1}.png"))
+    c.save(os.path.join(d, f"review{'-3d' if view == '3d' else ''}-{p // per + 1}.png"))
 print(json.dumps({"sheets": (len(fs) + per - 1) // per}))
 `;
-  const r = spawnSync("python3", ["-I", "-c", py, dir, String(per), JSON.stringify(folders)], { encoding: "utf8" });
+  const r = spawnSync("python3", ["-I", "-c", py, dir, String(per), JSON.stringify(folders), opt("view", "2d")], { encoding: "utf8" });
   process.stdout.write(r.stdout || r.stderr);
 } else {
   console.error(`unknown command ${cmd}`);

@@ -18,6 +18,7 @@ import { RangeBar } from "./overview-ui";
 import { sevLimit, type OverviewDigest } from "./overview-digest";
 import { conditionTone, validityTone } from "@/components/ui/status";
 import { displayName } from "@/lib/display-name";
+import { shellTagsOf } from "./thermal-derive";
 
 export const OV_SECTIONS = {
   machine: "ov-machine",
@@ -295,7 +296,8 @@ export function areaRows({ d }: Pick<OvSectionProps, "machine" | "d">): AreaRow[
   }
 
   if (d.frame?.defs.hasShell) {
-    const shell = d.frame.signals["CAL-KLN-03"];
+    const shellTag = shellTagsOf(d.frame.defs.plant).maxTag;
+    const shell = d.frame.signals[shellTag];
     if (shell) {
       rows.push({
         id: "thermal",
@@ -303,7 +305,7 @@ export function areaRows({ d }: Pick<OvSectionProps, "machine" | "d">): AreaRow[
         value: (
           <>
             {shell.display}
-            <span className="ast-unit">{d.frame.defs.signalByTag["CAL-KLN-03"]?.unit ?? "°C"} hottest</span>
+            <span className="ast-unit">{d.frame.defs.signalByTag[shellTag]?.unit ?? "°C"} hottest</span>
           </>
         ),
         detail: "Temperature scan of the whole kiln shell (74 m, all the way round)",

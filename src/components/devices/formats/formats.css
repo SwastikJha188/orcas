@@ -45,7 +45,7 @@
 .fmt-note {
   margin: 0;
   max-width: 720px;
-  line-height: 1.5;
+  line-height: var(--lh-body);
 }
 
 .fmt-empty-title {
@@ -57,7 +57,7 @@
   margin: 0;
   font-size: var(--fs-md);
   color: var(--text-muted);
-  line-height: 1.5;
+  line-height: var(--lh-body);
 }
 
 .fmt-label {
@@ -194,7 +194,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: -6px;
+  margin-top: -8px;
 }
 
 .fmt-chip {
@@ -268,7 +268,7 @@
 
 .fmt-syntax {
   margin: 0;
-  line-height: 1.7;
+  line-height: var(--lh-loose);
 }
 
 /* ---------------------------------------------------------------- preview */
@@ -312,7 +312,7 @@
 
 .fmt-select select {
   min-height: 32px;
-  padding: 4px 30px 4px 12px;
+  padding: 4px 24px 4px 12px;
   border-radius: var(--corner-pill);
   font-size: var(--fs-md);
 }
@@ -471,7 +471,7 @@
   border: 1px solid var(--separator);
   font-family: var(--font-ui);
   font-size: var(--fs-sm);
-  line-height: 1.55;
+  line-height: var(--lh-body);
   font-variant-numeric: tabular-nums;
   color: var(--page-fg);
   white-space: pre;

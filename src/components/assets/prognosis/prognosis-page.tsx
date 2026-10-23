@@ -13,9 +13,12 @@
 
 import { useComponentScope, type ComponentScope } from "../component-scope";
 import React, { useEffect, useMemo, useState } from "react";
-import { PillButton, PillNav, Loading } from "@/components/ui";
+import { NextActions, PillButton, PillNav, Loading } from "@/components/ui";
+import { usePmsLine } from "@/components/maintenance/pms-model";
+import { useHealthBands, useWorkOrderPriorities } from "@/lib/reference-data";
+import { prognosisActions } from "../next-actions-model";
+import { buildRecs } from "./prog-maintenance";
 import { useIndustrialData } from "@/providers/industrial-data-context";
-import { useHealthBands } from "@/lib/reference-data";
 import { useKilnSimulationFor, useLiveMachineStatus } from "@/providers/kiln-simulation-context";
 import { conditionTone, toCondition } from "@/components/ui/status";
 import { useSiteTimeZone } from "@/providers/use-site-time-zone";
@@ -229,6 +232,12 @@ export function MachinePrognosisPage({
     go("trends");
   };
 
+  // Next actions: the work the forecast calls for, and readings heading for an alarm.
+  const pms = usePmsLine();
+  const priorities = useWorkOrderPriorities();
+  const recs = useMemo(() => (data ? buildRecs(data, analysis, rows, priorities) : []), [data, analysis, rows, priorities]);
+  const next = prognosisActions({ machineId: machine.id, recs, alarms: alarmRows, pms, openTrend });
+
   return (
     <div className="ast-root pg-frame pg-prog" aria-label="Prognosis">
       <PageHeader
@@ -274,6 +283,11 @@ export function MachinePrognosisPage({
               items={progKpis(props, bands, component && compTags ? { tags: compTags, health: parts.options.find((o) => o.id === component.id)?.health ?? null } : null)}
               label="Forecast summary"
             />}
+          {next.length > 0 && (
+            <Section id="prog-next" title="Next actions">
+              <NextActions items={next} />
+            </Section>
+          )}
           {rows.length > 0 && (
             <Section id="prog-life" title="Time left before repair">
               <ProgRul {...props} />

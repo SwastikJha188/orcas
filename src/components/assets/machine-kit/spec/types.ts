@@ -102,8 +102,6 @@ export interface ItemOptions {
   horizontal?: boolean;
   /** valve item: kind. */
   valve?: ValveKind;
-  /** Draw this item from its silhouette traced in the image (always on for "machine"). */
-  trace?: boolean;
   /** Shape parts (block, cylinder, cone, tool, fixture): turned by this many degrees, clockwise. */
   angle?: number;
   /** Shape parts: paint — "raised" (cover, plate), "recess" (opening, window, screen), "material" (product), "body" (default). */
@@ -112,16 +110,30 @@ export interface ItemOptions {
   narrow?: "top" | "bottom" | "left" | "right";
 }
 
-/** Silhouette traced from the image (box-relative 0–1): outline polygon and inner edge polylines. */
-export interface Trace {
-  outline: Pt[];
-  /** Open pockets inside the outline (a C-frame's throat). */
-  holes?: Pt[][];
-  lines: Pt[][];
-  /** Distinct regions inside it: darker = recessed opening, lighter = raised plate. */
-  regions?: Array<{ tone: "recess" | "raised"; poly: Pt[] }>;
-  /** Round features [u, v, radius as a share of the box width]. */
-  circles?: Array<[number, number, number]>;
+/**
+ * A machine drawn from its own picture (any machine without a finished catalog part): its areas and
+ * edge lines vectorized from the image by scripts/diagram-lab/vectorize.py. Paths are in units of
+ * 0..1000 across the group's box (x) and 0..1000 down it (y).
+ */
+export interface TracedArt {
+  regions: Array<{ tone: "body" | "raised" | "recess" | "material" | "shaft"; d: string }>;
+  ink: string[];
+  silhouette: string[];
+  aspect: number;
+}
+
+/** One traced machine: the items it is made of, its area in the image and on the sheet. */
+export interface TracedGroup {
+  key: string;
+  ids: string[];
+  /** Area in the image, grid units [l, t, r, b]. */
+  src: [number, number, number, number];
+  /** Area on the sheet. */
+  box: Box;
+  /** Its parts in the image (grid units) with their tone hints, for the vectorizer. */
+  parts?: Array<{ box: [number, number, number, number]; tone: string }>;
+  /** Filled in by draw.mjs from the image; without it the parts are drawn as shapes. */
+  art?: TracedArt;
 }
 
 export type ValveKind = "gate" | "globe" | "ball" | "butterfly" | "check" | "control" | "solenoid" | "regulator";
@@ -136,6 +148,11 @@ export interface SpecLink {
   /** Valves on the line; `at` = % of the way from `from` to `to` (default 50). */
   valves?: Array<{ kind?: ValveKind | string; at?: number; id?: string }>;
   label?: string;
+  /**
+   * The line as the image draws it: its corner points in grid units [x, y], first at `from`, last at
+   * `to`. The drawing follows it (squared to right angles); without it the line is routed automatically.
+   */
+  path?: number[][];
 }
 
 export interface SpecPoint {
@@ -199,9 +216,9 @@ export interface LaidItem {
   legs?: number;
   /** y of the floor it stands on (floor items). */
   floor?: number;
+  /** Items of one assembly (touching in the image) share this key; they move as one in 3D. */
+  group?: string;
   options: ItemOptions;
-  /** Its own silhouette from the image (items without a catalog part). */
-  trace?: Trace;
 }
 
 export interface LaidLink {
@@ -210,6 +227,10 @@ export interface LaidLink {
   to: string;
   medium: Medium;
   duct: boolean;
+  /** Flow name from the spec ("HOT MEAL TO KILN"), written along the longest run. */
+  label?: string;
+  /** Where the flow name is written (centre), and whether it runs up a vertical run. */
+  labelAt?: { x: number; y: number; vertical: boolean };
   pts: Pt[];
   valves: Array<{ id?: string; kind: ValveKind; at: Pt; vertical: boolean }>;
 }
@@ -232,6 +253,8 @@ export interface LaidLabel {
   anchor: "start" | "middle" | "end";
   /** Written on the equipment itself (short names on vessels, as "C1" on a cyclone). */
   inside?: boolean;
+  /** Callout: leader line from the label to its part (parts of one machine, named beside it). */
+  leader?: Pt[];
 }
 
 export interface Layout {
@@ -247,6 +270,10 @@ export interface Layout {
   links: LaidLink[];
   points: LaidPoint[];
   labels: LaidLabel[];
+  /** Machines drawn from their own picture (see TracedGroup). */
+  traced: TracedGroup[];
+  /** A flow diagram (no floors): the 3D model stands every machine on the ground, the diagram's rows as depth. */
+  schematic?: boolean;
   /** Metres per sheet unit (3D). */
   metresPerUnit: number;
   /** Plain-language problems found while laying out (with what to change in the spec). */

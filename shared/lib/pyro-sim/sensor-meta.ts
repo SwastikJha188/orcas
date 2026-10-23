@@ -103,7 +103,7 @@ export const CLASS_META: Record<SensorClass, ClassMeta> = {
 
 /** Sensor class of a catalogue entry (calculated and manual entries have none). */
 export function sensorClassOf(def: Pick<PyroSignalDef, "tag" | "origin">): SensorClass | null {
-  if (def.origin !== "online") return def.tag === "CAL-KLN-03" ? "scanner" : null;
+  if (def.origin !== "online") return null;
   const t = PYRO_SPEC[def.tag]?.sensorType;
   return t ? (CLASS_OF_SPEC_TYPE[t] ?? null) : null;
 }
@@ -122,8 +122,7 @@ const TAG_RANGE: Record<string, { range: [number, number]; note: string; provisi
   "GAS-PHC-03": { range: [0, 25], note: "O₂ 0–25 % (calciner outlet extractive analyser, as D5 Table 6.6)" },
   "GAS-PHC-04": { range: [0, 20000], note: "CO 0–20,000 ppm (calciner outlet extractive analyser, as D5 Table 6.6)" },
   "GAS-BGH-01": { range: [0, 100], note: "0–100 mg/Nm³ (existing stack CEMS, read-only; demo span)", provisional: true },
-  // Species pending (D5 Table 13.1 row 5): CO scale by default; CO₂ would be 0–5 / 0–20 vol%.
-  "GAS-BRN-01": { range: [0, 20000], note: "CO 0–20,000 ppm (D5 Table 6.6; species pending, CO₂ would be 0–5 / 0–20 vol%)" },
+  "GAS-BRN-01": { range: [0, 1000], note: "Coal bin CO 0–1,000 ppm (OSW-PE-SNL-PYR-01 Rev. 02)" },
   "FLO-KFS-01": { range: [0, 300], note: "0–300 t/h per meter (SFM A; two meters carry the 0–500 t/h kiln feed)", provisional: true },
   "FLO-KFS-02": { range: [0, 300], note: "0–300 t/h per meter (SFM B; two meters carry the 0–500 t/h kiln feed)", provisional: true },
   "FLO-BRN-01": { range: [0, 25], note: "0–25 t/h (D5 Table 6.9)" },
@@ -131,10 +130,8 @@ const TAG_RANGE: Record<string, { range: [number, number]; note: string; provisi
   // Kiln drive torque in % of rated: the drive can report overload above 100 %, so the 105 % alarm is reachable.
   "ELE-KLN-01": { range: [0, 150], note: "0–150 % of rated torque (per drive, D5 Table 6.12; demo scaling)", provisional: true },
   ...Object.fromEntries(
-    ["WGT-KFS-01", "WGT-KFS-02", "WGT-KFS-03"].map((tg) => [tg, { range: [0, 50] as [number, number], note: "0–50 t per load cell (three cells carry the 0–125 t bin; demo capacity)", provisional: true }]),
+    ["WGT-KFS-02", "WGT-KFS-03", "WGT-KFS-04"].map((tg) => [tg, { range: [0, 50] as [number, number], note: "0–50 t per load cell (three cells carry the 0–125 t bin; Rev. 02 \"0–capacity\", demo capacity)", provisional: true }]),
   ),
-  "STS-KLN-08": { range: [0, 100], note: "Coverage 0–100 % (scanner status)" },
-  "CAL-KLN-03": { range: [0, 600], note: "0–600 °C (D5 Table 6.14)" },
 };
 
 /** Fixed class ranges (D5 §6). VIB: the class range is ±50 g; the velocity RMS span is a demo mapping of it. */
@@ -244,7 +241,7 @@ export function limitReach(def: PyroSignalDef): number[] {
 /** D5 Table 9.1 sampling of a signal (Tables 6.6 / 8.2 detail where they add to it). */
 export function samplingOf(def: PyroSignalDef): string | undefined {
   if (def.origin === "manual") return def.tag === "LAB-KLN-01" ? "Laboratory sample (D5 monthly; demo twice daily)" : "Handheld round (D5 weekly; demo every 4 h)";
-  if (def.tag === "CAL-KLN-03") return "scan 2–5 s; 1 min values (map 10 min)";
+  if (def.tag === "STS-KLN-08") return "scan 2–5 s; 1 min values (map 10 min)";
   if (def.origin === "calculated") return "1 min (gateway calculation)";
   const cls = sensorClassOf(def);
   if (!cls) return undefined;
@@ -265,7 +262,6 @@ export function applySensorMeta(defs: PyroSignalDef[]): void {
     const sampling = samplingOf(def);
     if (sampling) def.sampling = sampling;
     if (cls && def.origin === "online") def.accuracy = accuracyOf(def, cls);
-    else if (def.tag === "CAL-KLN-03") def.accuracy = CLASS_META.scanner.accuracy;
   }
 }
 
@@ -360,7 +356,10 @@ export const HANDHELD_GAP_K = 25;
 export const ZERO_AT_STOP_PRESSURES = new Set([
   "PRS-FSL-01",
   "PRS-KFS-01",
-  ...[1, 2, 3, 4, 5, 6].map((n) => `PRS-PHC-0${n}`),
+  "PRS-KFS-03",
+  "PRS-KFS-04",
+  "PRS-KFS-07",
+  ...[1, 2, 3, 4, 5, 6].flatMap((n) => [`PRS-PHC-0${n}`, `PRS-PHC-1${n}`]),
   "PRS-KLN-04",
   "PRS-KLN-05",
   "PRS-KLN-07",
@@ -368,8 +367,9 @@ export const ZERO_AT_STOP_PRESSURES = new Set([
   "PRS-BRN-02",
   "PRS-BRN-03",
   "PRS-BRN-04",
-  ...[1, 2, 3, 4, 5, 6, 7].map((n) => `PRS-CLR-0${n}`),
-  "PRS-CSL-01",
+  ...[1, 2, 3, 4, 5, 6].map((n) => `PRS-CLR-0${n}`),
+  "PRS-CSL-02",
+  "PRS-CSL-03",
 ]);
 
 /* ------------------------------------------------------------------ */
@@ -382,29 +382,34 @@ export const ZERO_AT_STOP_PRESSURES = new Set([
  * fan current with pressure").
  */
 export const NEIGHBOUR_CHECKS: Array<{ subject: string; witnesses: string[]; label: string }> = [
-  { subject: "ELE-KLN-01", witnesses: ["TMP-KLN-21", "TMP-KLN-15"], label: "torque moved, motor winding and gearbox oil did not" },
-  { subject: "ELE-PHC-01", witnesses: ["PRS-PHC-01"], label: "ID fan power moved, preheater exit draft did not" },
+  { subject: "ELE-KLN-01", witnesses: ["TMP-KLN-41", "TMP-KLN-44", "TMP-KLN-15"], label: "torque moved, motor windings and gearbox oil did not" },
+  { subject: "ELE-PHC-01", witnesses: ["PRS-PHC-01"], label: "ID fan power moved, the C1 riser duct pressure did not" },
   ...[1, 2, 3, 4, 5, 6].map((k) => ({ subject: `ELE-CLR-0${k}`, witnesses: [`PRS-CLR-0${k}`], label: `fan ${k} current moved, compartment ${k} pressure did not` })),
-  { subject: "ELE-BRN-01", witnesses: ["PRS-BRN-03"], label: "PA fan current moved, primary-air header pressure did not" },
+  { subject: "ELE-BRN-01", witnesses: ["PRS-BRN-01"], label: "PA fan current moved, primary-air header pressure did not" },
   { subject: "ELE-FSL-01", witnesses: ["PRS-FSL-01"], label: "aeration blower current moved, header pressure did not" },
-  { subject: "ELE-CSL-02", witnesses: ["PRS-CSL-01"], label: "dust fan current moved, baghouse ΔP did not" },
+  { subject: "ELE-CSL-02", witnesses: ["PRS-CSL-03"], label: "dust fan current moved, baghouse outlet pressure did not" },
 ];
 
 /** Vibration / bearing-temperature pairs (D5 FP-46, SW-DQ-02): vibration up with the bearing flat is flagged only. */
 export const VIB_TMP_PAIRS: Array<[string, string]> = [
   ["VIB-KFS-01", "TMP-KFS-01"],
+  ["VIB-KFS-04", "TMP-KFS-03"],
   ["VIB-PHC-01", "TMP-PHC-09"],
   ["VIB-PHC-02", "TMP-PHC-10"],
   ["VIB-KLN-01", "TMP-KLN-19"],
+  ["VIB-KLN-05", "TMP-KLN-20"],
   ["VIB-KLN-02", "TMP-KLN-22"],
   ["VIB-KLN-03", "TMP-KLN-23"],
   ["VIB-BRN-01", "TMP-BRN-01"],
-  ["VIB-CLR-01", "TMP-CLR-01"],
-  ["VIB-CLR-02", "TMP-CLR-02"],
-  ["VIB-CLR-03", "TMP-CLR-03"],
+  ...[1, 2, 3, 4, 5, 6].map((n): [string, string] => [`VIB-CLR-0${n}`, `TMP-CLR-0${n}`]),
   ["VIB-CLR-07", "TMP-CLR-10"],
+  ...[1, 2, 3].map((n): [string, string] => [`VIB-CLR-1${n}`, `TMP-CLR-3${n}`]),
   ["VIB-HMR-01", "TMP-HMR-01"],
   ["VIB-HMR-02", "TMP-HMR-02"],
+  ["VIB-HMR-03", "TMP-HMR-04"],
+  ["VIB-HMR-04", "TMP-HMR-05"],
+  ["VIB-CSL-01", "TMP-CSL-03"],
+  ["VIB-CSL-03", "TMP-CSL-04"],
 ];
 
 /* ------------------------------------------------------------------ */
@@ -424,7 +429,7 @@ export interface AnalyserDef {
 export const ANALYSERS: AnalyserDef[] = [
   { id: "KLN", name: "Kiln inlet analyser", status: "STS-KLN-06", tags: ["GAS-KLN-01", "GAS-KLN-02", "GAS-KLN-03"], offset: 17 },
   { id: "PHC", name: "Preheater exit analyser", status: null, tags: ["GAS-PHC-01", "GAS-PHC-02"], offset: 37 },
-  { id: "BRN", name: "Coal-bin analyser", status: null, tags: ["GAS-BRN-01"], offset: 52 },
+  { id: "BRN", name: "Coal-bin CO analyser", status: null, tags: ["GAS-BRN-01"], offset: 52 },
 ];
 /** Probe blowback (demo): every 60 min for 2 min; values held meanwhile. */
 export const BLOWBACK_EVERY_MIN = 60;
@@ -445,10 +450,12 @@ export interface DaqNode {
 }
 
 export const DAQ_NODES: DaqNode[] = [
-  { code: "DAQ-1", location: "Kiln drive house", tags: ["VIB-KLN-01", "VIB-KLN-02", "VIB-KLN-03", "VIB-KLN-04"], channels: 8, ex: false },
-  { code: "DAQ-2", location: "Preheater base / ID fan", tags: ["VIB-PHC-01", "VIB-PHC-02", "VIB-KFS-01"], channels: 8, ex: false },
+  { code: "DAQ-1", location: "Kiln drive house", tags: ["VIB-KLN-01", "VIB-KLN-05", "VIB-KLN-02", "VIB-KLN-03", "VIB-KLN-04"], channels: 8, ex: false },
+  { code: "DAQ-2", location: "Preheater base / ID fan / elevator head", tags: ["VIB-PHC-01", "VIB-PHC-02", "VIB-KFS-01", "VIB-KFS-04", "VIB-BGH-01"], channels: 8, ex: false },
   { code: "DAQ-3", location: "Burner floor (coal area, Ex)", tags: ["VIB-BRN-01", "VIB-BRN-02"], channels: 8, ex: true },
-  { code: "DAQ-4", location: "Cooler / crusher / conveyor", tags: ["VIB-CLR-01", "VIB-CLR-02", "VIB-CLR-03", "VIB-CLR-07", "VIB-HMR-01", "VIB-HMR-02", "VIB-CSL-01"], channels: 8, ex: false },
+  { code: "DAQ-4", location: "Cooler fans and vent fan", tags: ["VIB-CLR-01", "VIB-CLR-02", "VIB-CLR-03", "VIB-CLR-04", "VIB-CLR-05", "VIB-CLR-06", "VIB-CLR-07"], channels: 8, ex: false },
+  { code: "DAQ-5", location: "Grate drives / crusher / conveyor", tags: ["VIB-CLR-11", "VIB-CLR-12", "VIB-CLR-13", "VIB-HMR-01", "VIB-HMR-02", "VIB-HMR-03", "VIB-HMR-04", "VIB-CSL-01"], channels: 8, ex: false },
+  { code: "DAQ-6", location: "Pan conveyor head drive", tags: ["VIB-CSL-02", "VIB-CSL-03"], channels: 8, ex: false },
 ];
 
 export const DAQ_NODE_OF_TAG: Record<string, DaqNode> = Object.fromEntries(DAQ_NODES.flatMap((n) => n.tags.map((t) => [t, n])));

@@ -18,7 +18,7 @@ export const BRN_SCENARIOS: PyroScenario[] = list("PYR-BRN-01", [
     documentedDetection: "+0h 26m",
     description: "FP-31. The swirl channel partly blocks upstream of its tap: swirl air pressure falls at a steady header, the flame lengthens (operator camera review) and the burning zone cools.",
     effects: [
-      { target: sig("PRS-BRN-01"), delta: -16, onsetMin: 5, rampMin: 100, shape: "ramp" },
+      { target: sig("PRS-BRN-02"), delta: -40, onsetMin: 5, rampMin: 100, shape: "ramp" },
       { target: sig("TMP-KLN-14"), delta: -25, onsetMin: 10, rampMin: 140, shape: "ramp" },
     ],
   },
@@ -29,7 +29,7 @@ export const BRN_SCENARIOS: PyroScenario[] = list("PYR-BRN-01", [
     expected: ["SW-BRN-01"],
     documentedDetection: "+0h 31m",
     description: "FP-31, rising direction. Coating builds on the burner tip and restricts the jet-air nozzles: axial air pressure rises at a steady header and coal rate.",
-    effects: [{ target: sig("PRS-BRN-02"), delta: 93, onsetMin: 5, rampMin: 100, shape: "ramp" }],
+    effects: [{ target: sig("PRS-BRN-03"), delta: 93, onsetMin: 5, rampMin: 100, shape: "ramp" }],
   },
   {
     id: "brn-header-leak",
@@ -39,10 +39,10 @@ export const BRN_SCENARIOS: PyroScenario[] = list("PYR-BRN-01", [
     documentedDetection: "+0h 51m",
     description: "FP-31, header branch. A flange on the primary-air header opens: the header pressure falls, both burner channels follow it down and the PA fan delivers more air (current up).",
     effects: [
-      { target: sig("PRS-BRN-03"), delta: -85, onsetMin: 5, rampMin: 90, shape: "ramp" },
-      { target: sig("PRS-BRN-01"), delta: -8, onsetMin: 5, rampMin: 90, shape: "ramp" },
-      { target: sig("PRS-BRN-02"), delta: -74, onsetMin: 5, rampMin: 90, shape: "ramp" },
-      { target: sig("ELE-BRN-01"), delta: 6, onsetMin: 5, rampMin: 90, shape: "ramp" },
+      { target: sig("PRS-BRN-01"), delta: -83, onsetMin: 5, rampMin: 90, shape: "ramp" },
+      { target: sig("PRS-BRN-02"), delta: -8.6, onsetMin: 5, rampMin: 90, shape: "ramp" },
+      { target: sig("PRS-BRN-03"), delta: -74, onsetMin: 5, rampMin: 90, shape: "ramp" },
+      { target: sig("ELE-BRN-01"), delta: 3.2, onsetMin: 5, rampMin: 90, shape: "ramp" },
     ],
   },
   {
@@ -51,7 +51,7 @@ export const BRN_SCENARIOS: PyroScenario[] = list("PYR-BRN-01", [
     group: "Equipment fault",
     expected: ["SW-BRN-02"],
     documentedDetection: "+2h 45m",
-    description: "FP-34. Coal smoulders in the bin after a long hold: bin temperature and CO rise together.",
+    description: "FP-34. Coal smoulders in the bin after a long hold: bin temperature and CO rise together; on high CO the nitrogen purge sequence goes active.",
     effects: [
       { target: sig("TMP-BRN-04"), delta: 20, onsetMin: 5, rampMin: 300, shape: "accel" },
       { target: sig("GAS-BRN-01"), delta: 240, onsetMin: 5, rampMin: 300, shape: "accel" },
@@ -79,7 +79,7 @@ export const BRN_SCENARIOS: PyroScenario[] = list("PYR-BRN-01", [
     effects: [
       { target: sig("VIB-BRN-01"), delta: 3.2, onsetMin: 5, rampMin: 360, shape: "accel" },
       { target: sig("TMP-BRN-01"), delta: 15, onsetMin: 5, rampMin: 360, shape: "accel" },
-      { target: sig("ELE-BRN-01"), delta: 6, onsetMin: 5, rampMin: 360, shape: "accel" },
+      { target: sig("ELE-BRN-01"), delta: 3.2, onsetMin: 5, rampMin: 360, shape: "accel" },
     ],
   },
   {
@@ -91,7 +91,7 @@ export const BRN_SCENARIOS: PyroScenario[] = list("PYR-BRN-01", [
     description: "FP-32, choke. Coal starts to plug the conveying line: line pressure climbs well above what the coal rate explains and the Roots blower works against it (current up).",
     effects: [
       { target: sig("PRS-BRN-04"), delta: 165, onsetMin: 5, rampMin: 120, shape: "accel" },
-      { target: sig("ELE-BRN-02"), delta: 25, onsetMin: 5, rampMin: 120, shape: "accel" },
+      { target: sig("ELE-BRN-02"), delta: 9.1, onsetMin: 5, rampMin: 120, shape: "accel" },
     ],
   },
   {
@@ -103,7 +103,7 @@ export const BRN_SCENARIOS: PyroScenario[] = list("PYR-BRN-01", [
     description: "FP-32, falling direction. The Roots blower clearances open up: internal slip grows, the line pressure falls below what the coal rate needs and the blower current drops with it.",
     effects: [
       { target: sig("PRS-BRN-04"), delta: -90, onsetMin: 5, rampMin: 200, shape: "ramp" },
-      { target: sig("ELE-BRN-02"), delta: -12, onsetMin: 5, rampMin: 200, shape: "ramp" },
+      { target: sig("ELE-BRN-02"), delta: -4.4, onsetMin: 5, rampMin: 200, shape: "ramp" },
     ],
   },
   {
@@ -115,7 +115,7 @@ export const BRN_SCENARIOS: PyroScenario[] = list("PYR-BRN-01", [
     description: "FP-33, coal blower. The Roots blower rotors wear: vibration and current rise together.",
     effects: [
       { target: sig("VIB-BRN-02"), delta: 3.8, onsetMin: 5, rampMin: 400, shape: "accel" },
-      { target: sig("ELE-BRN-02"), delta: 20, onsetMin: 5, rampMin: 400, shape: "accel" },
+      { target: sig("ELE-BRN-02"), delta: 7.3, onsetMin: 5, rampMin: 400, shape: "accel" },
     ],
   },
   {
@@ -143,7 +143,7 @@ export const BRN_SCENARIOS: PyroScenario[] = list("PYR-BRN-01", [
     expected: ["SV-BRN-01"],
     documentedDetection: "+0h 44m",
     description: "D5 5.5.6: the header pressure must agree with the channels and the PA fan current. The header transmitter drifts low while swirl, axial and fan current stay where they were.",
-    effects: [{ target: sig("PRS-BRN-03"), delta: -69, onsetMin: 2, rampMin: 60, shape: "ramp", sensor: true }],
+    effects: [{ target: sig("PRS-BRN-01"), delta: -67, onsetMin: 2, rampMin: 60, shape: "ramp", sensor: true }],
   },
   {
     id: "brn-line-pt-drift",

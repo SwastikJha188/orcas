@@ -82,7 +82,7 @@
 .cfg-main {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--gap-section);
   min-width: 0;
 }
 
@@ -218,6 +218,7 @@
   background: var(--card-bg);
   color: var(--text-muted);
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   font-weight: 500;
   white-space: nowrap;
   pointer-events: none;
@@ -290,7 +291,8 @@
   padding: 8px 16px 4px;
   font-size: var(--fs-sm);
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-caps);
+  word-spacing: var(--word-caps);
   text-transform: uppercase;
   color: var(--text-muted);
 }
@@ -317,7 +319,7 @@
 
 .cfg-set-label {
   color: var(--dx-ink);
-  line-height: 1.4;
+  line-height: var(--lh-snug);
 }
 
 .cfg-set-value {
@@ -431,7 +433,7 @@
   background: var(--card-bg);
   color: var(--text-primary);
   font-size: 13px;
-  line-height: 1;
+  line-height: var(--lh-none);
   cursor: pointer;
 }
 
@@ -459,6 +461,28 @@
 
 .cfg-photos-hint {
   font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+/* Which Claude model reads the uploads (model-switch.tsx). */
+.cfg-model {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: var(--fs-sm);
+}
+
+.cfg-model-label {
+  color: var(--text-muted);
+}
+
+.cfg-model .ui-select {
+  width: auto;
+  min-width: 140px;
+}
+
+.cfg-model-note {
   color: var(--text-muted);
 }
 
@@ -502,7 +526,8 @@
 .cfg-preview-pane figcaption {
   font-size: var(--fs-xs);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-caps);
+  word-spacing: var(--word-caps);
   color: var(--text-muted);
 }
 
@@ -561,7 +586,7 @@
 .cfg-ticket-state {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 
 .cfg-ticket-body {
@@ -574,7 +599,7 @@
 .cfg-ticket-reply {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   padding-block-start: 12px;
   border-block-start: 1px solid var(--separator);
 }

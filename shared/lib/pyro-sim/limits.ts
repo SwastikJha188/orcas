@@ -24,6 +24,10 @@ import type { LimitBand, LimitContext, LimitRule, Severity } from "../kiln-sim/s
 import type { PyroSignalDef } from "./signals";
 import { slope } from "./shared";
 import { PYRO_RANGE_BY_SIGNAL, PYRO_RANGES_DOC, rangeInUnit } from "./ranges";
+import { CLR_FAN_FLA } from "./shared";
+
+/** Running motor current at the design point (% FLA). */
+const I_FLA = 75;
 
 /** Shown wherever a pyro limit is listed. */
 export const PYRO_LIMIT_DISCLAIMER =
@@ -131,12 +135,27 @@ const row = (tags: string[], r: Row) => {
 };
 const seq = (prefix: string, from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => `${prefix}${String(from + i).padStart(2, "0")}`);
 
-// ---------------------------------------------------------------- ELE (16)
-row(["ELE-FSL-01", "ELE-FSL-02", "ELE-KFS-01", "ELE-KFS-02", "ELE-KFS-03", "ELE-PHC-01", "ELE-BGH-01", "ELE-BGH-02", "ELE-BRN-01", "ELE-BRN-02", ...seq("ELE-CLR-", 1, 7), "ELE-HMR-01", "ELE-CSL-01"], { text: T.load, limit: load() });
+// ---------------------------------------------------------------- ELE
+row(
+  [
+    "ELE-FSL-01",
+    "ELE-FSL-02",
+    "ELE-KFS-01",
+    ...seq("ELE-KFS-", 3, 7),
+    "ELE-BGH-01",
+    ...seq("ELE-BRN-", 1, 3),
+    ...seq("ELE-CLR-", 1, 7),
+    ...seq("ELE-CLR-", 11, 13),
+    "ELE-HMR-01",
+    "ELE-CSL-01",
+  ],
+  { text: T.load, limit: load(), note: "OSW-PE-SNL-PYR-01 Rev. 02 states motor currents in % of full-load amps (FLA): the load model and the set-points are in % FLA." },
+);
+row(["ELE-PHC-01"], { text: T.load, limit: load(), note: "ID fan motor power in % of rated power (OSW-PE-SNL-PYR-01 Rev. 02)." });
 row(["ELE-KLN-01"], {
   text: T.load,
   limit: load(),
-  note: "OEM placeholder 105 % of rated torque; reachable because the torque channel spans 0–150 % (overload), not the 0–100 % clamp of other % channels.",
+  note: "Kiln drive torque / load in % of rated (OSW-PE-SNL-PYR-01 Rev. 02): HH 105 % is reachable because the torque channel spans 0–150 % (overload), not the 0–100 % clamp of other % channels.",
 });
 row(["ELE-CSL-02"], {
   text: T.load,
@@ -144,24 +163,34 @@ row(["ELE-CSL-02"], {
   note: "D5 has no low-side limit: low fan current stays rule evidence (blocked filter / damper), not a limit.",
 });
 
-// ---------------------------------------------------------------- LEV (13)
-row(["LEV-FSL-01", "LEV-BRN-01", ...seq("LEV-KLN-", 1, 7)], { text: T.band, limit: keep });
-row(["LEV-CSL-01"], { text: T.band, limit: fixed({ kind: "band", warnLo: 12, warnHi: 88, alarmLo: 5, alarmHi: 94 }), note: "Low-low added (5 %); the catalogue had no low-side alarm." });
-row(["LEV-KFS-04", "LEV-BGH-01"], {
+// ---------------------------------------------------------------- LEV
+row(["LEV-FSL-01", "LEV-BRN-01", "LEV-KLN-01", "LEV-CSL-01"], { text: T.band, limit: keep });
+row(["LEV-KFS-04", ...seq("LEV-BGH-", 1, 3)], {
   text: T.band,
   note: "Level switch: HIGH (material build-up in the elevator boot / full dust hopper) is the switch alarm.",
 });
+row(["WGT-KFS-01"], { text: T.band, limit: keep, note: "Calculated bin weight (sum of load cells 1–3) in % of bin capacity (OSW-PE-SNL-PYR-01 Rev. 02 HP-03)." });
 
-// ---------------------------------------------------------------- PRS (process model, 23)
-row(["PRS-FSL-01", "PRS-KFS-01", "PRS-KFS-02", "PRS-KFS-04", "PRS-KFS-06", "PRS-BGH-02", "PRS-KLN-01", ...seq("PRS-BRN-", 1, 5), ...seq("PRS-CLR-", 1, 6)], { text: T.prs, limit: prsModel });
-row(seq("PRS-PHC-", 1, 10), {
+// ---------------------------------------------------------------- PRS (process model)
+row(["PRS-FSL-01", "PRS-KFS-01", "PRS-KFS-02", "PRS-KFS-03", "PRS-KFS-04", "PRS-KFS-06", "PRS-KFS-07", "PRS-KLN-01", ...seq("PRS-BRN-", 1, 6), ...seq("PRS-CLR-", 1, 6)], { text: T.prs, limit: prsModel });
+row(["PRS-FSL-03", "PRS-FSL-04", "PRS-KFS-08", "PRS-KFS-09", "PRS-BGH-02", "PRS-BGH-03", "PRS-CLR-21", "PRS-CLR-22", "PRS-CSL-02", "PRS-CSL-03"], {
+  text: T.prs,
+  limit: () => undefined,
+  note: "Dust-collector / ESP static pressure: OSW-PE-SNL-PYR-01 Rev. 02 gives a nominal band and no set-points; the filter is judged on its calculated ΔP (inlet − outlet), so the two pressures carry no limit of their own (display and trend).",
+});
+row([...seq("PRS-PHC-", 1, 6), "PRS-PHC-10"], {
   text: T.draft,
   limit: prsModel,
-  note: "Judged on |model| (drafts are negative). The staircase C1 → C6 is a plausibility check of the taps (sensor validation), not a limit.",
+  note: "Judged on |model| (drafts are negative); OSW-PE-SNL-PYR-01 Rev. 02 sets H / L at nominal ± 20 %. The staircase C1 → C6 is a plausibility check of the taps (sensor validation), not a limit.",
+});
+row(seq("PRS-PHC-", 11, 16), {
+  text: T.draft,
+  limit: prsModel,
+  note: "Cyclone cone pressure (tags on hold, doc HP-02): judged on |model|; OSW-PE-SNL-PYR-01 Rev. 02 H −1.0 mbar (build-up) and HH 0 mbar as the absolute sides.",
 });
 
-// ---------------------------------------------------------------- STS (5)
-row(["STS-FSL-02", "STS-FSL-03", "STS-KFS-01", "STS-BGH-01", "STS-KLN-12", "STS-KLN-13", "STS-CLR-01"], { text: T.state });
+// ---------------------------------------------------------------- STS
+row(["STS-FSL-03", "STS-BGH-01", "STS-KLN-12", "STS-KLN-13", "STS-KLN-14", "STS-BRN-01", "STS-BRN-02"], { text: T.state });
 row(["STS-KLN-06"], {
   text: T.state,
   states: { normal: "OK", alarm: ["FAULT"] },
@@ -178,7 +207,7 @@ row(["STS-KLN-11"], {
   note: "Fault state added: auxiliary drive trip.",
 });
 
-// ---------------------------------------------------------------- set-point (3)
+// ---------------------------------------------------------------- set-point
 row(["FLO-KFS-01", "FLO-KFS-02"], {
   text: T.setpoint,
   limit: keep,
@@ -186,21 +215,31 @@ row(["FLO-KFS-01", "FLO-KFS-02"], {
 });
 row(["FLO-BRN-01"], { text: T.setpoint, limit: keep });
 row(["FLO-BRN-02"], { text: T.band, limit: keep, note: "The calciner coal set-point is not in the signal list: the flow is judged against its operating band." });
-row(seq("WGT-KFS-", 1, 3), {
+row(seq("WGT-KFS-", 2, 4), {
   text: T.setpoint,
-  limit: (d) => ({ kind: "modelPct", dir: "both", warnPct: 5, alarmPct: 10, ref: d.base }),
-  note: "The plant sends no bin-weight set-point and the bin has no level sensor: each load cell is judged ± 5 / ± 10 % against the bin-inventory model (a third of the bin weight); a cell far from the other two is a load-cell fault.",
+  limit: (d) => ({ kind: "modelPct", dir: "both", warnPct: 10, alarmPct: 20, ref: d.base }),
+  note: "OSW-PE-SNL-PYR-01 Rev. 02: each load cell ± 10 % (Alert) / ± 20 % (Critical) of the mean, read as its share of the bin-inventory model (the bin has no level sensor); a cell far from the other two is a load-cell fault.",
 });
 
-// ---------------------------------------------------------------- position / limit / flow switches (6)
-row([...seq("POS-FSL-", 1, 6), "POS-KFS-01", "POS-KFS-02"], {
+// ---------------------------------------------------------------- position / limit / flow switches
+row(seq("POS-FSL-", 1, 6), {
   text: T.command,
-  note: "Open / closed limit switches: CLOSED or TRAVELLING while the line feeds is abnormal (warning); FAULT (both or neither switch made) is the fault. LVDT values do not apply to a switch.",
+  limit: (d) => ({ kind: "command", warnDev: 5, ref: d.base, abs: { warnHi: 98, alarmHi: 99.5 } }),
+  note: "Motorised outlet gate opening (OSW-PE-SNL-PYR-01 Rev. 02): ± 5 % from the command (the extraction controller's demand, the reference model) is the Alert; fully open is the end stop. Manual and pneumatic gates are not monitored.",
+});
+row(["POS-KFS-01", "POS-KFS-02"], {
+  text: T.command,
+  note: "Open / closed limit switches: CLOSED or TRAVELLING while the line feeds is abnormal (warning); FAULT (both or neither switch made) is the fault. OSW-PE-SNL-PYR-01 Rev. 02 heads the discharge 'line A running, line B standby'; the simulation runs both slides (see the register remarks).",
 });
 row(["POS-PHC-02", "POS-BRN-01"], {
   text: T.command,
   limit: keep,
   note: "The DCS command is not in the signal list: the measured position is judged against its operating band and the end stops.",
+});
+row(["POS-PHC-03", "POS-PHC-04", "POS-PHC-05"], {
+  text: T.command,
+  limit: (d) => ({ kind: "command", warnDev: 5, ref: d.base, abs: { warnHi: 98, alarmHi: 99.5 } }),
+  note: "WHRS damper (OSW-PE-SNL-PYR-01 Rev. 02): ± 5 % from the command; the DCS command is not in the list, so the reference is the damper's set position.",
 });
 row(["LIM-KFS-01"], { text: T.command, note: "Belt-sway switch made = alarm (misaligned belt)." });
 row(["POS-PHC-01"], {
@@ -217,21 +256,42 @@ row(["LIM-KLN-01"], {
 row(["POS-KLN-01"], { text: T.command, limit: keep });
 row(["POS-KLN-02"], { text: T.command });
 
-// ---------------------------------------------------------------- SPD (6)
-row(["SPD-KFS-01"], { text: T.speed, limit: speed("ELE-KFS-01", 118) });
-row(["SPD-PHC-01"], { text: T.speed, limit: speed("ELE-PHC-01", 1850) });
-row(["SPD-KLN-01"], { text: T.speed, limit: speed("ELE-KLN-01", 64), normalBand: "3.0–4.5" });
-row(["SPD-CLR-01"], { text: T.speed, limit: speed("PRS-CLR-07", 118), note: "The grate has no drive current in the list: hydraulic working pressure ≥ ⅓ of design is 'drive on'." });
-row(["SPD-HMR-01"], { text: T.speed, limit: speed("ELE-HMR-01", 96) });
-row(["SPD-CSL-01"], { text: T.speed, limit: speed("ELE-CSL-01", 74) });
-row(["SPD-BGH-01"], { text: T.speed, limit: speed("ELE-BGH-01", 310) });
+// ---------------------------------------------------------------- SPD
+row(["SPD-KFS-01", "SPD-HMR-01", "SPD-CSL-01"], {
+  text: T.speed,
+  states: { normal: "RUNNING", alarm: ["STOPPED WHILE RUNNING"] },
+  note: "Zero-speed switch (OSW-PE-SNL-PYR-01 Rev. 02 HP-05: no rpm): STOPPED with the drive off is normal; stopped while the drive runs is the alarm (shear pin, coupling, chain or belt).",
+});
+row(["SPD-KFS-02", "SPD-KFS-03", ...seq("SPD-BGH-", 2, 4)], {
+  text: T.speed,
+  states: { normal: "RUNNING", alarm: ["STOPPED"] },
+  note: "Rotary airlock zero-speed switch: a stopped airlock (no meal or dust discharge, false air) is the alarm.",
+});
+row(["SPD-PHC-01"], { text: T.speed, limit: speed("ELE-PHC-01", 80) });
+row(["SPD-KLN-01"], { text: T.speed, limit: speed("ELE-KLN-01", 64) });
+row(["SPD-BGH-01"], { text: T.speed, limit: speed("ELE-BGH-01", I_FLA) });
+for (const [k, i0] of CLR_FAN_FLA.entries())
+  row([`SPD-CLR-0${k + 1}`], {
+    text: T.speed,
+    limit: (d) => ({ kind: "speedRef", warnPct: 3, alarmPct: 6, drive: `ELE-CLR-0${k + 1}`, driveOn: +(i0 / 3).toFixed(1), ref: d.base }),
+    note: "Cooling fan speed (OSW-PE-SNL-PYR-01 Rev. 02): ± 3 % from the speed set-point is the Alert.",
+  });
+for (const n of [1, 2, 3])
+  row([`SPD-CLR-1${n}`], {
+    text: T.speed,
+    limit: speed(`ELE-CLR-1${n}`, 66),
+    note: "Grate stroke rate (conditional point, Rev. 02 HP-07): judged against the bed-depth controller target; motor current ≥ ⅓ of design is 'drive on'.",
+  });
 
-// ---------------------------------------------------------------- bearing RTDs (31)
+// ---------------------------------------------------------------- bearing RTDs
 const PAIRS: Array<[string, string]> = [
+  ["TMP-KFS-01", "TMP-KFS-03"],
   ["TMP-PHC-09", "TMP-PHC-10"],
   ["TMP-KLN-19", "TMP-KLN-20"],
   ["TMP-KLN-22", "TMP-KLN-23"],
   ["TMP-HMR-01", "TMP-HMR-02"],
+  ["TMP-HMR-04", "TMP-HMR-05"],
+  ["TMP-CSL-03", "TMP-CSL-04"],
   // Support rollers: bearings A / B of the same roller.
   ["TMP-KLN-01", "TMP-KLN-02"],
   ["TMP-KLN-03", "TMP-KLN-04"],
@@ -244,35 +304,66 @@ for (const [a, b] of PAIRS) {
   row([a], { text: T.bearing, limit: bearing(b) });
   row([b], { text: T.bearing, limit: bearing(a) });
 }
-row(["TMP-KFS-01", "TMP-BGH-01", "TMP-BRN-01", ...seq("TMP-CLR-", 1, 6), "TMP-CLR-10"], { text: T.bearing, limit: bearing(), note: "Single bearing: no pair, so the split test does not apply." });
+row(["TMP-BGH-01", "TMP-BRN-01", ...seq("TMP-CLR-", 1, 6), "TMP-CLR-10", ...seq("TMP-CLR-", 31, 33)], { text: T.bearing, limit: bearing(), note: "Single bearing: no pair, so the split test does not apply." });
 row(["TMP-KLN-25"], {
   text: T.bearing,
-  limit: bearing(undefined, 80),
-  note: "D5 applies the bearing template to the sector-plate cooling-air RTD: baseline + 15 K kept; 95 °C is not physical for cooling air, so the alarm stays at the 80 °C plant value.",
-});
-row(["TMP-CLR-07"], {
-  text: T.bearing,
-  limit: bearing(undefined, 72),
-  note: "D5 applies the bearing template to the grate hydraulic-oil RTD: baseline + 15 K kept; 95 °C is not physical for hydraulic oil, so the alarm stays at the 72 °C OEM-type value.",
+  limit: bearing(undefined, 150),
+  note: "D5 applies the bearing template to the sector-plate cooling-air RTD: baseline + 15 K kept; 95 °C is not physical for cooling air, so the alarm is the OSW-PE-SNL-PYR-01 Rev. 02 HH 150 °C.",
 });
 
-// ---------------------------------------------------------------- VIB (16)
-row(["VIB-KFS-01", "VIB-PHC-01", "VIB-PHC-02", "VIB-BGH-01", ...seq("VIB-KLN-", 1, 3), "VIB-BRN-01", ...seq("VIB-CLR-", 1, 3), "VIB-CLR-07", "VIB-HMR-02", "VIB-CSL-01"], { text: T.vib, limit: vib });
-row(["VIB-KLN-04", "VIB-BRN-02"], { text: T.vib, limit: vib, note: "D5 values (4.5 / 7.1 mm/s) replace the former 5.6–6.3 / 9.0 demo limits; a flexible-support class needs an OEM deviation." });
-row(["VIB-HMR-01"], { text: T.vib, limit: vib, normalBand: "2.0–4.0", note: "D5 values (4.5 / 7.1 mm/s) replace the former 7.1 / 11 demo limits; the normal band now ends below the warning." });
+// ---------------------------------------------------------------- VIB
+row(
+  [
+    "VIB-KFS-01",
+    "VIB-KFS-04",
+    "VIB-PHC-01",
+    "VIB-PHC-02",
+    "VIB-BGH-01",
+    ...seq("VIB-KLN-", 1, 5),
+    "VIB-BRN-01",
+    "VIB-BRN-02",
+    ...seq("VIB-CLR-", 1, 7),
+    ...seq("VIB-CLR-", 11, 13),
+    "VIB-HMR-03",
+    "VIB-HMR-04",
+    ...seq("VIB-CSL-", 1, 3),
+  ],
+  { text: T.vib, limit: vib },
+);
+row(["VIB-HMR-01", "VIB-HMR-02"], { text: T.vib, limit: vib, note: "Crusher rotor bearings: OSW-PE-SNL-PYR-01 Rev. 02 sets H 7.1 / HH 11.2 mm/s (nominal 2.0–4.5) for the heavily loaded rotor." });
 
-// ---------------------------------------------------------------- GAS (6)
-row(["GAS-PHC-01", "GAS-PHC-02", "GAS-PHC-03", "GAS-PHC-04", "GAS-KLN-01", "GAS-KLN-02", "GAS-BRN-01"], { text: T.gas, limit: keep });
-row(["GAS-BGH-01"], { text: T.gas, limit: keep, note: "Read-only link to the existing CEMS: plant emission limits apply (demo 25 / 30 mg/Nm³)." });
-row(["GAS-KLN-03"], {
+// ---------------------------------------------------------------- GAS
+row(["GAS-PHC-01", "GAS-PHC-02", "GAS-PHC-03", "GAS-PHC-04", "GAS-KLN-01", "GAS-KLN-02", "GAS-KLN-03", "GAS-BRN-01"], { text: T.gas, limit: keep });
+row(seq("GAS-BGH-", 1, 5), {
   text: T.gas,
-  limit: fixed({ kind: "band", warnLo: 400, warnHi: 1700, alarmHi: 1900 }),
-  note: "Alarm lowered to 1,900 ppm: the former 2,100 ppm sat above the 0–2,000 ppm NOₓ analyser range (D5 Table 6.6) and could never be reached.",
+  limit: keep,
+  note: "Read-only link to the stack CEMS: plant emission limits apply (Rev. 02 HP-09: consent, reference basis and analyser ranges to be checked against the site permit; SOx / NOx have no numeric set-point yet).",
 });
 
-// ---------------------------------------------------------------- process temperatures (15)
-row([...seq("TMP-PHC-", 1, 8), "TMP-BGH-02", "TMP-BRN-03", "TMP-KLN-13", "TMP-KLN-14", "TMP-KLN-26", "TMP-KLN-27", "TMP-CLR-08", "TMP-CLR-09"], { text: T.tmp, limit: tmpModel });
-row([...seq("TMP-KLN-", 28, 30), ...seq("TMP-CLR-", 11, 16)], {
+// ---------------------------------------------------------------- process temperatures
+row(
+  [
+    ...seq("TMP-PHC-", 1, 8),
+    ...seq("TMP-PHC-", 21, 26),
+    "TMP-PHC-30",
+    "TMP-PHC-31",
+    "TMP-BGH-02",
+    "TMP-BRN-03",
+    "TMP-BRN-07",
+    "TMP-KLN-13",
+    "TMP-KLN-14",
+    "TMP-KLN-26",
+    "TMP-KLN-27",
+    "TMP-CLR-08",
+    "TMP-CLR-09",
+    "TMP-CLR-24",
+    "TMP-CLR-25",
+    "TMP-HMR-06",
+    "TMP-CSL-01",
+  ],
+  { text: T.tmp, limit: tmpModel },
+);
+row(seq("TMP-KLN-", 28, 30), {
   text: T.tmp,
   limit: tmpModel,
   note: "DCS read-only temperature: judged against the model; the alarm side is the plant DCS limit (demo).",
@@ -280,7 +371,7 @@ row([...seq("TMP-KLN-", 28, 30), ...seq("TMP-CLR-", 11, 16)], {
 row(["TMP-BRN-02"], {
   text: T.tmp,
   limit: () => undefined,
-  note: "Display only: D5 §5.5.6 makes the secondary-air temperature a trend only (radiation and dust affect it), so no warning or alarm is applied. The Table 9.2 row (± 25 K / ± 50 K from model) is kept for reference.",
+  note: "Display only: D5 §5.5.6 makes the secondary-air temperature a trend only (radiation and dust affect it), so no warning or alarm is applied. The Table 9.2 row (± 25 K / ± 50 K from model) and the Rev. 02 L 900 / H 1,200 °C are kept for reference.",
 });
 
 // ---------------------------------------------------------------- KLN singles
@@ -288,33 +379,33 @@ row(seq("MIG-KLN-", 1, 3), { text: T.mig, limit: keep });
 row(["PRS-KLN-03"], { text: T.hood, limit: keep });
 row(["PRS-KLN-04"], {
   text: T.oilP,
-  limit: (d) => ({ kind: "modelDev", dir: "lo", warn: 0.3, ref: d.base, abs: { warnLo: 1.2, alarmLo: 0.8 } }),
-  note: "Warning 0.3 bar below the oil-temperature-corrected model or at the 1.2 bar OEM low; alarm 0.8 bar as the trip-warning margin (trip value pending from the OEM).",
+  limit: (d) => ({ kind: "modelDev", dir: "lo", warn: 0.3, ref: d.base, abs: { warnLo: 1.5, alarmLo: 1.0 } }),
+  note: "Warning 0.3 bar below the oil-temperature-corrected model or at the OSW-PE-SNL-PYR-01 Rev. 02 L 1.5 bar; alarm at LL 1.0 bar as the trip-warning margin (trip value pending from the OEM).",
 });
 row(["PRS-KLN-05"], {
   text: T.dp,
   limit: (d) => ({ ...(d.limit as LimitRule), rate: { perH: 0.1, of: "residual", window: 60 } }),
-  note: "Rate of rise judged on the oil-temperature-corrected residual over 60 min (> 0.1 bar/h); change point 1.4 bar, maximum ΔP 2.0 bar.",
+  note: "Rate of rise judged on the oil-temperature-corrected residual over 60 min (> 0.1 bar/h); change point 1.5 bar, maximum ΔP 2.5 bar (Rev. 02).",
 });
 row(["PRS-FSL-02", "PRS-KFS-05", "PRS-BGH-01"], {
   text: T.dp,
   limit: (d) => ({ ...(d.limit as LimitRule), rate: { perH: 0.5, of: "residual", window: 120 } }),
-  note: "Filter ΔP: rate of rise on the residual to the cleaning-cycle model over 2 h (> 0.5 mbar/h); change point and maximum ΔP are demo values.",
+  note: "Filter ΔP, calculated as inlet − outlet pressure (OSW-PE-SNL-PYR-01 Rev. 02): rate of rise on the residual to the cleaning-cycle model over 2 h (> 0.5 mbar/h); change point and maximum ΔP from the register.",
 });
 row(["PRS-CSL-01"], {
   text: T.dp,
   limit: (d) => ({ ...(d.limit as LimitRule), rate: { perH: 0.5, of: "residual", window: 120 } }),
-  note: "Rate of rise on the residual to the cleaning-cycle model over 2 h (> 0.5 mbar/h), so the pulse-cleaning sawtooth is not a rise.",
+  note: "Calculated inlet − outlet ΔP: rate of rise on the residual to the cleaning-cycle model over 2 h (> 0.5 mbar/h), so the pulse-cleaning sawtooth is not a rise.",
+});
+row(["PRS-CLR-20"], {
+  text: T.dp,
+  limit: (d) => ({ ...(d.limit as LimitRule), rate: { perH: 0.5, of: "residual", window: 120 } }),
+  note: "Cooler vent ESP ΔP, calculated as inlet − outlet (OSW-PE-SNL-PYR-01 Rev. 02 HP-06): high ΔP is plate build-up or rapping failure, low ΔP a bypass or an open inspection door.",
 });
 row(["PRS-KLN-07"], {
   text: T.hyd,
-  limit: (d) => ({ kind: "modelPct", dir: "both", warnPct: 20, collapsePct: 50, ref: d.base, abs: { alarmHi: 180 } }),
-  note: "Collapse read as ≤ 50 % of the model; OEM maximum 180 bar (demo).",
-});
-row(["PRS-CLR-07"], {
-  text: T.hyd,
-  limit: (d) => ({ kind: "modelPct", dir: "both", warnPct: 20, collapsePct: 50, ref: d.base, abs: { alarmHi: 205 } }),
-  note: "Collapse read as ≤ 50 % of the model; OEM maximum 205 bar (demo).",
+  limit: (d) => ({ kind: "modelPct", dir: "both", warnPct: 20, collapsePct: 50, ref: d.base, abs: { alarmHi: 200 } }),
+  note: "Collapse read as ≤ 50 % of the model; OSW-PE-SNL-PYR-01 Rev. 02 L 50 / H 150 / HH 200 bar.",
 });
 row(seq("PRX-KLN-", 1, 6), {
   text: T.prx,
@@ -323,23 +414,18 @@ row(seq("PRX-KLN-", 1, 6), {
 });
 row(["STS-KLN-08"], {
   text: T.scanner,
-  limit: fixed({ kind: "lo", warn: 95, alarm: 80 }),
-  note: "Coverage: warning below the 95 % target, alarm at 80 %.",
-});
-row(["CAL-KLN-03"], {
-  text: T.scanner,
   limit: (d) => ({ kind: "modelDev", dir: "hi", warn: 40, ref: d.base, abs: { alarmHi: 420 }, rate: { perH: 15, of: "value", window: 30 } }),
-  note: "Warning 40 K over the profile model or a rise > 15 K/h; alarm at the 420 °C demo shell limit (D5 Table 9.5). 380 °C stays the map alert colour only.",
+  note: "Shell scanner maximum (OSW-PE-SNL-PYR-01 Rev. 02: STS-KLN-08 is the shell maximum and its position in one reading): warning 40 K over the profile model or a rise > 15 K/h, H 370 °C, HH 420 °C. Scanner coverage is the scanner's own quality figure (R-DQ-01), not a register point.",
 });
 row(["TMP-KLN-15"], {
   text: T.oilT,
-  limit: (d) => ({ kind: "modelDev", dir: "hi", warn: 10, ref: d.base, abs: { alarmHi: 85 } }),
-  note: "OEM maximum oil temperature 85 °C (demo).",
+  limit: (d) => ({ kind: "modelDev", dir: "hi", warn: 10, ref: d.base, abs: { alarmHi: 80 } }),
+  note: "Oil temperature: L 25 / H 70 / HH 80 °C (OSW-PE-SNL-PYR-01 Rev. 02).",
 });
-row(["TMP-KLN-21", "TMP-HMR-03", "TMP-FSL-01", "TMP-KFS-02", "TMP-PHC-11", "TMP-BGH-03", "TMP-BRN-05", "TMP-BRN-06", ...seq("TMP-CLR-", 17, 23), "TMP-CSL-02"], {
+row([...seq("TMP-KLN-", 41, 46), "TMP-HMR-03", "TMP-FSL-01", "TMP-KFS-02", "TMP-PHC-11", "TMP-BGH-03", "TMP-BRN-05", "TMP-BRN-06", ...seq("TMP-CLR-", 17, 23), "TMP-CSL-02"], {
   text: T.winding,
   limit: fixed({ kind: "hi", warn: 135, alarm: 155 }),
-  note: "Insulation class F (155 °C) assumed until the motor nameplate is confirmed: warning 135 °C, alarm 155 °C. The former 140 °C matched no insulation class.",
+  note: "Stator winding RTD: OSW-PE-SNL-PYR-01 Rev. 02 H 130 / HH 145 °C (nominal 80–110 °C) inside the insulation class F limit (155 °C) until the motor nameplate is confirmed. The kiln main motor has six winding RTDs (two per phase).",
 });
 row(["CAM-BRN-01"], {
   text: T.camera,
@@ -349,14 +435,14 @@ row(["CAM-BRN-01"], {
 row(["TMP-BRN-04"], {
   text: T.coalBin,
   limit: (d) => ({ ...(d.limit as LimitRule), rate: { perH: 5, of: "residual", window: 60 } }),
-  note: "Rise > 5 K/h judged on the residual to the ambient model over 60 min (ambient swings are not a rise); plant warning 70 °C, EHS limit 80 °C (demo, MOM 1.13.1).",
+  note: "Rise > 5 K/h judged on the residual to the ambient model over 60 min (ambient swings are not a rise); OSW-PE-SNL-PYR-01 Rev. 02 H 75 / HH 85 °C.",
 });
 
 /* ------------------------------------------------------------------ */
 /* Apply                                                               */
 /* ------------------------------------------------------------------ */
 
-/** D5 Table 9.2 row of each tag (161 online entries; STS-KLN-08 / CAL-KLN-03 share one row). */
+/** D5 Table 9.2 row of each tag (every online register position, plus the calculated ΔP and bin-weight rows). */
 export const PYRO_D5_LIMITS: Record<string, PyroD5Limit> = Object.fromEntries(
   Object.entries(ROWS).map(([tag, r]) => [tag, { tag, ...r.text, ...(r.note ? { note: r.note } : {}) }]),
 );
@@ -394,7 +480,7 @@ function rangeText(lo: number | null, hi: number | null): string | null {
 }
 
 /**
- * OSW-PE-SNL-PYR-01 Rev. 01 set-points (./ranges) on top of the D5 matrix: L / H are the Alert band,
+ * OSW-PE-SNL-PYR-01 Rev. 02 set-points (./ranges) on top of the D5 matrix: L / H are the Alert band,
  * LL / HH the Critical band, in our signal's unit. Absolute limit kinds take them as their band; relative
  * kinds (model, command) keep their D5 test and judge the set-points alongside it (`abs`); bearings and
  * vibration take H / HH as their warning / alarm; speed and set-point kinds keep their relative test.

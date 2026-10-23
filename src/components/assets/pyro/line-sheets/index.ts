@@ -10,7 +10,32 @@ import { sourceMachineId } from "@shared/lib/pyro-sim/fleet";
 export type { LineSheetArt, LineSheetGroup, LineSheetMeta, LineSheetPoint };
 export { LINE_SHEETS, LINE_SHEET_GROUPS, LINE_SHEET_ART };
 
-export const LINE_SHEET_BY_ID: Record<string, LineSheetMeta> = Object.fromEntries(LINE_SHEETS.map((s) => [s.id, s]));
+const overviewOf = (id: string) => LINE_SHEETS.find((s) => s.id === id);
+/**
+ * A sheet of several stage overviews drawn as one: their machines and every point of their parts, or of the
+ * parts the combined design shows (`only`: detail sheet ids).
+ */
+const combined = (id: string, equipment: string, title: string, stages: string[], only?: string[]): LineSheetMeta => ({
+  id,
+  group: "L",
+  kind: "overview",
+  machines: [...new Set(stages.flatMap((s) => overviewOf(s)?.machines ?? []))],
+  equipment,
+  title,
+  parts: stages.flatMap((s) => overviewOf(s)?.parts ?? []).filter((p) => !only || only.includes(p)),
+});
+
+/** The preheater + kiln designs show the tower, calciner and exit gas, not the ID fan or baghouse; the burner design its hood end only. */
+const PK_PARTS = ["P-1", "P-2", "P-3", "P-5", "K-1", "K-2", "K-3", "K-4", "K-5", "K-6", "K-7", "K-8", "K-9"];
+
+/** Combined stage sheets (Operator view top bar), kept out of the diagram pack's register. */
+export const LINE_COMBO_SHEETS: LineSheetMeta[] = [
+  combined("PYR-PK", "Preheater and rotary kiln", "Preheater + kiln", ["P-0", "K-0"], PK_PARTS),
+  combined("PYR-PKB", "Preheater, rotary kiln and main burner", "Preheater + kiln + burner", ["P-0", "K-0", "B-0"], [...PK_PARTS, "B-1", "B-2"]),
+  combined("PYR-CC", "Grate cooler and clinker transport", "Grate cooler + clinker", ["C-0", "H-0"]),
+];
+
+export const LINE_SHEET_BY_ID: Record<string, LineSheetMeta> = Object.fromEntries([...LINE_SHEETS, ...LINE_COMBO_SHEETS].map((s) => [s.id, s]));
 
 /** Detail sheet and point entry of every tag ("TMP-KLN-20" → K-2). */
 export const LINE_SHEET_OF_TAG: Record<string, { sheet: string; point: LineSheetPoint }> = Object.fromEntries(

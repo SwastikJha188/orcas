@@ -38,7 +38,7 @@
   background: var(--bg-surface-elevated);
   color: var(--page-fg);
   font-size: var(--fs-base);
-  line-height: 1.45;
+  line-height: var(--lh-body);
   overflow-wrap: anywhere;
 }
 .cp-body { flex: 1; min-inline-size: 0; display: flex; flex-direction: column; gap: 12px; }
@@ -52,7 +52,7 @@
 .cp-meta-clock { color: var(--text-muted); font-weight: 400; font-variant-numeric: tabular-nums; }
 .cp-meta-clock::before { content: "·"; margin-inline-end: 8px; }
 
-.cp-text { font-size: var(--fs-base); line-height: 1.55; color: var(--page-fg); max-width: 68ch; overflow-wrap: anywhere; }
+.cp-text { font-size: var(--fs-base); line-height: var(--lh-body); color: var(--page-fg); max-width: 68ch; overflow-wrap: anywhere; }
 .cp-text p { margin: 0 0 8px; }
 .cp-text p:last-child { margin-block-end: 0; }
 .cp-text > div { margin: 0 0 8px; }
@@ -76,8 +76,9 @@
   background: var(--bg-canvas);
   font-family: inherit;
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   font-variant-numeric: tabular-nums;
-  line-height: 1.5;
+  line-height: var(--lh-body);
   color: var(--page-fg);
 }
 .cp-chip-dot { inline-size: 6px; block-size: 6px; border-radius: 50%; border: 1.5px solid var(--status-success); }
@@ -97,7 +98,7 @@
 .cp-spark-warn { stroke: var(--status-warning); }
 .cp-spark-alarm { stroke: var(--status-danger); }
 .cp-spark-dot { fill: var(--signal-blue); stroke: var(--card-bg); stroke-width: 1.5; }
-.cp-spark figcaption { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-block-start: 8px; font-family: inherit; font-size: var(--fs-xs); font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.cp-spark figcaption { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-block-start: 8px; font-family: inherit; font-size: var(--fs-xs); letter-spacing: var(--tracking-small); font-variant-numeric: tabular-nums; color: var(--text-muted); }
 .cp-spark-tag { font-weight: 600; color: var(--dx-ink); }
 .cp-spark-key { margin-inline-start: auto; display: inline-flex; align-items: center; gap: 4px; }
 .cp-key-line, .cp-key-dash { display: inline-block; inline-size: 12px; block-size: 0; border-block-start: 2px solid var(--signal-blue); }
@@ -115,7 +116,7 @@
   margin: 0 0 4px;
   padding: 0;
   display: grid;
-  gap: 6px;
+  gap: 8px;
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   letter-spacing: 0.02em;

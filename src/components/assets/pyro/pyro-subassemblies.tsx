@@ -1393,7 +1393,7 @@ export const SUBASSEMBLY_DRAWINGS: Record<string, SubAssemblyDrawingDef> = {
   "fsl-aeration": {
     Art: FslAerationArt,
     pads: {
-      "STS-FSL-02": [154, 168],
+      "STS-FSL-03": [154, 168],
       "ELE-FSL-01": [288, 174],
       "PRS-FSL-01": [498, 55],
     },
@@ -1441,12 +1441,12 @@ export const SUBASSEMBLY_DRAWINGS: Record<string, SubAssemblyDrawingDef> = {
     Art: PhcLowerArt,
     pads: {
       "PRS-PHC-04": [142, 86],
-      "PRS-PHC-07": [165, 178],
+      "PRS-PHC-14": [165, 178],
       "TMP-PHC-04": [195, 48],
       "PRS-PHC-05": [312, 96],
-      "PRS-PHC-08": [335, 188],
+      "PRS-PHC-15": [335, 188],
       "TMP-PHC-05": [365, 58],
-      "PRS-PHC-09": [505, 198],
+      "PRS-PHC-16": [505, 198],
       "TMP-PHC-06": [535, 68],
       "PRS-PHC-06": [588, 108],
     },
@@ -1463,7 +1463,7 @@ export const SUBASSEMBLY_DRAWINGS: Record<string, SubAssemblyDrawingDef> = {
     pads: {
       "GAS-PHC-01": [334, 178],
       "GAS-PHC-02": [406, 178],
-      "CAL-PHC-01": [512, 64],
+      "TMP-PHC-30": [512, 64],
     },
   },
   "phc-idfan": {
@@ -1499,8 +1499,6 @@ export const SUBASSEMBLY_DRAWINGS: Record<string, SubAssemblyDrawingDef> = {
     pads: {
       "TMP-KLN-01": [232, 62],
       "TMP-KLN-03": [232, 248],
-      "LEV-KLN-02": [290, 102],
-      "LEV-KLN-03": [290, 208],
       "MIG-KLN-01": [340, 96],
       "TMP-KLN-02": [458, 62],
       "TMP-KLN-04": [458, 248],
@@ -1511,8 +1509,6 @@ export const SUBASSEMBLY_DRAWINGS: Record<string, SubAssemblyDrawingDef> = {
     pads: {
       "TMP-KLN-05": [232, 62],
       "TMP-KLN-07": [232, 248],
-      "LEV-KLN-04": [290, 102],
-      "LEV-KLN-05": [290, 208],
       "MIG-KLN-02": [340, 96],
       "TMP-KLN-06": [458, 62],
       "TMP-KLN-08": [458, 248],
@@ -1523,8 +1519,6 @@ export const SUBASSEMBLY_DRAWINGS: Record<string, SubAssemblyDrawingDef> = {
     pads: {
       "TMP-KLN-09": [232, 62],
       "TMP-KLN-11": [232, 248],
-      "LEV-KLN-06": [290, 102],
-      "LEV-KLN-07": [290, 208],
       "MIG-KLN-03": [340, 96],
       "TMP-KLN-10": [458, 62],
       "TMP-KLN-12": [458, 248],
@@ -1538,7 +1532,6 @@ export const SUBASSEMBLY_DRAWINGS: Record<string, SubAssemblyDrawingDef> = {
       "GAS-KLN-03": [274, 140],
       "GAS-KLN-02": [290, 140],
       "GAS-KLN-01": [306, 140],
-      "CAL-KLN-06": [346, 152],
       "STS-KLN-06": [414, 74],
     },
   },
@@ -1561,8 +1554,9 @@ export const SUBASSEMBLY_DRAWINGS: Record<string, SubAssemblyDrawingDef> = {
     pads: {
       "CAM-BRN-01": [364, 29],
       "TMP-BRN-02": [364, 214],
-      "PRS-BRN-01": [562, 84],
-      "PRS-BRN-02": [598, 84],
+      // OSW-PE-SNL-PYR-01 Rev. 02 HP-04: PRS-BRN-01 primary-air header, -02 swirl, -03 axial (sub-assemblies per the register).
+      "PRS-BRN-02": [562, 84],
+      "PRS-BRN-01": [598, 84],
     },
   },
   "brn-pafan": {
@@ -1585,7 +1579,6 @@ export const SUBASSEMBLY_DRAWINGS: Record<string, SubAssemblyDrawingDef> = {
   "brn-coalfeed": {
     Art: BrnCoalFeedArt,
     pads: {
-      "CAL-BRN-01": [168, 84],
       "FLO-BRN-01": [214, 84],
       "PRS-BRN-04": [318, 136],
       "ELE-BRN-02": [421, 168],
@@ -1627,20 +1620,24 @@ export const SUBASSEMBLY_DRAWINGS: Record<string, SubAssemblyDrawingDef> = {
   "clr-fans46": {
     Art: () => <ClrFansArt start={4} />,
     pads: {
-      "TMP-CLR-04": [164, 200],
+      "VIB-CLR-04": [164, 210],
+      "TMP-CLR-04": [164, 192],
       "ELE-CLR-04": [228, 196],
-      "TMP-CLR-05": [356, 200],
+      "VIB-CLR-05": [356, 210],
+      "TMP-CLR-05": [356, 192],
       "ELE-CLR-05": [420, 196],
-      "TMP-CLR-06": [548, 200],
+      "VIB-CLR-06": [548, 210],
+      "TMP-CLR-06": [548, 192],
       "ELE-CLR-06": [612, 196],
     },
   },
   "clr-drive": {
     Art: ClrDriveArt,
     pads: {
-      "SPD-CLR-01": [316, 79],
-      "PRS-CLR-07": [476, 133],
-      "TMP-CLR-07": [486, 218],
+      // Motor-driven grate (Rev. 02 HP-05): grate drive 1 stroke rate, motor current and bearing.
+      "SPD-CLR-11": [316, 79],
+      "ELE-CLR-11": [476, 133],
+      "TMP-CLR-31": [486, 218],
     },
   },
   "clr-discharge": {

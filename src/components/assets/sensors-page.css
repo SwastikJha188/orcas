@@ -88,7 +88,7 @@
   min-width: 160px;
   max-width: 320px;
   white-space: normal;
-  line-height: 1.35;
+  line-height: var(--lh-snug);
 }
 
 .pg-sensors-formula {
@@ -141,7 +141,7 @@
 .pg-sensors-tiles {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 20px;
   padding: 8px;
 }
 
@@ -293,7 +293,7 @@
 .pg-sensors-validity-note {
   margin: 0;
   font-size: var(--fs-md);
-  line-height: 1.4;
+  line-height: var(--lh-snug);
   color: var(--page-fg);
 }
 

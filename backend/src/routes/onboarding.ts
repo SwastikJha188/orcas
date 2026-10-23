@@ -1,11 +1,34 @@
 import { Hono } from "hono";
 import { canAdminister, currentUserId, fail, failFrom, forbidden, ok } from "@backend/http";
-import { latestRun, processorStatus, startRun, stopRun } from "@backend/onboarding/claude-runner";
+import { aiModels, latestRun, processorStatus, setAiModel, startRun, stopRun } from "@backend/onboarding/claude-runner";
 import { addFile, commitPackage, createPackage, deleteFile, deletePackage, draftProblems, draftWorkbook, fileContent, getPackage, importDraftWorkbook, listPackages, onboardingReference, saveDraft, setFileResult } from "@backend/services/onboarding-service";
 
 /** /api/onboarding */
 export const onboarding = new Hono();
 
+
+/** The Claude models that can read uploads, and the one in use: GET lists, PUT { id } switches. */
+onboarding.get("/models", async (c) => {
+  const request = c.req.raw;
+  if (!(await canAdminister(request))) return forbidden();
+  try {
+    return ok(await aiModels());
+  } catch (error) {
+    return failFrom(error, "AI_MODELS_FAILED");
+  }
+});
+
+onboarding.put("/models", async (c) => {
+  const request = c.req.raw;
+  if (!(await canAdminister(request))) return forbidden();
+  try {
+    const body = (await request.json().catch(() => null)) as { id?: string } | null;
+    if (!body?.id) return fail(400, "INVALID_INPUT", "Send { id } as JSON");
+    return ok(await setAiModel(body.id));
+  } catch (error) {
+    return failFrom(error, "AI_MODEL_SET_FAILED");
+  }
+});
 
 onboarding.get("/", async (c) => {
   const request = c.req.raw;

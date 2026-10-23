@@ -35,14 +35,16 @@
 .pg-diag .ast-kpi-value {
   font-family: var(--font-mono);
   font-size: var(--fs-5xl);
+  line-height: var(--lh-tight);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 .pg-diag .ast-kpi .pg-kpi-text {
   font-size: var(--fs-5xl);
+  letter-spacing: var(--tracking-display);
   font-weight: 600;
-  line-height: 1.1;
+  line-height: var(--lh-tight);
   color: var(--dx-ink);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -122,7 +124,7 @@
 .pg-diag .pg-analysis-why-body p {
   margin: 0;
   font-size: var(--fs-sm);
-  line-height: 1.5;
+  line-height: var(--lh-body);
   color: var(--text-muted);
 }
 
@@ -163,7 +165,7 @@
 
 .pg-diag-evtile .ui-tile-actions {
   gap: 0;
-  margin-right: -6px;
+  margin-right: -8px;
 }
 
 .pg-diag-f-rule .pg-analysis-why {
@@ -180,7 +182,7 @@
   gap: 8px 12px;
   margin: 0;
   font-size: var(--fs-sm);
-  line-height: 1.45;
+  line-height: var(--lh-body);
 }
 
 .pg-diag-f-dl dt {
@@ -287,7 +289,7 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  min-width: 240px;
+  min-width: 144px;
 }
 
 .pg-dx-faults > li {
@@ -297,9 +299,10 @@
 
 .pg-dx-fault-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: 0 12px;
 }
 
 .pg-dx-fault-name {
@@ -322,18 +325,15 @@
 }
 
 .pg-dx-fault-actions {
-  display: inline-flex;
+  display: flex;
   flex-wrap: nowrap;
-  align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1) var(--space-2);
+  margin-top: var(--space-1);
 }
 
-/* Trailing row actions (one group per fault that needs one): revealed on row hover or
-   keyboard focus, per the table style; always shown on touch. */
+/* A fault's actions sit under it: revealed on row hover or keyboard focus, per the table
+   style; always shown on touch. */
 .pg-dx-row-actions {
-  display: grid;
-  justify-items: end;
-  gap: var(--space-2);
   opacity: 0;
   transition: opacity var(--dur-fast) var(--ease-out);
 }
@@ -360,8 +360,28 @@
   white-space: normal;
 }
 
+/* Sensor name and part get their width first; the mostly-empty problem, since and
+   action columns give way instead of squeezing names onto three lines. */
+.pg-dx-table td[data-col="sensor"] > * {
+  display: block;
+  min-inline-size: 160px;
+}
+
+.pg-dx-table td[data-col="where"] > * {
+  display: block;
+  min-inline-size: 128px;
+}
+
+.pg-dx-table td[data-col="limit"] > * {
+  min-inline-size: 112px;
+}
+
+.pg-dx-table td[data-col="since"] > * {
+  white-space: nowrap;
+}
+
 /* Long headers wrap instead of widening the table. */
-.pg-dx-table th:is([data-col="since"], [data-col="limit"]) {
+.pg-dx-table th:is([data-col="since"], [data-col="limit"], [data-col="validity"]) {
   white-space: normal;
 }
 

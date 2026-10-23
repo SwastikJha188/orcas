@@ -5,7 +5,7 @@ import "./form.css";
 
 /* ==========================================================================
    Form fields: one label, one control, an optional hint or error. Controls
-   are plain inputs styled by form.css so they inherit Inter and the tokens.
+   are plain inputs styled by form.css so they inherit the UI font and the tokens.
    ========================================================================== */
 
 export interface FieldProps {

@@ -1,162 +1,136 @@
 /**
- * Sheet C-0 — CLR-01 · Clinker cooler — Overview (stage-overview PDF page 5).
+ * Sheet C-0 — CLR-01 · Clinker cooler — Overview (design Cooler Rev02).
  *
- * Left → right: the kiln hood with the kiln nose and the secondary-air rise,
- * the tertiary-air off-take over the cooler inlet; the long grate-cooler
- * casing with its clinker bed (glowing at the inlet), the clinker travel
- * arrows and the reciprocating grate; six under-grate compartments, each fed
- * through its riser duct by a cooling fan (volute, bearing, motor on a base
- * rail); the cooler exhaust duct over to the vent fan; the clinker discharge
- * chute with its IR pyrometer; the grate drive rod down to the hydraulic
- * power unit and the grease-lube unit.
+ * Drawn in the design's 2000 × 1125 frame: the kiln outlet with the flame, the hood with secondary air back to the
+ * kiln and clinker falling onto the grate; the tertiary-air duct off the cooler roof to the calciner; the grate
+ * cooler casing with grate sections 1–3 (3 if fitted), the clinker bed and the shuttling grate; six under-grate
+ * zones with their hoppers, each fed by a cooling fan through its riser (fresh air plus recirculated hot vent air at
+ * each fan intake); the middle vent through the WHRS / AQC boiler and the ESP to the vent exhaust fan, its
+ * outlet to the stack and back round as recirculated air; the transfer chute to the crusher; grate drives 1–3
+ * below. Readout blocks stand round the drawing (`readouts`).
  */
 import React from "react";
-import { Bolt, Fan, GroundLine, MX, MachineLabel, Motor, PAINT } from "@/components/assets/machine-kit/machine-kit";
+import { MX, MachineLabel, Motor, PAINT } from "@/components/assets/machine-kit/machine-kit";
 import type { LineSheetArt } from "../types";
-import { volutePath } from "./parts-c";
+import { FanSet, Head, Line } from "./parts-d";
 
-const W = 1654;
-const H = 774;
-const GROUND = 712.5;
+const W = 2000;
+const H = 1125;
 
-/** Compartment / fan pitch along the grate. */
-const P = 177.8;
-const CASE = { x: 161.5, y: 246, w: 1077.5, h: 198.5 };
-const GRATE = 427.5;
-const COMP = { x: 169.5, y: 451, w: 171, h: 73 };
-/** Cooling fan 1; fans 2 … 6 repeat at the pitch. */
-const FAN = { cx: 240.2, cy: 632, r: 34, top: 590, duct: 226, bx: 270.8, mx: 281, mw: 59, mh: 34, rail: 669 };
-const VENT = { cx: 1410, cy: 418.5, r: 49, top: 357.5 };
+/** Zone / cooling-fan pitch along the grate. */
+const P = 119.2;
+const CASE = { x: 356, y: 404, w: 742, h: 93 };
+const GRATE = 474;
+/** Zone 1 box; zones 2 … 6 repeat at the pitch. */
+const ZONE = { x: 368, y: 500, w: 112, h: 31 };
+/** Cooling fan 1 impeller centre and volute radius. */
+const FAN = { cx: 400, cy: 629, r: 15 };
+/** Riser x (fan outlet up to the zone) and the recirculated hot-air header y. */
+const RISE = 394;
+const ZIN = 464;
+const RECIRC = 697;
+/** Vent exhaust fan. */
+const VENT = { cx: 1045, cy: 312, r: 21 };
+/** Drive pitch (drive 1 at 0). */
+const DP = 250;
 
-/** Hopper thermocouple pad height: low in the compartment hopper, clear of the pressure-tap row. */
-const HOPPER_Y = 505;
-/**
- * Stand-off rows under the fans (rail to ground, then below the ground line):
- * winding nearest, bearing next, vibration last, so no leader crosses a block.
- */
-const ROW = [690, 721, 752];
+const AIR = MX.air;
+const GAS = MX.gas;
+const CLK = MX.material;
 
-type Pt = [number, number];
-
-/** Filled flow arrowhead with its tip at (x, y), pointing along `deg` (0 = right, 90 = down). */
-function Head({ x, y, deg, c, s = 9 }: { x: number; y: number; deg: number; c: string; s?: number }) {
-  return <path d={`M ${x} ${y} l ${-s * 1.5} ${-s * 0.62} v ${s * 1.24} Z`} fill={c} transform={`rotate(${deg} ${x} ${y})`} />;
-}
-
-/** Flow line as filled segments (a stroked straight line has a zero-area box, so gradient paints would not show). */
-function Flow({ pts, c, w = 2 }: { pts: Pt[]; c: string; w?: number }) {
+function KilnAndHood() {
+  const flameId = `${React.useId().replace(/:/g, "")}-c0flame`;
+  const a = (Math.atan2(404 - 346, 349 - 281) * 180) / Math.PI;
   return (
     <g>
-      {pts.slice(1).map(([x2, y2], i) => {
-        const [x1, y1] = pts[i];
-        const len = Math.hypot(x2 - x1, y2 - y1);
-        const deg = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
-        return <rect key={i} x={x1 - w / 2} y={y1 - w / 2} width={len + w} height={w} rx={w / 2} fill={c} transform={`rotate(${deg} ${x1} ${y1})`} />;
-      })}
+      {/* kiln outlet with the flame */}
+      <rect x={173} y={329} width={124} height={58} rx={8} {...PAINT.cylinder} />
+      {Array.from({ length: 8 }).map((_, i) => (
+        <line key={i} x1={186 + i * 13} x2={186 + i * 13} y1={334} y2={382} stroke={MX.fine} strokeWidth={0.7} opacity={0.6} />
+      ))}
+      <defs>
+        <radialGradient id={flameId} cx="0.4" cy="0.5" r="0.6">
+          <stop offset="0" stopColor="var(--mx-material-hi)" stopOpacity={1} />
+          <stop offset="0.5" stopColor="var(--mx-material)" stopOpacity={0.85} />
+          <stop offset="1" stopColor="var(--mx-material-deep)" stopOpacity={0.15} />
+        </radialGradient>
+      </defs>
+      <ellipse cx={252} cy={357} rx={40} ry={15} fill={`url(#${flameId})`} />
+      <rect x={173} y={329} width={124} height={58} rx={8} fill="none" stroke={MX.edge} strokeWidth={MX.w} />
+
+      {/* hood with its lining */}
+      <rect x={298} y={304} width={58} height={134} rx={6} {...PAINT.body} />
+      <rect x={303} y={312} width={7} height={118} rx={3} fill={MX.deep} stroke={MX.edge} strokeWidth={1} />
+      <rect x={303} y={312} width={7} height={118} rx={3} fill={MX.heat} opacity={0.25} />
+
+      {/* secondary air from the cooler back into the kiln */}
+      <rect x={205} y={369.2} width={203} height={1.6} fill={AIR} />
+      <Head x={302} y={370} dir="left" color={AIR} />
+
+      {/* clinker falling from the kiln onto the grate */}
+      <rect x={281} y={345.2} width={Math.hypot(68, 58)} height={1.8} fill={CLK} transform={`rotate(${a} 281 346)`} />
+      <path d="M 321 381 l -15 -6.5 v 13 Z" fill={CLK} transform={`rotate(${a} 321 381)`} />
     </g>
   );
 }
 
-/** Hollow duct drawn as its two walls with a light fill (closed polygon). */
-function Duct({ d }: { d: string }) {
-  return <path d={d} fill={MX.flatBody} fillOpacity={0.55} stroke={MX.edge} strokeWidth={MX.w} strokeLinejoin="round" />;
-}
-
-/** Small instrument body (transmitter / RTD head) behind a pad or standing alone. */
-function Instrument({ x, y, r = 7 }: { x: number; y: number; r?: number }) {
-  return (
-    <g>
-      <circle cx={x} cy={y} r={r} {...PAINT.raised} />
-      <circle cx={x} cy={y} r={r * 0.45} {...PAINT.shaft} />
-    </g>
-  );
-}
-
-function KilnHood() {
-  return (
-    <g>
-      <rect x={90} y={113.5} width={152} height={132.5} rx={10} {...PAINT.body} />
-      {/* hot zone in front of the kiln nose */}
-      <ellipse cx={165} cy={225} rx={64} ry={22} fill={MX.heat} opacity={0.95} />
-      {/* kiln nose ring */}
-      <rect x={90} y={123.5} width={21} height={112.5} rx={5} fill={MX.heat} fillOpacity={0.5} stroke={MX.edge} strokeWidth={MX.w} />
-      <line x1={100.5} x2={100.5} y1={130} y2={229} {...PAINT.hair} />
-      {/* secondary air rising from the cooler into the hood */}
-      <Flow pts={[[222, 246], [222, 192]]} c={MX.air} />
-      <Head x={222} y={198} deg={-90} c={MX.air} />
-      <Head x={222} y={214} deg={-90} c={MX.air} />
-      {/* tertiary-air off-take */}
-      <Duct d="M 378 246 V 172.5 H 293.5 V 156.5 H 385 Q 391 156.5 391 162.5 V 246 Z" />
-      <Flow pts={[[385, 246], [385, 164.5], [270, 164.5]]} c={MX.air} />
-      <Head x={385} y={196} deg={-90} c={MX.air} />
-      <Head x={322} y={164.5} deg={180} c={MX.air} />
-      <Head x={265} y={164.5} deg={180} c={MX.air} s={7} />
-      <MachineLabel x={165.5} y={106} size={10.5}>
-        KILN HOOD
-      </MachineLabel>
-    </g>
-  );
+function Tertiary() {
+  return <Line pts={[[398, 404], [398, 273], [622, 273]]} color={AIR} w={14} heads={[[398, 336, "up"], [513, 273, "right"]]} />;
 }
 
 function Cooler() {
-  const ix = CASE.x + 9.5;
-  const ir = CASE.x + CASE.w - 8;
-  // bed surface: higher in the middle, thinner at the inlet and the outlet
-  const surf = (x: number) => {
-    const t = (x - ix) / (ir - ix);
-    return 378 - 22 * Math.sin(Math.min(1, t * 1.25) * Math.PI * 0.5) + 10 * Math.max(0, t - 0.8) / 0.2;
-  };
-  const top = Array.from({ length: 41 }, (_, i) => {
-    const x = ix + ((ir - ix) * i) / 40;
-    return `${i ? "L" : "M"} ${x.toFixed(1)} ${surf(x).toFixed(1)}`;
-  }).join(" ");
-  const bed = `${top} L ${ir} ${GRATE} L ${ix} ${GRATE} Z`;
-  const clip = `c0bed${React.useId().replace(/[^a-zA-Z0-9]/g, "")}`;
-  const plates = Math.floor((ir - ix - 4) / 12);
+  const clip = `${React.useId().replace(/:/g, "")}-c0bed`;
+  const bed = "M 364 472 L 490 446 L 690 451 L 745 465 L 1082 468 L 1082 474 L 364 474 Z";
+  const plates = Math.floor((1083 - 366) / 12);
   return (
     <g>
-      <rect x={CASE.x} y={CASE.y} width={CASE.w} height={CASE.h} rx={10} {...PAINT.body} />
-      {/* clinker bed with the glowing inlet zone */}
+      <rect x={CASE.x} y={CASE.y} width={CASE.w} height={CASE.h} rx={8} {...PAINT.body} />
+      {/* grate section 3 (if fitted) */}
+      <rect x={865} y={411} width={217} height={80} rx={6} fill="none" stroke={MX.fine} strokeWidth={MX.wFine} />
+      {/* clinker bed */}
       <clipPath id={clip}>
         <path d={bed} />
       </clipPath>
-      <path d={bed} fill={MX.material} opacity={0.3} />
-      <g clipPath={`url(#${clip})`}>
-        <ellipse cx={360} cy={404} rx={210} ry={32} fill={MX.heat} opacity={0.8} />
-        <ellipse cx={340} cy={406} rx={100} ry={18} fill={MX.heat} opacity={0.75} />
-      </g>
-      <path d={top} fill="none" stroke={MX.material} strokeWidth={1} opacity={0.45} />
-      {/* clinker from the kiln down the inlet step, then along the grate */}
-      <Flow pts={[[202.5, 256.5], [283.5, 399]]} c={MX.material} w={2.6} />
-      <Head x={244} y={329} deg={60.4} c={MX.material} s={10} />
-      <Flow pts={[[292, 410], [1218, 410]]} c={MX.material} w={2.6} />
-      <Head x={535} y={410} deg={0} c={MX.material} s={10} />
-      <Head x={998} y={410} deg={0} c={MX.material} s={10} />
-      {/* reciprocating grate */}
-      <rect x={167} y={GRATE} width={1065} height={8.5} rx={2} {...PAINT.raised} />
-      {Array.from({ length: plates }).map((_, i) => (
-        <line key={i} x1={173 + i * 12} x2={173 + i * 12} y1={GRATE + 1.5} y2={GRATE + 7} {...PAINT.hair} />
+      <path d={bed} fill={CLK} opacity={0.75} stroke={MX.edge} strokeWidth={1} strokeLinejoin="round" />
+      <rect x={380} y={464.2} width={697} height={1.6} fill={CLK} clipPath={`url(#${clip})`} />
+      {/* grate plates: sections 1–2 fitted, section 3 light */}
+      {Array.from({ length: plates }).map((_, i) => {
+        const px = 367 + i * 12;
+        const s3 = px >= 865;
+        return <rect key={i} x={px} y={GRATE} width={10} height={8} rx={1.5} fill={s3 ? MX.padPanel : MX.fine} stroke={MX.edge} strokeWidth={0.8} />;
+      })}
+      {/* grate shuttle */}
+      {[397, 655, 898].map((sx) => (
+        <g key={sx}>
+          <line x1={sx + 4} x2={sx + 40} y1={485} y2={485} stroke={MX.label} strokeWidth={1.4} />
+          <Head x={sx} y={485} dir="left" color={MX.label} s={0.65} />
+          <Head x={sx + 44} y={485} dir="right" color={MX.label} s={0.65} />
+        </g>
       ))}
-      {/* cooling air up through the grate from each compartment */}
-      {Array.from({ length: 6 }).map((_, i) => (
-        <Flow key={i} pts={[[260.5 + i * P, COMP.y], [260.5 + i * P, 416]]} c={MX.air} w={1.8} />
+      {[
+        [493, "GRATE SECTION 1"],
+        [743, "GRATE SECTION 2"],
+        [972, "GRATE SECTION 3 · IF FITTED"],
+      ].map(([x, t]) => (
+        <MachineLabel key={t} x={x as number} y={422} size={8}>
+          {t}
+        </MachineLabel>
       ))}
     </g>
   );
 }
 
-function Compartment({ i }: { i: number }) {
+function Zone({ i }: { i: number }) {
   const o = i * P;
-  const x = COMP.x + o;
+  const x = ZONE.x + o;
+  const c = 424 + o;
   return (
     <g>
-      <rect x={x} y={COMP.y} width={COMP.w} height={COMP.h} rx={5} {...PAINT.body} />
-      {/* pressure tapping (top right) and hopper thermocouple (low left, in the hopper) */}
-      <rect x={309.5 + o} y={COMP.y} width={4} height={20} {...PAINT.shaft} />
-      <Instrument x={311.5 + o} y={479.8} />
-      <rect x={COMP.x + o} y={HOPPER_Y - 2} width={195.5 - COMP.x} height={4} {...PAINT.shaft} />
-      <Instrument x={195.5 + o} y={HOPPER_Y} />
-      <MachineLabel x={255 + o} y={465} size={9.5}>{`COMP. ${i + 1}`}</MachineLabel>
+      {/* hopper under the zone */}
+      <path d={`M ${c - 38} 531 L ${c + 38} 531 L ${c + 14} 565 L ${c - 14} 565 Z`} {...PAINT.cylinderV} />
+      <rect x={c - 9} y={565} width={18} height={8} rx={1.5} {...PAINT.raised} />
+      <rect x={x} y={ZONE.y} width={ZONE.w} height={ZONE.h} rx={4} {...PAINT.body} />
+      <MachineLabel x={x + 54} y={511} size={7.5}>{`ZONE ${i + 1}`}</MachineLabel>
     </g>
   );
 }
@@ -164,172 +138,107 @@ function Compartment({ i }: { i: number }) {
 function CoolingFan({ i }: { i: number }) {
   const o = i * P;
   const cx = FAN.cx + o;
-  const { cy, r, top } = FAN;
-  const v = volutePath(cx, cy, r, top, 1);
-  const inner = volutePath(cx, cy, r, top + 4, 1, 0.88);
-  const dx = FAN.duct + o;
-  const mx = FAN.mx + o;
-  const mTop = cy - FAN.mh / 2;
   return (
     <g>
-      {/* riser duct from the fan to the compartment */}
-      <rect x={dx - 8.5} y={COMP.y + COMP.h} width={17} height={top - COMP.y - COMP.h + 2} fill={MX.flatBody} fillOpacity={0.55} stroke={MX.edge} strokeWidth={MX.w} />
-      <rect x={dx - 11.5} y={COMP.y + COMP.h} width={23} height={4.5} rx={1} {...PAINT.raised} />
-      <Flow pts={[[dx, top], [dx, COMP.y + COMP.h + 4]]} c={MX.air} w={1.8} />
-      <Head x={dx} y={551} deg={-90} c={MX.air} s={8} />
-      {/* base rail */}
-      <rect x={200 + o} y={FAN.rail} width={174} height={7.5} rx={2} {...PAINT.body} />
-      {/* volute saddle, bearing pedestal, motor feet */}
-      <path d={`M ${cx - 14} ${cy + r - 6} H ${cx + 14} L ${cx + 18} ${FAN.rail} H ${cx - 18} Z`} {...PAINT.body} />
-      <rect x={FAN.bx - 7 + o} y={cy + 8} width={14} height={FAN.rail - cy - 8} rx={1.5} {...PAINT.body} />
-      <rect x={mx + 6} y={cy + FAN.mh / 2} width={FAN.mw - 12} height={FAN.rail - cy - FAN.mh / 2} rx={1.5} {...PAINT.body} />
-      {/* volute casing, inlet ring and impeller */}
-      <path d={v.d} {...PAINT.body} />
-      <path d={inner.open} fill="none" stroke={MX.fine} strokeWidth={0.8} />
-      <rect x={cx - r - 3} y={top - 2.5} width={r + 6} height={5} rx={1.2} {...PAINT.raised} />
+      {/* hot vent air up from the header into the fan intake */}
+      <Line pts={[[cx - 2, RECIRC], [cx - 2, FAN.cy + FAN.r + 2]]} color={GAS} w={11} dash={4} heads={[[cx - 2, 656, "up"]]} />
+      {/* fresh air through the intake filter */}
+      <rect x={cx - 47} y={672.2} width={38} height={1.6} fill={AIR} />
+      <Head x={cx - 26} y={673} dir="right" color={AIR} s={0.8} />
+      <Head x={cx - 8} y={673} dir="right" color={AIR} s={0.8} />
+      <rect x={cx - 26} y={666} width={11} height={14} rx={2.5} {...PAINT.raised} />
+      {/* riser from the fan outlet to the zone */}
+      <Line pts={[[RISE + o, FAN.cy - FAN.r * 1.35 + 1], [RISE + o, 587], [ZIN + o, 587], [ZIN + o, 531]]} color={AIR} w={9} heads={[[438 + o, 587, "right"], [ZIN + o, 559, "up"]]} />
+      <FanSet cx={cx} cy={FAN.cy} r={FAN.r} base={false} />
+      {/* motor stool */}
+      <rect x={cx + FAN.r * 1.45 + FAN.r * 0.4} y={FAN.cy + FAN.r * 0.875} width={FAN.r * 2.5} height={4} rx={1} {...PAINT.body} />
+      <MachineLabel x={432 + o} y={668} size={7.5}>{`FAN ${i + 1}`}</MachineLabel>
+    </g>
+  );
+}
+
+function VentTrain() {
+  return (
+    <g>
+      {/* middle vent off the cooler roof to the WHRS */}
+      <Line pts={[[689, 404], [689, 313], [741, 313]]} color={GAS} w={14} dash={5} heads={[[689, 352, "up"], [722, 313, "right"]]} />
+      {/* WHRS → ESP → vent fan */}
+      <Line pts={[[826, 312], [874, 312]]} color={GAS} w={14} dash={5} heads={[[856, 312, "right"]]} />
+      <Line pts={[[983, 312], [1022, 312]]} color={GAS} w={14} dash={4} heads={[[996, 312, "right"]]} />
+
+      {/* WHRS / AQC boiler with its tube bank and hopper */}
+      <path d="M 750 361 L 819 361 L 800 384 L 767 384 Z" {...PAINT.cylinderV} />
+      <rect x={740} y={262} width={86} height={99} rx={6} {...PAINT.body} />
+      {[274, 289, 304, 319, 334, 350].map((ty) => (
+        <line key={ty} x1={748} x2={818} y1={ty} y2={ty} stroke={MX.edge} strokeWidth={1.1} />
+      ))}
+
+      {/* ESP with its collecting plates and two dust hoppers */}
+      {[0, 55].map((dx) => (
+        <path key={dx} d={`M ${876 + dx} 355 L ${924 + dx} 355 L ${910 + dx} 382 L ${889 + dx} 382 Z`} {...PAINT.cylinderV} />
+      ))}
+      <rect x={873} y={267} width={110} height={88} rx={6} {...PAINT.body} />
+      {[887, 908, 928, 948, 968].map((px) => (
+        <line key={px} x1={px} x2={px} y1={280} y2={344} stroke={MX.fine} strokeWidth={1} />
+      ))}
+
+      {/* vent exhaust fan */}
+      <FanSet cx={VENT.cx} cy={VENT.cy} r={VENT.r} base={false} />
+
+      {/* fan outlet: up, over and down the side, back along under the fans as recirculated hot air */}
+      <Line
+        pts={[[1033, VENT.cy - VENT.r * 1.35 + 1], [1033, 262], [1206, 262], [1206, RECIRC], [FAN.cx - 8, RECIRC]]}
+        color={GAS}
+        w={12}
+        dash={5}
+        heads={[[1126, 262, "right"], [1206, 481, "down"], [808, RECIRC, "left"]]}
+      />
+      {/* stack / split (if fitted) */}
+      <line x1={1206} x2={1206} y1={256} y2={206} stroke={MX.label} strokeWidth={2.4} strokeDasharray="5 4" />
+      <Head x={1206} y={194} dir="up" color={MX.label} s={0.9} />
+    </g>
+  );
+}
+
+function Chute() {
+  return (
+    <g>
+      <path d="M 1090 420 L 1132 420 L 1131 554 L 1106 554 Z" {...PAINT.cylinderV} />
+      <rect x={1115.2} y={445} width={1.6} height={100} fill={CLK} />
+      <Head x={1116} y={506} dir="down" color={CLK} s={1.1} />
+      <rect x={1082} y={560} width={79} height={24} rx={4} fill="none" stroke={MX.label} strokeWidth={1.1} strokeDasharray="4 3" />
+      <MachineLabel x={1121.5} y={575} size={7.5}>
+        TO CRUSHER
+      </MachineLabel>
+    </g>
+  );
+}
+
+function Drive({ k }: { k: number }) {
+  const o = k * DP;
+  return (
+    <g>
+      {/* motor, coupling shaft, gearbox, output shaft, crank wheel */}
+      <Motor x={407 + o} y={727} w={38} h={33} />
+      <rect x={445 + o} y={739.5} width={16} height={5} {...PAINT.shaft} />
+      <rect x={462 + o} y={714} width={33} height={7} rx={2} {...PAINT.body} />
+      <rect x={460 + o} y={719} width={38} height={39} rx={4} {...PAINT.body} />
+      <circle cx={470 + o} cy={745} r={6} {...PAINT.raised} />
+      <circle cx={470 + o} cy={745} r={2} fill={MX.edge} />
+      <circle cx={483 + o} cy={737} r={8.5} {...PAINT.raised} />
+      <circle cx={483 + o} cy={737} r={3} fill={MX.edge} />
       {[
-        [-0.72, -0.62],
-        [0.78, -0.6],
-        [-0.74, 0.66],
-        [0.8, 0.62],
-      ].map(([a, b], k) => (
-        <Bolt key={k} x={cx + a * r} y={cy + b * r} r={1.9} />
+        [463.5, 722.5],
+        [494.5, 722.5],
+        [463.5, 754.5],
+        [494.5, 754.5],
+      ].map(([bx, by]) => (
+        <circle key={bx * 1000 + by} cx={bx + o} cy={by} r={1.8} fill={MX.edge} />
       ))}
-      <circle cx={cx} cy={cy} r={r * 0.6} {...PAINT.raised} />
-      <circle cx={cx} cy={cy} r={r * 0.5} fill="none" stroke={MX.fine} strokeWidth={MX.wFine} />
-      <Fan cx={cx} cy={cy} r={r * 0.42} />
-      {/* shaft, split bearing and motor (terminal box up, cowl to the right) */}
-      <rect x={cx} y={cy - 2} width={mx - cx} height={4} rx={1} {...PAINT.shaft} />
-      <rect x={FAN.bx - 7 + o} y={cy - 10} width={14} height={20} rx={3} {...PAINT.raised} />
-      <line x1={FAN.bx - 5 + o} x2={FAN.bx + 5 + o} y1={cy} y2={cy} stroke={MX.fine} strokeWidth={1} />
-      <g transform={`translate(${2 * (mx + FAN.mw / 2)} 0) scale(-1 1)`}>
-        <Motor x={mx} y={mTop} w={FAN.mw} h={FAN.mh} terminalBox={false} />
-      </g>
-      <rect x={302 + o} y={mTop - 9.5} width={21} height={10} rx={2.5} {...PAINT.body} />
-      {/* winding RTD terminal on the frame */}
-      <circle cx={317.5 + o} cy={636} r={4} {...PAINT.raised} />
-    </g>
-  );
-}
-
-function Exhaust() {
-  return (
-    <g>
-      <Duct d="M 1055 246 V 150.5 Q 1055 142.5 1063 142.5 H 1416 Q 1424 142.5 1424 150.5 V 360 H 1399 V 167.5 H 1077 V 246 Z" />
-      <Flow pts={[[1066, 246], [1066, 155], [1411, 155], [1411, 362]]} c={MX.air} />
-      <Head x={1066} y={190} deg={-90} c={MX.air} s={10} />
-      <Head x={1249} y={155} deg={0} c={MX.air} s={10} />
-      <Head x={1411} y={264} deg={90} c={MX.air} s={10} />
-      {/* exhaust gas thermocouple head on the duct roof */}
-      <rect x={1214.5} y={136} width={6} height={8} {...PAINT.shaft} />
-      <Instrument x={1217.5} y={154} r={6} />
-      <MachineLabel x={1237} y={135} size={10.5}>
-        COOLER EXHAUST
-      </MachineLabel>
-    </g>
-  );
-}
-
-function VentFan() {
-  const { cx, cy, r, top } = VENT;
-  const v = volutePath(cx, cy, r, top, -1);
-  const inner = volutePath(cx, cy, r, top + 5, -1, 0.9);
-  return (
-    <g>
-      <rect x={1370} y={471.5} width={214} height={9.5} rx={2} {...PAINT.body} />
-      <path d={`M ${cx - 20} ${cy + r - 8} H ${cx + 20} L ${cx + 26} 471.5 H ${cx - 26} Z`} {...PAINT.body} />
-      <rect x={1461} y={440} width={18} height={31.5} rx={1.5} {...PAINT.body} />
-      <rect x={1506} y={452} width={60} height={19.5} rx={1.5} {...PAINT.body} />
-      <path d={v.d} {...PAINT.body} />
-      <path d={inner.open} fill="none" stroke={MX.fine} strokeWidth={0.8} />
-      <rect x={cx - 3} y={top - 2.5} width={r + 6} height={5} rx={1.2} {...PAINT.raised} />
-      {[
-        [-0.74, -0.62],
-        [0.74, -0.62],
-        [-0.74, 0.62],
-        [0.74, 0.62],
-      ].map(([a, b], k) => (
-        <Bolt key={k} x={cx + a * r * 0.92} y={cy + b * r * 0.92} r={2.2} />
-      ))}
-      <circle cx={cx} cy={cy} r={r * 0.62} {...PAINT.raised} />
-      <circle cx={cx} cy={cy} r={r * 0.52} fill="none" stroke={MX.fine} strokeWidth={MX.wFine} />
-      <Fan cx={cx} cy={cy} r={r * 0.44} />
-      {/* shaft, bearing housing, coupling, motor */}
-      <rect x={cx} y={cy - 2.5} width={1497 - cx} height={5} rx={1} {...PAINT.shaft} />
-      <rect x={1458} y={392} width={22} height={53} rx={4} {...PAINT.raised} />
-      <line x1={1460} x2={1478} y1={cy} y2={cy} stroke={MX.fine} strokeWidth={1} />
-      {/* bearing RTD boss on the pedestal */}
-      <Instrument x={1469} y={458} r={6} />
-      <rect x={1482} y={410} width={14} height={18} rx={3} {...PAINT.body} />
-      <g transform={`translate(${2 * (1497.5 + 38.25)} 0) scale(-1 1)`}>
-        <Motor x={1497.5} y={394} w={76.5} h={58.5} terminalBox={false} />
-      </g>
-      <rect x={1517} y={381} width={33} height={13.5} rx={3} {...PAINT.body} />
-      {/* conduit up to the motor junction box (current transducer) */}
-      <rect x={1526} y={372} width={4} height={10} {...PAINT.shaft} />
-      <rect x={1518} y={359} width={20} height={16} rx={3} {...PAINT.raised} />
-      {/* winding RTD terminal */}
-      <circle cx={1549.8} cy={428} r={5} {...PAINT.raised} />
-      <MachineLabel x={1502} y={496} size={10.5}>
-        VENT FAN
-      </MachineLabel>
-    </g>
-  );
-}
-
-function Discharge() {
-  const a = Math.atan2(621 - 443, 1278 - 1166) * (180 / Math.PI);
-  return (
-    <g>
-      {/* discharge chute with the clinker falling to the crusher */}
-      <path d="M 1239 347.5 H 1299 L 1324 520 H 1250 Z" {...PAINT.body} />
-      <Flow pts={[[1284, 428], [1284, 524]]} c={MX.material} w={2.6} />
-      <Head x={1284} y={508} deg={90} c={MX.material} s={10} />
-      {/* IR pyrometer looking into the chute */}
-      <line x1={1310} y1={354} x2={1284} y2={404} stroke={MX.label} strokeWidth={0.9} strokeDasharray="2.5 2.5" />
-      <rect x={1304.5} y={331} width={27} height={24} rx={4} {...PAINT.raised} />
-      <rect x={1316} y={355} width={4} height={8} {...PAINT.shaft} />
-      {/* grate drive rod down to the HPU, with the stroke sensor */}
-      <line x1={1166} y1={443} x2={1278} y2={621} stroke={MX.edge} strokeWidth={4.5} strokeLinecap="round" />
-      <line x1={1166} y1={443} x2={1278} y2={621} stroke={MX.metal} strokeWidth={2} strokeLinecap="round" />
-      <rect x={1197} y={524.5} width={46} height={12} rx={3} {...PAINT.raised} transform={`rotate(${a} 1220 530.5)`} />
-    </g>
-  );
-}
-
-function Hpu() {
-  return (
-    <g>
-      {[1262, 1378].map((x) => (
-        <rect key={x} x={x} y={702.5} width={10} height={GROUND - 702.5} rx={1} {...PAINT.body} />
-      ))}
-      <rect x={1249} y={621.5} width={152} height={81} rx={8} {...PAINT.body} />
-      <rect x={1253.5} y={626} width={143} height={72} rx={5} fill="none" stroke={MX.fine} strokeWidth={0.8} />
-      {/* oil reservoir window */}
-      <rect x={1258.5} y={633.5} width={69} height={49.5} rx={4} {...PAINT.raised} />
-      <rect x={1262.5} y={637.5} width={61} height={41.5} rx={3} fill={MX.material} opacity={0.9} />
-      {/* pressure gauge */}
-      <circle cx={1370.2} cy={633} r={11} {...PAINT.raised} />
-      <circle cx={1370.2} cy={633} r={7.5} {...PAINT.recess} />
-      <MachineLabel x={1323} y={736} size={10.5}>
-        GRATE DRIVE HPU
-      </MachineLabel>
-    </g>
-  );
-}
-
-function GreaseLube() {
-  return (
-    <g>
-      <rect x={1431} y={621.5} width={92.5} height={61} rx={6} {...PAINT.body} />
-      <rect x={1440} y={631.5} width={36.5} height={25} rx={3} {...PAINT.raised} />
-      <rect x={1442.5} y={634} width={31.5} height={20} rx={2} fill={MX.material} opacity={0.85} />
-      {/* grease-lube pumps (status from the DCS) */}
-      <circle cx={1496.2} cy={657} r={10} {...PAINT.raised} />
-      <circle cx={1496.2} cy={657} r={4.5} {...PAINT.shaft} />
-      <MachineLabel x={1477.5} y={703} size={10.5}>
-        GREASE LUBE
-      </MachineLabel>
+      <rect x={498 + o} y={739} width={16} height={5} {...PAINT.shaft} />
+      <circle cx={527.5 + o} cy={741.5} r={15} {...PAINT.cylinder} />
+      <circle cx={527.5 + o} cy={741.5} r={5} fill="none" stroke={MX.edge} strokeWidth={1.2} />
+      <MachineLabel x={468 + o + (k === 2 ? -23 : 0)} y={802} size={7.5}>{`DRIVE ${k + 1}`}</MachineLabel>
     </g>
   );
 }
@@ -337,78 +246,170 @@ function GreaseLube() {
 function Art() {
   return (
     <g>
-      <GroundLine x1={70} x2={1581} y={GROUND} />
-      <Exhaust />
-      <KilnHood />
+      <Tertiary />
+      <VentTrain />
+      <KilnAndHood />
       <Cooler />
       {Array.from({ length: 6 }).map((_, i) => (
         <g key={i}>
-          <Compartment i={i} />
+          <Zone i={i} />
           <CoolingFan i={i} />
         </g>
       ))}
-      <Discharge />
-      <VentFan />
-      <Hpu />
-      <GreaseLube />
+      <Chute />
+      {[0, 1, 2].map((k) => (
+        <Drive key={k} k={k} />
+      ))}
+      {/* drive 3 is fitted only with grate section 3 */}
+      <rect x={865} y={717} width={166} height={70} rx={6} fill="none" stroke={MX.label} strokeWidth={1.1} strokeDasharray="4 3" />
+
+
+      <MachineLabel x={235} y={317} size={8.5}>
+        KILN OUTLET
+      </MachineLabel>
+      <MachineLabel x={255} y={386} size={7.5}>
+        SECONDARY AIR
+      </MachineLabel>
+      <MachineLabel x={510} y={265} size={7.5}>
+        TERTIARY AIR → CALCINER
+      </MachineLabel>
+      <MachineLabel x={706} y={390} size={7.5}>
+        MIDDLE VENT
+      </MachineLabel>
+      <MachineLabel x={783} y={254} size={7.5}>
+        WHRS / AQC BOILER
+      </MachineLabel>
+      <MachineLabel x={928} y={259} size={7.5}>
+        ESP
+      </MachineLabel>
+      <MachineLabel x={927} y={390} size={7.5}>
+        DUST HOPPERS
+      </MachineLabel>
+      <MachineLabel x={1089} y={342} size={7.5}>
+        VENT EXHAUST FAN
+      </MachineLabel>
+      <MachineLabel x={1231} y={189} size={7}>
+        STACK / SPLIT · IF FITTED
+      </MachineLabel>
+      <MachineLabel x={364} y={659} size={7}>
+        FRESH AIR
+      </MachineLabel>
+      <MachineLabel x={789} y={712} size={7.5}>
+        RECIRCULATED HOT VENT AIR → EACH COOLING-FAN INTAKE
+      </MachineLabel>
     </g>
   );
 }
 
-
-
-/**
- * Pad centre per point (sheet units), as on PDF page 5. Each compartment and
- * each fan repeats one pattern: pressure plate left over the compartment,
- * hopper plate right; fan current plate right along the motor top; winding,
- * bearing and vibration stand off in rows under the base rail. The vent-fan
- * points sit one per row so each plate runs left over the volute.
- */
 const pads: LineSheetArt["pads"] = {};
-const callouts: NonNullable<LineSheetArt["callouts"]> = {};
 for (let i = 0; i < 6; i++) {
   const n = `0${i + 1}`;
   const o = i * P;
-  pads[`PRS-CLR-${n}`] = [311.5 + o, 479.8];
-  pads[`TMP-CLR-${11 + i}`] = [195.5 + o, HOPPER_Y];
-  pads[`ELE-CLR-${n}`] = [312.5 + o, 607.5];
-  pads[`TMP-CLR-${n}`] = [270.8 + o, 642.2];
-  pads[`TMP-CLR-${17 + i}`] = [317.5 + o, 636];
-  // Stand-off slots (small screens): pressures in two staggered rows over the bed, hoppers under their compartment.
-  callouts[`PRS-CLR-${n}`] = [399 + o, i % 2 ? 382 : 412, "end"];
-  callouts[`TMP-CLR-${11 + i}`] = [182 + o, 548, "start"];
-  callouts[`ELE-CLR-${n}`] = [305 + o, 607.5, "start"];
-  callouts[`TMP-CLR-${n}`] = [262 + o, ROW[1], "start"];
-  callouts[`TMP-CLR-${17 + i}`] = [276 + o, ROW[0], "start"];
-  if (i < 3) {
-    pads[`VIB-CLR-${n}`] = [240.2 + o, 632.2];
-    callouts[`VIB-CLR-${n}`] = [240.2 + o, ROW[2], "middle"];
-  }
+  pads[`PRS-CLR-${n}`] = [456 + o, 515];
+  pads[`VIB-CLR-${n}`] = [409.5 + o, 618];
+  pads[`TMP-CLR-${n}`] = [388 + o, 641];
+  pads[`ELE-CLR-${n}`] = [450 + o, 618];
+  pads[`TMP-CLR-${17 + i}`] = [438 + o, 629];
+  pads[`SPD-CLR-${n}`] = [417 + o, 646];
 }
-
+/** Grate drives 1–3: motor vibration and bearing temperature on the motor's left end, current on its terminal box, stroke rate at the crank. */
+for (let k = 0; k < 3; k++) {
+  const o = k * DP;
+  pads[`SPD-CLR-1${k + 1}`] = [527 + o, 722];
+  pads[`VIB-CLR-1${k + 1}`] = [403.5 + o, 732.5];
+  pads[`TMP-CLR-3${k + 1}`] = [403.5 + o, 754];
+  pads[`ELE-CLR-1${k + 1}`] = [430 + o, 729];
+}
 Object.assign(pads, {
-  "SPD-CLR-01": [1217.8, 530.2],
-  "PRS-CLR-07": [1370.2, 633],
-  "TMP-CLR-07": [1293, 662],
-  "STS-CLR-01": [1496.2, 657],
-  "TMP-CLR-08": [1318.2, 343],
-  "TMP-CLR-09": [1217.5, 154],
-  "VIB-CLR-07": [1469, 398],
-  "TMP-CLR-10": [1469, 458],
-  "ELE-CLR-07": [1527.8, 368],
-  "TMP-CLR-23": [1549.8, 428],
+  "TMP-CLR-09": [689, 354],
+  "TMP-CLR-24": [836, 312],
+  "PRS-CLR-21": [861, 312],
+  "PRS-CLR-22": [1000, 312],
+  "PRS-CLR-20": [927, 300],
+  "TMP-CLR-25": [1206, 637],
+  "TMP-CLR-08": [1139, 487],
+  "VIB-CLR-07": [1033, 288],
+  "TMP-CLR-10": [1060, 325],
+  "ELE-CLR-07": [1117, 290],
+  "TMP-CLR-23": [1106, 313],
 } satisfies LineSheetArt["pads"]);
-Object.assign(callouts, {
-  "SPD-CLR-01": [1232, 530.2, "start"],
-  "TMP-CLR-07": [1300, 662, "start"],
-  "PRS-CLR-07": [1378, 633, "start"],
-  "STS-CLR-01": [1504, 657, "start"],
-  "TMP-CLR-08": [1310, 343, "end"],
-  "TMP-CLR-09": [1210, 154, "end"],
-  "ELE-CLR-07": [1527, 335, "middle"],
-  "VIB-CLR-07": [1468, 305, "middle"],
-  "TMP-CLR-10": [1540, 500, "end"],
-  "TMP-CLR-23": [1645, 560, "end"],
-} satisfies NonNullable<LineSheetArt["callouts"]>);
 
-export const sheet: LineSheetArt = { id: "C-0", ready: true, width: W, height: H, Art, pads, callouts };
+const FAN_X = [12, 343, 675, 1006, 1337, 1669];
+const GRATE_BOX: Array<[number, number, number, number]> = [
+  [12, 12, 293, 142],
+  [324, 12, 294, 142],
+  [637, 12, 385, 142],
+];
+
+const readouts: LineSheetArt["readouts"] = {
+  frame: [0, 0, W, H],
+  blocks: [
+    ...GRATE_BOX.map((box, k) => ({
+      title: k === 2 ? "Grate 3 · drive motor · if fitted" : `Grate ${k + 1} · drive motor`,
+      box,
+      leader: [430 + k * DP, 729] as [number, number],
+      rows: [
+        [`SPD-CLR-1${k + 1}`, "GRATE STROKE RATE *"],
+        [`VIB-CLR-1${k + 1}`, "MOTOR VIBRATION"],
+        [`TMP-CLR-3${k + 1}`, "BEARING TEMP."],
+        [`ELE-CLR-1${k + 1}`, "MOTOR CURRENT"],
+      ] as Array<[string, string]>,
+    })),
+    {
+      title: "Vent exhaust fan",
+      box: [1052, 12, 278, 142],
+      leader: [1073, 300],
+      rows: [
+        ["VIB-CLR-07", "FAN VIBRATION"],
+        ["TMP-CLR-10", "FAN BEARING TEMP."],
+        ["TMP-CLR-23", "MOTOR WINDING TEMP."],
+        ["ELE-CLR-07", "MOTOR CURRENT"],
+      ],
+    },
+    {
+      title: "Undergrate pressure · zones 1 – 6",
+      box: [1625, 12, 376, 192],
+      leader: [1052, 515],
+      rows: Array.from({ length: 6 }, (_, i): [string, string] => [`PRS-CLR-0${i + 1}`, `ZONE ${i + 1} PRESSURE`]),
+    },
+    {
+      title: "Vent & clinker temperatures",
+      box: [1625, 242, 310, 141],
+      leader: [689, 354],
+      rows: [
+        ["TMP-CLR-09", "MIDDLE VENT · BEFORE WHRS"],
+        ["TMP-CLR-24", "AFTER WHRS · BEFORE ESP"],
+        ["TMP-CLR-08", "CLINKER DISCHARGE"],
+        ["TMP-CLR-25", "RETURN AIR (RECIRCULATED) *"],
+      ],
+    },
+    {
+      title: "ESP · dust removal",
+      box: [1625, 408, 279, 117],
+      leader: [960, 300],
+      rows: [
+        ["PRS-CLR-21", "INLET PRESSURE"],
+        ["PRS-CLR-22", "OUTLET PRESSURE"],
+        ["PRS-CLR-20", "ΔP (CALCULATED)"],
+      ],
+    },
+    ...FAN_X.map((bx, i) => {
+      const n = `0${i + 1}`;
+      const rows: Array<[string, string]> = [
+        [`VIB-CLR-${n}`, "FAN VIBRATION"],
+        [`TMP-CLR-${n}`, "FAN BEARING TEMP."],
+        [`TMP-CLR-${17 + i}`, "MOTOR WINDING TEMP."],
+        [`ELE-CLR-${n}`, "MOTOR CURRENT"],
+        [`SPD-CLR-${n}`, "FAN SPEED"],
+      ];
+      return {
+        title: `Cooling fan ${i + 1} + motor`,
+        box: [bx, 898, 293, 166] as [number, number, number, number],
+        leader: [438 + i * P, 629] as [number, number],
+        rows,
+      };
+    }),
+  ],
+};
+
+export const sheet: LineSheetArt = { id: "C-0", ready: true, width: W, height: H, Art, pads, readouts };

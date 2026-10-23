@@ -23,7 +23,7 @@ const LX = 195.5;
 const D = 10;
 /** Roof top of stage n (1 … 6). */
 const T = (n: number) => 43.5 + (n - 1) * 62.3;
-const STAGES: StageGeom[] = [1, 2, 3, 4, 5, 6].map((n) => ({ cx: n % 2 ? RX : LX, top: T(n), inlet: n % 2 ? -1 : 1, w: 58, cyl: 27, cone: 29.5, ow: 18, k: 0.6 }));
+export const STAGES: StageGeom[] = [1, 2, 3, 4, 5, 6].map((n) => ({ cx: n % 2 ? RX : LX, top: T(n), inlet: n % 2 ? -1 : 1, w: 58, cyl: 27, cone: 29.5, ow: 18, k: 0.6 }));
 const HALF = 29;
 
 /** Outlet duct of stage n (2 … 6) up into stage n − 1. */
@@ -55,7 +55,8 @@ function Steel() {
   );
 }
 
-function Art() {
+/** The six-stage tower (also the drawing of sheet P-2, which carries the cone points). */
+export function TowerArt() {
   return (
     <g>
       <GroundLine x1={22.5} x2={482.5} y={GROUND} />
@@ -129,4 +130,4 @@ const callouts: LineSheetArt["callouts"] = {
   "PRS-PHC-06": [148.5, 373.2, "end"],
 };
 
-export const sheet: LineSheetArt = { id: "P-1", ready: true, width: W, height: H, Art, pads, callouts };
+export const sheet: LineSheetArt = { id: "P-1", ready: true, width: W, height: H, Art: TowerArt, pads, callouts };

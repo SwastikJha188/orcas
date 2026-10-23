@@ -21,13 +21,17 @@ export interface DialogProps {
   busy?: boolean;
   /** Unsaved input: a stray backdrop click is ignored and Esc / × ask before discarding. */
   dirty?: boolean;
+  /** Full-height sheet on the right edge instead of a centred box: a row's details over its list. */
+  side?: boolean;
+  /** Breadcrumbs above the title (see Crumbs): where this sheet sits in the page. */
+  crumbs?: React.ReactNode;
 }
 
 /**
  * Modal on the native <dialog>: the browser owns focus trapping, Esc and the
  * top layer. Glass surface (cheap CSS tier) over a dimmed workspace.
  */
-export function Dialog({ open, onClose, title, subtitle, children, footer, footerStart, width = 560, onSubmit, busy = false, dirty = false }: DialogProps) {
+export function Dialog({ open, onClose, title, subtitle, children, footer, footerStart, width = 560, onSubmit, busy = false, dirty = false, side = false, crumbs }: DialogProps) {
   const ref = useRef<HTMLDialogElement | null>(null);
   const titleId = useId();
   const subId = useId();
@@ -87,6 +91,7 @@ export function Dialog({ open, onClose, title, subtitle, children, footer, foote
     <>
       <header className="ui-dialog-head">
         <div className="ui-dialog-titles">
+          {crumbs}
           <h2 id={titleId} className="ui-dialog-title">
             {title}
           </h2>
@@ -131,7 +136,7 @@ export function Dialog({ open, onClose, title, subtitle, children, footer, foote
   return (
     <dialog
       ref={ref}
-      className="ui-dialog liquid-glass"
+      className={`ui-dialog liquid-glass${side ? " ui-sheet" : ""}`}
       aria-labelledby={titleId}
       aria-describedby={subtitle ? subId : undefined}
       style={{ width: `min(${width}px, calc(100vw - 32px))` }}

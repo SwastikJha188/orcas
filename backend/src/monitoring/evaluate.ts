@@ -12,6 +12,9 @@
  *   process check     process requirements
  *   rule patterns     active diagnostic rules reported by the analytics module
  *   health index      the machine's configured health model
+ *   maintenance hold  a machine out of service for maintenance (service state
+ *                     "Maintenance", set by a shutdown) only has its operating
+ *                     state followed: no new findings, open ones keep their state
  *
  * Findings open, update and clear; nothing is overwritten, so the history of
  * what was flagged and when stays reviewable. All thresholds, windows and
@@ -388,7 +391,10 @@ export async function evaluateFleet(opts: { ruleStates?: EngineRuleState[] } = {
   const requirements = await query<{ id: number; measurement_id: string; state_id: number | null; min_value: number | null; max_value: number | null; description: string }>(
     "SELECT id, measurement_id, state_id, min_value, max_value, description FROM process_requirements",
   );
-  const machinesRes = await query<{ id: string; health_model_id: string | null }>("SELECT id, health_model_id FROM machines");
+  const machinesRes = await query<{ id: string; health_model_id: string | null; service_state: string }>("SELECT id, health_model_id, service_state FROM machines");
+  // A machine a person took out of service for maintenance (a shutdown) raises nothing new and keeps its open findings.
+  const inMaintenance = new Set(machinesRes.rows.filter((m) => m.service_state === "Maintenance").map((m) => m.id));
+  const heldMachines = new Set<string>();
   const params = await query<{ model_id: string; key: string; value: number }>("SELECT model_id, key, value FROM health_model_parameters");
   const modelParams = new Map<string, Map<string, number>>();
   for (const p of params.rows) (modelParams.get(p.model_id) ?? modelParams.set(p.model_id, new Map()).get(p.model_id)!).set(p.key, Number(p.value));
@@ -409,6 +415,7 @@ export async function evaluateFleet(opts: { ruleStates?: EngineRuleState[] } = {
 
   for (const [machineId, list] of byMachine) {
     const recentOf = (id: string) => recent.get(id) ?? [];
+    const firstDesired = desired.length;
     const base = (m: MeasurementCfg) => ({
       machineId,
       measurementId: m.id,
@@ -496,6 +503,14 @@ export async function evaluateFleet(opts: { ruleStates?: EngineRuleState[] } = {
       stateChanges.push({ machineId, from: prevPeriod ? (states.find((s) => s.id === prevPeriod.state_id) ?? null) : null, to: state, at: now });
     }
     const running = state ? state.running : null;
+
+    // Held for maintenance: its operating state is still followed (when it stopped and started), nothing else.
+    if (inMaintenance.has(machineId)) {
+      desired.length = firstDesired;
+      for (const m of list) unjudged.add(m.id);
+      heldMachines.add(machineId);
+      continue;
+    }
 
     /* ---- reference for the state ---- */
     const refs = refsByMachine.get(machineId) ?? [];
@@ -837,6 +852,7 @@ export async function evaluateFleet(opts: { ruleStates?: EngineRuleState[] } = {
     const toClear = open.filter(
       (f) =>
         !seen.has(keyOf(f.machine_id, f.finding_type_id, f.measurement_id, f.rule_id)) &&
+        !heldMachines.has(f.machine_id) &&
         !(f.finding_type_id !== "data_unavailable" && f.measurement_id !== null && unjudged.has(f.measurement_id)),
     );
     // Rule findings are only cleared by rule reports; without a report this cycle they keep their state.

@@ -5,8 +5,8 @@
  * The kiln hood over the cooler inlet with the tertiary-air off-take, the
  * cooler casing with its clinker bed travelling toward the discharge over the
  * reciprocating grate, cooling air rising through the grate, six under-grate
- * compartments (pressure tap top right, hopper thermocouple low left) and the
- * cooling-fan risers down to the ground.
+ * compartments (pressure tap top right; the hopper thermocouples carry no
+ * point in Rev 02) and the cooling-fan risers down to the ground.
  */
 import React from "react";
 import { GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
@@ -145,9 +145,9 @@ function Art() {
 /**
  * Pads as on the panel. Each compartment repeats one pattern: the pressure
  * plate runs left along the top of the compartment (taps alternate a few
- * units up and down so neighbouring plates do not touch), the hopper plate
- * right along its bottom. Stand-off slots (used only if a reading is too wide for
- * the pitch) sit in two aligned rows under the compartments.
+ * units up and down so neighbouring plates do not touch). Stand-off slots
+ * (used only if a reading is too wide for the pitch) sit in a row under the
+ * compartments.
  */
 const pads: LineSheetArt["pads"] = {};
 const callouts: NonNullable<LineSheetArt["callouts"]> = {};
@@ -155,9 +155,7 @@ for (let i = 0; i < 6; i++) {
   const o = i * COMP.pitch;
   const n = `0${i + 1}`;
   pads[`PRS-CLR-${n}`] = [TAP.x + o, tapY(i)];
-  pads[`TMP-CLR-${11 + i}`] = [HOP.x + o, HOP.y];
   callouts[`PRS-CLR-${n}`] = [TAP.x + o + 4, 336, "end"];
-  callouts[`TMP-CLR-${11 + i}`] = [HOP.x + o - 4, 323, "start"];
 }
 
 export const sheet: LineSheetArt = { id: "C-1", ready: true, width: W, height: H, Art, pads, callouts };

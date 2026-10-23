@@ -19,7 +19,7 @@
  * the result in the drawing file, so pages only render.
  */
 import { CATALOG, matchMedium, matchType } from "./catalog";
-import type { Box, DiagramSpec, ItemOptions, ItemType, LaidItem, LaidLabel, LaidLink, LaidPoint, Layout, Medium, Pt, Side, SpecLink, Trace, ValveKind } from "./types";
+import type { Box, DiagramSpec, ItemOptions, ItemType, LaidItem, LaidLabel, LaidLink, LaidPoint, Layout, Medium, Pt, Side, SpecLink, TracedGroup, ValveKind } from "./types";
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const r1 = (v: number) => Math.round(v * 10) / 10;
@@ -50,7 +50,8 @@ interface Work {
   neckH: number;
   floorY?: number;
   legsTo?: number;
-  trace?: Trace;
+  /** Laid-out box in image px, just before it is fitted to the sheet (moves applied). */
+  pre?: Box;
 }
 
 /* ------------------------------------------------------------------ */
@@ -105,7 +106,9 @@ const slug = (s: string) => String(s ?? "").trim().toLowerCase().replace(/[^a-z0
 /* Main                                                                */
 /* ------------------------------------------------------------------ */
 
-export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: number }, traces: Record<string, Trace> = {}): Layout {
+const SHAPE_PARTS: ItemType[] = ["block", "cylinder", "wheel", "cone", "pile", "table", "fixture", "workpiece", "tool", "machine"];
+
+export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: number }): Layout {
   const issues: string[] = [];
   const img = image ?? (spec.image && typeof spec.image === "object" ? spec.image : null);
   if (!img) issues.push('No image size: run draw.mjs with "image" set to the source file so proportions match the picture.');
@@ -137,7 +140,6 @@ export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: n
       orig: { ...box },
       box: { ...box },
       on: raw.on ? String(raw.on) : undefined,
-      trace: traces[String(raw.id)] && (t === "machine" || !t || raw.options?.trace) ? traces[String(raw.id)] : undefined,
       neckH: 0,
     });
   }
@@ -146,7 +148,7 @@ export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: n
   if (!items.length) issues.push("The spec has no items: list every machine in the image under \"items\".");
 
   /* links (parsed early: valve items fold into them) */
-  const links: Array<{ id: string; from: string; to: string; medium: Medium; duct: boolean; valves: Array<{ kind: ValveKind; at: number; id?: string }> }> = [];
+  const links: Array<{ id: string; from: string; to: string; medium: Medium; duct: boolean; label?: string; path?: Pt[]; valves: Array<{ kind: ValveKind; at: number; id?: string }> }> = [];
   for (const raw of (Array.isArray(spec.links) ? spec.links : []) as SpecLink[]) {
     if (!raw || typeof raw !== "object") continue;
     const from = ref(raw.from);
@@ -164,7 +166,10 @@ export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: n
     });
     let id = raw.id ? slug(raw.id) : `${from}-${to}`;
     while (links.some((l) => l.id === id)) id += "_2";
-    links.push({ id, from, to, medium: m ?? "water", duct: !!raw.duct, valves });
+    // The line as the image draws it: corner points in grid units, from → to.
+    const path = Array.isArray(raw.path) ? (raw.path as unknown[]).filter((q): q is number[] => Array.isArray(q) && q.length >= 2 && typeof q[0] === "number" && typeof q[1] === "number" && Number.isFinite(q[0]) && Number.isFinite(q[1])).map((q) => [clamp(q[0], -2, 102), clamp(q[1], -2, 102)] as Pt) : [];
+    if (Array.isArray(raw.path) && path.length < 2) issues.push(`Link ${from} → ${to}: "path" needs at least two [x, y] points (grid units); routed automatically instead.`);
+    links.push({ id, from, to, medium: m ?? "water", duct: !!raw.duct, label: raw.label ? String(raw.label).toUpperCase().slice(0, 40) : undefined, path: path.length >= 2 ? path : undefined, valves });
   }
 
   /* valve items → valves on a line */
@@ -209,8 +214,10 @@ export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: n
 
   /* layout mode: side view on floors, or a flow diagram kept as arranged */
   let schematic = spec.layout === "schematic";
-  if (spec.layout === undefined && !(Array.isArray(spec.floors) && spec.floors.length) && items.length >= 12) {
-    const bots = items.map((w) => bottom(w.orig) / IH).sort((a, b) => a - b);
+  // Only whole machines count: the parts of one machine built from shapes sit on many rows by nature.
+  const wholes = items.filter((w) => !SHAPE_PARTS.includes(w.type));
+  if (spec.layout === undefined && !(Array.isArray(spec.floors) && spec.floors.length) && wholes.length >= 12) {
+    const bots = wholes.map((w) => bottom(w.orig) / IH).sort((a, b) => a - b);
     let rowsN = 0;
     let run = 1;
     for (let i = 1; i <= bots.length; i++) {
@@ -293,7 +300,8 @@ export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: n
   /* 3. proportions (free-standing items only; assemblies keep the image's shapes) */
   const single = (w: Work) => clusterOf(w).length === 1;
   for (const w of items) {
-    if (w.type === "conveyor" || w.type === "frame" || w.trace || !single(w)) continue;
+    // Shape parts keep the image's proportions (a lone machine is drawn from its picture).
+    if (w.type === "conveyor" || w.type === "frame" || SHAPE_PARTS.includes(w.type) || !single(w)) continue;
     const [lo, hi] = CATALOG[w.type].aspect;
     const a = w.box.w / w.box.h;
     if (a >= lo * 0.95 && a <= hi * 1.05) continue;
@@ -320,15 +328,19 @@ export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: n
     }
   }
   // An item "on" another: bottom on the support's top (a gap the image shows becomes a neck spool, at most half a body high), shared centreline when nearly centred.
+  // Only when the image really shows it standing on top: a part that hangs below or sits beside its partner ("on" read as "attached to") keeps the image's place.
   const riders = (w: Work): Work[] => items.filter((o) => o.on === w.id).flatMap((o) => [o, ...riders(o)]);
+  const standsOnTop = (w: Work, s: Work) => bottom(w.orig) <= s.orig.y + 0.35 * s.orig.h && cy(w.orig) < cy(s.orig);
   for (const w of [...items].sort((a, b) => depth(a) - depth(b))) {
     if (!w.on || schematic) continue;
     const s = byId.get(w.on)!;
-    if (s.type === "frame") continue;
+    if (s.type === "frame" || !standsOnTop(w, s)) continue;
     const gap = s.box.y - bottom(w.box);
+    const shape = SHAPE_PARTS.includes(w.type) || SHAPE_PARTS.includes(s.type);
     const cap = 0.5 * Math.min(w.box.h, s.box.h);
-    const dy = gap < 0.015 * IH ? gap : gap > cap ? gap - cap : 0;
-    const dxc = Math.abs(cx(w.box) - cx(s.box)) < 0.08 * s.box.w ? cx(s.box) - cx(w.box) : 0;
+    // Shape parts keep the image's geometry: only a hairline gap or overlap is closed.
+    const dy = Math.abs(gap) < 0.015 * IH ? gap : !shape && gap > cap ? gap - cap : 0;
+    const dxc = !shape && Math.abs(cx(w.box) - cx(s.box)) < 0.08 * s.box.w ? cx(s.box) - cx(w.box) : 0;
     for (const o of [w, ...riders(w)]) {
       o.box.y += dy;
       o.box.x += dxc;
@@ -345,7 +357,19 @@ export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: n
     return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
   };
   // "elevated" lifts a free-standing item onto legs; inside an assembly the assembly decides.
-  const standsOnFloor = (ws: Work[]) => ws.some((w) => CATALOG[w.type].floor && w.type !== "conveyor") && !(ws.length === 1 && ws[0].options.elevated);
+  // A machine the image draws well above the floor (a cabinet or generator drawn at mid height) keeps its
+  // height on a stand down to the floor: dropping it would move it away from its lines and push its
+  // neighbours aside, and the drawing would no longer look like the image.
+  const lowestAny = Math.max(...clusters.map((ws) => bottom(bbox(ws))), 0);
+  // Only for a flat drawing: its lines are traced from the image to this machine ("path"), and no frame / skid is
+  // drawn under it (in a render, a machine that looks higher is further back or sits on that skid).
+  const drawnHigh = (ws: Work[]) => {
+    if ((Array.isArray(spec.floors) && spec.floors.length) || lowestAny - bottom(bbox(ws)) <= 0.15 * IH) return false;
+    if (!links.some((l) => l.path && ws.some((w) => w.id === l.from || w.id === l.to))) return false;
+    const bb = bbox(ws);
+    return !items.some((f) => f.type === "frame" && !ws.includes(f) && f.orig.y >= bottom(bb) - 0.02 * IH && xOverlap(f.orig, bb) > 0.3 * bb.w);
+  };
+  const standsOnFloor = (ws: Work[]) => ws.some((w) => CATALOG[w.type].floor && w.type !== "conveyor") && !(ws.length === 1 && ws[0].options.elevated) && !drawnHigh(ws);
   const floorClusters = clusters.filter(standsOnFloor);
   const lowest = Math.max(...(floorClusters.length ? floorClusters : clusters).map((ws) => bottom(bbox(ws))), 0);
   let floorsPx = (Array.isArray(spec.floors) ? spec.floors : []).filter((v) => typeof v === "number" && v > 0 && v <= 105).map((v) => v * ky);
@@ -424,21 +448,27 @@ export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: n
         i = j;
       }
     }
-    // Push overlapping assemblies apart along the shorter way out.
+    // Push assemblies apart only where their machines really overlap (not their outer boxes: a long air slide under a
+    // row of machines makes one wide assembly whose box would cover a silo it never touches). The push is as small as
+    // the overlap, along the shorter way out.
     const pad = 0.012 * Math.min(IW, IH);
     for (let it = 0; it < 60; it++) {
       let moved = false;
       for (let i = 0; i < clusters.length; i++)
         for (let j = i + 1; j < clusters.length; j++) {
-          const A = bbox(clusters[i]);
-          const B = bbox(clusters[j]);
-          const ox2 = Math.min(right(A), right(B)) - Math.max(A.x, B.x) + pad;
-          const oy2 = Math.min(bottom(A), bottom(B)) - Math.max(A.y, B.y) + pad;
-          if (ox2 <= 0 || oy2 <= 0) continue;
+          let worst: { a: Box; b: Box; ox: number; oy: number } | null = null;
+          for (const a of clusters[i].flatMap((w) => (w.type === "frame" ? [] : solids(w))))
+            for (const b of clusters[j].flatMap((w) => (w.type === "frame" ? [] : solids(w)))) {
+              const ox = Math.min(right(a), right(b)) - Math.max(a.x, b.x);
+              const oy = Math.min(bottom(a), bottom(b)) - Math.max(a.y, b.y);
+              if (ox <= 1 || oy <= 1) continue;
+              if (!worst || Math.min(ox, oy) > Math.min(worst.ox, worst.oy)) worst = { a, b, ox, oy };
+            }
+          if (!worst) continue;
           moved = true;
-          const alongX = ox2 < oy2;
-          const d = (alongX ? ox2 : oy2) / 2 + 0.5;
-          const sgn = alongX ? (cx(A) <= cx(B) ? 1 : -1) : cy(A) <= cy(B) ? 1 : -1;
+          const alongX = worst.ox < worst.oy;
+          const d = ((alongX ? worst.ox : worst.oy) + pad) / 2 + 0.5;
+          const sgn = alongX ? (cx(worst.a) <= cx(worst.b) ? 1 : -1) : cy(worst.a) <= cy(worst.b) ? 1 : -1;
           for (const w of clusters[i]) {
             if (alongX) w.box.x -= d * sgn;
             else w.box.y -= d * sgn;
@@ -454,7 +484,8 @@ export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: n
   // Necks: the gap kept between an item and the support under it.
   for (const w of items) {
     const s = w.on ? byId.get(w.on) : undefined;
-    w.neckH = s && s.type !== "frame" && !schematic ? Math.max(0, s.box.y - bottom(w.box)) : 0;
+    // A neck spool only joins process equipment stacked on equipment (a chamber on a chamber); shape parts show their own gaps.
+    w.neckH = s && s.type !== "frame" && !schematic && !SHAPE_PARTS.includes(w.type) && !SHAPE_PARTS.includes(s.type) && cy(w.orig) < cy(s.orig) ? Math.max(0, s.box.y - bottom(w.box)) : 0;
     if (w.neckH < 1) w.neckH = 0;
   }
 
@@ -466,13 +497,15 @@ export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: n
   const maxH = 1200;
   const s = Math.min((maxW - 2 * M) / Math.max(1, all.w), (maxH - M - LB) / Math.max(1, all.h));
   const contentW = all.w * s;
-  const W = Math.round(Math.max(960, contentW + 2 * M));
+  let W = Math.round(Math.max(960, contentW + 2 * M));
+  let shiftFloors = 0;
   const ox = (W - contentW) / 2;
   const H0 = Math.round(all.h * s + M + LB);
   const X = (x: number) => ox + (x - all.x) * s;
   const Y = (y: number) => M + (y - all.y) * s;
   const tf = (b: Box): Box => ({ x: X(b.x), y: Y(b.y), w: b.w * s, h: b.h * s });
   for (const w of items) {
+    w.pre = { ...w.box };
     w.box = tf(w.box);
     w.neckH *= s;
     if (w.floorY !== undefined) w.floorY = Y(w.floorY);
@@ -543,7 +576,19 @@ export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: n
   const BEND = 14;
 
   // blocked: 1 = equipment (or its clearance), 2 = off the sheet / under a floor. A soft search may cross equipment at a high price.
+  // Row above which no equipment stands between the two ends (anything higher is sky).
+  let skyRow = 0;
   function astar(start: [number, number], sd: number, goal: [number, number], gd: number, own: Set<number>, soft = false): { cells: Array<[number, number]>; cost: number } | null {
+    const lo = Math.min(start[0], goal[0]);
+    const hi = Math.max(start[0], goal[0]);
+    let top = rows;
+    for (const o of obstacles) {
+      const [c0] = cellOf(o.b.x, 0);
+      const [c1] = cellOf(right(o.b), 0);
+      if (c1 < lo || c0 > hi) continue;
+      top = Math.min(top, cellOf(0, o.b.y)[1]);
+    }
+    skyRow = Math.min(top, start[1], goal[1]) - 2;
     const N = cols * rows * 4;
     const g = new Float32Array(N).fill(Infinity);
     const from = new Int32Array(N).fill(-1);
@@ -620,6 +665,8 @@ export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: n
           }
         }
         if (nd !== d) step += BEND;
+        // Climbing above the equipment it passes is a detour: price the height so a short route under or beside wins.
+        if (nr < skyRow) step += 2.5;
         const ns = ni * 4 + nd;
         const ng = g[st] + step;
         if (ng < g[ns]) {
@@ -688,8 +735,99 @@ export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: n
     return allowed.sort((a, b) => score(b) - score(a)).slice(0, 2).concat(allowed.includes("top") && !allowed.slice(0, 2).includes("top") ? ["top"] : []);
   };
 
+  /**
+   * A line the image draws (the spec's "path", grid units): followed as drawn instead of routed anew. Each
+   * corner moves with the two ends (weighted by how far along it is), the ends are put on the items'
+   * outlines, and slanted runs become right angles. Null when the path does not fit (far from its items
+   * or through other equipment): then it is routed automatically.
+   */
+  const followImage = (path: Pt[], A: Work, B: Work): Pt[] | null => {
+    if (!A.pre || !B.pre) return null;
+    const raw = path.map(([gx, gy]) => [gx * kx, gy * ky] as Pt);
+    const seg = raw.slice(1).map((q, i) => Math.hypot(q[0] - raw[i][0], q[1] - raw[i][1]));
+    const total = seg.reduce((t, v) => t + v, 0) || 1;
+    const dA: Pt = [cx(A.pre) - cx(A.orig), bottom(A.pre) - bottom(A.orig)];
+    const dB: Pt = [cx(B.pre) - cx(B.orig), bottom(B.pre) - bottom(B.orig)];
+    let run = 0;
+    const moved = raw.map((p, i) => {
+      if (i) run += seg[i - 1];
+      const t = run / total;
+      return [X(p[0] + dA[0] * (1 - t) + dB[0] * t), Y(p[1] + dA[1] * (1 - t) + dB[1] * t)] as Pt;
+    });
+    const far = 0.08 * Math.max(W, H0);
+    // End on the item's outline: an end drawn inside the item leaves through the side the line heads to.
+    const attach = (p: Pt, q: Pt, b: Box): Pt[] | null => {
+      const inside = p[0] >= b.x - 2 && p[0] <= right(b) + 2 && p[1] >= b.y - 2 && p[1] <= bottom(b) + 2;
+      if (inside) {
+        const horiz = Math.abs(q[0] - p[0]) >= Math.abs(q[1] - p[1]);
+        return [horiz ? [q[0] >= p[0] ? right(b) : b.x, clamp(p[1], b.y + 3, bottom(b) - 3)] : [clamp(p[0], b.x + 3, right(b) - 3), q[1] >= p[1] ? bottom(b) : b.y]];
+      }
+      if (distToBox(p, b) > far) return null;
+      if (p[1] >= b.y && p[1] <= bottom(b)) return [[p[0] < b.x ? b.x : right(b), p[1]], p];
+      if (p[0] >= b.x && p[0] <= right(b)) return [[p[0], p[1] < b.y ? b.y : bottom(b)], p];
+      const port: Pt = [clamp(p[0], b.x + 4, right(b) - 4), p[1] < b.y ? b.y : bottom(b)];
+      return [port, [port[0], p[1]], p];
+    };
+    const head = attach(moved[0], moved[1], A.box);
+    const tail = attach(moved[moved.length - 1], moved[moved.length - 2], B.box);
+    if (!head || !tail) return null;
+    const mid = moved.slice(1, -1);
+    const chain: Pt[] = [...head, ...mid, ...tail.reverse()];
+    // Drop repeated points, then square every slanted run (nearly straight → straight, else one elbow that keeps the run's direction).
+    const o: Pt[] = [];
+    for (const p of chain) if (!o.length || Math.hypot(p[0] - o[o.length - 1][0], p[1] - o[o.length - 1][1]) > 0.5) o.push([p[0], p[1]]);
+    if (o.length < 2) return null;
+    const sq: Pt[] = [o[0]];
+    for (let i = 1; i < o.length; i++) {
+      const a = sq[sq.length - 1];
+      const b = o[i];
+      const dx = b[0] - a[0];
+      const dy = b[1] - a[1];
+      const last = i === o.length - 1;
+      if (Math.abs(dx) < 1 || Math.abs(dy) < 1) {
+        sq.push(b);
+        continue;
+      }
+      if (!last && Math.abs(dx) < 0.15 * Math.abs(dy)) {
+        sq.push([a[0], b[1]]);
+        o[i] = [a[0], b[1]];
+        continue;
+      }
+      if (!last && Math.abs(dy) < 0.15 * Math.abs(dx)) {
+        sq.push([b[0], a[1]]);
+        o[i] = [b[0], a[1]];
+        continue;
+      }
+      const prev = sq.length >= 2 ? sq[sq.length - 2] : null;
+      const prevHoriz = prev ? Math.abs(a[0] - prev[0]) > Math.abs(a[1] - prev[1]) : Math.abs(dx) >= Math.abs(dy);
+      // Into the last point (on the target's outline) the line arrives square to that side.
+      const intoSide = last ? (Math.abs(b[0] - B.box.x) < 1 || Math.abs(b[0] - right(B.box)) < 1 ? "h" : "v") : null;
+      const goHorizFirst = intoSide ? intoSide === "v" : prevHoriz;
+      sq.push(goHorizFirst ? [b[0], a[1]] : [a[0], b[1]]);
+      sq.push(b);
+    }
+    const pts = simplify(sq);
+    // Through other equipment for more than a short stretch: the path is wrong, route instead.
+    let len = 0;
+    let through = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [p, q] = [pts[i], pts[i + 1]];
+      const L = Math.hypot(q[0] - p[0], q[1] - p[1]);
+      len += L;
+      for (let t = 0; t < L; t += 3) {
+        const x = p[0] + ((q[0] - p[0]) * t) / L;
+        const y = p[1] + ((q[1] - p[1]) * t) / L;
+        if (obstacles.some((ob) => ob.id !== A.id && ob.id !== B.id && find(ob.id) !== find(A.id) && find(ob.id) !== find(B.id) && x > ob.b.x + 2 && x < right(ob.b) - 2 && y > ob.b.y + 2 && y < bottom(ob.b) - 2)) through += 3;
+      }
+    }
+    if (through > Math.max(24, 0.15 * len)) return null;
+    return pts;
+  };
+
   const ORDER: Medium[] = ["material", "hot-gas", "power", "water", "vacuum", "gas", "air", "steam", "oil", "signal"];
   const laidLinks: LaidLink[] = [];
+  const noPath: string[] = [];
+  let withPath = 0;
   const sortedLinks = [...links].sort((a, b) => ORDER.indexOf(a.medium) - ORDER.indexOf(b.medium));
   for (const l of sortedLinks) {
     const A = byId.get(l.from)!;
@@ -717,7 +855,11 @@ export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: n
       continue;
     }
     let best: { pts: Pt[]; cost: number; sa: Side; sb: Side } | null = null;
-    for (const soft of [false, true]) {
+    if (!l.path) noPath.push(l.id);
+    else withPath++;
+    const drawn = l.path ? followImage(l.path, A, B) : null;
+    if (l.path && !drawn) issues.push(`Link ${l.id}: its "path" does not run from ${l.from} to ${l.to} clear of other machines; routed automatically. Check the path's first point is at ${l.from}, its last at ${l.to}, and the corners follow the line in the image.`);
+    for (const soft of drawn ? [] : [false, true]) {
     if (best) break;
     for (const sa of sidesFor(A, B, "from", l.medium))
       for (const sb of sidesFor(B, A, "to", l.medium)) {
@@ -766,7 +908,8 @@ export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: n
       }
     }
     let pts: Pt[];
-    if (best) {
+    if (drawn) pts = drawn;
+    else if (best) {
       pts = best.pts;
       portUsage.set(`${A.id}:${best.sa}`, (portUsage.get(`${A.id}:${best.sa}`) ?? 0) + 1);
       portUsage.set(`${B.id}:${best.sb}`, (portUsage.get(`${B.id}:${best.sb}`) ?? 0) + 1);
@@ -804,8 +947,14 @@ export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: n
       const at = pointAlong(pts, v.at / 100, 18);
       return { id: v.id, kind: v.kind, at: at.p, vertical: at.vertical };
     });
-    laidLinks.push({ id: l.id, from: l.from, to: l.to, medium: l.medium, duct: l.duct, pts: pts.map(([x, y]) => [r1(x), r1(y)] as Pt), valves: valves.map((v) => ({ ...v, at: [r1(v.at[0]), r1(v.at[1])] as Pt })) });
+    laidLinks.push({ id: l.id, from: l.from, to: l.to, medium: l.medium, duct: l.duct, label: l.label, pts: pts.map(([x, y]) => [r1(x), r1(y)] as Pt), valves: valves.map((v) => ({ ...v, at: [r1(v.at[0]), r1(v.at[1])] as Pt })) });
   }
+
+  // Most lines traced from the image but some not: those few are routed anew and will not look like the image.
+  if (noPath.length && withPath && noPath.length >= 2)
+    issues.push(`${noPath.length} lines have no "path", so they are routed automatically and will not run as the image draws them: ${noPath.slice(0, 20).join(", ")}${noPath.length > 20 ? " …" : ""}. Give each of them its "path" (corner points from the image), unless the image shows no line between those two machines.`);
+  else if (noPath.length >= 3 && !withPath)
+    issues.push(`No line has a "path": every line is routed automatically. Where the image draws the line, give it its "path" (corner points from the image) so the drawing runs the same way.`);
 
   /* 8. sensors ------------------------------------------------------ */
   const laidPoints: LaidPoint[] = [];
@@ -973,18 +1122,86 @@ export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: n
   /* 9. labels ------------------------------------------------------- */
   const laidLabels: LaidLabel[] = [];
   const boxesForText: Box[] = [...obstacles.map((o) => o.b)];
+  const textBox = (lb: LaidLabel): Box => {
+    const w = labelWidth(lb.text);
+    const x0 = lb.anchor === "middle" ? lb.x - w / 2 : lb.anchor === "end" ? lb.x - w : lb.x;
+    return { x: x0, y: lb.y - LABEL_SIZE, w, h: LABEL_SIZE + 4 };
+  };
+
+  // Sensor value plates: the ring and its plate beside it (as the sheet draws them), to keep names off them.
+  const plateBoxes: Box[] = laidPoints.map((p) => {
+    const PW = PLATE;
+    if (p.callout[0] === 0 && p.callout[1] === 0) return { x: p.pad[0] - 9, y: p.pad[1] - 9, w: 18, h: 18 };
+    return p.callout[2] === "start" ? { x: p.pad[0] - 9, y: p.pad[1] - 10, w: PW + 21, h: 20 } : { x: p.pad[0] - PW - 12, y: p.pad[1] - 10, w: PW + 21, h: 20 };
+  });
+  // Flow names along their lines: on a run long enough, the spot and side clear of equipment, sensors, other lines and names.
+  const flowBoxes: Box[] = [];
+  {
+    const segHits = (bx: Box, own: LaidLink) =>
+      laidLinks.reduce((n, l) => {
+        for (let i = 0; i < l.pts.length - 1; i++) {
+          const [p, q] = [l.pts[i], l.pts[i + 1]];
+          const sb: Box = { x: Math.min(p[0], q[0]) - 3, y: Math.min(p[1], q[1]) - 3, w: Math.abs(q[0] - p[0]) + 6, h: Math.abs(q[1] - p[1]) + 6 };
+          if (xOverlap(sb, bx) > 0 && yOverlap(sb, bx) > 0) n += l === own ? 3 : 1;
+        }
+        return n;
+      }, 0);
+    for (const l of [...laidLinks].filter((x) => x.label && x.pts.length >= 2).sort((a, b) => b.label!.length - a.label!.length)) {
+      const need = l.label!.length * 7.2 + 10;
+      const tube = (l.duct ? 16 : ({ material: 0, "hot-gas": 15, gas: 7, air: 9, water: 7, steam: 7, oil: 5, vacuum: 7, power: 6, signal: 0 } as Record<Medium, number>)[l.medium]) / 2 + 9;
+      let best: { at: { x: number; y: number; vertical: boolean }; b: Box; cost: number } | null = null;
+      for (let i = 0; i < l.pts.length - 1; i++) {
+        const [a, q] = [l.pts[i], l.pts[i + 1]];
+        const L = Math.hypot(q[0] - a[0], q[1] - a[1]);
+        if (L < need) continue;
+        const vertical = Math.abs(q[1] - a[1]) > Math.abs(q[0] - a[0]);
+        for (const t of [0.5, 0.35, 0.65, 0.2, 0.8]) {
+          const mx = a[0] + (q[0] - a[0]) * t;
+          const my = a[1] + (q[1] - a[1]) * t;
+          // keep the text inside the run
+          if (Math.min(t, 1 - t) * L < need / 2) continue;
+          for (const side of [-1, 1]) {
+            const at = vertical ? { x: mx + side * tube, y: my, vertical } : { x: mx, y: my + side * tube - (side > 0 ? -4 : 0), vertical };
+            const bx: Box = vertical ? { x: at.x - 7, y: at.y - need / 2, w: 14, h: need } : { x: at.x - need / 2, y: at.y - 10, w: need, h: 13 };
+            let cost = Math.abs(t - 0.5) * 4 + (side > 0 ? 1 : 0) + (L < need * 1.3 ? 3 : 0);
+            for (const o of boxesForText) if (xOverlap(o, bx) > 0 && yOverlap(o, bx) > 0) cost += 20;
+            for (const o of plateBoxes) if (xOverlap(o, bx) > 0 && yOverlap(o, bx) > 0) cost += 70;
+            for (const o of flowBoxes) if (xOverlap(grow(o, 4), bx) > 0 && yOverlap(grow(o, 4), bx) > 0) cost += 40;
+            cost += segHits(bx, l) * 10;
+            if (bx.x < 12 || bx.y < 12 || right(bx) > W - 12) cost += 60;
+            if (!best || cost < best.cost) best = { at, b: bx, cost };
+          }
+        }
+      }
+      if (best) {
+        l.labelAt = { x: r1(best.at.x), y: r1(best.at.y), vertical: best.at.vertical };
+        flowBoxes.push(best.b);
+      }
+    }
+  }
   // Short names go on the equipment itself where it has a plain face (as C1–C6 on the pyro cyclones).
-  const FACE: Partial<Record<ItemType, number>> = { cyclone: 0.24, tank: 0.42, silo: 0.38, "horizontal-tank": 0.42, hopper: 0.3, filter: 0.36, mixer: 0.45, drum: 0.27, chamber: 0.16 };
+  const FACE: Partial<Record<ItemType, number>> = { cyclone: 0.24, tank: 0.42, silo: 0.38, "horizontal-tank": 0.42, hopper: 0.3, filter: 0.36, mixer: 0.45, drum: 0.27, chamber: 0.16, block: 0.5 };
   const inside = new Set<Work>();
   for (const w of items) {
     const f = FACE[w.type];
     if (!w.label || f === undefined || w.label.length > 10) continue;
     const need = labelWidth(w.label, 10) + 12;
     const faceW = w.type === "cyclone" ? w.box.w * 0.9 : w.type === "hopper" ? w.box.w * 0.7 : w.box.w;
-    if (faceW < need || w.box.h < 44) continue;
+    // A plain block (a cooler compartment, a housing) carries its name on its face, as the image writes it.
+    if (faceW < need || w.box.h < (w.type === "block" ? 18 : 44)) continue;
+    if (w.type === "block" && w.options.tone === "recess") continue;
     if (w.type === "chamber" && w.options.contents && w.options.contents !== "none") continue;
+    // On the face where no sensor plate covers it (its usual height first, then a little lower or higher); otherwise beside the machine.
+    const lb = [f, f + 0.14, f + 0.28, f - 0.1]
+      .filter((g) => g > 0.08 && g < 0.92)
+      .map((g): LaidLabel => ({ text: w.label!, x: r1(cx(w.box)), y: r1(w.box.y + w.box.h * g + 4), anchor: "middle", inside: true }))
+      .find((c) => {
+        const tb = textBox({ ...c, text: c.text.slice(0, Math.max(2, Math.round(c.text.length * 0.9))) });
+        return !plateBoxes.some((o) => xOverlap(o, tb) > 0 && yOverlap(o, tb) > 0);
+      });
+    if (!lb) continue;
     inside.add(w);
-    laidLabels.push({ text: w.label, x: r1(cx(w.box)), y: r1(w.box.y + w.box.h * f + 4), anchor: "middle", inside: true });
+    laidLabels.push(lb);
   }
   // Items standing on a floor are labelled in a row under it; mounted, stacked and hanging parts beside themselves.
   const floorLabelled = schematic ? [] : items.filter((w) => w.label && !inside.has(w) && !w.on && w.type !== "frame" && (w.floorY !== undefined || w.legsTo !== undefined));
@@ -1023,11 +1240,6 @@ export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: n
       H = Math.max(H, Math.round(y + 26));
     }
   }
-  const textBox = (lb: LaidLabel): Box => {
-    const w = labelWidth(lb.text);
-    const x0 = lb.anchor === "middle" ? lb.x - w / 2 : lb.anchor === "end" ? lb.x - w : lb.x;
-    return { x: x0, y: lb.y - LABEL_SIZE, w, h: LABEL_SIZE + 4 };
-  };
   const routeHits = (b: Box) =>
     laidLinks.reduce((n, l) => {
       for (let i = 0; i < l.pts.length - 1; i++) {
@@ -1037,33 +1249,156 @@ export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: n
       }
       return n;
     }, 0);
-  for (const w of items.filter((it) => it.label && it.type !== "frame" && !floorLabelled.includes(it) && !inside.has(it))) {
+  // Parts of one machine (an assembly of 3+ parts) are named in a column beside it, each with a leader to its part, as on an
+  // engineering drawing — so names never sit on top of other parts.
+  const calledOut = new Set<Work>();
+  if (!schematic)
+    for (const ws of clusters) {
+      if (ws.length < 3) continue;
+      const named = ws.filter((w) => w.label && w.type !== "frame" && !floorLabelled.includes(w) && !inside.has(w));
+      if (!named.length) continue;
+      const bb = bbox(ws);
+      const mid = cx(bb);
+      for (const sideL of [true, false]) {
+        const mine = named.filter((w) => (cx(w.box) < mid) === sideL).sort((a, b) => cy(a.box) - cy(b.box));
+        // Each label at its part's height, pushed apart to one line each (from the top down, then back up if it ran out).
+        const ys = mine.map((w) => cy(w.box) + 4);
+        const GAP = LABEL_SIZE + 7;
+        for (let i = 1; i < ys.length; i++) ys[i] = Math.max(ys[i], ys[i - 1] + GAP);
+        const maxY = bottom(bb) - 4;
+        if (ys.length && ys[ys.length - 1] > maxY) {
+          ys[ys.length - 1] = maxY;
+          for (let i = ys.length - 2; i >= 0; i--) ys[i] = Math.min(ys[i], ys[i + 1] - GAP);
+        }
+        const lx = sideL ? bb.x - 26 : right(bb) + 26;
+        // The column must be clear: a line run or a sensor plate crossing the label's row leaves that name to the per-item placement.
+        const rowBusy = (y: number, text: string) => {
+          const wid = labelWidth(text);
+          const tb: Box = sideL ? { x: lx - wid, y: y - LABEL_SIZE, w: wid + 8, h: LABEL_SIZE + 4 } : { x: lx - 8, y: y - LABEL_SIZE, w: wid + 8, h: LABEL_SIZE + 4 };
+          if (routeHits(tb)) return true;
+          return laidPoints.some((p) => Math.abs(p.pad[1] - cy(tb)) < 14 && p.pad[0] > tb.x - 110 && p.pad[0] < right(tb) + 110);
+        };
+        mine.forEach((w, i) => {
+          const y = ys[i];
+          if (rowBusy(y, w.label!)) return;
+          const py = clamp(y - 4, w.box.y + Math.min(6, w.box.h / 2), bottom(w.box) - Math.min(6, w.box.h / 2));
+          const px = sideL ? w.box.x + Math.min(10, w.box.w * 0.3) : right(w.box) - Math.min(10, w.box.w * 0.3);
+          const elbow = sideL ? lx + 6 : lx - 6;
+          laidLabels.push({ text: w.label!, x: r1(lx), y: r1(y), anchor: sideL ? "end" : "start", leader: [[r1(elbow + (sideL ? 4 : -4)), r1(y - 4)], [r1(px), r1(py)]] });
+          calledOut.add(w);
+        });
+      }
+    }
+  const hit = (a: Box, b: Box) => xOverlap(a, b) > 0 && yOverlap(a, b) > 0;
+  for (const w of items.filter((it) => it.label && it.type !== "frame" && !floorLabelled.includes(it) && !inside.has(it) && !calledOut.has(it))) {
     const b = w.box;
-    const cands: LaidLabel[] = [
-      ...(schematic ? [{ text: w.label!, x: cx(b), y: bottom(b) + 18, anchor: "middle" as const }] : []),
-      { text: w.label!, x: b.x - 16, y: cy(b) + 4, anchor: "end" },
-      { text: w.label!, x: right(b) + 16, y: cy(b) + 4, anchor: "start" },
-      { text: w.label!, x: b.x - 16, y: b.y + 16, anchor: "end" },
-      { text: w.label!, x: right(b) + 16, y: b.y + 16, anchor: "start" },
-      { text: w.label!, x: cx(b), y: b.y - 12, anchor: "middle" },
-    ];
-    let best: { lb: LaidLabel; cost: number } | null = null;
-    cands.forEach((lb, i) => {
-      const tb = textBox(lb);
-      let cost = i * 0.5;
-      for (const o of boxesForText) if (xOverlap(o, tb) > 0 && yOverlap(o, tb) > 0) cost += 20;
-      for (const o of laidLabels) if (xOverlap(textBox(o), tb) > 0 && yOverlap(textBox(o), tb) > 0) cost += 30;
-      for (const p of laidPoints) if (p.pad[0] > tb.x - 10 && p.pad[0] < right(tb) + 10 && Math.abs(p.pad[1] - cy(tb)) < 14) cost += 8;
-      cost += routeHits(tb) * 4;
-      if (tb.x < 10 || right(tb) > W - 10) cost += 50;
-      if (!best || cost < best.cost) best = { lb, cost };
+    const text = w.label!;
+    // Around the machine, nearest first; further rings get a leader back to it.
+    const cands: Array<{ lb: LaidLabel; pen: number }> = [];
+    const rings = [14, 34, 62];
+    rings.forEach((d, k) => {
+      const pen = k * 6;
+      if (schematic) cands.push({ lb: { text, x: cx(b), y: bottom(b) + d + 4, anchor: "middle" }, pen });
+      cands.push(
+        { lb: { text, x: b.x - d, y: cy(b) + 4, anchor: "end" }, pen: pen + 0.5 },
+        { lb: { text, x: right(b) + d, y: cy(b) + 4, anchor: "start" }, pen: pen + 1 },
+        { lb: { text, x: b.x - d, y: b.y + 16, anchor: "end" }, pen: pen + 1.5 },
+        { lb: { text, x: right(b) + d, y: b.y + 16, anchor: "start" }, pen: pen + 2 },
+        { lb: { text, x: cx(b), y: b.y - d + 2, anchor: "middle" }, pen: pen + 2.5 },
+        { lb: { text, x: b.x - d, y: bottom(b) - 6, anchor: "end" }, pen: pen + 3 },
+        { lb: { text, x: right(b) + d, y: bottom(b) - 6, anchor: "start" }, pen: pen + 3 },
+      );
+      if (!schematic) cands.push({ lb: { text, x: cx(b), y: bottom(b) + d + 4, anchor: "middle" }, pen: pen + 3.5 });
     });
-    laidLabels.push({ ...best!.lb, x: r1(best!.lb.x), y: r1(best!.lb.y) });
+    let best: { lb: LaidLabel; cost: number } | null = null;
+    for (const { lb, pen } of cands) {
+      const tb = grow(textBox(lb), 2);
+      let cost = pen;
+      for (const o of boxesForText) if (hit(o, tb)) cost += 20;
+      for (const o of laidLabels) if (hit(grow(textBox(o), 3), tb)) cost += 40;
+      for (const o of plateBoxes) if (hit(o, tb)) cost += 70;
+      for (const o of flowBoxes) if (hit(grow(o, 3), tb)) cost += 40;
+      cost += routeHits(tb) * 14;
+      if (tb.x < 10 || right(tb) > W - 10 || tb.y < 8) cost += 60;
+      // A name nearer to another machine than to its own reads as that machine's name.
+      const gapTo = (o: Box) => Math.hypot(Math.max(0, o.x - right(tb), tb.x - right(o)), Math.max(0, o.y - bottom(tb), tb.y - bottom(o)));
+      const own = gapTo(b);
+      if (items.some((o) => o !== w && o.type !== "frame" && o.type !== "conveyor" && gapTo(o.box) + 2 < own)) cost += 35;
+      if (!best || cost < best.cost) best = { lb, cost };
+    }
+    const lb = best!.lb;
+    const tb = textBox(lb);
+    // Away from its machine: a thin leader from the name to the machine's outline.
+    const gap = Math.max(b.x - right(tb), tb.x - right(b), b.y - bottom(tb), tb.y - bottom(b));
+    let leader: Pt[] | undefined;
+    if (gap > 26) {
+      const from: Pt = lb.anchor === "end" ? [right(tb) + 3, tb.y + tb.h / 2] : lb.anchor === "start" ? [tb.x - 3, tb.y + tb.h / 2] : [cx(tb), tb.y > bottom(b) ? tb.y - 2 : bottom(tb) + 2];
+      const to: Pt = [clamp(from[0], b.x + 4, right(b) - 4), clamp(from[1], b.y + 4, bottom(b) - 4)];
+      leader = [[r1(from[0]), r1(from[1])], [r1(to[0]), r1(to[1])]];
+    }
+    laidLabels.push({ ...lb, x: r1(lb.x), y: r1(lb.y), ...(leader ? { leader } : {}) });
   }
 
   for (const lb of laidLabels) H = Math.max(H, Math.round(lb.y + 24));
+  // Widen the sheet (shifting the drawing right) when labels run past its edges.
+  {
+    const ext = laidLabels.map(textBox);
+    const minX = Math.min(16, ...ext.map((b) => b.x));
+    const dx = minX < 16 ? 16 - minX : 0;
+    if (dx > 0) {
+      for (const w of items) {
+        w.box.x += dx;
+      }
+      for (const l of laidLinks) {
+        l.pts = l.pts.map(([x, y]) => [r1(x + dx), y] as Pt);
+        l.valves = l.valves.map((v) => ({ ...v, at: [r1(v.at[0] + dx), v.at[1]] as Pt }));
+        if (l.labelAt) l.labelAt = { ...l.labelAt, x: r1(l.labelAt.x + dx) };
+      }
+      for (const p of laidPoints) {
+        p.mount = [r1(p.mount[0] + dx), p.mount[1]];
+        p.pad = [r1(p.pad[0] + dx), p.pad[1]];
+        p.callout = [r1(p.callout[0] + dx), p.callout[1], p.callout[2]];
+      }
+      for (const lb of laidLabels) {
+        lb.x = r1(lb.x + dx);
+        if (lb.leader) lb.leader = lb.leader.map(([x, y]) => [r1(x + dx), y] as Pt);
+      }
+      W = Math.round(W + dx);
+      shiftFloors = dx;
+    }
+    const maxX = Math.max(...ext.map((b) => right(b) + dx), 0);
+    if (maxX > W - 16) W = Math.round(maxX + 16);
+    // Lines (with the flow names written beside them), equipment and sensor plates near the edge widen / deepen it too.
+    const reachX = Math.max(...items.map((w) => right(visual(w)) + 10), ...laidLinks.flatMap((l) => l.pts.map((q) => q[0] + 26)), ...laidPoints.map((q) => Math.max(q.pad[0], q.callout[0]) + 70), 0);
+    if (reachX > W - 16) W = Math.round(reachX + 16);
+    const reachY = Math.max(...items.map((w) => bottom(w.box) + 10), ...laidLinks.flatMap((l) => l.pts.map((q) => q[1] + 26)), ...laidPoints.map((q) => q.pad[1] + 24), 0);
+    if (reachY > H - 16) H = Math.round(reachY + 16);
+  }
 
-  /* 10. result ------------------------------------------------------ */
+  /* 10. machines drawn from their own picture ------------------------ */
+  // Any assembly made only of shape parts (no finished catalog part fits it) is drawn from the image itself;
+  // draw.mjs vectorizes its area and fills in `art`. Its parts' boxes still place its labels and sensors.
+  const traced: TracedGroup[] = [];
+  for (const ws of clusters) {
+    // A machine built from parts: shape parts make up most of it (a motor or cabinet among them is part of the machine).
+    const shapeArea = ws.filter((w) => SHAPE_PARTS.includes(w.type)).reduce((t, w) => t + w.orig.w * w.orig.h, 0);
+    const allArea = ws.reduce((t, w) => t + w.orig.w * w.orig.h, 0);
+    const builtFromParts = ws.every((w) => SHAPE_PARTS.includes(w.type)) || (ws.filter((w) => SHAPE_PARTS.includes(w.type)).length >= 2 && shapeArea >= 0.5 * allArea);
+    if (!builtFromParts || ws.every((w) => w.type === "pile" || w.type === "workpiece")) continue;
+    // A finished catalog part that is a big piece of the group (a kiln on block piers) keeps its own drawing.
+    if (ws.some((w) => !SHAPE_PARTS.includes(w.type) && !PART.includes(w.type) && w.orig.w * w.orig.h >= 0.2 * allArea)) continue;
+    const ob = bbox(ws.map((w) => ({ ...w, box: w.orig })));
+    const sb = bbox(ws);
+    traced.push({
+      key: ws[0].id,
+      ids: ws.map((w) => w.id),
+      src: [r1(ob.x / kx), r1(ob.y / ky), r1(right(ob) / kx), r1(bottom(ob) / ky)],
+      box: { x: r1(sb.x), y: r1(sb.y), w: r1(sb.w), h: r1(sb.h) },
+      parts: ws.map((w) => ({ box: [r1(w.orig.x / kx), r1(w.orig.y / ky), r1(right(w.orig) / kx), r1(bottom(w.orig) / ky)] as [number, number, number, number], tone: String(w.options.tone ?? (w.type === "workpiece" ? "material" : "body")) })),
+    });
+  }
+
+  /* 11. result ------------------------------------------------------ */
   const laidItems: LaidItem[] = items.map((w) => {
     let neck: Box | undefined;
     if (w.on && w.neckH > 1) {
@@ -1080,14 +1415,14 @@ export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: n
       neck,
       legs: w.legsTo !== undefined && w.legsTo - bottom(w.box) > 2 ? r1(w.legsTo) : undefined,
       floor: w.floorY !== undefined ? r1(w.floorY) : undefined,
+      group: clusterOf(w).length > 1 ? find(w.id) : undefined,
       options: w.options,
-      trace: w.trace,
     };
   });
   const floors = floorYs.map((y) => {
     const on = laidItems.filter((w) => (w.floor !== undefined && Math.abs(w.floor - y) < 1) || (w.legs !== undefined && Math.abs(w.legs - y) < 1));
     const lowestFloor = y === GROUND;
-    const x1 = lowestFloor ? 40 : Math.max(20, Math.min(...on.map((w) => w.box.x)) - 30);
+    const x1 = lowestFloor ? 40 + shiftFloors : Math.max(20, Math.min(...on.map((w) => w.box.x)) - 30);
     const x2 = lowestFloor ? W - 40 : Math.min(W - 20, Math.max(...on.map((w) => w.box.x + w.box.w)) + 30);
     return { y: r1(y), x1: r1(x1), x2: r1(x2) };
   });
@@ -1121,6 +1456,8 @@ export function layoutSpec(spec: DiagramSpec, image?: { width: number; height: n
     links: laidLinks,
     points: laidPoints,
     labels: laidLabels,
+    traced,
+    schematic: schematic || undefined,
     metresPerUnit: Math.round(mpu * 1e5) / 1e5,
     issues,
   };

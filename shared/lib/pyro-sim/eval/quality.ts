@@ -63,13 +63,28 @@ const sigma = (tag: string) => PYRO_SIGNAL_BY_TAG[tag]?.sigma || 1;
 const phiOf = (tag: string) => (tag.startsWith("VIB") ? 0.6 : 0.75);
 /** Drive current / speed feedback pairs checked for a mismatch with the operating state. */
 const RUN_PAIRS: Array<[string, string]> = [
-  ["ELE-KFS-01", "SPD-KFS-01"],
   ["ELE-PHC-01", "SPD-PHC-01"],
   ["ELE-KLN-01", "SPD-KLN-01"],
+];
+/**
+ * Drive current / zero-speed switch pairs (OSW-PE-SNL-PYR-01 Rev. 02 HP-05: the elevator, crusher and pan conveyor have a
+ * zero-speed switch, no rpm): the switch reporting a stopped shaft while the drive carries its model load is the switch.
+ */
+const ZERO_SPEED_PAIRS: Array<[string, string]> = [
+  ["ELE-KFS-01", "SPD-KFS-01"],
   ["ELE-HMR-01", "SPD-HMR-01"],
   ["ELE-CSL-01", "SPD-CSL-01"],
 ];
 const SPEED_CURRENT: Record<string, string> = Object.fromEntries(RUN_PAIRS.map(([e, sp]) => [sp, e]));
+/** Inputs of the calculated register points (OSW-PE-SNL-PYR-01 Rev. 02 CALC.). */
+const CALC_INPUTS: Record<string, string[]> = {
+  "PRS-FSL-02": ["PRS-FSL-03", "PRS-FSL-04"],
+  "PRS-KFS-05": ["PRS-KFS-08", "PRS-KFS-09"],
+  "PRS-BGH-01": ["PRS-BGH-02", "PRS-BGH-03"],
+  "PRS-CLR-20": ["PRS-CLR-21", "PRS-CLR-22"],
+  "PRS-CSL-01": ["PRS-CSL-02", "PRS-CSL-03"],
+  "WGT-KFS-01": ["WGT-KFS-02", "WGT-KFS-03", "WGT-KFS-04"],
+};
 /** Rule categories that judge sensors rather than the plant. */
 const DQ_RULE = /^R-(DQ|ANM)-/;
 /** Minutes a unit must have run (or stood) before the comparisons judge it. */
@@ -225,6 +240,8 @@ export interface QualityInput extends Pick<EvalContext, "t" | "s" | "measured" |
   equipment?: EquipmentStates;
   /** Whole line stopped. */
   lineStop?: boolean;
+  /** Shell scanner coverage this minute (% of the shell in view; the scanner's own quality figure). */
+  coverage: number;
   /** Event on the owning machine when a tag is flagged or restored. */
   notify: (tag: string, severity: Severity, title: string, detail: string) => void;
 }
@@ -234,7 +251,7 @@ export interface QualityScreen {
   invalid: Record<string, string>;
   /** Scanner coverage below the D5 target (95 %): the shell maximum is suspect; SW-KLN-03 reports it. */
   scannerSuspect: boolean;
-  /** Why the shell maximum (CAL-KLN-03) is suspect: coverage, handheld disagreement or saturation. */
+  /** Why the shell maximum (STS-KLN-08) is suspect: coverage, handheld disagreement or saturation. */
   scannerNote: string | null;
   /** Flag-only and information notes of this minute (quality stays Good). */
   notes: Record<string, string>;
@@ -317,7 +334,12 @@ export function screenQuality(q: QualityInput): QualityScreen {
     // At rest: the reading sits at the bottom of its span (a stopped stroke, a tail shaft that no longer turns) and a
     // condition rule of the line names the tag (grate trip R-CLR-03, chain break R-CSL-05): a genuine zero the edge
     // has no run feedback for, explained by its own rule — not a clipped or stuck transmitter.
-    const atRest = h.length >= 3 && h.slice(-3).every((x) => x <= lo + 0.01 * (hi - lo)) && patterned(def.tag);
+    const atBottom = h.length >= 3 && h.slice(-3).every((x) => x <= lo + 0.01 * (hi - lo));
+    // Under range: the process itself sits below the instrument's LRV (a pyrometer with an 800 °C LRV on a cooling kiln,
+    // OSW-PE-SNL-PYR-01 Rev. 02 design ranges): the model is down there too, so the reading at the range end is genuine.
+    const underRange = atBottom && measured[def.tag] - res(def.tag) <= lo + 0.02 * (hi - lo) && lo > 0;
+    if (underRange) m.notes[def.tag] = `Below the instrument range (${lo} ${def.unit} LRV): the process is under the range, the reading holds at its end`;
+    const atRest = atBottom && (patterned(def.tag) || underRange);
     // Out of span: a broken loop / failure signal outside the calibrated range is not a plant value.
     if (v < lo - 1e-6 || v > hi + 1e-6) invalid[def.tag] = `Range: ${fmtV(def, v)} outside the instrument span ${lo} … ${+hi.toFixed(2)} ${def.unit} (broken loop)`;
     // Clipped: pinned at the end of the range for 3 samples (saturated transmitter).
@@ -350,6 +372,14 @@ export function screenQuality(q: QualityInput): QualityScreen {
     const eModel = measured[ele] - res(ele);
     const atModel = measured[ele] > 0.5 * eb && measured[ele] >= 0.75 * eModel && measured[ele] <= 1.15 * eModel;
     if (unitOn(spd) && atModel && measured[spd] < 0.2 * sb) invalid[spd] = `Range: ${spd} ${measured[spd].toFixed(1)} while ${ele} carries ${measured[ele].toFixed(0)} — mismatch with the operating state (pickup)`;
+  }
+  // A zero-speed switch reporting a stopped shaft while its drive carries the model load is a dead switch; a drive that
+  // unloads (chain / belt break) or overloads (choke, jam) with it is the machine pattern (R-KFS-02, R-HMR-01, R-CSL-05).
+  for (const [ele, spd] of ZERO_SPEED_PAIRS) {
+    const eModel = measured[ele] - res(ele);
+    const atModel = measured[ele] > 0.5 * PYRO_SIGNAL_BY_TAG[ele].base && measured[ele] >= 0.75 * eModel && measured[ele] <= 1.15 * eModel;
+    if (unitOn(spd) && atModel && states[spd] === "STOPPED WHILE RUNNING")
+      invalid[spd] = `Range: ${spd} reports the shaft stopped while ${ele} carries ${measured[ele].toFixed(0)} % FLA at its model load — mismatch with the operating state (switch)`;
   }
   // Instrument status: the flame camera is operator evidence (feed availability only, no classifier); analysers report a status.
   if (states["CAM-BRN-01"] === "FEED LOST") invalid["CAM-BRN-01"] = "Instrument status: camera feed lost";
@@ -550,15 +580,16 @@ export function screenQuality(q: QualityInput): QualityScreen {
   // Scanner vs handheld at the matched position (emissivity-matched, steady running kiln): a gap makes the shell map suspect.
   const hand = s.manual["MAN-KLN-01"];
   const handGap = hand?.scan !== undefined && hand.comparable ? hand.value - emissivityMatched(hand.scan) : 0;
-  const coverage = measured["STS-KLN-08"];
+  const coverage = q.coverage;
   const scannerSuspect = coverage < SCANNER_COVERAGE_TARGET;
-  const saturated = measured["CAL-KLN-03"] >= (PYRO_SIGNAL_BY_TAG["CAL-KLN-03"]?.range?.[1] ?? 600) - 1e-6;
+  const scanTop = PYRO_SIGNAL_BY_TAG["STS-KLN-08"]?.range?.[1] ?? 500;
+  const saturated = measured["STS-KLN-08"] >= scanTop - 1e-6;
   const scannerNote = scannerSuspect
     ? `Manual comparison: scanner coverage ${coverage.toFixed(1)} % < ${SCANNER_COVERAGE_TARGET} % target — map under-reads`
     : Math.abs(handGap) > HANDHELD_GAP_K
       ? `Manual comparison: handheld ${hand!.value.toFixed(0)} °C disagrees with the scanner by ${handGap > 0 ? "+" : "−"}${Math.abs(handGap).toFixed(0)} K at the matched position (> ${HANDHELD_GAP_K} K)`
       : saturated
-        ? `Range: shell map saturated at the scanner range end (${PYRO_SIGNAL_BY_TAG["CAL-KLN-03"]?.range?.[1] ?? 600} °C)`
+        ? `Range: shell map saturated at the scanner range end (${scanTop} °C)`
         : null;
   // Oil trend vs laboratory: wear iron high while the oil instruments stay at model (flag only).
   const lab = s.manual["LAB-KLN-01"];
@@ -597,10 +628,11 @@ export function screenQuality(q: QualityInput): QualityScreen {
 /** Per-tag quality from the flags; calculated values inherit a suspect input. */
 export function signalQuality(s: LineState, { invalid, scannerNote }: QualityScreen): (tag: string) => Quality {
   return (tag: string): Quality => {
-    if (tag === "CAL-KLN-06" && (s.flags["GAS-KLN-01"] || s.flags["TMP-KLN-13"])) return s.flags["GAS-KLN-01"]?.rule === "R-DQ-01" ? "Invalid" : "Suspect";
-    if (tag === "CAL-PHC-01" && (s.flags["GAS-KLN-01"] || s.flags["GAS-PHC-01"])) return "Suspect";
-    if (tag === "CAL-BRN-01" && (s.flags["FLO-KFS-01"] || s.flags["FLO-KFS-02"] || s.flags["FLO-BRN-01"])) return "Suspect";
-    if (tag === "CAL-KLN-03" && scannerNote) return "Suspect";
+    // Calculated register points (Rev. 02 CALC.) inherit a suspect input: ΔP from its inlet / outlet pressures, the bin
+    // weight from its three load cells.
+    const inputs = CALC_INPUTS[tag];
+    if (inputs && inputs.some((tg) => s.flags[tg])) return inputs.some((tg) => s.flags[tg]?.rule === "R-DQ-01" && invalid[tg]) ? "Invalid" : "Suspect";
+    if (tag === "STS-KLN-08" && scannerNote && !s.flags[tag]) return "Suspect";
     const f = s.flags[tag];
     if (!f) return "Good";
     return f.rule === "R-DQ-01" && invalid[tag] ? "Invalid" : "Suspect";
@@ -609,8 +641,8 @@ export function signalQuality(s: LineState, { invalid, scannerNote }: QualityScr
 
 /** Quality note shown with a signal: the flag note, why a derived value is suspect, or a flag-only / held note. */
 export function qualityNoteOf(s: LineState, screen: QualityScreen, def: PyroSignalDef, q: Quality): string | null {
-  if (def.tag === "CAL-KLN-03" && screen.scannerNote) return screen.scannerNote;
-  if (def.calculated && q !== "Good") return "Derived from a suspect input";
+  if (def.tag === "STS-KLN-08" && screen.scannerNote && !s.flags[def.tag]) return screen.scannerNote;
+  if (def.calculated && q !== "Good") return `Derived from a suspect input (${(CALC_INPUTS[def.tag] ?? []).filter((tg) => s.flags[tg]).join(", ")})`;
   return s.flags[def.tag]?.note ?? screen.notes[def.tag] ?? null;
 }
 

@@ -8,7 +8,7 @@
  * the burning zone, the stand-off shell scanner on its post with its sight
  * lines (no view behind the tyres), and the handheld IR check point. The
  * fan status pad sits on the fan starter box above the fans (PDF: between them). The
- * shell temperature map maximum (CAL-KLN-03) sits on the hot spot.
+ * scanner reading (shell maximum and its position) sits on the scanner.
  */
 import React from "react";
 import { Fan, GroundLine, MX, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
@@ -161,7 +161,6 @@ const pads: LineSheetArt["pads"] = {
   "STS-KLN-08": [253.5, 325.5],
   "STS-KLN-13": [319.5, 46],
   "MAN-KLN-01": [382.5, 303.5],
-  "CAL-KLN-03": [370, 161],
 };
 
 /** Plate side per point (start = plate right of the pad, end = left). */
@@ -169,7 +168,6 @@ const callouts: LineSheetArt["callouts"] = {
   "STS-KLN-08": [241, 325.5, "end"],
   "STS-KLN-13": [332, 46, "start"],
   "MAN-KLN-01": [395, 303.5, "start"],
-  "CAL-KLN-03": [382, 161, "start"],
 };
 
 export const sheet: LineSheetArt = { id: "K-8", ready: true, width: W, height: H, Art, pads, callouts };

@@ -13,7 +13,7 @@ import {
   Frame, GasCylinder, Gearbox, HeatExchanger, Hopper, HorizontalVessel, Louvres, MEDIUM, Panel, Plinth, PumpSet, Stack, Tank, Valve,
 } from "../parts-2d";
 import { LABEL_SIZE } from "./layout";
-import type { Box, LaidItem, LaidLink, Layout, Medium, Pt, Trace } from "./types";
+import type { Box, LaidItem, LaidLink, Layout, Medium, Pt, TracedGroup } from "./types";
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const mirrorX = (b: Box) => `translate(${Math.round(2 * (b.x + b.w / 2) * 100) / 100} 0) scale(-1 1)`;
@@ -329,13 +329,11 @@ function RotaryValve({ x, y, w, h }: Box) {
 /** Solid machine part (frame member, column, base, arm): graphite body, inner line, bolts. */
 function Block({ x, y, w, h }: Box) {
   const rx = Math.min(6, w * 0.08, h * 0.08);
-  const long = w > h * 3 || h > w * 3;
   return (
     <g>
       <rect x={x} y={y} width={w} height={h} rx={rx} {...PAINT.body} />
       {w > 20 && h > 20 && <rect x={x + 4} y={y + 4} width={w - 8} height={h - 8} rx={Math.max(1, rx - 2)} {...PAINT.hair} />}
-      {w > 24 && h > 24 && <CornerBolts x={x} y={y} w={w} h={h} inset={8} r={1.4} />}
-      {long && (w > h ? <BoltLine x1={x + 16} y1={y + h / 2} x2={x + w - 16} y2={y + h / 2} count={Math.max(3, Math.round(w / 60))} r={1.2} /> : <BoltLine x1={x + w / 2} y1={y + 16} x2={x + w / 2} y2={y + h - 16} count={Math.max(3, Math.round(h / 60))} r={1.2} />)}
+      {w > 90 && h > 90 && <CornerBolts x={x} y={y} w={w} h={h} inset={8} r={1.3} />}
     </g>
   );
 }
@@ -435,60 +433,47 @@ function Tool({ x, y, w, h, horizontal }: Box & { horizontal?: boolean }) {
   );
 }
 
-/** An item drawn from its own silhouette (traced in the image): graphite body, inner edges as fine detail, plinth when it stands on the floor. */
-function TracedBody({ b, trace, standing, id }: { b: Box; trace: Trace; standing: boolean; id: string }) {
-  const X = (u: number) => Math.round((b.x + u * b.w) * 10) / 10;
-  const Y = (v: number) => Math.round((b.y + v * b.h) * 10) / 10;
-  const P = ([u, v]: Pt) => `${X(u)} ${Y(v)}`;
-  const ring = (pts: Pt[]) => `M ${pts.map(P).join(" L ")} Z`;
-  const outline = [trace.outline, ...(trace.holes ?? [])].map(ring).join(" ");
-  const clip = `trace-${id.replace(/[^a-zA-Z0-9_-]/g, "")}`;
-  const regions = trace.regions ?? [];
-  const circles = trace.circles ?? [];
-  // The machine's own make-up in house paints: graphite body, its lighter parts as raised plates, darker parts as recesses,
-  // round parts as hubs, long seams as hairlines; generic panel detail only when the image gave none.
+/** Paint of a traced area (the kit presets, fill only: the traced ink draws the edges). */
+const TONE_FILL: Record<string, string> = { body: MX.body, raised: MX.raised, recess: MX.deep, material: MX.material, shaft: MX.shaft };
+
+/** A machine drawn from its own picture: its areas in kit paints, its traced edge lines in the kit edge colour. */
+function TracedMachine({ g }: { g: TracedGroup }) {
+  const a = g.art!;
+  const k = `translate(${g.box.x} ${g.box.y}) scale(${Math.round((g.box.w / 1000) * 1e5) / 1e5} ${Math.round((g.box.h / 1000) * 1e5) / 1e5})`;
   return (
-    <g>
-      {standing && <Plinth x={b.x - 4} y={b.y + b.h - 6} w={b.w + 8} h={8} />}
-      <clipPath id={clip}>
-        <path d={outline} fillRule="evenodd" />
-      </clipPath>
-      <path d={outline} fillRule="evenodd" {...PAINT.body} />
-      <g clipPath={`url(#${clip})`}>
-        {regions.map((r, i) => (
-          <path key={`r${i}`} d={ring(r.poly)} {...(r.tone === "recess" ? PAINT.recess : PAINT.raised)} />
-        ))}
-        {!regions.length && b.w > 60 && b.h > 60 && <Panel x={b.x + b.w * 0.14} y={b.y + b.h * 0.2} w={b.w * 0.34} h={b.h * 0.3} />}
-        {trace.lines.filter((l) => l.length <= 3).slice(0, 12).map((l, i) => (
-          <path key={`l${i}`} d={`M ${l.map(P).join(" L ")}`} {...PAINT.hair} />
-        ))}
-        {circles.map(([u, v, r], i) => (
-          <g key={`c${i}`}>
-            <circle cx={X(u)} cy={Y(v)} r={Math.round(r * b.w * 10) / 10} {...PAINT.raised} />
-            <circle cx={X(u)} cy={Y(v)} r={Math.round(r * b.w * 4) / 10} {...PAINT.shaft} />
-          </g>
-        ))}
-      </g>
-      <path d={outline} fillRule="evenodd" fill="none" stroke={MX.edge} strokeWidth={MX.w} strokeLinejoin="round" />
+    <g transform={k}>
+      {/* every area a solid kit shape with the kit rim: crisp, even edges like the hand-drawn sheets */}
+      {a.silhouette.map((d, i) => (
+        <path key={`s${i}`} d={d} fill={MX.body} fillRule="evenodd" stroke={MX.edge} strokeWidth={MX.w} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+      ))}
+      {a.regions.map((r, i) => (
+        <path key={`r${i}`} d={r.d} fill={TONE_FILL[r.tone] ?? MX.body} fillRule="evenodd" stroke={r.tone === "recess" ? MX.fine : MX.edge} strokeWidth={r.tone === "recess" ? MX.wFine : MX.w} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+      ))}
     </g>
   );
 }
 
-/** Round face seen end-on (wheel, pulley, flywheel, roller, dial): rim, web, spokes, hub. */
+
+/**
+ * Round face (wheel, pulley, flywheel, roller, dial): rim, web, spokes, hub. It fills its box, so a
+ * wheel seen at an angle (a flat disc drawn wide and low) is an ellipse, as in the image.
+ */
 function Wheel({ x, y, w, h }: Box) {
-  const r = Math.min(w, h) / 2;
+  const rx = w / 2;
+  const ry = h / 2;
   const c = { x: x + w / 2, y: y + h / 2 };
-  const spokes = r > 30 ? 6 : 4;
+  const spokes = Math.max(rx, ry) > 30 ? 6 : 4;
+  const r = Math.min(rx, ry);
   return (
     <g>
-      <circle cx={c.x} cy={c.y} r={r} {...PAINT.raised} />
-      <circle cx={c.x} cy={c.y} r={r * 0.78} {...PAINT.body} />
+      <ellipse cx={c.x} cy={c.y} rx={rx} ry={ry} {...PAINT.raised} />
+      <ellipse cx={c.x} cy={c.y} rx={rx * 0.8} ry={ry * 0.8} {...PAINT.body} />
       {Array.from({ length: spokes }).map((_, i) => {
         const t = (i / spokes) * Math.PI * 2;
-        return <line key={i} x1={c.x + Math.cos(t) * r * 0.24} y1={c.y + Math.sin(t) * r * 0.24} x2={c.x + Math.cos(t) * r * 0.74} y2={c.y + Math.sin(t) * r * 0.74} stroke={MX.metal} strokeWidth={Math.max(1.2, r * 0.07)} strokeLinecap="round" />;
+        return <line key={i} x1={c.x + Math.cos(t) * rx * 0.24} y1={c.y + Math.sin(t) * ry * 0.24} x2={c.x + Math.cos(t) * rx * 0.76} y2={c.y + Math.sin(t) * ry * 0.76} stroke={MX.metal} strokeWidth={Math.max(1.2, r * 0.08)} strokeLinecap="round" />;
       })}
-      <circle cx={c.x} cy={c.y} r={r * 0.22} {...PAINT.raised} />
-      <circle cx={c.x} cy={c.y} r={r * 0.09} {...PAINT.shaft} />
+      <ellipse cx={c.x} cy={c.y} rx={rx * 0.22} ry={ry * 0.22} {...PAINT.raised} />
+      <ellipse cx={c.x} cy={c.y} rx={rx * 0.09} ry={ry * 0.09} {...PAINT.shaft} />
     </g>
   );
 }
@@ -539,7 +524,13 @@ function ChamberContents({ b, contents, heat }: { b: Box; contents: string; heat
     const turns = Math.max(5, Math.round(ch / 9));
     return (
       <g>
-        {heat && <ellipse cx={ccx} cy={top + ch * 0.5} rx={cw * 0.95} ry={ch * 0.75} fill={MX.heat} opacity={0.55} />}
+        {heat && (
+          <g>
+            {/* the glowing hot zone fills the chamber around the crucible, brightest at the melt */}
+            <rect x={inner.x + 2} y={inner.y + 2} width={inner.w - 4} height={inner.h - 4} rx={4} fill={MX.heat} opacity={0.18} />
+            <ellipse cx={ccx} cy={top + ch * 0.5} rx={cw * 1.05} ry={ch * 0.85} fill={MX.heat} opacity={0.6} />
+          </g>
+        )}
         <path d={`M ${ccx - cw / 2} ${top} H ${ccx + cw / 2} V ${top + ch * 0.86} Q ${ccx + cw / 2} ${top + ch} ${ccx} ${top + ch} Q ${ccx - cw / 2} ${top + ch} ${ccx - cw / 2} ${top + ch * 0.86} Z`} {...PAINT.cylinderV} />
         <path d={`M ${ccx - cw / 2 + 4} ${top + ch * 0.22} H ${ccx + cw / 2 - 4} V ${top + ch * 0.82} Q ${ccx} ${top + ch - 4} ${ccx - cw / 2 + 4} ${top + ch * 0.82} Z`} {...PAINT.material} />
         <rect x={ccx - cw / 2 - 3} y={top - 4} width={cw + 6} height={6} rx={2} {...PAINT.raised} />
@@ -560,8 +551,9 @@ function ChamberContents({ b, contents, heat }: { b: Box; contents: string; heat
     const fy = inner.y + inner.h * 0.18;
     return (
       <g>
-        <rect x={ccx - fw / 2} y={fy} width={fw} height={fh} rx={8} {...PAINT.raised} />
-        <rect x={ccx - fw / 2 + 4} y={fy + 4} width={fw - 8} height={fh - 8} rx={6} {...PAINT.recess} />
+        {/* the flask: a round shell (lit like a cylinder) with the wax tree inside it */}
+        <rect x={ccx - fw / 2} y={fy} width={fw} height={fh} rx={fw * 0.08} {...PAINT.cylinderV} />
+        <ellipse cx={ccx} cy={fy + 2} rx={fw / 2 - 1} ry={Math.min(6, fh * 0.04)} {...PAINT.raised} />
         <line x1={ccx} x2={ccx} y1={fy + 6} y2={fy + fh - 8} stroke={MX.material} strokeWidth={3} />
         {Array.from({ length: 4 }).map((_, i) => (
           <g key={i}>
@@ -598,7 +590,7 @@ function ChamberContents({ b, contents, heat }: { b: Box; contents: string; heat
 /* Item → part                                                          */
 /* ------------------------------------------------------------------ */
 
-function ItemArt({ it, carried }: { it: LaidItem; carried: LaidItem[] }) {
+function ItemArt({ it, carried, under = false }: { it: LaidItem; carried: LaidItem[]; under?: boolean }) {
   const angle = Number(it.options.angle ?? 0);
   // Shape parts may be turned (an arm, an inclined chute): draw upright, then rotate about the box centre.
   if (angle && ["block", "cylinder", "cone", "tool", "fixture", "workpiece"].includes(it.type)) {
@@ -610,7 +602,6 @@ function ItemArt({ it, carried }: { it: LaidItem; carried: LaidItem[] }) {
     );
   }
   const b = it.box;
-  if (it.trace && it.trace.outline.length >= 4) return <TracedBody b={b} trace={it.trace} standing={it.floor !== undefined} id={it.id} />;
   const tone = it.options.tone;
   if (tone && tone !== "body" && ["block", "cylinder", "table", "fixture"].includes(it.type)) return <TonedBlock b={b} tone={tone} standing={it.floor !== undefined} />;
   const o = it.options;
@@ -669,6 +660,25 @@ function ItemArt({ it, carried }: { it: LaidItem; carried: LaidItem[] }) {
       );
     }
     case "drum":
+      // Boxed about as tall as wide: the drum is seen end-on (a section), so it is a round shell, not a side view.
+      if (w < h * 1.6) {
+        const r = Math.min(w, h) / 2;
+        const c = { x: x + w / 2, y: y + h / 2 };
+        return (
+          <g>
+            <circle cx={c.x} cy={c.y} r={r} {...PAINT.raised} />
+            <circle cx={c.x} cy={c.y} r={r * 0.9} {...PAINT.body} />
+            <circle cx={c.x} cy={c.y} r={r * 0.78} {...PAINT.recess} />
+            {o.heat && <circle cx={c.x} cy={c.y} r={r * 0.7} fill={MX.heat} opacity={0.25} />}
+            {Array.from({ length: 16 }).map((_, i) => {
+              const t = (i / 16) * Math.PI * 2;
+              return <line key={i} x1={c.x + Math.cos(t) * r * 0.9} y1={c.y + Math.sin(t) * r * 0.9} x2={c.x + Math.cos(t) * r * 0.97} y2={c.y + Math.sin(t) * r * 0.97} {...PAINT.hair} />;
+            })}
+          </g>
+        );
+      }
+      // A long slim box with its piers / drive drawn under it as their own items: the box is the shell itself.
+      if (under && w > 5 * h) return <Drum x={x} y={y - 0.08 * h} w={w} h={2 * h} gear={0.32} piers={false} heat={o.heat ? [0.6, 0.96] : undefined} />;
       return <Drum {...b} gear={0.32} heat={o.heat ? [0.6, 0.96] : undefined} />;
     case "conveyor": {
       const kind = o.kind === "screw" || o.kind === "chain" || o.kind === "slide" ? o.kind : "belt";
@@ -756,6 +766,12 @@ function ItemArt({ it, carried }: { it: LaidItem; carried: LaidItem[] }) {
 }
 
 /** Neck spool between a stacked item and the one under it. */
+/** Something drawn right under the item (piers, a drive): within one item height below it, overlapping it in x. */
+function hasUnder(L: Layout, it: LaidItem) {
+  const b = it.box;
+  return L.items.some((o) => o !== it && o.box.y >= b.y + b.h - 3 && o.box.y - (b.y + b.h) < Math.max(12, b.h) && Math.min(o.box.x + o.box.w, b.x + b.w) - Math.max(o.box.x, b.x) > 4);
+}
+
 function Neck({ b }: { b: Box }) {
   return (
     <g>
@@ -813,8 +829,13 @@ function Head({ x, y, ux, uy, fill, s = 5.5 }: { x: number; y: number; ux: numbe
   return <path d={`M ${s} 0 L ${-s * 0.7} ${-s * 0.75} L ${-s * 0.7} ${s * 0.75} Z`} fill={fill} transform={`translate(${Math.round(x * 100) / 100} ${Math.round(y * 100) / 100}) rotate(${Math.round(a)})`} />;
 }
 
+/** Halo behind names drawn over lines: the page behind the sheet. */
+const HALO = "var(--surface-bg, var(--mx-deep))";
+/** Width of an outside name as drawn (600 weight, 0.1em letter spacing). */
+const textW = (t: string) => t.length * LABEL_SIZE * 0.74;
+
 /** One connection: tube, flow line and arrowheads (valves are drawn over the equipment layer). */
-function LinkLine({ l }: { l: LaidLink }) {
+function LinkLine({ l, layer = "line" }: { l: LaidLink; layer?: "line" | "label" }) {
   if (l.pts.length < 2) return null;
   const look = LOOK[l.medium];
   const tube = l.duct ? Math.max(look.tube, 16) : look.tube;
@@ -844,6 +865,51 @@ function LinkLine({ l }: { l: LaidLink }) {
       ends.push(horiz ? <rect key={`f${p[0]}-${p[1]}`} x={p[0] - 2.5} y={p[1] - len / 2} width={5} height={len} rx={1.2} {...PAINT.raised} /> : <rect key={`f${p[0]}-${p[1]}`} x={p[0] - len / 2} y={p[1] - 2.5} width={len} height={5} rx={1.2} {...PAINT.raised} />);
     }
   }
+  // Flow name on the longest straight run, in the flow's colour, just above (or beside) the line.
+  let flowLabel: React.ReactNode = null;
+  if (l.label && l.labelAt) {
+    const { x: lx, y: ly, vertical } = l.labelAt;
+    const tw = l.label.length * 7.2 + 6;
+    const backing = vertical ? <rect x={lx - 7} y={ly - tw / 2} width={14} height={tw} fill={HALO} stroke="none" /> : <rect x={lx - tw / 2} y={ly - 10} width={tw} height={13} fill={HALO} stroke="none" />;
+    flowLabel = vertical ? (
+      <>{backing}<text x={lx} y={ly} fontSize={10} fontWeight={600} letterSpacing="0.1em" textAnchor="middle" dominantBaseline="middle" fill={look.core} fontFamily={MX.font} transform={`rotate(-90 ${lx} ${ly})`}>
+        {l.label}
+      </text></>
+    ) : (
+      <>{backing}<text x={lx} y={ly} fontSize={10} fontWeight={600} letterSpacing="0.1em" textAnchor="middle" fill={look.core} fontFamily={MX.font}>
+        {l.label}
+      </text></>
+    );
+  } else if (l.label) {
+    let best = -1;
+    let bestL = 0;
+    for (let i = 0; i < l.pts.length - 1; i++) {
+      const L = Math.hypot(l.pts[i + 1][0] - l.pts[i][0], l.pts[i + 1][1] - l.pts[i][1]);
+      if (L > bestL) {
+        bestL = L;
+        best = i;
+      }
+    }
+    const need = l.label.length * 7.2 + 10;
+    if (best >= 0 && bestL >= need) {
+      const [a, b] = [l.pts[best], l.pts[best + 1]];
+      const horiz = Math.abs(b[0] - a[0]) >= Math.abs(b[1] - a[1]);
+      const mx = (a[0] + b[0]) / 2;
+      const my = (a[1] + b[1]) / 2;
+      const off = tube / 2 + 9;
+      flowLabel = horiz ? (
+        <text x={mx} y={my - off} fontSize={10} fontWeight={600} letterSpacing="0.1em" textAnchor="middle" fill={look.core} fontFamily={MX.font}>
+          {l.label}
+        </text>
+      ) : (
+        <text x={mx + off} y={my} fontSize={10} fontWeight={600} letterSpacing="0.1em" textAnchor="middle" fill={look.core} fontFamily={MX.font} transform={`rotate(-90 ${mx + off} ${my})`}>
+          {l.label}
+        </text>
+      );
+    }
+  }
+  // The flow name is drawn in its own layer above the equipment, with a halo so a crossing line never hides it.
+  if (layer === "label") return flowLabel ? <g aria-hidden="true" stroke={HALO} strokeWidth={3.5} strokeLinejoin="round" style={{ paintOrder: "stroke" }}>{flowLabel}</g> : null;
   return (
     <g aria-hidden="true" fill="none" strokeLinejoin="round">
       {tube > 0 && <path d={d} stroke={MX.edge} strokeWidth={tube} />}
@@ -863,8 +929,12 @@ function LinkLine({ l }: { l: LaidLink }) {
 /** The 2D sheet of a laid-out spec (what the app and the DB export use). */
 export function layoutSheet(L: Layout): LineSheetArt {
   const depth = (it: LaidItem): number => (it.on ? 1 + depth(L.items.find((o) => o.id === it.on) ?? { ...it, on: undefined }) : 0);
-  const order = [...L.items].filter((it) => it.type !== "frame").sort((a, b) => depth(a) - depth(b) || b.box.w * b.box.h - a.box.w * a.box.h);
+  // Big bodies first, smaller parts over them (a collar in front of its flywheel, a window on its door).
+  const order = [...L.items].filter((it) => it.type !== "frame").sort((a, b) => b.box.w * b.box.h - a.box.w * a.box.h || depth(a) - depth(b));
   const frames = L.items.filter((it) => it.type === "frame");
+  // Items of a traced machine are drawn by its traced art instead of one by one.
+  const tracedGroups = (L.traced ?? []).filter((g) => g.art && g.art.regions.length);
+  const tracedIds = new Set(tracedGroups.flatMap((g) => g.ids));
   const carried = (id: string) => L.items.filter((o) => o.on === id);
 
   function Art() {
@@ -873,8 +943,8 @@ export function layoutSheet(L: Layout): LineSheetArt {
         {L.floors.map((f) => (
           <GroundLine key={f.y} x1={f.x1} x2={f.x2} y={f.y} />
         ))}
-        {frames.map((it) => (
-          <ItemArt key={it.id} it={it} carried={carried(it.id)} />
+        {frames.filter((it) => !tracedIds.has(it.id)).map((it) => (
+          <ItemArt key={it.id} it={it} carried={carried(it.id)} under={hasUnder(L, it)} />
         ))}
         {L.items.filter((it) => it.legs !== undefined && it.type !== "conveyor").map((it) => (
           <Legs key={`legs-${it.id}`} b={it.box} to={it.legs!} />
@@ -882,18 +952,40 @@ export function layoutSheet(L: Layout): LineSheetArt {
         {L.links.map((l) => (
           <LinkLine key={`line-${l.id}`} l={l} />
         ))}
-        {order.map((it) => (
+        {tracedGroups.map((g) => (
+          <TracedMachine key={`t-${g.key}`} g={g} />
+        ))}
+        {order.filter((it) => !tracedIds.has(it.id)).map((it) => (
           <g key={it.id}>
             {it.neck && <Neck b={it.neck} />}
-            <ItemArt it={it} carried={carried(it.id)} />
+            <ItemArt it={it} carried={carried(it.id)} under={hasUnder(L, it)} />
           </g>
         ))}
         {L.links.flatMap((l) => l.valves.map((v, i) => <Valve key={`${l.id}-v${i}`} x={v.at[0]} y={v.at[1]} size={l.medium === "hot-gas" || l.duct ? 22 : 13} kind={v.kind === "regulator" ? "control" : v.kind} vertical={v.vertical} />))}
-        {L.labels.map((lb) => (
-          <MachineLabel key={`${lb.text}-${lb.x}-${lb.y}`} x={lb.x} y={lb.y} anchor={lb.anchor} size={lb.inside ? 10 : LABEL_SIZE} tone={lb.inside ? "ink" : "muted"}>
-            {lb.text}
-          </MachineLabel>
+        {L.labels.filter((lb) => lb.leader).map((lb) => (
+          <g key={`ld-${lb.text}-${lb.x}-${lb.y}`}>
+            <polyline points={lb.leader!.map((p) => p.join(",")).join(" ")} fill="none" stroke={MX.label} strokeWidth={0.8} opacity={0.7} />
+            <circle cx={lb.leader![lb.leader!.length - 1][0]} cy={lb.leader![lb.leader!.length - 1][1]} r={1.8} fill={MX.label} />
+          </g>
         ))}
+        {L.links.map((l) => (
+          <LinkLine key={`flow-${l.id}`} l={l} layer="label" />
+        ))}
+        {L.labels.map((lb) =>
+          lb.inside ? (
+            <MachineLabel key={`${lb.text}-${lb.x}-${lb.y}`} x={lb.x} y={lb.y} anchor={lb.anchor} size={10} tone="ink">
+              {lb.text}
+            </MachineLabel>
+          ) : (
+            <g key={`${lb.text}-${lb.x}-${lb.y}`}>
+              {/* a backing in the page colour breaks any line passing under the name, as on an engineering drawing */}
+              <rect x={lb.anchor === "middle" ? lb.x - textW(lb.text) / 2 - 3 : lb.anchor === "end" ? lb.x - textW(lb.text) - 3 : lb.x - 3} y={lb.y - LABEL_SIZE + 0.5} width={textW(lb.text) + 6} height={LABEL_SIZE + 3} fill={HALO} />
+              <MachineLabel x={lb.x} y={lb.y} anchor={lb.anchor} size={LABEL_SIZE} tone="muted">
+                {lb.text}
+              </MachineLabel>
+            </g>
+          ),
+        )}
       </g>
     );
   }

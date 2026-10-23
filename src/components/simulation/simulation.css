@@ -29,7 +29,7 @@
   margin: 0;
   color: var(--text-secondary);
   font-size: var(--fs-sm);
-  line-height: 1.45;
+  line-height: var(--lh-body);
 }
 
 .sim-head-actions {
@@ -89,7 +89,7 @@
   margin: 4px 0 0;
   color: var(--text-secondary);
   font-size: var(--fs-sm);
-  line-height: 1.45;
+  line-height: var(--lh-body);
   max-width: 900px;
 }
 
@@ -160,5 +160,5 @@
 
 /* Simulation › SAP */
 .sim-card-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-2); }
-.sim-card-title { margin: 0; font-size: var(--fs-lg); font-weight: 600; color: var(--dx-ink); }
+.sim-card-title { margin: 0; font-size: var(--fs-lg); letter-spacing: var(--tracking-heading); font-weight: 600; color: var(--dx-ink); }
 .sim-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-3); }

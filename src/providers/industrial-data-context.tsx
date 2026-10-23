@@ -117,7 +117,7 @@ interface IndustrialDataContextType {
   deleteMachine: (id: string) => Promise<void>;
 }
 
-const WORKSPACE_TABS: readonly WorkspaceTab[] = ["home", "assets", "problems", "maintenance", "sap", "devices", "assetiq", "configure", "simulation"];
+const WORKSPACE_TABS: readonly WorkspaceTab[] = ["home", "assets", "problems", "sap", "devices", "assetiq", "polycron", "maintenance", "configure", "simulation"];
 const SUB_PAGES: readonly AssetsSubPage[] = [
   "overview", "sensors", "diagnosis", "thermal", "prognosis",
   "analysis", "health", "trends", "rack", "simulation",

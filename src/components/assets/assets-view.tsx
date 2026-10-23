@@ -98,8 +98,12 @@ function AssetsMachineBar({
   const sim = useKilnSimulationFor(machine.id);
   const d = useOverviewDigest(machine, sim?.sensorData);
   const hasData = d.sensors.length > 0 || d.groups.rows.length > 0 || d.isLiveHealth;
-  const tone = conditionTone(d.conditionLabel);
-  const offNormal = d.counts.Alert + d.counts.Critical;
+  // A picked part shows its own health and its own sensors, as on the Operator view.
+  const { options, selected } = useComponentScope(machine);
+  const part = selected ? options.find((o) => o.id === selected.id) ?? null : null;
+  const partTags = part ? new Set(part.tags) : null;
+  const tone = part ? conditionTone(part.status) : conditionTone(d.conditionLabel);
+  const offNormal = partTags ? d.dots.filter((s) => partTags.has(s.tag) && s.status !== "Normal").length : d.counts.Alert + d.counts.Critical;
   return (
     <>
       <div className="opc-subbar ast-part-row" role="region" aria-label="Machine parts">
@@ -109,8 +113,8 @@ function AssetsMachineBar({
         <div className="opc-context-left">
           <StatusSummary
             tone={tone}
-            label={label}
-            health={hasData ? d.overall : null}
+            label={part ? part.name : label}
+            health={part ? part.health : hasData ? d.overall : null}
             offNormal={offNormal > 0 ? `${offNormal} ${offNormal === 1 ? "sensor needs" : "sensors need"} attention` : null}
           />
         </div>
@@ -378,9 +382,11 @@ export function AssetsView() {
           activeKey={activeTab?.key ?? null}
           onSelect={(t) => {
             if (t.machineId) return navigateToMachine(t.machineId, activeLayer);
-            // Full line keeps the page you are on when the line has one.
-            if (activeSubPage !== "overview" && activeLayer !== "sensors") navigateToLine(activeLayer);
-            else navigateToAssetsHome();
+            // Full line opens the Operator view of the whole line, as the logo does.
+            navigateToAssetsHome();
+            setActiveTab("home");
+            showHomeView("operator");
+            window.dispatchEvent(new Event("ultron:open-full-line"));
           }}
           view="assets"
           onChangeView={changeView}

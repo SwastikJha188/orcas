@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useCallback, useMemo, useState } from "react";
-import { Loading, Table, type Column } from "@/components/ui";
+import { Loading, NextActions, Table, type Column } from "@/components/ui";
+import { usePmsLine } from "@/components/maintenance/pms-model";
+import { ruleActions, sensorActions } from "../next-actions-model";
 import { StatusTag } from "@/components/assets/assets-shell-ui";
 import { conditionTone, type Condition } from "@/components/ui/status";
 import { useIndustrialData } from "@/providers/industrial-data-context";
@@ -67,6 +69,35 @@ export function LineDiagnosis({ units, names, health }: { units: AssetMachine[];
     focusSensorOn("trends", r.s.tag);
     navigateToMachine(id, "trends");
   };
+
+  // Next actions across the line (or the picked machine): acknowledge, ask for a repair, check a sensor.
+  const pms = usePmsLine();
+  const next = machines
+    .filter((lm) => lm.frame && (!machineFilter || lm.m.id === machineFilter))
+    .flatMap((lm) => {
+      const f = lm.frame!;
+      const label = names[lm.m.id] ?? lm.m.name;
+      return [
+        ...ruleActions({
+          machineId: lm.m.id,
+          machineLabel: label,
+          rules: f.rules,
+          acked: lm.acked,
+          cleared: lm.cleared,
+          ruleName: (id) => f.defs.ruleById[id]?.plainTitle || f.defs.ruleById[id]?.name || id,
+          acknowledge: (ruleId) => ops.acknowledgeAlarm(lm.m.id, ruleId),
+          pms,
+        }),
+        ...sensorActions(
+          lm.sensors,
+          (tag) => {
+            focusSensorOn("trends", tag);
+            navigateToMachine(lm.m.id, "trends");
+          },
+          label,
+        ),
+      ];
+    });
 
   const live = machines.filter((lm) => lm.frame);
   const starting = useLivePlantStarting();
@@ -219,6 +250,12 @@ export function LineDiagnosis({ units, names, health }: { units: AssetMachine[];
       />
 
       <KpiStrip page items={kpis} label="Full line diagnosis totals" />
+
+      {next.length > 0 && (
+        <Section id="dx-next" title="Next actions">
+          <NextActions items={next} />
+        </Section>
+      )}
 
       <Section id="dx-health" title="Machines">
         <Table

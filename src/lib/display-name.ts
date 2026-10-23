@@ -1,7 +1,7 @@
 /**
  * Name for display: drops bracketed references that only carry IDs, e.g.
- * "Shell temperature map maximum (K-K33 STS-KLN-08 / CAL-KLN-03)" →
- * "Shell temperature map maximum". Brackets with plain words stay
+ * "Shell scanner: maximum shell temperature (K-K33 STS-KLN-08)" →
+ * "Shell scanner: maximum shell temperature". Brackets with plain words stay
  * ("Kiln axial position (LVDT on thrust cylinder)"). The tag itself stays in
  * tooltips, so nothing is lost.
  */
@@ -54,8 +54,8 @@ function nameMapOf(defs: IdNameSource): Map<string, string> {
 /**
  * Free text (event titles, details, notes) with known sensor tags, rule IDs,
  * system and sub-assembly IDs replaced by their names: "R-KLN-19 Shell hot
- * spot confirmed" → "Shell hot spot confirmed", "TMP-KLN-21 alert" → "Motor
- * winding temperature alert". `extra` adds names (e.g. machine ID → name).
+ * spot confirmed" → "Shell hot spot confirmed", "TMP-KLN-41 alert" → "Main
+ * motor winding temperature 1 alert". `extra` adds names (e.g. machine ID → name).
  * Unknown IDs (work orders, gateways) stay. Keep the raw text in a tooltip.
  */
 export function nameIds(text: string, defs: IdNameSource | null | undefined, extra?: Readonly<Record<string, string>>): string {
@@ -63,7 +63,7 @@ export function nameIds(text: string, defs: IdNameSource | null | undefined, ext
   const map = defs ? nameMapOf(defs) : null;
   const nameOf = (id: string) => extra?.[id] ?? map?.get(id);
   return text
-    // A bracket of IDs only ("(K-K33 STS-KLN-08 / CAL-KLN-03)") is a reference, not words: drop it.
+    // A bracket of IDs only ("(K-K33 STS-KLN-08)") is a reference, not words: drop it.
     .replace(/ ?\(([^()]*)\)/g, (whole, inner: string) => (ID_LIST.test(inner) ? "" : whole))
     .replace(ID_GLOBAL, (id, offset: number, whole: string) => {
       const name = nameOf(id);

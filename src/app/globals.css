@@ -1,7 +1,9 @@
 :root {
-  --font-ui: "Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-ui: "Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-ui);
-  --font-mono: "JetBrains Mono", "SFMono-Regular", ui-monospace, Menlo, Monaco, Consolas, monospace;
+  /* One face everywhere: figures and tags use the UI font too; tabular figures (tnum) keep
+     columns of numbers aligned. The token stays so number/tag styles keep one place to change. */
+  --font-mono: var(--font-ui);
 
   /* Strict Nested Corner Radii (Archetype B: Technical Dense Terminal)
      R_inner = max(0, R_outer - padding) */
@@ -43,6 +45,14 @@
   --fs-9xl: 36px;
   --fs-10xl: 36px;
 
+  /* Heading levels: the size of every h1–h6 outside Home (styles/responsive/headings.css). */
+  --fs-h1: 24px;
+  --fs-h2: 20px;
+  --fs-h3: 18px;
+  --fs-h4: 16px;
+  --fs-h5: 14px;
+  --fs-h6: 12px;
+
   /* Spacing scale on a 4px base (2px only for hairline gaps inside a control).
      Gaps inside a group stay at most half the gap between groups (Proximity). */
   --space-half: 2px;
@@ -56,13 +66,46 @@
   --space-10: 40px;
   --space-12: 48px;
 
+  /* White space between blocks. Each level is at least 1.5x the one inside it, so things
+     that belong together sit closer than things that don't (Proximity). */
+  --gap-inline: 4px;   /* icon and its label, value and its unit */
+  --gap-item: 8px;     /* items in one group: chips, buttons, label over value */
+  --gap-group: 16px;   /* groups inside a card, cards side by side in a grid */
+  --gap-section: 24px; /* sections stacked on a page */
+  --gap-columns: 32px; /* between page columns: KPI figures, main and side column */
+  --page-pad-top: 24px;
+  --page-pad-inline: 32px;
+  --page-pad-bottom: 40px;
+
+  /* Line space by role. The font's own "normal" (~1.22) is too tight for wrapped text. */
+  --lh-none: 1;        /* single-line numerals and icon labels */
+  --lh-tight: 1.2;     /* headings and KPI values (16px and up) */
+  --lh-snug: 1.35;     /* interface text: labels, table cells, buttons, lists */
+  --lh-body: 1.5;      /* sentences and paragraphs */
+  --lh-loose: 1.6;     /* long reading: AssetIQ answers, guides */
+
+  /* Letter space by size: large type is tightened, small capitals are opened up. */
+  --tracking-display: -0.02em; /* 24px and up */
+  --tracking-heading: -0.01em; /* 16-20px */
+  --tracking-normal: 0;        /* 12-14px body text */
+  --tracking-small: 0.01em;    /* 10-11px labels */
+  --tracking-caps: 0.06em;     /* UPPERCASE labels */
+
+  /* Word space: normal everywhere; uppercase labels get a wider gap so the tracking
+     doesn't run words together. */
+  --word-normal: normal;
+  --word-caps: 0.12em;
+
+  /* Longest comfortable line for running text. */
+  --measure: 72ch;
+
   /* Archetype B: Technical Dense Terminal (Dark Mode) */
   --bg-canvas: #0c0d0e;
   --bg-surface: #141618;
   --bg-surface-elevated: #1a1d20;
   --border-subtle: #24282c;
   --border-hover: #383e44;
-  /* Signal blue: focus, selection, primary action, info. Never green, so it can't read as Normal. */
+  /* Brand: focus, selection, primary action and info; green remains Normal only. */
   --accent-primary: #58a6ff;
   --accent-secondary: #f59e0b;
   --text-primary: #e6edf3;
@@ -101,7 +144,7 @@
   --row-hover-bg: #1a1d20;
   --pill-active-bg: #1f2428;
   --btn-primary-bg: #58a6ff;
-  --btn-primary-fg: #0a1622;
+  --btn-primary-fg: #0c0d0e;
   --status-success: #10b981;
   --status-warning: #f59e0b;
   --status-danger: #ef4444;
@@ -111,7 +154,7 @@
   --hover-faint: rgba(255, 255, 255, 0.04);
   --active-faint: rgba(255, 255, 255, 0.07);
   --diagram-stroke: #8b949e;
-  --chart-fill: rgb(88 166 255 / 10%);
+  --chart-fill: rgb(255 255 255 / 8%);
   /* Ironbow thermal-camera ramp for the shell scanner map, coolest (0) to
      hottest (7), evenly spaced. Shared by both themes. */
   --heat-0: #07051a;
@@ -163,26 +206,46 @@ html[data-theme="light"] {
   --hover-faint: rgba(0, 0, 0, 0.04);
   --active-faint: rgba(0, 0, 0, 0.07);
   --diagram-stroke: #57606a;
-  --chart-fill: rgb(9 105 218 / 8%);
+  --chart-fill: rgb(0 0 0 / 6%);
   --widget-bg: #f0f3f6;
   --shadow-pop: 0 12px 32px rgb(31 35 40 / 12%);
   --scrim: rgb(31 35 40 / 28%);
   color-scheme: light;
 }
 
+/* Page padding and section gaps step down with the screen; pages read the tokens. */
+@media (min-width: 1920px) {
+  :root { --page-pad-inline: 40px; --page-pad-bottom: 48px; }
+}
+@media (max-width: 1023px) {
+  :root { --page-pad-top: 16px; --page-pad-inline: 20px; --page-pad-bottom: 32px; --gap-section: 20px; }
+}
+@media (max-width: 599px) {
+  :root { --page-pad-top: 12px; --page-pad-inline: 12px; --page-pad-bottom: 24px; --gap-section: 16px; --gap-group: 12px; --gap-columns: 16px; }
+}
+
 * { box-sizing: border-box; }
 html, body { min-height: 100%; margin: 0; background: var(--rail-bg); }
 body {
   font-family: var(--font-ui);
-  /* Inter tuned for operations: tabular figures so live values never jitter,
-     tailed l (cv05) and slashed zero so tags like KLN-01 / I1 / O0 are unambiguous. */
-  font-feature-settings: "tnum" 1, "cv05" 1, "zero" 1;
+  /* Inter with tabular figures, so live values never jitter. */
+  font-feature-settings: "tnum" 1;
   font-variant-numeric: tabular-nums;
-  font-optical-sizing: auto;
   color: var(--page-fg);
+  line-height: var(--lh-snug);
+  letter-spacing: var(--tracking-normal);
+  word-spacing: var(--word-normal);
   -webkit-font-smoothing: antialiased;
 }
-button, input, select, textarea { font-family: inherit; font-feature-settings: inherit; }
+button, input, select, textarea { font-family: inherit; font-feature-settings: inherit; letter-spacing: inherit; word-spacing: inherit; }
+
+/* Text rhythm defaults. :where() keeps them at zero specificity, so any component rule wins. */
+:where(h1, h2, h3, h4, h5, h6) { line-height: var(--lh-tight); text-wrap: balance; }
+:where(p, li, dd, blockquote, figcaption) { text-wrap: pretty; }
+:where(p) { line-height: var(--lh-body); max-width: var(--measure); }
+/* Home keeps its original type rhythm. */
+:where(.workspace-keepalive) { line-height: normal; }
+:where(.workspace-keepalive) :where(p) { line-height: inherit; max-width: none; }
 
 .liquid-glass-backdrop {
   position: relative;
@@ -269,7 +332,7 @@ html[data-theme="light"] .brand-logo-dark { display: none; }
   background: var(--bg-surface);
   font-size: var(--fs-md);
   font-weight: 500;
-  line-height: 1;
+  line-height: var(--lh-none);
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), transform 60ms var(--ease-out);
@@ -497,7 +560,7 @@ html[data-theme="light"] .brand-logo-dark { display: none; }
   font-family: inherit;
   font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0;
+  letter-spacing: var(--tracking-small);
   white-space: nowrap;
 }
 
@@ -597,7 +660,7 @@ html[data-theme="light"] .brand-logo-dark { display: none; }
   color: var(--text-muted);
   font-size: var(--fs-base);
   font-weight: 500;
-  line-height: 1;
+  line-height: var(--lh-none);
   cursor: pointer;
   transition: none;
 }
@@ -631,7 +694,8 @@ html[data-theme="light"] .brand-logo-dark { display: none; }
   font-weight: 500;
   cursor: pointer;
   outline: none;
-  transition: none;
+  /* Hover and selection stay instant (tabs are used all day); only the press eases. */
+  transition: transform 60ms var(--ease-out);
   white-space: nowrap;
 }
 
@@ -683,7 +747,7 @@ html[data-theme="light"] .brand-logo-dark { display: none; }
   font-weight: 600;
   color: var(--dx-ink);
   margin: 0;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--tracking-heading);
 }
 
 .ui-card-description {
@@ -710,6 +774,7 @@ html[data-theme="light"] .brand-logo-dark { display: none; }
 .ui-table th {
   padding: 8px 16px;
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   font-weight: 500;
   color: var(--text-muted);
   border-bottom: 1px solid var(--separator);
@@ -722,7 +787,7 @@ html[data-theme="light"] .brand-logo-dark { display: none; }
   border-bottom: 1px solid var(--separator);
   color: var(--page-fg);
   vertical-align: middle;
-  line-height: 1.4;
+  line-height: var(--lh-snug);
   transition: none;
 }
 
@@ -732,6 +797,11 @@ html[data-theme="light"] .brand-logo-dark { display: none; }
 
 .ui-table tbody tr.is-clickable {
   cursor: pointer;
+}
+
+/* Pressing a clickable row darkens it a step before it opens, so the click is felt. */
+.ui-table tbody tr.is-clickable:active td {
+  background: color-mix(in srgb, var(--dx-ink) 7%, var(--row-hover-bg));
 }
 
 /* Instant 0ms row highlight on hover / selected */
@@ -815,23 +885,60 @@ html[data-theme="light"] .brand-logo-dark { display: none; }
   background: color-mix(in srgb, var(--status-danger) 12%, var(--bg-surface));
 }
 
-/* State 8: Success */
-.btn-pill[data-state="success"] {
-  border-color: var(--status-success);
-  color: var(--status-success);
-  background: color-mix(in srgb, var(--status-success) 12%, var(--bg-surface));
+/* State 8: Success. Green means Normal in this product, so success is a tick, not a colour. */
+.btn-pill-tick {
+  flex-shrink: 0;
+  animation: ui-tick-in 240ms var(--ease-out) both;
+}
+
+.btn-pill-tick polyline {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: ui-tick-draw 260ms var(--ease-out) 40ms forwards;
+}
+
+@keyframes ui-tick-in {
+  from { transform: scale(0.6); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes ui-tick-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+/* A status line that appears after an action (saved, sent, failed) slides in instead of popping. */
+.ui-form-note[role="status"] {
+  animation: ui-note-in 200ms var(--ease-out);
+}
+
+@keyframes ui-note-in {
+  from { opacity: 0; translate: 0 -4px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+/* State 7 nudge: a failed action shakes once, sideways, small. */
+.btn-pill[data-state="error"] {
+  animation: ui-nudge 280ms var(--ease-out);
+}
+
+@keyframes ui-nudge {
+  0%, 100% { translate: 0; }
+  25% { translate: -3px; }
+  50% { translate: 3px; }
+  75% { translate: -1px; }
 }
 
 .btn-pill-primary {
   background: var(--btn-primary-bg);
-  border-color: color-mix(in srgb, var(--btn-primary-bg) 80%, var(--dx-ink));
+  border-color: var(--btn-primary-bg);
   color: var(--btn-primary-fg);
   font-weight: 600;
 }
 
+/* Brand is the ink colour itself, so hover steps toward the canvas instead. */
 .btn-pill-primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--btn-primary-bg) 88%, var(--dx-ink));
-  border-color: color-mix(in srgb, var(--btn-primary-bg) 70%, var(--dx-ink));
+  background: color-mix(in srgb, var(--btn-primary-bg) 86%, var(--bg-canvas));
+  border-color: color-mix(in srgb, var(--btn-primary-bg) 86%, var(--bg-canvas));
 }
 
 .btn-pill-secondary {
@@ -898,11 +1005,11 @@ html[data-theme="light"] .brand-logo-dark { display: none; }
   min-width: 0;
   height: 100%;
   max-height: 100%;
-  padding: 8px 16px 24px 16px;
+  padding: var(--gap-group) var(--page-pad-inline) var(--page-pad-bottom);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--gap-group);
   background: var(--workspace-bg);
 }
 
@@ -974,8 +1081,8 @@ html[data-theme="light"] {
 
 /* Card header (sentence-case label + title — zero screaming uppercase eyebrows) */
 .dx-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-.dx-eyebrow { display: block; font-size: var(--fs-xs); font-weight: 500; letter-spacing: 0; color: var(--text-muted); }
-.dx-title { font-size: var(--fs-xl); font-weight: 600; color: var(--dx-ink); margin: 2px 0 0; letter-spacing: -0.01em; }
+.dx-eyebrow { display: block; font-size: var(--fs-xs); font-weight: 500; letter-spacing: var(--tracking-small); color: var(--text-muted); }
+.dx-title { font-size: var(--fs-xl); font-weight: 600; color: var(--dx-ink); margin: 2px 0 0; letter-spacing: var(--tracking-heading); }
 
 /* ==========================================================================
    ASSETS DIRECTORY HOMEPAGE STYLES
@@ -986,11 +1093,11 @@ html[data-theme="light"] {
   min-width: 0;
   height: 100%;
   max-height: 100%;
-  padding: 24px 32px 40px 32px;
+  padding: var(--page-pad-top) var(--page-pad-inline) var(--page-pad-bottom);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--gap-section);
   background: var(--workspace-bg);
 }
 
@@ -1314,7 +1421,7 @@ html[data-theme="light"] {
     box-shadow: var(--shadow-pop);
     font-size: var(--fs-sm);
     font-weight: 500;
-    line-height: 1.2;
+    line-height: var(--lh-tight);
     white-space: nowrap;
     opacity: 0;
     visibility: hidden;
@@ -1341,8 +1448,9 @@ html[data-theme="light"] {
   align-items: center;
   justify-content: center;
   font-size: var(--fs-2xs);
+  letter-spacing: var(--tracking-small);
   font-weight: 600;
-  line-height: 1;
+  line-height: var(--lh-none);
   color: var(--on-status-fg);
   background: var(--status-warning);
 }

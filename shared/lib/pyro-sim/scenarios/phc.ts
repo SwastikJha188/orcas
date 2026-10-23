@@ -24,10 +24,10 @@ export const PHC_SCENARIOS: PyroScenario[] = list("PYR-PHC-01", [
     group: "Equipment fault",
     expected: ["SW-PHC-01"],
     documentedDetection: "+1h 30m",
-    description: "FP-07. Meal builds up in the C5 cone: cone pressure rises toward zero, the C5 gas runs hotter and the hot meal to the kiln cools.",
+    description: "FP-07. Meal builds up in the C5 cone: cone pressure rises toward zero (Rev. 02 H −1.0 mbar build-up), the cone cools with the hold-up and the hot meal to the kiln cools.",
     effects: [
-      { target: sig("PRS-PHC-08"), delta: 4.0, onsetMin: 5, rampMin: 150, shape: "accel" },
-      { target: sig("TMP-PHC-05"), delta: 12, onsetMin: 5, rampMin: 150, shape: "ramp" },
+      { target: sig("PRS-PHC-15"), delta: 4.0, onsetMin: 5, rampMin: 150, shape: "accel" },
+      { target: sig("TMP-PHC-25"), delta: -25, onsetMin: 5, rampMin: 150, shape: "ramp" },
       { target: sig("TMP-PHC-07"), delta: -48, onsetMin: 10, rampMin: 160, shape: "accel" },
     ],
   },
@@ -37,11 +37,11 @@ export const PHC_SCENARIOS: PyroScenario[] = list("PYR-PHC-01", [
     group: "Equipment fault",
     expected: ["SW-PHC-01"],
     documentedDetection: "+2h 00m",
-    description: "FP-08 riser. A ring forms in the kiln riser: the C6-to-kiln-inlet pressure loss rises, kiln-inlet draft weakens and riser gas runs hotter.",
+    description: "FP-08 riser. A ring forms in the kiln riser: the C6-to-kiln-inlet pressure loss rises, kiln-inlet draft weakens and the C6 riser duct gas runs hotter.",
     effects: [
       { target: sig("PRS-PHC-06"), delta: -5.5, onsetMin: 5, rampMin: 240, shape: "ramp" },
       { target: sig("PRS-KLN-01"), delta: 3.4, onsetMin: 5, rampMin: 240, shape: "ramp" },
-      { target: sig("TMP-PHC-08"), delta: 34, onsetMin: 5, rampMin: 240, shape: "ramp" },
+      { target: sig("TMP-PHC-06"), delta: 34, onsetMin: 5, rampMin: 240, shape: "ramp" },
     ],
   },
   {
@@ -50,7 +50,7 @@ export const PHC_SCENARIOS: PyroScenario[] = list("PYR-PHC-01", [
     group: "Equipment fault",
     expected: ["SW-PHC-01"],
     documentedDetection: "+2h 30m",
-    description: "FP-08 lower stage. Sticky coating narrows the C5 stage: the C4-to-C5 pressure loss rises (C4 draft deeper, C5 draft shallower) and the C5 gas runs hotter.",
+    description: "FP-08 lower stage. Sticky coating narrows the C5 stage: the C4-to-C5 riser duct pressure loss rises (C4 deeper, C5 shallower) and the C5 riser duct gas runs hotter.",
     effects: [
       { target: sig("PRS-PHC-04"), delta: -2.5, onsetMin: 5, rampMin: 240, shape: "ramp" },
       { target: sig("PRS-PHC-05"), delta: 1.5, onsetMin: 5, rampMin: 240, shape: "ramp" },
@@ -87,11 +87,11 @@ export const PHC_SCENARIOS: PyroScenario[] = list("PYR-PHC-01", [
     group: "Equipment fault",
     expected: ["R-PHC-05"],
     documentedDetection: "+1h 30m",
-    description: "FP-09. An inspection door on C2 is left open: exit O₂ rises over the kiln-inlet O₂, the ID fan draws more power for the extra gas and C1 gas cools.",
+    description: "FP-09. An inspection door on C2 is left open: exit O₂ rises over the kiln-inlet O₂, the ID fan draws more power for the extra gas and the exit gas cools.",
     effects: [
       { target: sig("GAS-PHC-01"), delta: 1.5, onsetMin: 5, rampMin: 200, shape: "ramp" },
-      { target: sig("ELE-PHC-01"), delta: 70, onsetMin: 5, rampMin: 200, shape: "ramp" },
-      { target: sig("TMP-PHC-01"), delta: -16, onsetMin: 5, rampMin: 200, shape: "ramp" },
+      { target: sig("ELE-PHC-01"), delta: 3, onsetMin: 5, rampMin: 200, shape: "ramp" },
+      { target: sig("TMP-PHC-30"), delta: -16, onsetMin: 5, rampMin: 200, shape: "ramp" },
     ],
   },
   {
@@ -123,7 +123,7 @@ export const PHC_SCENARIOS: PyroScenario[] = list("PYR-PHC-01", [
     group: "Sensor validation",
     expected: ["R-DQ-02"],
     documentedDetection: "+0h 10m",
-    description: "The C4 outlet thermocouple transmitter freezes at its last value: too steady for its variability band (D5 Table 9.4.2 → Suspect).",
+    description: "The C4 riser duct thermocouple transmitter freezes at its last value: too steady for its variability band (D5 Table 9.4.2 → Suspect).",
     effects: [{ target: sig("TMP-PHC-04"), hold: true, onsetMin: 2, rampMin: 0, shape: "step", sensor: true }],
   },
   {
@@ -150,7 +150,7 @@ export const PHC_SCENARIOS: PyroScenario[] = list("PYR-PHC-01", [
     group: "Sensor validation",
     expected: ["R-DQ-01"],
     documentedDetection: "+0h 03m",
-    description: "The C3 outlet thermocouple burns out: the transmitter drives upscale to full scale (D5 Table 5.3.6: a thermocouple break shows full scale).",
+    description: "The C3 riser duct thermocouple burns out: the transmitter drives upscale to full scale (D5 Table 5.3.6: a thermocouple break shows full scale).",
     effects: [{ target: sig("TMP-PHC-03"), delta: 1600, onsetMin: 2, rampMin: 0, shape: "step", sensor: true }],
   },
   {
@@ -159,8 +159,8 @@ export const PHC_SCENARIOS: PyroScenario[] = list("PYR-PHC-01", [
     group: "Sensor validation",
     expected: ["R-PHC-V1"],
     documentedDetection: "+0h 50m",
-    description: "A shorted junction makes the C5 outlet thermocouple read low until it falls below the C4 gas above it (D5 Table 5.3.6: each stage between its neighbours).",
-    effects: [{ target: sig("TMP-PHC-05"), delta: -103, onsetMin: 2, rampMin: 60, shape: "ramp", sensor: true }],
+    description: "A shorted junction makes the C5 riser duct thermocouple read low until it falls below the C4 riser gas above it (D5 Table 5.3.6: each stage between its neighbours).",
+    effects: [{ target: sig("TMP-PHC-05"), delta: -80, onsetMin: 2, rampMin: 60, shape: "ramp", sensor: true }],
   },
   {
     id: "phc-tap-blocked",
@@ -172,7 +172,7 @@ export const PHC_SCENARIOS: PyroScenario[] = list("PYR-PHC-01", [
     effects: [
       { target: drv("idFan"), delta: 36, onsetMin: 10, rampMin: 20, shape: "settle" },
       // The plugged tap keeps transmitter noise but no longer sees the draft change.
-      { target: sig("PRS-PHC-07"), delta: 0.49, onsetMin: 10, rampMin: 20, shape: "settle", sensor: true },
+      { target: sig("PRS-PHC-14"), delta: 0.5, onsetMin: 10, rampMin: 20, shape: "settle", sensor: true },
     ],
   },
   {
@@ -181,7 +181,7 @@ export const PHC_SCENARIOS: PyroScenario[] = list("PYR-PHC-01", [
     group: "Sensor validation",
     expected: ["R-PHC-V2"],
     documentedDetection: "+0h 30m",
-    description: "The C3 draft transmitter drifts toward zero until it reads less suction than C4 below it: the draft staircase C1 → C6 is broken.",
+    description: "The C3 riser duct pressure transmitter drifts toward zero until it reads less suction than C4 below it: the staircase C1 → C6 is broken.",
     effects: [{ target: sig("PRS-PHC-03"), delta: 12, onsetMin: 2, rampMin: 30, shape: "ramp", sensor: true }],
   },
   {
@@ -200,6 +200,6 @@ export const PHC_SCENARIOS: PyroScenario[] = list("PYR-PHC-01", [
     expected: ["R-PHC-V4", "R-DQ-02"],
     documentedDetection: "+0h 20m",
     description: "A CT scaling error makes the ID fan power read 16 % low while speed, damper and draft are unchanged (D5 Table 5.3.6: power follows speed and damper).",
-    effects: [{ target: sig("ELE-PHC-01"), delta: -300, onsetMin: 2, rampMin: 20, shape: "ramp", sensor: true }],
+    effects: [{ target: sig("ELE-PHC-01"), delta: -13, onsetMin: 2, rampMin: 20, shape: "ramp", sensor: true }],
   },
 ]);

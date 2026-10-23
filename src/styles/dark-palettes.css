@@ -1,0 +1,134 @@
+/* Dark palettes: grey (the default :root tokens), green and blue. The theme stays
+   "dark" (data-theme); data-palette only re-tints the neutrals. Each palette keeps the
+   grey theme's lightness for every token, so contrast is unchanged (muted text ≥ 5.8:1
+   on cards, field outlines ≥ 3:1); only a low hue is added, strongest on the dark
+   surfaces and fading towards text. Status, accent, brass and metal stay as they are,
+   so green still means Normal and nothing else. Values come from OKLCH: hue 160 / 252,
+   chroma 0.018 / 0.024 on surfaces, half that on text, 0.6x on machine bodies. */
+
+html:not([data-theme="light"])[data-palette="green"] {
+  --bg-canvas: #060f0a;
+  --bg-surface: #0f1813;
+  --bg-surface-elevated: #142019;
+  --border-subtle: #1f2b24;
+  --border-hover: #34413a;
+  --text-primary: #e7eeea;
+  --text-secondary: #8e9591;
+  --input-border: #5b6961;
+  --widget-bg: #142019;
+  --page-bg: #060f0a;
+  --outer-bg: #040c07;
+  --page-fg: #cbd2ce;
+  --text-muted: #8e9591;
+  --topbar-bg: #060f0a;
+  --rail-bg: #060f0a;
+  --workspace-bg: #060f0a;
+  --separator: #1f2b24;
+  --card-bg: #0f1813;
+  --card-border: #1f2b24;
+  --row-hover-bg: #142019;
+  --pill-active-bg: #1b2620;
+  --btn-primary-fg: #060f0a;
+  --diagram-stroke: #8e9591;
+  --dx-ink: #e7eeea;
+  --dx-ink-2: #cbd2ce;
+  --dx-inset: #060f0a;
+  --dx-line: #1f2b24;
+  --dx-body: #0f1813;
+  --dx-body-2: #142019;
+  --dx-stroke: #45524a;
+  --dx-stroke-soft: #1f2b24;
+  --mx-body: #171c19;
+  --mx-body-deep: #0f1511;
+  --mx-raised: #212824;
+  --mx-raised-hi: #2d3430;
+  --mx-deep: #070b08;
+  --mx-edge: #5a615d;
+  --mx-fine: #313733;
+  --mx-label: #8e9591;
+  --mx-metal-dark: #202623;
+  --mx-pad-panel: #060f0a;
+  --mx-canvas: #060f0a;
+  --mx-canvas-edge: #060f0a;
+  --mx-hud-bg: #0f1813;
+  --mx-hud-border: #1f2b24;
+}
+
+html:not([data-theme="light"])[data-palette="blue"] {
+  --bg-canvas: #060d17;
+  --bg-surface: #0e1620;
+  --bg-surface-elevated: #131e29;
+  --border-subtle: #1e2935;
+  --border-hover: #333e4c;
+  --text-primary: #e6edf4;
+  --text-secondary: #8e949a;
+  --input-border: #5a6674;
+  --widget-bg: #131e29;
+  --page-bg: #060d17;
+  --outer-bg: #040a14;
+  --page-fg: #cad1d8;
+  --text-muted: #8e949a;
+  --topbar-bg: #060d17;
+  --rail-bg: #060d17;
+  --workspace-bg: #060d17;
+  --separator: #1e2935;
+  --card-bg: #0e1620;
+  --card-border: #1e2935;
+  --row-hover-bg: #131e29;
+  --pill-active-bg: #1a2430;
+  --btn-primary-fg: #060d17;
+  --diagram-stroke: #8e949a;
+  --dx-ink: #e6edf4;
+  --dx-ink-2: #cad1d8;
+  --dx-inset: #060d17;
+  --dx-line: #1e2935;
+  --dx-body: #0e1620;
+  --dx-body-2: #131e29;
+  --dx-stroke: #44505d;
+  --dx-stroke-soft: #1e2935;
+  --mx-body: #161b21;
+  --mx-body-deep: #0e1319;
+  --mx-raised: #21262d;
+  --mx-raised-hi: #2d3239;
+  --mx-deep: #060a10;
+  --mx-edge: #596067;
+  --mx-fine: #30363d;
+  --mx-label: #8e949a;
+  --mx-metal-dark: #20252c;
+  --mx-pad-panel: #060d17;
+  --mx-canvas: #060d17;
+  --mx-canvas-edge: #060d17;
+  --mx-hud-bg: #0e1620;
+  --mx-hud-border: #1e2935;
+}
+
+/* Theme menu swatch (theme-toggle.tsx): the palette's canvas with one card in its corner.
+   Literal values on purpose: every swatch shows its own palette whatever is active. */
+.theme-swatch {
+  --sw-canvas: #0c0d0e;
+  --sw-card: #141618;
+  --sw-edge: #383e44;
+  flex: none;
+  position: relative;
+  inline-size: 28px;
+  block-size: 28px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--sw-edge);
+  background: var(--sw-canvas);
+}
+.theme-swatch > span {
+  position: absolute;
+  inset: 8px -1px -1px 8px;
+  border-radius: var(--radius-sm) 0 0 0;
+  border: 1px solid var(--sw-edge);
+  background: var(--sw-card);
+}
+.theme-swatch[data-swatch="light"] { --sw-canvas: #f6f8fa; --sw-card: #ffffff; --sw-edge: #d0d7de; }
+.theme-swatch[data-swatch="green"] { --sw-canvas: #060f0a; --sw-card: #0f1813; --sw-edge: #34413a; }
+.theme-swatch[data-swatch="blue"] { --sw-canvas: #060d17; --sw-card: #0e1620; --sw-edge: #333e4c; }
+.theme-toggle[data-open] {
+  background: var(--bg-surface-elevated);
+  border-color: var(--border-hover);
+  color: var(--dx-ink);
+}

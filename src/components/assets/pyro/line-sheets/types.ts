@@ -71,6 +71,8 @@ export interface LineSheetArt {
   ready?: boolean;
   /** PYR-0: clickable machine region per machine id ([x, y, w, h]). */
   links?: Record<string, [number, number, number, number]>;
+  /** PYR-0: every piece of a machine drawn in several places (clickable); `links` holds its main piece. */
+  areas?: Record<string, Array<[number, number, number, number]>>;
   /** PYR-0: regions washed with a machine's condition, where its drawing reaches past its link region. */
   shades?: Record<string, Array<[number, number, number, number]>>;
   /** PYR-0: centre of each machine's name-and-health chip (machine id → [x, y]). */
@@ -79,4 +81,54 @@ export interface LineSheetArt {
   parts?: Record<string, { machine: string; at: [number, number] }>;
   /** PYR-0: area of each sub-assembly's equipment (sub-assembly id → machine and [x, y, w, h]), tinted by its health. */
   partRegions?: Record<string, { machine: string; box: [number, number, number, number] }>;
+  /** Sheets composed of several machines' drawings (PYR-0, the combined sheets): the operator may move each machine. */
+  arrange?: SheetArrange;
+  /**
+   * Operator sheets drawn to a design: its readout blocks, each with its title, its readings and the label it prints
+   * for each, and where the design puts it. The operator view starts from these spots and only moves a block when
+   * the canvas or the reading size leaves it no room there.
+   */
+  readouts?: SheetReadouts;
+}
+
+/** The readout blocks of a designed operator sheet (sheet units). */
+export interface SheetReadouts {
+  /** The design's canvas round the drawing and its blocks ([x, y, w, h]); blocks keep their place relative to its edges. */
+  frame: [number, number, number, number];
+  blocks: SheetReadout[];
+  /**
+   * Reading size of the design as a share of the operator's chosen size (default 1). A dense combined design
+   * (two dozen blocks round three machines) reads smaller, as the design draws it.
+   */
+  scale?: number;
+}
+
+/** One readout block of a designed operator sheet. */
+export interface SheetReadout {
+  /** Block header ("PRIMARY-AIR FAN"). */
+  title: string;
+  /** Readings in order: tag and the label the block prints for it ("VIBRATION DE"). */
+  rows: Array<[tag: string, label: string]>;
+  /** The block in the design ([x, y, w, h]). */
+  box: [number, number, number, number];
+  /** Where the block's dashed leader meets its equipment; none when the block sits beside it. */
+  leader?: [number, number];
+}
+
+/** A machine drawing the operator may move on a composed sheet. */
+export interface ArrangePiece {
+  /** Machine id ("PYR-KLN-01"). */
+  id: string;
+  /** Where the piece is drawn now (sheet units). */
+  box: [number, number, number, number];
+}
+
+export type PieceOffsets = Record<string, [number, number]>;
+
+export interface SheetArrange {
+  pieces: ArrangePiece[];
+  /** Offsets this drawing was composed with, from where the sheet places each piece (sheet units). */
+  offsets: PieceOffsets;
+  /** The same sheet with its pieces moved by `offsets`; flows between moved pieces re-route. */
+  with: (offsets: PieceOffsets) => LineSheetArt;
 }

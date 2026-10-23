@@ -2,8 +2,8 @@
 .ui-loading {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 28px 16px;
+  gap: 12px;
+  padding: 24px 16px;
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
@@ -25,7 +25,7 @@
   background: linear-gradient(90deg, transparent, var(--dx-ink), transparent);
   animation: ui-loading-scan 1100ms cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
-.ui-loading-rows { display: grid; gap: 10px; margin-top: 8px; }
+.ui-loading-rows { display: grid; gap: 12px; margin-top: 8px; }
 .ui-skel {
   display: block;
   block-size: 12px;

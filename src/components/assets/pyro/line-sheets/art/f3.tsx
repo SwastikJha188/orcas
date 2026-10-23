@@ -90,13 +90,17 @@ function Art() {
   );
 }
 
-/** Pad centre per point: PDF pad centres (ΔP transmitter, fan-motor terminal box). */
+/** Pad centre per point: inlet (dirty side) and outlet (clean plenum) taps on the impulse lines, ΔP transmitter, fan-motor terminal box. */
 const pads: LineSheetArt["pads"] = {
+  "PRS-FSL-03": [244, 289],
+  "PRS-FSL-04": [244, 156],
   "PRS-FSL-02": [261.7, 224.5],
   "ELE-FSL-02": [432.3, 147.5],
 };
 
 const callouts: LineSheetArt["callouts"] = {
+  "PRS-FSL-03": [262, 289, "start"],
+  "PRS-FSL-04": [262, 128, "start"],
   "PRS-FSL-02": [245, 224.5, "end"],
   "ELE-FSL-02": [415, 147.5, "end"],
 };

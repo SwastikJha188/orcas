@@ -471,6 +471,96 @@ export async function raiseSapNotification(
   return { id, state };
 }
 
+export interface SapShutdownOrder {
+  machineId: string;
+  description: string;
+  start: Date;
+  end: Date;
+  /** One operation per work item (short text, planned hours when known). */
+  operations: { text: string; hours: number | null }[];
+}
+
+/** A machine's order for a shutdown: queued, sent (with the order number) or failed (with why). */
+export interface SapShutdownOrderState {
+  machineId: string;
+  state: string;
+  order: string | null;
+  error: string | null;
+  at: string;
+}
+
+const v2Date = (d: Date) => `/Date(${Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())})/`;
+const v2Time = (d: Date) => `PT${String(d.getUTCHours()).padStart(2, "0")}H${String(d.getUTCMinutes()).padStart(2, "0")}M${String(d.getUTCSeconds()).padStart(2, "0")}S`;
+
+/**
+ * Puts a shutdown's work list in SAP: one maintenance order (PM02, planned) per
+ * machine on its SAP equipment, one operation per work item. A machine that
+ * already has an order for this shutdown (sent or on its way) is skipped; a
+ * failed one is sent again. Field names follow API_MAINTENANCEORDER_0002 and are
+ * not yet checked against a live SAP system.
+ */
+export async function createSapShutdownOrders(plantId: string, shutdownId: number, orders: SapShutdownOrder[], userId: string | null): Promise<SapShutdownOrderState[]> {
+  const connection = await getSapConnection(plantId);
+  const eqs = await query<{ machine_id: string; sap_equipment_id: string | null; plant_id: string }>(
+    "SELECT m.id AS machine_id, s.sap_equipment_id, m.plant_id FROM machines m LEFT JOIN sap_equipment_records s ON s.machine_id = m.id WHERE m.id = ANY($1::varchar[])",
+    [orders.map((o) => o.machineId)],
+  );
+  const eqOf = new Map(eqs.rows.map((r) => [r.machine_id, r]));
+  const ids: number[] = [];
+  const skipped: SapShutdownOrderState[] = [];
+  for (const o of orders) {
+    const eq = eqOf.get(o.machineId);
+    if (!eq || eq.plant_id !== plantId) throw new NotFoundError(`Machine '${o.machineId}' not found.`);
+    if (!eq.sap_equipment_id) {
+      skipped.push({ machineId: o.machineId, state: "not_mapped", order: null, error: "Map this machine to its SAP equipment first (Equipment mapping).", at: new Date().toISOString() });
+      continue;
+    }
+    const open = (
+      await query<{ id: string }>(
+        "SELECT id FROM sap_outbox WHERE connection_id = $1 AND shutdown_id = $2 AND machine_id = $3 AND state <> 'failed' LIMIT 1",
+        [connection.id, shutdownId, o.machineId],
+      )
+    ).rows[0];
+    if (open) continue;
+    const operations = o.operations.slice(0, 999).map((op, i) => ({
+      MaintenanceOrderOperation: String((i + 1) * 10).padStart(4, "0"),
+      OperationDescription: op.text.slice(0, 40),
+      ...(op.hours ? { OperationPlannedWorkQuantity: op.hours.toFixed(1), OperationPlannedWorkQuantityUnit: "H" } : {}),
+    }));
+    const payload: Record<string, unknown> = {
+      MaintenanceOrderType: "PM02",
+      MaintenanceOrderDesc: o.description.slice(0, 40),
+      Equipment: eq.sap_equipment_id,
+      ...(connection.sapPlant ? { MaintenancePlanningPlant: connection.sapPlant } : {}),
+      MaintOrdBasicStartDate: v2Date(o.start),
+      MaintOrdBasicStartTime: v2Time(o.start),
+      MaintOrdBasicEndDate: v2Date(o.end),
+      MaintOrdBasicEndTime: v2Time(o.end),
+      to_MaintenanceOrderOperation: { results: operations },
+    };
+    const row = (
+      await query<{ id: string }>(
+        `INSERT INTO sap_outbox (connection_id, resource_id, machine_id, shutdown_id, payload, idempotency_key, correlation_id, created_by)
+         VALUES ($1,'maintenanceOrders',$2,$3,$4::jsonb,$5,$6,$7) RETURNING id`,
+        [connection.id, o.machineId, shutdownId, JSON.stringify(payload), crypto.randomUUID(), crypto.randomUUID(), userId],
+      )
+    ).rows[0];
+    ids.push(Number(row.id));
+  }
+  for (const id of ids) await processOutboxJob(id, userId);
+  return [...(await sapShutdownOrders(shutdownId)), ...skipped];
+}
+
+/** The latest order write per machine for a shutdown. */
+export async function sapShutdownOrders(shutdownId: number): Promise<SapShutdownOrderState[]> {
+  const res = await query<{ machine_id: string; state: string; object_key: string | null; last_error: string | null; updated_at: Date }>(
+    `SELECT DISTINCT ON (machine_id) machine_id, state, object_key, last_error, updated_at FROM sap_outbox
+      WHERE shutdown_id = $1 AND resource_id = 'maintenanceOrders' ORDER BY machine_id, created_at DESC, id DESC`,
+    [shutdownId],
+  );
+  return res.rows.map((r) => ({ machineId: r.machine_id, state: r.state, order: r.object_key, error: r.last_error, at: iso(r.updated_at)! }));
+}
+
 /* ----------------------------------------------------------------- mappings */
 
 export interface SapEquipmentMapping {

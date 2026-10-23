@@ -10,6 +10,7 @@ import {
   MaintenanceIcon,
   SapIcon,
   SimulationIcon,
+  PolycronIcon,
 } from "./navigation-icons";
 import { ThemeToggle } from "./theme-toggle";
 import { ContextSwitchers, UserSwitcher } from "./context-switchers";
@@ -18,7 +19,7 @@ import { useIndustrialData } from "@/providers/industrial-data-context";
 import { useApi } from "@/lib/api-cache";
 import { conditionUrl, type ConditionStrip as ConditionData } from "@/components/problems/cases-api";
 
-export type WorkspaceTab = "home" | "assets" | "problems" | "maintenance" | "sap" | "devices" | "assetiq" | "configure" | "simulation";
+export type WorkspaceTab = "home" | "assets" | "problems" | "maintenance" | "sap" | "devices" | "assetiq" | "polycron" | "configure" | "simulation";
 
 interface LiquidGlassShellProps {
   activeTab?: WorkspaceTab;
@@ -32,20 +33,23 @@ type RailItem = { id: WorkspaceTab; label: string; hint: string; Icon: Component
 // Daily work first, in the order an operator reaches for it; plant set-up last (Serial position).
 const PRIMARY: RailItem[] = [
   { id: "home", label: "Home", hint: "Home: live view of the plant and its machines", Icon: HomeIcon },
-  // Problems (cases) and planned maintenance in one place; planned sections where the plant has checklists.
-  { id: "maintenance", label: "Maintenance", hint: "Maintenance: planned checks, repair jobs and their history", Icon: MaintenanceIcon },
-  // The plant's SAP system: problems raised there, its orders, spare parts and production.
-  { id: "sap", label: "SAP", hint: "SAP: notifications, maintenance orders, spare parts and production orders in the plant's SAP system", Icon: SapIcon },
   // Asset directory and each machine's Sensors, Diagnosis, Prognosis and Analysis.
   { id: "assets", label: "Assets", hint: "Assets: every machine, its sensors, health and problems", Icon: AssetsIcon },
   { id: "assetiq", label: "AssetIQ", hint: "AssetIQ: ask questions about your machines in plain words", Icon: AssetIQIcon },
+  { id: "polycron", label: "POLYCRON", hint: "POLYCRON: connected documents, objects and links", Icon: PolycronIcon },
+  // Problems (cases) and planned maintenance in one place; planned sections where the plant has checklists.
+  { id: "maintenance", label: "Maintenance", hint: "Maintenance: planned checks, repair jobs and their history", Icon: MaintenanceIcon },
 ];
 
 const SETUP: RailItem[] = [
   { id: "devices", label: "Devices", hint: "Devices: the gateways and racks that bring sensor readings in, and which machine sensor each channel feeds", Icon: DevicesIcon },
-  { id: "configure", label: "Configure", hint: "Configure: plants, machines, users and settings", Icon: ConfigureIcon },
+  // The plant's SAP system: problems raised there, its orders, spare parts and production.
+  { id: "sap", label: "SAP", hint: "SAP: notifications, maintenance orders, spare parts and production orders in the plant's SAP system", Icon: SapIcon },
   { id: "simulation", label: "Simulation", hint: "Simulation: how often faults happen, how long they last, and each machine's demo state", Icon: SimulationIcon },
 ];
+
+// Settings sit at the foot of the rail, just above the profile.
+const SETTINGS: RailItem = { id: "configure", label: "Configure", hint: "Configure: plants, machines, users and settings", Icon: ConfigureIcon };
 
 /** Open alarms on the active plant: the same server read (and cache entry) as Maintenance › Problems' "Open alarms", every 30 s. */
 function useOpenAlarms(): { count: number; critical: number } {
@@ -194,6 +198,7 @@ export function LiquidGlassShell({ activeTab = "home", onSelectTab, onBrand }: L
         </div>
 
         <div className="nav-rail-footer">
+          <RailButton {...SETTINGS} active={activeTab === SETTINGS.id} onSelect={onSelectTab} />
           <UserSwitcher
             onManageUsers={() => {
               // Open Configure on its Users & access section.

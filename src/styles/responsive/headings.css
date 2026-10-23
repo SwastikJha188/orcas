@@ -1,0 +1,17 @@
+/* ==========================================================================
+   ULTRON · Heading levels
+   Outside Home, a heading's size comes from its level, never from its class:
+   h1 24 › h2 20 › h3 18 › h4 16 › h5 14 › h6 12 (--fs-h1 … --fs-h6 in
+   globals.css). Pick the tag for the level; component rules keep weight,
+   colour and spacing.
+
+   Loads last. :not(#_) adds an id's weight so these sizes outrank every
+   component class rule (including open-sections.css) and the phone tiers.
+   ========================================================================== */
+
+html:root .workspace > :not(.workspace-keepalive) h1:not(#_) { font-size: var(--fs-h1); }
+html:root .workspace > :not(.workspace-keepalive) h2:not(#_) { font-size: var(--fs-h2); }
+html:root .workspace > :not(.workspace-keepalive) h3:not(#_) { font-size: var(--fs-h3); }
+html:root .workspace > :not(.workspace-keepalive) h4:not(#_) { font-size: var(--fs-h4); }
+html:root .workspace > :not(.workspace-keepalive) h5:not(#_) { font-size: var(--fs-h5); }
+html:root .workspace > :not(.workspace-keepalive) h6:not(#_) { font-size: var(--fs-h6); }

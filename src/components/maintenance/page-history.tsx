@@ -12,7 +12,10 @@ import { Empty, KpiStrip, Section } from "@/components/assets/analysis/an-ui";
 import type { PmsModel } from "./pms-model";
 import { machineCode, machineName, useDefaultMachine, woRef } from "./pms-model";
 import { Loading } from "./page-overview";
-import { StateWord } from "./pms-ui";
+import { StateWord, usePmsNav } from "./pms-ui";
+import { useServiceParts } from "./maint-types-model";
+import { csvName, downloadText, hoursText, pickShutdown, resolveWork, shutdownCsv, shutdownReport, useShutdownList, useShutdownReports } from "./shutdown-model";
+import { useIndustrialData } from "@/providers/industrial-data-context";
 
 /* ==========================================================================
    Maintenance › History & performance: one timeline of inspections,
@@ -201,6 +204,7 @@ export function PageHistory({ pms }: { pms: PmsModel }) {
               </Section>
               <ConditionTrend machineId={machineId} pms={pms} />
             </div>
+            <ShutdownReports pms={pms} when={when} />
           </div>
         </>
       )}
@@ -276,6 +280,112 @@ function ConditionTrend({ machineId, pms }: { machineId: string; pms: PmsModel }
             </text>
           </svg>
         </>
+      )}
+    </Section>
+  );
+}
+
+/* ---------------------------------------------------------------- shutdown reports */
+
+/** Closed shutdowns: planned against actual, what was done, moved and found, parts used; the work list as CSV. */
+function ShutdownReports({ pms, when }: { pms: PmsModel; when: (t: number | string) => string }) {
+  const { selectedPlantId } = useIndustrialData();
+  const reports = useShutdownReports(selectedPlantId);
+  const list = useShutdownList(selectedPlantId);
+  const parts = useServiceParts();
+  const nav = usePmsNav();
+  const inView = useMemo(() => new Set(pms.data?.machineIds ?? []), [pms.data]);
+  const rows = useMemo(
+    () =>
+      (reports.data ?? [])
+        .map((d) => shutdownReport(d, resolveWork(d, pms.data, parts.data).filter((r) => inView.has(r.machineId))))
+        .filter((r) => r.d.machineIds.some((m) => inView.has(m))),
+    [reports.data, pms.data, parts.data, inView],
+  );
+  const shift = (h: number | null) => (h === null ? "—" : Math.abs(h) < 0.5 ? "On time" : h > 0 ? `${hoursText(h)} late` : `${hoursText(-h)} early`);
+  return (
+    <Section id="pm-shutdowns" title="Shutdowns" right={<span className="ast-caption">Closed shutdowns · the line stopped from the start of the stop to the approved restart</span>}>
+      {reports.isLoading && !reports.data ? (
+        <LoadingState label="Loading the shutdowns…" rows={3} />
+      ) : !rows.length ? (
+        <Empty title="No closed shutdowns yet. A shutdown's report appears here once it is closed." />
+      ) : (
+        <div className="ui-table-container ast-table pm-table">
+          <table className="ui-table">
+            <thead>
+              <tr>
+                <th className="pm-grow">Shutdown</th>
+                <th>Line stopped</th>
+                <th>Work done</th>
+                <th className="ast-num-col">Work hours</th>
+                <th>Parts used</th>
+                <th aria-label="Actions" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const over = r.actualH !== null && r.actualH > r.plannedH + 0.5;
+                const partNames = r.partsUsed.map((p) => p.part?.name ?? p.title).join(", ");
+                return (
+                  <tr key={r.d.id}>
+                    <td className="pm-grow">
+                      <span className="ast-cell-stack">
+                        <span className="ast-cell-title">{r.d.name}</span>
+                        <span className="ast-cell-sub">
+                          {when(r.d.plannedStart)} · {r.d.machineIds.length} machines{r.sapOrders ? ` · ${r.sapOrders} SAP orders` : ""}
+                        </span>
+                      </span>
+                    </td>
+                    <td>
+                      <span className="ast-cell-stack">
+                        <span className="ast-num" data-tone={over ? "warn" : undefined}>
+                          {r.actualH === null ? "—" : Math.round(r.actualH)} <span className="pm-muted">/ {Math.round(r.plannedH)} h planned</span>
+                        </span>
+                        <span className="ast-cell-sub">{r.startDelayH === null ? "start not recorded" : `stop began ${shift(r.startDelayH).toLowerCase()}`}</span>
+                      </span>
+                    </td>
+                    <td>
+                      <span className="ast-cell-stack">
+                        <span className="ast-num">
+                          {r.done} <span className="pm-muted">/ {r.total - r.moved}</span>
+                        </span>
+                        <span className="ast-cell-sub">
+                          {r.moved} moved · {r.found} found
+                        </span>
+                      </span>
+                    </td>
+                    <td className="ast-num">
+                      {Math.round(r.doneH)} <span className="pm-muted">/ {Math.round(r.planH)} h</span>
+                    </td>
+                    <td>
+                      {r.partsUsed.length ? (
+                        <span className="pm-wrap" title={partNames}>
+                          {r.partsUsed.length} · {partNames}
+                        </span>
+                      ) : (
+                        <span className="pm-muted">None</span>
+                      )}
+                    </td>
+                    <td className="pm-sd-act">
+                      <PillButton variant="secondary" onClick={() => downloadText(csvName(r.d), shutdownCsv(r.d, r.rows, list.data))}>
+                        CSV
+                      </PillButton>{" "}
+                      <PillButton
+                        variant="secondary"
+                        onClick={() => {
+                          pickShutdown(r.d.id);
+                          nav("shutdown");
+                        }}
+                      >
+                        Open
+                      </PillButton>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </Section>
   );

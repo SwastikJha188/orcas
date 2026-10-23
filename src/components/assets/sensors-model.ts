@@ -580,7 +580,7 @@ export function impactOf(tag: string, defs: PlantDefs | null): Impact {
     const sys = defs.systems.find((x) => x.id === def.system);
     health = { sub: sub?.name ?? def.sub, system: sys?.name ?? def.system, scored: sys?.scored ?? false };
   }
-  // Pyro calculated values can read another machine's signal (CAL-PHC-01 uses the kiln-inlet O₂).
+  // Pyro calculated values read their own machine's inputs (ΔP from its inlet / outlet pressures, bin weight from its load cells).
   const calcs = defs.plant === "pyro" ? PYRO_CALC_DEFS : CALC_DEFS;
   const feeds = Object.values(calcs)
     .filter((c) => c.inputs.includes(tag))
@@ -646,42 +646,30 @@ export const CALC_DEFS: Record<string, CalcDef> = {
 };
 
 /**
- * Derived values of the pyro line (pyro-sim engine). Tags are the pyro machines' own.
- * CAL-KLN-03 is not a gateway calculation: it is the map maximum of the single
- * D4 entry K-K33 "STS-KLN-08 / CAL-KLN-03" (R?, Required, scanner data).
+ * Calculated points of the pyro line (OSW-PE-SNL-PYR-01 Rev. 02 class CALC.): the filter / ESP differential pressures
+ * (inlet − outlet) and the kiln-feed bin weight (sum of the three load cells). Tags are the pyro machines' own.
  */
+const dpCalc = (tag: string, value: string, inlet: string, outlet: string): CalcDef => ({
+  tag,
+  value,
+  formula: `${inlet} − ${outlet} (inlet − outlet pressure)`,
+  ref: "OSW-PE-SNL-PYR-01 Rev. 02 · calculated ΔP",
+  inputs: [inlet, outlet],
+  validity: "Suspect or invalid when either pressure is flagged",
+});
 const PYRO_CALC_DEFS: Record<string, CalcDef> = {
-  "CAL-PHC-01": {
-    tag: "CAL-PHC-01",
-    value: "Preheater false-air rise",
-    formula: "O₂ preheater exit − O₂ kiln inlet",
-    ref: "Gateway calculation",
-    inputs: ["GAS-PHC-01", "GAS-KLN-01"],
-    validity: "Suspect when either O₂ reading is flagged",
-  },
-  "CAL-KLN-06": {
-    tag: "CAL-KLN-06",
-    value: "Inlet false-air index",
-    formula: "O₂ measured − O₂ model",
-    ref: "Gateway calculation",
-    inputs: ["GAS-KLN-01", "TMP-KLN-13"],
-    validity: "Follows O₂: suspect or invalid when O₂ (or inlet temperature) is flagged",
-  },
-  "CAL-KLN-03": {
-    tag: "CAL-KLN-03",
-    value: "Shell maximum temperature",
-    formula: "max(scanner shell map)",
-    ref: "D4 K-K33 · scanner map maximum (STS-KLN-08 / CAL-KLN-03)",
-    inputs: ["STS-KLN-08"],
-    validity: `Suspect when scanner coverage < ${PYRO_COVERAGE_TARGET} % (D5 target), the handheld disagrees by > ${PYRO_HANDHELD_GAP_K} K at the matched position, or the map saturates at 600 °C`,
-  },
-  "CAL-BRN-01": {
-    tag: "CAL-BRN-01",
-    value: "Coal-to-feed ratio",
-    formula: "coal feed ÷ kiln feed × 100",
-    ref: "Gateway calculation",
-    inputs: ["FLO-BRN-01", "FLO-KFS-01"],
-    validity: "Suspect when the coal or kiln-feed meter is flagged",
+  "PRS-FSL-02": dpCalc("PRS-FSL-02", "Silo dust collector filter ΔP", "PRS-FSL-03", "PRS-FSL-04"),
+  "PRS-KFS-05": dpCalc("PRS-KFS-05", "Feed-bin dust collector filter ΔP", "PRS-KFS-08", "PRS-KFS-09"),
+  "PRS-BGH-01": dpCalc("PRS-BGH-01", "Baghouse bag ΔP", "PRS-BGH-02", "PRS-BGH-03"),
+  "PRS-CLR-20": dpCalc("PRS-CLR-20", "Cooler vent ESP ΔP", "PRS-CLR-21", "PRS-CLR-22"),
+  "PRS-CSL-01": dpCalc("PRS-CSL-01", "Silo baghouse ΔP", "PRS-CSL-02", "PRS-CSL-03"),
+  "WGT-KFS-01": {
+    tag: "WGT-KFS-01",
+    value: "Kiln feed bin weight",
+    formula: "(WGT-KFS-02 + WGT-KFS-03 + WGT-KFS-04) ÷ bin capacity × 100",
+    ref: "OSW-PE-SNL-PYR-01 Rev. 02 HP-03 · sum of load cells 1–3, % of capacity",
+    inputs: ["WGT-KFS-02", "WGT-KFS-03", "WGT-KFS-04"],
+    validity: "Suspect or invalid when a load cell is flagged",
   },
   DT1: {
     tag: "DT1",
@@ -694,13 +682,13 @@ const PYRO_CALC_DEFS: Record<string, CalcDef> = {
 };
 
 /**
- * Pyro line: the D4 scanner entry (status + temperature map, K-K33) behind a
- * tag — the entry itself (STS-KLN-08) or the derived map maximum read from it
- * (CAL-KLN-03). Undefined for every other tag and for the kiln fleet.
+ * Pyro line: the scanner entry (D4 K-K33; OSW-PE-SNL-PYR-01 Rev. 02 STS-KLN-08, the shell maximum and its position in
+ * one reading) behind a tag — the entry itself, or a value derived from it. Undefined for every other tag and for the
+ * kiln fleet.
  */
 export function scannerEntryOf(defs: PlantDefs | null, tag: string): PyroSpecEntry | undefined {
   if (defs?.plant !== "pyro") return undefined;
-  const isMap = (e: PyroSpecEntry | undefined): e is PyroSpecEntry => Boolean(e && /map/i.test(e.specUnit));
+  const isMap = (e: PyroSpecEntry | undefined): e is PyroSpecEntry => Boolean(e && (e.sensorType === "Scanner data / status" || /map/i.test(e.specUnit)));
   const own = PYRO_SPEC[tag];
   if (isMap(own)) return own;
   return PYRO_CALC_DEFS[tag]?.inputs.map((t) => PYRO_SPEC[t]).find(isMap);

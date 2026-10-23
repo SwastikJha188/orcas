@@ -748,7 +748,7 @@ export function PyroSiteOverview({ inset = NO_INSET, onUnsupported }: PyroSiteOv
       dirty = true;
     };
     const mo = new MutationObserver(onTheme);
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-palette", "class", "style"] });
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     mq.addEventListener("change", onTheme);
     const ro = new ResizeObserver(resize);

@@ -77,9 +77,11 @@ export function GatewaySetup({ code, ipAddress, broker, brokerStatus, format, ra
       setCopyFailed(null);
       setCopied(label);
       setTimeout(() => setCopied(null), 1800);
+      return true;
     } catch {
       setCopied(null);
       setCopyFailed(label);
+      return false;
     }
   };
 
@@ -114,7 +116,7 @@ export function GatewaySetup({ code, ipAddress, broker, brokerStatus, format, ra
           <div className="dv-setup-block">
             <div className="dv-setup-head">
               <span>Put this on the gateway · /etc/ultron-gateway/gateway.env</span>
-              <PillButton variant="secondary" className="dv-setup-copy" onClick={() => void copy("env", env)}>
+              <PillButton variant="secondary" className="dv-setup-copy" onClick={() => copy("env", env)}>
                 {copied === "env" ? "Copied" : copyFailed === "env" ? "Copy failed — select the text" : "Copy"}
               </PillButton>
             </div>
@@ -127,7 +129,7 @@ export function GatewaySetup({ code, ipAddress, broker, brokerStatus, format, ra
           <div className="dv-setup-block">
             <div className="dv-setup-head">
               <span>On the message server · user “{id}” with these access rules (ACL)</span>
-              <PillButton variant="secondary" className="dv-setup-copy" onClick={() => void copy("acl", acl)}>
+              <PillButton variant="secondary" className="dv-setup-copy" onClick={() => copy("acl", acl)}>
                 {copied === "acl" ? "Copied" : copyFailed === "acl" ? "Copy failed — select the text" : "Copy"}
               </PillButton>
             </div>
@@ -138,7 +140,7 @@ export function GatewaySetup({ code, ipAddress, broker, brokerStatus, format, ra
         <div className="dv-setup-block">
           <div className="dv-setup-head">
             <span>Point the gateway at the message server and send to</span>
-            <PillButton variant="secondary" className="dv-setup-copy" onClick={() => void copy("acl", acl)}>
+            <PillButton variant="secondary" className="dv-setup-copy" onClick={() => copy("acl", acl)}>
               {copied === "acl" ? "Copied" : copyFailed === "acl" ? "Copy failed — select the text" : "Copy"}
             </PillButton>
           </div>

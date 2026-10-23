@@ -105,7 +105,8 @@
   background: none;
   color: var(--text-muted);
   font-size: 16px;
-  line-height: 1;
+  letter-spacing: var(--tracking-heading);
+  line-height: var(--lh-none);
   cursor: pointer;
 }
 
@@ -123,6 +124,7 @@
   color: var(--text-primary);
   font: inherit;
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   white-space: nowrap;
   cursor: pointer;
 }
@@ -245,6 +247,7 @@
   text-overflow: ellipsis;
   color: var(--text-muted);
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
 }
 
 .onb-pager {
@@ -270,19 +273,22 @@
 .onb-kpi-label {
   font-size: var(--fs-xs);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-caps);
+  word-spacing: var(--word-caps);
   color: var(--text-muted);
 }
 
 .onb-kpi-value {
   font-size: 24px;
+  line-height: var(--lh-tight);
+  letter-spacing: var(--tracking-display);
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);
 }
 
 .onb-list {
   margin: 0;
-  padding-left: 18px;
+  padding-left: 16px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -413,10 +419,11 @@
 .onb-log {
   flex-basis: 100%;
   margin: 0;
-  padding: 8px 12px 8px 28px;
+  padding: 8px 12px 8px 24px;
   border: 1px solid var(--separator);
   border-radius: var(--radius-sm);
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   color: var(--text-muted);
   max-height: 220px;
   overflow: auto;
@@ -439,6 +446,7 @@
 .onb-step-fix {
   margin-inline-start: var(--space-2);
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   font-weight: 600;
 }
 
@@ -477,6 +485,7 @@
 .onb-problem-step {
   color: var(--accent-primary);
   font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-small);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -498,6 +507,7 @@
   gap: var(--space-2);
   margin: 0;
   font-size: var(--fs-xl);
+  letter-spacing: var(--tracking-heading);
   font-weight: 600;
   color: var(--dx-ink);
 }

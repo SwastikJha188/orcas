@@ -6,8 +6,8 @@
  * slides A and B arriving at solid-flow meters A and B (inlet cap, housing
  * with sight window and impact plate, outlet cone), each with its pressure
  * tap transmitter (P2 / P3) on the left and flow transmitter on the right; both meters drop onto the
- * common air slide to the bucket-elevator boot, with the air-slide air inlet
- * and the slide pressure tap.
+ * common air slide to the bucket-elevator boot, with its blower, the
+ * air-slide air inlet and the slide pressure tap.
  *
  * Units: page units of the group-image page minus the panel origin, shifted
  * right by OX so the pressure plates running left from the P taps stay on the
@@ -17,7 +17,7 @@ import React from "react";
 import { GroundLine, MachineLabel, PAINT } from "@/components/assets/machine-kit/machine-kit";
 import { AirSlide } from "../../drawings/fkp-parts";
 import type { LineSheetArt } from "../types";
-import { Instr, PlainArrow, SolidFlowMeter } from "./parts-f2";
+import { Instr, PlainArrow, ScrollFan, SideMotor, SolidFlowMeter } from "./parts-f2";
 
 /** Room on the left for SFM A's pressure plate. */
 const OX = 140;
@@ -53,8 +53,10 @@ function Meter({ dx, name, from }: { dx: number; name: string; from: string }) {
 function CommonSlide() {
   return (
     <g>
-      {/* air-slide air inlet into the air box */}
-      <rect x={559} y={540} width={9.5} height={67.5} rx={1} {...PAINT.cylinderV} />
+      {/* air-slide air inlet into the air box from its blower */}
+      <rect x={559} y={540} width={9.5} height={47} rx={1} {...PAINT.cylinderV} />
+      <ScrollFan cx={575} cy={601} r={13} outTop={585} outW={12} />
+      <SideMotor x={596} y={593} w={34} h={17} shaft="l" box={0.5} />
       {/* pressure tap */}
       <rect x={616.3} y={548} width={3} height={22} {...PAINT.shaft} />
       <AirSlide x1={118.5} y1={507.5} x2={712.5} y2={555} d={15} />
@@ -64,7 +66,7 @@ function CommonSlide() {
       </MachineLabel>
       <PlainArrow x1={685} y1={493} x2={734} y2={493} />
       <MachineLabel x={563.5} y={634.5} size={7.5}>
-        AIR-SLIDE AIR
+        AIR-SLIDE BLOWER
       </MachineLabel>
       <MachineLabel x={388} y={654.5} size={7.5}>
         COMMON AIR SLIDE: SFM A + SFM B → BUCKET ELEVATOR
@@ -91,6 +93,7 @@ const pads: LineSheetArt["pads"] = shift({
   "PRS-KFS-06": [386.3, 295],
   "FLO-KFS-02": [587.5, 245],
   "PRS-KFS-04": [617.7, 575.3],
+  "ELE-KFS-06": [613, 591],
 });
 
 /** Pressure plates run left from the P taps, flow plates right from the flow transmitters; the slide pressure runs along the common slide's air box. */
@@ -100,6 +103,7 @@ const callouts: LineSheetArt["callouts"] = shift({
   "PRS-KFS-06": [371.5, 295, "end"],
   "FLO-KFS-02": [602, 245, "start"],
   "PRS-KFS-04": [632, 575.3, "start"],
+  "ELE-KFS-06": [640, 604, "start"],
 });
 
 /** Moves authored panel coordinates onto the widened sheet. */

@@ -48,7 +48,6 @@
 
 /* ---- Tablet + phone ---- */
 @media (max-width: 1023px) {
-  :root .pg-root { padding: 16px 20px 28px; }
 
   :root .pg-root .pg-head { align-items: flex-start; }
   :root .pg-root .pg-head > .nav-pill-group { max-inline-size: 100%; }
@@ -62,7 +61,6 @@
 
 /* ---- Phone ---- */
 @media (max-width: 599px) {
-  :root .pg-root { padding: 12px 12px 24px; gap: 12px; }
 
   /* Header: title block, then actions as a full-width row. */
   :root .pg-root .pg-head,
@@ -72,12 +70,12 @@
     gap: 12px;
   }
   :root .pg-root .ast-title,
-  :root .dv-contents .ast-title { font-size: var(--fs-2xl); }
+  :root .dv-contents .ast-title { font-size: var(--fs-2xl); line-height: var(--lh-tight); letter-spacing: var(--tracking-heading); }
   :root .pg-root .pg-actions,
   :root .dv-contents .pg-actions { inline-size: 100%; }
   :root .pg-root .pg-actions > .btn-pill,
   :root .dv-contents .pg-actions > .btn-pill { flex: 1 1 0; min-inline-size: max-content; }
-  :root .pg-cfg-context { font-size: var(--fs-sm); line-height: 1.4; }
+  :root .pg-cfg-context { font-size: var(--fs-sm); line-height: var(--lh-snug); }
 
   /* KPI strips: always 2-up; an odd last tile spans the row. */
   :root .pg-root .ast-kpis,
@@ -97,11 +95,11 @@
     padding: 12px 12px;
   }
   :root .pg-root .ast-kpi-value,
-  :root .dv-contents .ast-kpi-value { font-size: var(--fs-3xl); }
+  :root .dv-contents .ast-kpi-value { font-size: var(--fs-3xl); line-height: var(--lh-tight); letter-spacing: var(--tracking-heading); }
   :root .pg-root .ast-kpi-label,
   :root .dv-contents .ast-kpi-label { font-size: var(--fs-sm); }
   :root .pg-root .ast-kpi-foot,
-  :root .dv-contents .ast-kpi-foot { font-size: var(--fs-sm); line-height: 1.35; }
+  :root .dv-contents .ast-kpi-foot { font-size: var(--fs-sm); line-height: var(--lh-snug); }
   :root .pg-root .pg-kpi-text { font-size: var(--fs-base); }
 
   :root .pg-table-card .ast-card-head { padding: 8px 12px 0; flex-wrap: wrap; gap: 8px 12px; }
@@ -157,12 +155,13 @@
   :root :is(.pg-root, .dv-contents) .ast-table .ui-table tbody td::before {
     content: attr(data-label);
     font-size: var(--fs-xs);
-    line-height: 1.2;
+    letter-spacing: var(--tracking-small);
+    line-height: var(--lh-tight);
     color: var(--text-muted);
   }
   :root :is(.pg-root, .dv-contents) .ast-table .ui-table tbody td:first-child {
     grid-column: 1 / -1;
-    padding-inline-end: 22px;
+    padding-inline-end: 20px;
   }
   :root :is(.pg-root, .dv-contents) .ast-table .ui-table tbody td:first-child::before,
   :root :is(.pg-root, .dv-contents) .ast-table .ui-table tbody td:not([data-label])::before { content: none; }
@@ -265,7 +264,7 @@
 
   /* Forms: one column, 16px inputs so iOS does not zoom on focus. */
   :root .ui-field-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-  :root :is(.ui-input, .ui-select select) { font-size: var(--fs-xl); min-block-size: 40px; }
+  :root :is(.ui-input, .ui-select select) { font-size: var(--fs-xl); letter-spacing: var(--tracking-heading); min-block-size: 40px; }
   :root .ui-textarea { font-size: var(--fs-base); }
 
   /* Dialog contents with fixed multi-column layouts. */
@@ -323,14 +322,13 @@
     block-size: auto;
     max-block-size: none;
     overflow: visible;
-    padding: 20px 20px 32px;
+    padding: var(--page-pad-top) var(--page-pad-inline) var(--page-pad-bottom);
   }
 }
 
 @media (max-width: 599px) {
   :root .dv-sidebar .ast-side-head { padding: 8px 12px; }
   :root .dv-sidebar .ast-side-head .ast-menu { left: 12px; right: 12px; }
-  :root .dv-contents { padding: 12px 12px 24px; gap: 12px; }
 
   :root .dv-contents .dv-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   :root .dv-contents .dv-summary > :last-child:nth-child(odd) { grid-column: 1 / -1; }
@@ -424,8 +422,8 @@
    WIDE + TV — cap the content measure on big monitors
    ========================================================================== */
 @media (min-width: 1920px) {
-  :root .pg-root { padding-inline: max(32px, calc((100% - 2200px) / 2)); }
-  :root .dv-contents { padding-inline: max(32px, calc((100% - 2000px) / 2)); }
+  :root .pg-root { padding-inline: max(var(--page-pad-inline), calc((100% - 2200px) / 2)); }
+  :root .dv-contents { padding-inline: max(var(--page-pad-inline), calc((100% - 2000px) / 2)); }
   :root .pg-cfg-context,
   :root .fmt-note { max-inline-size: 80ch; }
 }

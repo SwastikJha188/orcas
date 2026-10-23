@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { Table, type Column } from "@/components/ui";
+import { RestLine, Table, useFold, type Column } from "@/components/ui";
 import type { ForecastSeries } from "@backend/services/insights-service";
 import type { PlantDefs } from "@shared/lib/plant-defs";
 import { fmt, limitIsHigh, roundHours, type PrognosisData } from "./prognosis-derive";
@@ -125,7 +125,7 @@ function ForecastTrace({ row }: { row: SignalForecastRow }) {
   );
 }
 
-function alarmText(r: SignalForecastRow): string {
+export function alarmText(r: SignalForecastRow): string {
   if (r.alarmEarly === null && r.alarmLate === null) return "Not in the next 30 days";
   if (r.alarmEarly === 0 || r.alarmLate === 0) return "Already past it";
   if (r.alarmLate === null) return `Possibly after ${roundHours(r.alarmEarly as number)}`;
@@ -214,5 +214,12 @@ export function SignalForecastTable({
     [onOpenTrend],
   );
   const sorted = useMemo(() => alarmFirst(rows), [rows]);
-  return <Table className="pg-sf-table" columns={cols} data={sorted} keyExtractor={(r) => r.tag} />;
+  // Readings that stay clear of the alarm limit for 30 days, even at the edge of their range, fold into one line.
+  const fold = useFold(sorted, (r) => r.alarmEarly === null && r.alarmLate === null);
+  return (
+    <>
+      {fold.shown.length > 0 && <Table className="pg-sf-table" columns={cols} data={fold.shown} keyExtractor={(r) => r.tag} />}
+      <RestLine rest={fold.rest} shown={fold.shown.length} noun="sensor" note="clear of their alarm limit for the next 30 days" open={fold.open} onToggle={fold.toggle} />
+    </>
+  );
 }

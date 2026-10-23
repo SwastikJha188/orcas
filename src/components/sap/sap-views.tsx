@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { ConfirmAction, KpiStrip, PillButton, PillNav, TextInput, type KpiItem, type Tone } from "@/components/ui";
+import { ConfirmAction, Crumbs, Dialog, KpiStrip, NextActions, PillButton, PillNav, RestLine, TextInput, estimateOf, minutesIn, rowActivate, useFold, type NextAction, type Crumb, type KpiItem, type Tone } from "@/components/ui";
 import { Empty, Section } from "@/components/assets/analysis/an-ui";
 import { machineName, priorityTone, type PmsFinding, type PmsModel } from "@/components/maintenance/pms-model";
 import { ItemCell, PM_ICON, StateWord } from "@/components/maintenance/pms-ui";
@@ -23,14 +23,23 @@ export interface ViewCtx {
   pms: PmsModel;
   machineId: string | null;
   when: (t: string | number | null) => string;
+  notice: { tone: "good" | "bad"; text: string } | null;
   setNotice: (n: { tone: "good" | "bad"; text: string } | null) => void;
+  /** The page's breadcrumbs (SAP / view / machine); a sheet adds its own level. */
+  crumbs: Crumb[];
   setMachineId: (id: string | null) => void;
   openSettings: () => void;
+  /** Reads SAP again now (the bar's Sync now). */
+  sync: () => Promise<boolean>;
   goTo: (v: View) => void;
 }
 
 const H = 3600_000;
-const qty = (n: number | null, unit: string | null) => (n === null ? "—" : `${Number.isInteger(n) ? n.toLocaleString("en-GB") : n.toLocaleString("en-GB", { maximumFractionDigits: 1 })}${unit ? ` ${unit}` : ""}`);
+// SAP's unit codes in plain words (TO is tonnes, EA is pieces); unknown codes pass through.
+const UNIT_WORD: Record<string, string> = { TO: "t", EA: "pcs", ST: "pcs", PC: "pcs", KG: "kg", KGM: "kg", M: "m", L: "l", H: "h" };
+const unitWord = (u: string | null) => (u ? (UNIT_WORD[u.toUpperCase()] ?? u) : null);
+const qty = (n: number | null, unit: string | null) => (n === null ? "—" : `${Number.isInteger(n) ? n.toLocaleString("en-GB") : n.toLocaleString("en-GB", { maximumFractionDigits: 1 })}${unit ? ` ${unitWord(unit)}` : ""}`);
+const msWord = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${ms} ms`);
 const hoursWord = (h: number) => (h >= 48 ? `${Math.round(h / 24)} days` : h >= 1 ? `${Math.round(h)} h` : `${Math.round(h * 60)} min`);
 const ORDER_TONE: Record<SapOrder["stage"], Tone | undefined> = { created: undefined, released: undefined, working: "info", verifying: "info", closed: undefined };
 const OUTBOX_WORD: Record<SapOutboxJob["state"], { label: string; tone?: Tone }> = {
@@ -65,24 +74,44 @@ function Rows({ items }: { items: { key: string; left: React.ReactNode; right?: 
   );
 }
 
+/** "4m 41s (3m 31s–6m 05s)": the estimate on top, its range under it. A word ("stable") is no time: muted, sentence case. */
+function TimeToLimit({ value }: { value: string }) {
+  if (!/\d/.test(value)) return <span className="pm-muted">{value.charAt(0).toUpperCase() + value.slice(1)}</span>;
+  const m = /^(.*?)\s*\((.+)\)$/.exec(value);
+  if (!m) return <>{value}</>;
+  return (
+    <span className="ast-cell-stack">
+      <span>{m[1]}</span>
+      <span className="ast-cell-sub">{m[2]}</span>
+    </span>
+  );
+}
+
 /* ---------------------------------------------------------- raise in SAP */
 
+/** Raises one problem as an SAP notification; true when SAP took it. */
+async function raiseNotification(ctx: ViewCtx, f: PmsFinding): Promise<boolean> {
+  const out = await sapCall<{ id: number; state: string }>(
+    "/notifications",
+    "POST",
+    { plantId: ctx.plantId, machineId: f.machineId, ruleCode: f.ruleId, title: f.plainTitle || f.name, detail: [f.plainWhat || f.evidence, f.plainTodo || f.action, f.timeToLimit && f.timeToLimit !== "—" ? `Limit in ${f.timeToLimit}` : null].filter(Boolean).join("\n"), priority: f.priority },
+    "The notification was not sent",
+  );
+  if ("error" in out) ctx.setNotice({ tone: "bad", text: out.error });
+  else ctx.setNotice(out.data.state === "completed" ? { tone: "good", text: "Notification created in SAP." } : { tone: "bad", text: "SAP did not take the notification yet; it will be tried again (see Sync & audit)." });
+  return !("error" in out) && out.data.state === "completed";
+}
+
+/** Sends a write that SAP did not take once more. */
+async function retryWrite(ctx: ViewCtx, id: number): Promise<boolean> {
+  const out = await sapCall(`/outbox/${id}/retry`, "POST", { plantId: ctx.plantId }, "Could not send it again");
+  if ("error" in out) ctx.setNotice({ tone: "bad", text: out.error });
+  return !("error" in out);
+}
+
 function RaiseButton({ ctx, f, primary }: { ctx: ViewCtx; f: PmsFinding; primary?: boolean }) {
-  const [busy, setBusy] = useState(false);
-  const raise = async () => {
-    setBusy(true);
-    const out = await sapCall<{ id: number; state: string }>(
-      "/notifications",
-      "POST",
-      { plantId: ctx.plantId, machineId: f.machineId, ruleCode: f.ruleId, title: f.plainTitle || f.name, detail: [f.plainWhat || f.evidence, f.plainTodo || f.action, f.timeToLimit && f.timeToLimit !== "—" ? `Limit in ${f.timeToLimit}` : null].filter(Boolean).join("\n"), priority: f.priority },
-      "The notification was not sent",
-    );
-    setBusy(false);
-    if ("error" in out) ctx.setNotice({ tone: "bad", text: out.error });
-    else ctx.setNotice(out.data.state === "completed" ? { tone: "good", text: "Notification created in SAP." } : { tone: "bad", text: "SAP did not take the notification yet; it will be tried again (see Sync & audit)." });
-  };
   return (
-    <PillButton variant={primary ? "primary" : "secondary"} className={primary ? undefined : "pg-diag-sm"} loading={busy} onClick={() => void raise()}>
+    <PillButton variant={primary ? "primary" : "secondary"} className={primary ? undefined : "pg-diag-sm"} onClick={() => raiseNotification(ctx, f)}>
       Raise notification in SAP
     </PillButton>
   );
@@ -92,15 +121,15 @@ function RaiseButton({ ctx, f, primary }: { ctx: ViewCtx; f: PmsFinding; primary
 
 const STEPS = ["Problem found", "SAP notification", "Maintenance order", "Work done", "Checked after repair", "Closed"];
 
-function ThreadSteps({ ctx, t }: { ctx: ViewCtx; t: Thread }) {
+function ThreadSteps({ ctx, t, mapped }: { ctx: ViewCtx; t: Thread; mapped: boolean }) {
   const step = threadStep(t);
   const detail = [
-    t.finding ? `${t.finding.priority} · ${machineName(t.machineId)}${t.finding.since ? "" : ""}` : machineName(t.machineId),
-    t.notification ? `${sapNumber(t.notification.number)} · ${t.notification.open ? "open" : "completed"}` : t.job ? OUTBOX_WORD[t.job.state].label : "Not raised yet",
-    t.order ? `${sapNumber(t.order.number)} · ${ORDER_WORD[t.order.stage].toLowerCase()}` : t.notification ? "Waiting for the SAP planner" : "—",
-    t.order?.start ? `${t.order.stage === "created" || t.order.stage === "released" ? "Planned" : "Started"} ${ctx.when(t.order.start)}` : "—",
-    t.order?.finish && step >= 4 ? `ULTRON watches the readings since ${ctx.when(t.order.finish)}` : "—",
-    step >= 5 ? "Technically complete in SAP" : "—",
+    t.finding ? `${t.finding.priority} · ${machineName(t.machineId)}` : machineName(t.machineId),
+    t.notification ? `${sapNumber(t.notification.number)} · ${t.notification.open ? "open" : "completed"}` : t.job ? OUTBOX_WORD[t.job.state].label : mapped ? "Not raised yet" : "Map the machine to its SAP equipment first",
+    t.order ? `${sapNumber(t.order.number)} · ${ORDER_WORD[t.order.stage].toLowerCase()}` : t.notification ? "Waiting for the SAP planner" : null,
+    t.order?.start ? `${t.order.stage === "created" || t.order.stage === "released" ? "Planned" : "Started"} ${ctx.when(t.order.start)}` : null,
+    t.order?.finish && step >= 4 ? `ULTRON watches the readings since ${ctx.when(t.order.finish)}` : null,
+    step >= 5 ? "Technically complete in SAP" : null,
   ];
   return (
     <ol className="sap-thread" aria-label="Where this problem stands">
@@ -109,12 +138,67 @@ function ThreadSteps({ ctx, t }: { ctx: ViewCtx; t: Thread }) {
           <span className="sap-thread-dot" aria-hidden="true" />
           <span className="ast-cell-stack">
             <span>{s}</span>
-            <span className="ast-cell-sub">{detail[i]}</span>
+            {detail[i] && <span className="ast-cell-sub">{detail[i]}</span>}
           </span>
         </li>
       ))}
     </ol>
   );
+}
+
+/* ------------------------------------------------------------ next actions */
+
+const PRIORITY_TONE = (p: string): NextAction["tone"] => (p === "P1" ? "bad" : p === "P2" ? "warn" : "info");
+
+/** What to do in SAP now, from the same records the page shows: one action per thing, most urgent first. */
+function sapNextActions(ctx: ViewCtx, m: SapModel, matches: Match[]): NextAction[] {
+  const { dash, machineId } = ctx;
+  const out: NextAction[] = [];
+  const conn = dash.connection;
+  if (conn?.lastTest && !conn.lastTest.ok) {
+    out.push({ key: "conn", tone: "bad", rank: 0, what: "SAP does not answer", why: conn.lastTest.message ?? "the last connection test failed", label: "Check the connection", run: () => ctx.openSettings() });
+  }
+  const run = dash.syncRuns[0];
+  if (run?.finishedAt && run.failed.length) {
+    out.push({ key: "sync", tone: "warn", rank: 0, what: `Last sync could not read ${run.failed.map((f) => resourceLabel(dash, f.resource).toLowerCase()).join(", ")}`, why: [ctx.when(run.startedAt), run.failed[0].message].filter(Boolean).join(" · "), label: "Sync again", run: ctx.sync });
+  }
+  for (const o of dash.outbox.filter((x) => x.state === "failed" && (!machineId || x.machineId === machineId))) {
+    out.push({ key: `out|${o.id}`, tone: "bad", rank: 1, what: `${o.title ?? resourceLabel(dash, o.resource)} did not reach SAP`, why: [`tried ${o.attempts} times`, o.lastError].filter(Boolean).join(" · "), label: "Send again", run: () => retryWrite(ctx, o.id) });
+  }
+
+  // Problems not raised yet. A mapped machine's problem is raised in one click; an unmapped
+  // machine gets one action (map it) for all its problems, ranked by its most urgent one.
+  const waiting = m.threads.filter((t) => !t.job && t.finding).sort((a, b) => a.finding!.priority.localeCompare(b.finding!.priority) || (minutesIn(a.finding!.timeToLimit) ?? Infinity) - (minutesIn(b.finding!.timeToLimit) ?? Infinity));
+  const mapAsked = new Set<string>();
+  for (const t of waiting) {
+    const f = t.finding!;
+    const mins = minutesIn(f.timeToLimit);
+    const facts = [f.priority, mins !== null ? `limit in ${estimateOf(f.timeToLimit)}` : null, `${Math.round(f.confidence)} % sure`];
+    if (m.eqOf(t.machineId)) {
+      out.push({ key: `raise|${t.machineId}|${f.ruleId}`, tone: PRIORITY_TONE(f.priority), rank: mins ?? undefined, what: `${t.title} · ${machineName(t.machineId)}`, why: [...facts, "not in SAP yet"].filter(Boolean).join(" · "), label: "Raise notification", run: () => raiseNotification(ctx, f) });
+    } else if (!mapAsked.has(t.machineId)) {
+      mapAsked.add(t.machineId);
+      const n = waiting.filter((x) => x.machineId === t.machineId).length;
+      const x = matches.find((y) => y.e.machineId === t.machineId);
+      const num = x ? sapNumber(field(x.r, "Equipment")) : null;
+      out.push({
+        key: `map|${t.machineId}`,
+        tone: PRIORITY_TONE(f.priority),
+        rank: mins ?? undefined,
+        what: `${machineName(t.machineId)} has no SAP equipment`,
+        why: [`${n} ${n === 1 ? "problem" : "problems"} can't be raised until it has`, `${f.priority} first`, x ? `SAP equipment ${num} matches ${Math.round(x.score * 100)} %` : "no likely SAP equipment found"].join(" · "),
+        label: x ? `Confirm equipment ${num}` : "Map to SAP equipment",
+        run: x ? () => confirmMatch(ctx, x) : () => ctx.goTo("mapping"),
+      });
+    }
+  }
+
+  // Orders SAP will start without all their parts.
+  for (const o of m.orders.filter((x) => (x.stage === "created" || x.stage === "released" || x.stage === "working") && kitShare(x) < 1)) {
+    const p = o.parts.find((x) => x.available < x.need)!;
+    out.push({ key: `kit|${o.number}`, tone: "warn", rank: o.start ? (o.start - m.now) / 60_000 : undefined, what: `Order ${sapNumber(o.number)} is short of parts${o.machineId ? ` · ${machineName(o.machineId)}` : ""}`, why: [`${p.description ?? p.material}: need ${qty(p.need, p.unit)}, have ${qty(p.available, p.unit)}`, o.start ? `starts ${ctx.when(o.start)}` : null].filter(Boolean).join(" · "), label: "See the shortage", run: () => ctx.goTo("materials") });
+  }
+  return out;
 }
 
 /* ----------------------------------------------------------------- overview */
@@ -125,12 +209,13 @@ export function SapOverview(ctx: ViewCtx) {
   const waiting = m.threads.filter((t) => !t.job && t.finding);
   const [selKey, setSelKey] = useState<string | null>(null);
   const keyOf = (t: Thread) => `${t.machineId}|${t.job?.id ?? t.finding?.ruleId}`;
-  const sel = m.threads.find((t) => keyOf(t) === selKey) ?? waiting[0] ?? m.threads[0] ?? null;
+  const sel = m.threads.find((t) => keyOf(t) === selKey) ?? null;
   const machines = dash.equipment.filter((e) => !ctx.machineId || e.machineId === ctx.machineId);
   const openN = m.notifications.filter((n) => n.open);
   const working = m.orders.filter((o) => o.stage !== "closed");
   const short = working.filter((o) => kitShare(o) < 1);
   const failedWrites = dash.outbox.filter((o) => o.state === "failed").length;
+  const next = sapNextActions(ctx, m, suggestMatches(dash, m, ctx.machineId));
 
   const kpis: KpiItem[] = [
     { label: "Equipment mapped", value: `${m.mapped.filter((e) => !ctx.machineId || e.machineId === ctx.machineId).length}`, unit: `of ${machines.length}`, bar: machines.length ? (m.mapped.filter((e) => !ctx.machineId || e.machineId === ctx.machineId).length / machines.length) * 100 : 0, foot: `${dash.records.equipment.length} SAP equipment read` },
@@ -143,101 +228,159 @@ export function SapOverview(ctx: ViewCtx) {
     <>
       <KpiStrip page label="SAP summary" items={kpis} />
       <div className="pg-frame-body sap-stack">
-        <div className="pm-split is-wide-side">
-          <Section id="sap-queue" title="Action queue" right={<span className="pm-muted">Problems that need a decision in SAP</span>}>
-            {m.threads.length === 0 ? (
-              <Empty title="No open problems on the machines.">When ULTRON finds one, it shows here to raise as an SAP notification.</Empty>
-            ) : (
-              <div className="ui-table-container ast-table pm-table">
-                <table className="ui-table">
-                  <thead>
-                    <tr>
-                      <th title="P1 is the most urgent">Priority</th>
-                      <th className="pm-grow">Problem</th>
-                      <th>Time to limit</th>
-                      <th>SAP equipment</th>
-                      <th>In SAP</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {m.threads.map((t) => {
-                      const tone = t.finding ? priorityTone(t.finding.priority) : "idle";
-                      const eq = m.eqOf(t.machineId);
-                      const active = sel && keyOf(sel) === keyOf(t);
-                      return (
-                        <tr key={keyOf(t)} className={`is-clickable ${active ? "active" : ""}`} onClick={() => setSelKey(keyOf(t))} aria-current={active || undefined}>
-                          <td className="pm-pri ast-num" data-tone={tone === "idle" ? undefined : tone}>
-                            {t.finding?.priority ?? "—"}
-                          </td>
-                          <td className="pm-grow">
-                            <ItemCell icon={PM_ICON.finding} tone={t.finding?.severity === "Critical" ? "bad" : t.finding ? "warn" : undefined} title={t.title} sub={`${machineName(t.machineId)}${t.finding?.subs[0] ? ` · ${t.finding.subs[0]}` : ""}`} />
-                          </td>
-                          <td className="ast-num">{t.finding?.timeToLimit && t.finding.timeToLimit !== "—" ? t.finding.timeToLimit : "—"}</td>
-                          <td className="ast-num">{sapNumber(eq) ?? <span className="pm-muted">Not mapped</span>}</td>
-                          <td>
-                            {t.order ? (
-                              <StateWord label={`Order ${sapNumber(t.order.number)} · ${ORDER_WORD[t.order.stage].toLowerCase()}`} tone={ORDER_TONE[t.order.stage]} />
-                            ) : t.job ? (
-                              <StateWord label={t.job.state === "completed" ? `Notification ${sapNumber(t.job.objectKey)}` : OUTBOX_WORD[t.job.state].label} tone={OUTBOX_WORD[t.job.state].tone} />
-                            ) : (
-                              <StateWord label="Not raised" tone="warn" />
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+        {next.length > 0 && (
+          <Section id="sap-next" title="Next actions">
+            <NextActions items={next} />
           </Section>
+        )}
 
-          <Section id="sap-lifecycle" title={sel ? `${machineName(sel.machineId)} · one traceable thread` : "Problem thread"}>
-            {!sel ? (
-              <Empty title="Pick a problem to follow it through SAP." />
-            ) : (
-              <>
-                <p className="sap-thread-title">{sel.title}</p>
-                {sel.finding && (
-                  <div className="sap-facts">
-                    <span>
-                      <span className="ast-caption">Confidence</span>
-                      <b className="ast-num">{Math.round(sel.finding.confidence)} %</b>
-                    </span>
-                    <span>
-                      <span className="ast-caption">Time to limit</span>
-                      <b className="ast-num">{sel.finding.timeToLimit || "—"}</b>
-                    </span>
-                    <span>
-                      <span className="ast-caption">SAP equipment</span>
-                      <b className="ast-num">{sapNumber(m.eqOf(sel.machineId)) ?? "—"}</b>
-                    </span>
-                  </div>
-                )}
-                {sel.finding?.plainWhat && <p className="pm-note">{sel.finding.plainWhat}</p>}
-                <ThreadSteps ctx={ctx} t={sel} />
-                <div className="sap-actions-row">
-                  {!sel.job && sel.finding && (m.eqOf(sel.machineId) ? <RaiseButton ctx={ctx} f={sel.finding} primary /> : <PillButton onClick={() => ctx.goTo("mapping")}>Map {machineName(sel.machineId)} first</PillButton>)}
-                  {sel.order && (
-                    <PillButton variant="secondary" onClick={() => ctx.goTo("materials")}>
-                      Parts for order {sapNumber(sel.order.number)}
-                    </PillButton>
-                  )}
-                </div>
-              </>
-            )}
-          </Section>
-        </div>
+        <Section id="sap-queue" title="Action queue">
+          {m.threads.length === 0 ? (
+            <Empty title="No open problems on the machines.">When ULTRON finds one, it shows here to raise as an SAP notification.</Empty>
+          ) : (
+            <div className="ui-table-container ast-table pm-table">
+              <table className="ui-table">
+                <thead>
+                  <tr>
+                    <th title="P1 is the most urgent">Priority</th>
+                    <th className="pm-grow">Problem</th>
+                    <th>Time to limit</th>
+                    <th>SAP equipment</th>
+                    <th>In SAP</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {m.threads.map((t) => {
+                    const tone = t.finding ? priorityTone(t.finding.priority) : "idle";
+                    const eq = m.eqOf(t.machineId);
+                    const active = sel && keyOf(sel) === keyOf(t);
+                    return (
+                      <tr key={keyOf(t)} className={`is-clickable ${active ? "active" : ""}`} {...rowActivate(() => setSelKey(keyOf(t)), !!active)}>
+                        <td className="pm-pri ast-num" data-tone={tone === "idle" ? undefined : tone}>
+                          {t.finding?.priority ?? "—"}
+                        </td>
+                        <td className="pm-grow">
+                          <ItemCell icon={PM_ICON.finding} tone={t.finding?.severity === "Critical" ? "bad" : t.finding ? "warn" : undefined} title={t.title} sub={`${machineName(t.machineId)}${t.finding?.subs[0] ? ` · ${t.finding.subs[0]}` : ""}`} />
+                        </td>
+                        <td className="ast-num">{t.finding?.timeToLimit && t.finding.timeToLimit !== "—" ? <TimeToLimit value={t.finding.timeToLimit} /> : "—"}</td>
+                        <td className="ast-num">{sapNumber(eq) ?? <span className="pm-muted">Not mapped</span>}</td>
+                        <td>
+                          {t.order ? (
+                            <StateWord label={`Order ${sapNumber(t.order.number)} · ${ORDER_WORD[t.order.stage].toLowerCase()}`} tone={ORDER_TONE[t.order.stage]} />
+                          ) : t.job ? (
+                            <StateWord label={t.job.state === "completed" ? `Notification ${sapNumber(t.job.objectKey)}` : OUTBOX_WORD[t.job.state].label} tone={OUTBOX_WORD[t.job.state].tone} />
+                          ) : (
+                            <StateWord label="Not raised" tone="warn" />
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Section>
 
         <Section id="sap-activity" title="Recent integration activity">
           {dash.audit.length === 0 ? (
             <Empty title="Nothing exchanged with SAP yet." />
           ) : (
-            <Rows items={dash.audit.slice(0, 8).map((a) => ({ key: String(a.id), left: auditText(dash, a), sub: [a.user ?? "System", a.durationMs !== null ? `${a.durationMs} ms` : null].filter(Boolean).join(" · "), right: <span className="pm-muted ast-num">{ctx.when(a.at)}</span>, tone: a.status === "failed" ? "bad" : a.status === "warning" ? "warn" : undefined }))} />
+            <LogTable ctx={ctx} rows={dash.audit.slice(0, 8)} />
           )}
         </Section>
       </div>
+
+      <Dialog side open={sel !== null} onClose={() => setSelKey(null)} title={sel?.title ?? ""} crumbs={sel ? sheetCrumbs(ctx, () => setSelKey(null), machineName(sel.machineId)) : undefined} width={520}>
+        {sel && (
+          <>
+            <SheetNotice ctx={ctx} />
+            <div className="sap-facts">
+              {sel.finding && (
+                <>
+                  <span>
+                    <span className="ast-caption">Confidence</span>
+                    <b className="ast-num">{Math.round(sel.finding.confidence)} %</b>
+                  </span>
+                  <span>
+                    <span className="ast-caption">Time to limit</span>
+                    <b className="ast-num">{sel.finding.timeToLimit && sel.finding.timeToLimit !== "—" ? <TimeToLimit value={sel.finding.timeToLimit} /> : "—"}</b>
+                  </span>
+                </>
+              )}
+              <span>
+                <span className="ast-caption">SAP equipment</span>
+                <b className="ast-num">{sapNumber(m.eqOf(sel.machineId)) ?? <span className="pm-muted">Not mapped</span>}</b>
+              </span>
+            </div>
+            {sel.finding?.plainWhat && <p className="pm-note">{sel.finding.plainWhat}</p>}
+            <ThreadSteps ctx={ctx} t={sel} mapped={!!m.eqOf(sel.machineId)} />
+            <div className="sap-actions-row">
+              {!sel.job && sel.finding && (m.eqOf(sel.machineId) ? <RaiseButton ctx={ctx} f={sel.finding} primary /> : <PillButton onClick={() => ctx.goTo("mapping")}>Map to SAP equipment</PillButton>)}
+              {sel.order && (
+                <PillButton variant="secondary" onClick={() => ctx.goTo("materials")}>
+                  Parts for order {sapNumber(sel.order.number)}
+                </PillButton>
+              )}
+            </div>
+          </>
+        )}
+      </Dialog>
     </>
+  );
+}
+
+/** A sheet's breadcrumbs: the page's, with the page itself as a way back (closes the sheet), then the sheet. */
+function sheetCrumbs(ctx: ViewCtx, close: () => void, label: string) {
+  return <Crumbs items={[...ctx.crumbs.map((c, i, all) => (i === all.length - 1 ? { ...c, onClick: close } : c)), { label }]} />;
+}
+
+/** A sheet covers the page header, so it repeats the page's last message. */
+function SheetNotice({ ctx }: { ctx: ViewCtx }) {
+  if (!ctx.notice) return null;
+  return (
+    <p className="ui-form-note sap-notice" data-tone={ctx.notice.tone} role="status">
+      {ctx.notice.text}
+    </p>
+  );
+}
+
+/** Exchanges with SAP, newest first; `full` adds the direction and the trace SAP support can look up. */
+function LogTable({ ctx, rows, full }: { ctx: ViewCtx; rows: SapDashboard["audit"]; full?: boolean }) {
+  const { dash, when } = ctx;
+  return (
+    <div className="ui-table-container ast-table pm-table">
+      <table className="ui-table">
+        <thead>
+          <tr>
+            <th>When</th>
+            <th className="pm-grow">What</th>
+            {full && <th>Direction</th>}
+            <th>Answer</th>
+            <th>Who</th>
+            {full && <th title="Reference SAP support can look up">Trace</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((a) => (
+            <tr key={a.id}>
+              <td className="ast-num pm-muted">{when(a.at)}</td>
+              <td className="pm-grow">
+                <StateWord label={auditText(dash, a)} tone={a.status === "failed" ? "bad" : a.status === "warning" ? "warn" : undefined} />
+              </td>
+              {full && <td className="pm-muted">{a.direction === "to_sap" ? "To SAP" : a.direction === "from_sap" ? "From SAP" : "In ULTRON"}</td>}
+              <td className="ast-num pm-muted">{a.status === "failed" ? (a.httpStatus ? `Failed · ${a.httpStatus}` : "Failed") : a.durationMs !== null ? msWord(a.durationMs) : "—"}</td>
+              <td className="pm-muted">{a.user ?? "System"}</td>
+              {full && (
+                <td className="ast-num pm-muted" title={a.correlationId ?? undefined}>
+                  {a.correlationId ? `${a.correlationId.slice(0, 8)}…` : "—"}
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -281,16 +424,12 @@ function matchScore(m: SapEquipmentMapping, r: Record<string, unknown>): number 
   return Math.min(0.95, (common / Math.max(a.size, 1)) * 0.8 + (floc.includes(short) ? 0.3 : 0));
 }
 
-export function SapMapping(ctx: ViewCtx) {
-  const { dash, plantId, machineId } = ctx;
-  const m = useSapModel(dash, ctx.pms.findings, machineId);
-  const [edit, setEdit] = useState<SapEquipmentMapping | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [q, setQ] = useState("");
-  const rows = dash.equipment.filter((e) => (!machineId || e.machineId === machineId) && (!q || `${e.machineName} ${e.machineId} ${e.sapEquipmentId ?? ""} ${e.functionalLocation ?? ""}`.toLowerCase().includes(q.toLowerCase())));
-  const inSap = (eq: string | null) => m.equipmentRecords.some((r) => sameSapNumber(field(r, "Equipment"), eq));
+type Match = { e: SapEquipmentMapping; r: Record<string, unknown>; score: number };
+
+/** Unmapped machines with the SAP equipment that most likely is them (a person confirms). */
+function suggestMatches(dash: SapDashboard, m: SapModel, machineId: string | null): Match[] {
   const taken = new Set(dash.equipment.map((e) => sapNumber(e.sapEquipmentId)).filter(Boolean));
-  const suggestions = dash.equipment
+  return dash.equipment
     .filter((e) => !e.sapEquipmentId && (!machineId || e.machineId === machineId))
     .map((e) => {
       const best = m.equipmentRecords
@@ -299,19 +438,35 @@ export function SapMapping(ctx: ViewCtx) {
         .sort((a, b) => b.score - a.score)[0];
       return best && best.score >= 0.5 ? { e, r: best.r, score: best.score } : null;
     })
-    .filter((x): x is NonNullable<typeof x> => x !== null);
+    .filter((x): x is Match => x !== null);
+}
+
+/** Saves a suggested match as the machine's SAP equipment. */
+async function confirmMatch(ctx: ViewCtx, x: Match): Promise<boolean> {
+  const out = await sapCall("/mappings/equipment", "PUT", { plantId: ctx.plantId, machineId: x.e.machineId, sapEquipmentId: field(x.r, "Equipment"), functionalLocation: field(x.r, "FunctionalLocation"), workCenter: field(x.r, "MainWorkCenter", "WorkCenter"), costCenter: field(x.r, "CostCenter") }, "Could not save the mapping");
+  if ("error" in out) ctx.setNotice({ tone: "bad", text: out.error });
+  return !("error" in out);
+}
+
+export function SapMapping(ctx: ViewCtx) {
+  const { dash, plantId, machineId } = ctx;
+  const m = useSapModel(dash, ctx.pms.findings, machineId);
+  const [edit, setEdit] = useState<SapEquipmentMapping | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+  const [pointsOf, setPointsOf] = useState<string | null>(null);
+  const rows = dash.equipment.filter((e) => (!machineId || e.machineId === machineId) && (!q || `${e.machineName} ${e.machineId} ${e.sapEquipmentId ?? ""} ${e.functionalLocation ?? ""}`.toLowerCase().includes(q.toLowerCase())));
+  const inSap = (eq: string | null) => m.equipmentRecords.some((r) => sameSapNumber(field(r, "Equipment"), eq));
+  const suggestions = suggestMatches(dash, m, machineId);
+  const suggestionOf = new Map(suggestions.map((x) => [x.e.machineId, x]));
   const conflicts = dash.equipment.filter((e) => e.sapEquipmentId && m.synced && !inSap(e.sapEquipmentId));
 
-  const confirm = async (list: typeof suggestions) => {
+  const confirm = async (list: Match[]) => {
     setBusy("suggest");
-    for (const s of list) {
-      const out = await sapCall("/mappings/equipment", "PUT", { plantId, machineId: s.e.machineId, sapEquipmentId: field(s.r, "Equipment"), functionalLocation: field(s.r, "FunctionalLocation"), workCenter: field(s.r, "MainWorkCenter", "WorkCenter"), costCenter: field(s.r, "CostCenter") }, "Could not save the mapping");
-      if ("error" in out) {
-        ctx.setNotice({ tone: "bad", text: out.error });
-        break;
-      }
-    }
+    let ok = true;
+    for (const x of list) if (!(ok = await confirmMatch(ctx, x))) break;
     setBusy(null);
+    return ok;
   };
   const unmap = async (id: string) => {
     setBusy(id);
@@ -320,7 +475,6 @@ export function SapMapping(ctx: ViewCtx) {
     if ("error" in out) ctx.setNotice({ tone: "bad", text: out.error });
   };
 
-  const focusMachine = machineId ?? rows.find((r) => r.sapEquipmentId)?.machineId ?? null;
   const pointsLinked = dash.points.filter((p) => p.sapPoint).length;
 
   return (
@@ -329,89 +483,90 @@ export function SapMapping(ctx: ViewCtx) {
         page
         label="Mapping summary"
         items={[
-          { label: "Mapped machines", value: `${dash.equipment.filter((e) => e.sapEquipmentId).length}`, unit: `of ${dash.equipment.length}`, bar: dash.equipment.length ? (dash.equipment.filter((e) => e.sapEquipmentId).length / dash.equipment.length) * 100 : 0, foot: suggestions.length ? `${suggestions.length} suggested matches to confirm` : "every machine has its SAP equipment" },
+          { label: "Mapped machines", value: `${dash.equipment.filter((e) => e.sapEquipmentId).length}`, unit: `of ${dash.equipment.length}`, bar: dash.equipment.length ? (dash.equipment.filter((e) => e.sapEquipmentId).length / dash.equipment.length) * 100 : 0, foot: suggestions.length ? `${suggestions.length} suggested, waiting for a person to confirm` : dash.equipment.every((e) => e.sapEquipmentId) ? "every machine has its SAP equipment" : "the rest are mapped by hand" },
           { label: "Measuring points", value: `${pointsLinked}`, unit: `of ${dash.points.length}`, foot: `readings written to SAP; ${m.measuringPoints.length} points in SAP` },
           { label: "Mapping conflicts", value: m.synced ? `${conflicts.length}` : "—", tone: conflicts.length ? "warn" : undefined, foot: conflicts.length ? "mapped numbers SAP does not know" : "every mapped number is in SAP" },
           { label: "Last master sync", value: dash.records.equipment[0] ? ctx.when(dash.records.equipment[0].syncedAt) : "—", text: true, foot: `${dash.records.equipment.length} equipment records` },
         ]}
       />
       <div className="pg-frame-body sap-stack">
-        <div className="pm-split is-wide-side">
-          <Section id="sap-map" title="Equipment mapping" right={<TextInput id="sap-map-search" ariaLabel="Search machines, equipment or functional locations" value={q} onChange={setQ} placeholder="Search machine, equipment or location" />}>
-            <div className="ui-table-container ast-table pm-table">
-              <table className="ui-table">
-                <thead>
-                  <tr>
-                    <th className="pm-grow">ULTRON machine</th>
-                    <th>SAP equipment</th>
-                    <th>Functional location</th>
-                    <th>Work centre</th>
-                    <th>In SAP?</th>
-                    <th aria-label="Actions" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.machineId} className={`is-clickable ${focusMachine === r.machineId ? "active" : ""}`} onClick={() => ctx.setMachineId(r.machineId)}>
+        <Section
+          id="sap-map"
+          title="Machines and their SAP equipment"
+          right={
+            <span className="sap-actions">
+              {suggestions.length > 1 && (
+                <PillButton variant="secondary" loading={busy === "suggest"} onClick={() => confirm(suggestions)}>
+                  Confirm {suggestions.length} suggested
+                </PillButton>
+              )}
+              <TextInput id="sap-map-search" ariaLabel="Search machines, equipment or functional locations" value={q} onChange={setQ} placeholder="Search" />
+            </span>
+          }
+        >
+          <div className="ui-table-container ast-table pm-table">
+            <table className="ui-table">
+              <thead>
+                <tr>
+                  <th className="pm-grow">Machine</th>
+                  <th>SAP equipment</th>
+                  <th>Functional location</th>
+                  <th>Work centre</th>
+                  <th>In SAP</th>
+                  <th aria-label="Actions" />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => {
+                  // An unmapped machine shows SAP's likely equipment in grey until a person confirms it.
+                  const sug = suggestionOf.get(r.machineId);
+                  const guess = (v: string | null | undefined) => (v ? <span className="pm-muted">{v}</span> : "—");
+                  return (
+                    <tr key={r.machineId} className={`is-clickable ${pointsOf === r.machineId ? "active" : ""}`} {...rowActivate(() => setPointsOf(r.machineId), pointsOf === r.machineId)}>
                       <td className="pm-grow">
-                        <ItemCell icon={PM_ICON.wo} title={machineName(r.machineId)} sub={r.machineName} />
+                        <span className="ast-cell-title">{machineName(r.machineId)}</span>
                       </td>
-                      <td className="ast-num">{sapNumber(r.sapEquipmentId) ?? "—"}</td>
-                      <td className="ast-num">{r.functionalLocation ?? "—"}</td>
-                      <td className="ast-num">{r.workCenter ?? "—"}</td>
-                      <td>{!r.sapEquipmentId ? <StateWord label="Not mapped" tone="warn" /> : !m.synced ? <span className="pm-muted">Not synced</span> : inSap(r.sapEquipmentId) ? <StateWord label="Found" /> : <StateWord label="Not in SAP" tone="warn" />}</td>
+                      <td className="ast-num">{sapNumber(r.sapEquipmentId) ?? guess(sug && sapNumber(field(sug.r, "Equipment")))}</td>
+                      <td className="ast-num">{r.functionalLocation ?? guess(sug && field(sug.r, "FunctionalLocation"))}</td>
+                      <td className="ast-num">{r.workCenter ?? guess(sug && field(sug.r, "MainWorkCenter", "WorkCenter"))}</td>
+                      <td>
+                        {r.sapEquipmentId ? (
+                          !m.synced ? <span className="pm-muted">Not synced</span> : inSap(r.sapEquipmentId) ? <StateWord label="Found" /> : <StateWord label="Not in SAP" tone="warn" />
+                        ) : sug ? (
+                          <StateWord label={`Suggested · ${Math.round(sug.score * 100)} % match`} tone="warn" />
+                        ) : (
+                          <StateWord label="Not mapped" tone="warn" />
+                        )}
+                      </td>
                       <td className="sap-actions" onClick={(e) => e.stopPropagation()}>
+                        {sug && (
+                          <PillButton variant="secondary" className="pg-diag-sm" loading={busy === "suggest"} onClick={() => confirm([sug])}>
+                            Confirm
+                          </PillButton>
+                        )}
                         <PillButton variant="secondary" className="pg-diag-sm" onClick={() => setEdit(r)}>
-                          {r.sapEquipmentId ? "Edit" : "Map"}
+                          {r.sapEquipmentId ? "Edit" : sug ? "Other" : "Map"}
                         </PillButton>
                         {r.sapEquipmentId && <ConfirmAction label="Unmap" question="Remove this machine's SAP equipment?" confirmLabel="Unmap" busy={busy === r.machineId} onConfirm={() => void unmap(r.machineId)} ariaLabel={`Unmap ${r.machineName}`} />}
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Section>
-
-          <Section id="sap-suggest" title="Suggested matches" right={suggestions.length > 1 ? <PillButton variant="secondary" loading={busy === "suggest"} onClick={() => void confirm(suggestions)}>Confirm all</PillButton> : undefined}>
-            {!m.synced ? (
-              <Empty title="Sync to read SAP's equipment list first." />
-            ) : suggestions.length === 0 ? (
-              <Empty title="No matches waiting.">Unmapped machines with no likely SAP equipment can be mapped by hand.</Empty>
-            ) : (
-              <ul className="sap-cards">
-                {suggestions.map((s) => (
-                  <li key={s.e.machineId}>
-                    <div className="sap-card-head">
-                      <b>
-                        {machineName(s.e.machineId)} → {sapNumber(field(s.r, "Equipment"))}
-                      </b>
-                      <span className="ast-num pm-muted">{Math.round(s.score * 100)} % match</span>
-                    </div>
-                    <span className="ast-cell-sub">
-                      {field(s.r, "EquipmentName")} · {field(s.r, "FunctionalLocation")}
-                    </span>
-                    <Bar share={s.score} />
-                    <PillButton variant="secondary" className="pg-diag-sm" loading={busy === "suggest"} onClick={() => void confirm([s])}>
-                      Confirm
-                    </PillButton>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <p className="pm-note">A person always confirms a match: notifications go to the mapped equipment.</p>
-          </Section>
-        </div>
-
-        {focusMachine && <PointsPanel ctx={ctx} model={m} machine={focusMachine} />}
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Section>
       </div>
+      <Dialog side open={pointsOf !== null} onClose={() => setPointsOf(null)} title={pointsOf ? machineName(pointsOf) : ""} subtitle="Which SAP measuring point each reading is written to" crumbs={pointsOf ? sheetCrumbs(ctx, () => setPointsOf(null), "Measuring points") : undefined} width={720}>
+        {pointsOf && <PointsPanel ctx={ctx} model={m} machine={pointsOf} onMap={() => setEdit(dash.equipment.find((e) => e.machineId === pointsOf) ?? null)} />}
+      </Dialog>
       <EquipmentMappingDialog open={edit !== null} onClose={() => setEdit(null)} plantId={plantId} row={edit} />
     </>
   );
 }
 
-/** One machine's readings and the SAP measuring points they are written to. */
-function PointsPanel({ ctx, model, machine }: { ctx: ViewCtx; model: SapModel; machine: string }) {
+/** One machine's readings and the SAP measuring points they are written to (the body of the mapping sheet). */
+function PointsPanel({ ctx, model, machine, onMap }: { ctx: ViewCtx; model: SapModel; machine: string; onMap: () => void }) {
   const { dash, plantId } = ctx;
   const [busy, setBusy] = useState<"link" | "publish" | null>(null);
   const eq = model.eqOf(machine);
@@ -424,6 +579,7 @@ function PointsPanel({ ctx, model, machine }: { ctx: ViewCtx; model: SapModel; m
     const out = await sapCall("/mappings/points", "PUT", { plantId, rows: linkable.map((p) => ({ measurementId: p.measurementId, sapPoint: field(suggest(p.name)!, "MeasuringPoint") })) }, "Could not link the readings");
     setBusy(null);
     if ("error" in out) ctx.setNotice({ tone: "bad", text: out.error });
+    return !("error" in out);
   };
   const publish = async () => {
     setBusy("publish");
@@ -431,36 +587,39 @@ function PointsPanel({ ctx, model, machine }: { ctx: ViewCtx; model: SapModel; m
     setBusy(null);
     if ("error" in out) ctx.setNotice({ tone: "bad", text: out.error });
     else ctx.setNotice({ tone: out.data.failed ? "bad" : "good", text: `${out.data.sent} readings written to SAP${out.data.failed ? `, ${out.data.failed} will be tried again` : ""}${out.data.unchanged ? `; ${out.data.unchanged} had no new reading` : ""}.` });
+    return !("error" in out) && out.data.failed === 0;
   };
   const linked = points.filter((p) => p.sapPoint);
   return (
-    <Section
-      id="sap-points"
-      title={`${machineName(machine)} · readings to SAP measuring points`}
-      right={
-        <span className="sap-actions">
-          {linkable.length > 0 && (
-            <PillButton variant="secondary" loading={busy === "link"} onClick={() => void link()}>
-              Link {linkable.length} suggested
-            </PillButton>
-          )}
-          {dash.points.some((p) => p.sapPoint) && (
-            <PillButton variant="secondary" loading={busy === "publish"} onClick={() => void publish()}>
-              Write latest readings now
-            </PillButton>
-          )}
-        </span>
-      }
-    >
+    <>
+      <SheetNotice ctx={ctx} />
       {!eq ? (
-        <Empty title="Map this machine to its SAP equipment first." />
+        <Empty title="Map this machine to its SAP equipment first.">
+          <span className="sap-empty-action">
+            <PillButton onClick={onMap}>Map to SAP equipment</PillButton>
+          </span>
+        </Empty>
       ) : (
         <>
+          {(linkable.length > 0 || dash.points.some((p) => p.sapPoint)) && (
+            <div className="sap-actions-row sap-sheet-actions">
+              {linkable.length > 0 && (
+                <PillButton variant="secondary" loading={busy === "link"} onClick={link}>
+                  Link {linkable.length} suggested
+                </PillButton>
+              )}
+              {dash.points.some((p) => p.sapPoint) && (
+                <PillButton variant="secondary" loading={busy === "publish"} onClick={publish}>
+                  Write latest readings now
+                </PillButton>
+              )}
+            </div>
+          )}
           <p className="pm-note">
             {linked.length} of {points.length} readings go to SAP
             {dash.connection?.publishEveryMin ? `, every ${dash.connection.publishEveryMin} min` : " when written by hand (set an interval in Connection)"}.
           </p>
-          <div className="ui-table-container ast-table pm-table sap-scroll">
+          <div className="ui-table-container ast-table pm-table">
             <table className="ui-table">
               <thead>
                 <tr>
@@ -490,50 +649,50 @@ function PointsPanel({ ctx, model, machine }: { ctx: ViewCtx; model: SapModel; m
           </div>
         </>
       )}
-    </Section>
+    </>
   );
 }
 
 /* -------------------------------------------------------------- maintenance */
 
 export function SapMaintenance(ctx: ViewCtx) {
-  const { dash, plantId, when } = ctx;
+  const { dash, when } = ctx;
   const m = useSapModel(dash, ctx.pms.findings, ctx.machineId);
   const [busy, setBusy] = useState<number | null>(null);
   const [selKey, setSelKey] = useState<string | null>(null);
 
-  type Card = { key: string; title: string; detail: string; meta: string; tone?: Tone; thread?: Thread; order?: SapOrder };
+  type Card = { key: string; name: string; machineId: string | null; detail: string; meta: string; tone?: Tone; thread?: Thread; order?: SapOrder };
   const review: Card[] = m.threads
     .filter((t) => !t.job && t.finding)
-    .map((t) => ({ key: `r|${t.machineId}|${t.finding!.ruleId}`, title: `${machineName(t.machineId)} · ${t.title}`, detail: `Confidence ${Math.round(t.finding!.confidence)} %${t.finding!.timeToLimit && t.finding!.timeToLimit !== "—" ? ` · limit in ${t.finding!.timeToLimit}` : ""}`, meta: t.finding!.priority, tone: priorityTone(t.finding!.priority) === "idle" ? undefined : priorityTone(t.finding!.priority), thread: t }));
+    .map((t) => ({ key: `r|${t.machineId}|${t.finding!.ruleId}`, name: t.title, machineId: t.machineId, detail: `Confidence ${Math.round(t.finding!.confidence)} %${/\d/.test(t.finding!.timeToLimit ?? "") ? ` · limit in ${t.finding!.timeToLimit.replace(/\s*\(.*\)$/, "")}` : ""}`, meta: t.finding!.priority, tone: priorityTone(t.finding!.priority) === "idle" ? undefined : priorityTone(t.finding!.priority), thread: t }));
   const notified: Card[] = m.notifications
     .filter((n) => n.open && !n.order)
     .map((n) => {
       const t = m.threads.find((x) => x.notification && sameSapNumber(x.notification.number, n.number));
-      return { key: `n|${n.number}`, title: `${n.machineId ? machineName(n.machineId) : "—"} · ${n.text}`, detail: `Notification ${sapNumber(n.number)}${n.priority ? ` · priority ${n.priority}` : ""}${t ? " · from ULTRON" : n.reportedBy ? ` · ${n.reportedBy}` : ""}`, meta: n.created ? when(n.created) : "—", thread: t };
+      return { key: `n|${n.number}`, name: n.text, machineId: n.machineId, detail: `Notification ${sapNumber(n.number)}${n.priority ? ` · priority ${n.priority}` : ""}${t ? " · from ULTRON" : n.reportedBy ? ` · ${n.reportedBy}` : ""}`, meta: n.created ? when(n.created) : "—", thread: t };
     });
   const executing: Card[] = m.orders
     .filter((o) => o.stage === "created" || o.stage === "released" || o.stage === "working")
-    .map((o) => ({ key: `o|${o.number}`, title: `${o.machineId ? machineName(o.machineId) : "—"} · ${o.description}`, detail: `Order ${sapNumber(o.number)} · ${ORDER_WORD[o.stage].toLowerCase()}${o.parts.length ? ` · parts ${Math.round(kitShare(o) * 100)} % ready` : ""}`, meta: o.start ? when(o.start) : "—", tone: kitShare(o) < 1 ? ("warn" as Tone) : undefined, order: o, thread: m.threads.find((x) => x.order?.number === o.number) }));
+    .map((o) => ({ key: `o|${o.number}`, name: o.description, machineId: o.machineId, detail: `Order ${sapNumber(o.number)} · ${ORDER_WORD[o.stage].toLowerCase()}${o.parts.length ? ` · parts ${Math.round(kitShare(o) * 100)} % ready` : ""}`, meta: o.start ? `starts ${when(o.start)}` : "—", tone: kitShare(o) < 1 ? ("warn" as Tone) : undefined, order: o, thread: m.threads.find((x) => x.order?.number === o.number) }));
   const verifying: Card[] = m.orders
     .filter((o) => o.stage === "verifying")
-    .map((o) => ({ key: `v|${o.number}`, title: `${o.machineId ? machineName(o.machineId) : "—"} · ${o.description}`, detail: `Order ${sapNumber(o.number)} technically done`, meta: o.finish ? `since ${when(o.finish)}` : "—", tone: "info" as Tone, order: o, thread: m.threads.find((x) => x.order?.number === o.number) }));
+    .map((o) => ({ key: `v|${o.number}`, name: o.description, machineId: o.machineId, detail: `Order ${sapNumber(o.number)} technically done`, meta: o.finish ? `since ${when(o.finish)}` : "—", tone: "info" as Tone, order: o, thread: m.threads.find((x) => x.order?.number === o.number) }));
   const lanes = [
-    { title: "ULTRON review", cards: review, tone: review.length ? ("warn" as Tone) : undefined },
-    { title: "SAP notification", cards: notified },
-    { title: "Order execution", cards: executing },
-    { title: "Verification", cards: verifying },
+    { title: "To raise in SAP", cards: review, tone: review.length ? ("warn" as Tone) : undefined },
+    { title: "Notification open", cards: notified },
+    { title: "Order in progress", cards: executing },
+    { title: "Checking after repair", cards: verifying },
   ];
   const all = lanes.flatMap((l) => l.cards);
-  const sel = all.find((c) => c.key === selKey) ?? all[0] ?? null;
+  const sel = all.find((c) => c.key === selKey) ?? null;
   // ULTRON's priority and SAP's disagree: the planner changed it in SAP.
   const mismatches = m.threads.filter((t) => t.finding && t.notification?.priority && t.notification.priority !== t.finding.priority.replace("P", ""));
   const sent = dash.outbox.filter((o) => o.resource === "notifications" && (!ctx.machineId || o.machineId === ctx.machineId) && o.state !== "completed");
   const retry = async (id: number) => {
     setBusy(id);
-    const out = await sapCall(`/outbox/${id}/retry`, "POST", { plantId }, "Could not send it again");
+    const ok = await retryWrite(ctx, id);
     setBusy(null);
-    if ("error" in out) ctx.setNotice({ tone: "bad", text: out.error });
+    return ok;
   };
 
   return (
@@ -549,13 +708,13 @@ export function SapMaintenance(ctx: ViewCtx) {
         ]}
       />
       <div className="pg-frame-body sap-stack">
-        <Section id="sap-lanes" title="Live maintenance lifecycle" right={<span className="pm-muted">Each card is one ULTRON → SAP thread</span>}>
+        <Section id="sap-lanes" title="Where each problem is">
           <div className="sap-lanes">
             {lanes.map((l) => (
               <div key={l.title} className="sap-lane">
                 <div className="sap-lane-head">
                   <b>{l.title}</b>
-                  <span className="opc-app-count" data-tone={l.tone}>
+                  <span className="ast-num sap-lane-count" data-tone={l.tone}>
                     {l.cards.length}
                   </span>
                 </div>
@@ -564,10 +723,11 @@ export function SapMaintenance(ctx: ViewCtx) {
                 ) : (
                   l.cards.slice(0, 6).map((c) => (
                     <button key={c.key} type="button" className="sap-lane-card" data-active={sel?.key === c.key || undefined} onClick={() => setSelKey(c.key)}>
-                      <span className="sap-lane-title">{c.title}</span>
-                      <span className="ast-cell-sub">{c.detail}</span>
+                      <span className="sap-lane-title">{c.name}</span>
+                      <span className="ast-cell-sub">{c.machineId ? machineName(c.machineId) : "Machine not known"}</span>
                       <span className="sap-lane-meta">
                         <StateWord label={c.meta} tone={c.tone} />
+                        <span className="pm-muted">{c.detail}</span>
                       </span>
                     </button>
                   ))
@@ -578,46 +738,51 @@ export function SapMaintenance(ctx: ViewCtx) {
           </div>
         </Section>
 
-        <div className="pm-split is-even">
-          <Section id="sap-selected" title={sel ? sel.title : "Selected"}>
-            {!sel ? (
-              <Empty title="Nothing to follow yet." />
-            ) : sel.thread ? (
+        {sent.length > 0 && (
+          <Section id="sap-unsent" title="Notifications not in SAP yet">
+            <Rows
+              items={sent.map((o) => ({
+                key: String(o.id),
+                left: o.title ?? "Notification",
+                sub: [o.machineId ? machineName(o.machineId) : null, o.lastError].filter(Boolean).join(" · "),
+                tone: OUTBOX_WORD[o.state].tone,
+                right: (
+                  <PillButton variant="secondary" className="pg-diag-sm" loading={busy === o.id} onClick={() => retry(o.id)}>
+                    Send again
+                  </PillButton>
+                ),
+              }))}
+            />
+          </Section>
+        )}
+      </div>
+
+      <Dialog side open={sel !== null} onClose={() => setSelKey(null)} title={sel?.name ?? ""} subtitle={sel?.machineId ? machineName(sel.machineId) : undefined} crumbs={sel ? sheetCrumbs(ctx, () => setSelKey(null), lanes.find((l) => l.cards.includes(sel))?.title ?? "") : undefined} width={520}>
+        {sel && (
+          <>
+            <SheetNotice ctx={ctx} />
+            {sel.thread ? (
               <>
                 {sel.thread.finding?.plainWhat && <p className="pm-note">{sel.thread.finding.plainWhat}</p>}
-                <ThreadSteps ctx={ctx} t={sel.thread} />
-                {!sel.thread.job && sel.thread.finding && m.eqOf(sel.thread.machineId) && <RaiseButton ctx={ctx} f={sel.thread.finding} primary />}
+                <ThreadSteps ctx={ctx} t={sel.thread} mapped={!!m.eqOf(sel.thread.machineId)} />
+                {!sel.thread.job && sel.thread.finding && (
+                  <div className="sap-actions-row">
+                    {m.eqOf(sel.thread.machineId) ? <RaiseButton ctx={ctx} f={sel.thread.finding} primary /> : <PillButton onClick={() => ctx.goTo("mapping")}>Map to SAP equipment</PillButton>}
+                  </div>
+                )}
               </>
-            ) : sel.order ? (
-              <OrderFacts ctx={ctx} o={sel.order} />
-            ) : (
+            ) : !sel.order ? (
               <p className="pm-note">{sel.detail}. Raised in SAP; the SAP planner makes the order.</p>
+            ) : null}
+            {(sel.order ?? sel.thread?.order) && (
+              <div className="sap-sheet-part">
+                <h3 className="sap-sheet-title">SAP order</h3>
+                <OrderFacts ctx={ctx} o={(sel.order ?? sel.thread!.order)!} parts />
+              </div>
             )}
-          </Section>
-
-          <Section id="sap-object-thread" title="SAP objects">
-            {sel?.order || sel?.thread?.order ? (
-              <OrderFacts ctx={ctx} o={(sel.order ?? sel.thread!.order)!} parts />
-            ) : sent.length ? (
-              <Rows
-                items={sent.map((o) => ({
-                  key: String(o.id),
-                  left: o.title ?? "Notification",
-                  sub: [o.machineId ? machineName(o.machineId) : null, o.lastError].filter(Boolean).join(" · "),
-                  tone: OUTBOX_WORD[o.state].tone,
-                  right: (
-                    <PillButton variant="secondary" className="pg-diag-sm" loading={busy === o.id} onClick={() => void retry(o.id)}>
-                      Send again
-                    </PillButton>
-                  ),
-                }))}
-              />
-            ) : (
-              <Empty title="No order yet for this one." />
-            )}
-          </Section>
-        </div>
-      </div>
+          </>
+        )}
+      </Dialog>
     </>
   );
 }
@@ -628,7 +793,7 @@ function OrderFacts({ ctx, o, parts }: { ctx: ViewCtx; o: SapOrder; parts?: bool
       <Rows
         items={[
           { key: "n", left: o.notification ? `Notification ${sapNumber(o.notification)}` : "No notification (planned in SAP)", sub: "Text written by ULTRON when raised from a problem" },
-          { key: "o", left: `Order ${sapNumber(o.number)} · ${o.type ?? ""}`, sub: `Priority${o.priority ? ` ${o.priority}` : " —"} and schedule are SAP's`, right: <StateWord label={o.status ?? ORDER_WORD[o.stage]} tone={ORDER_TONE[o.stage]} /> },
+          { key: "o", left: `Order ${sapNumber(o.number)} · ${o.type ?? ""}`, sub: `Priority${o.priority ? ` ${o.priority}` : " —"} and schedule are SAP's`, right: <StateWord label={ORDER_WORD[o.stage]} tone={ORDER_TONE[o.stage]} /> },
           { key: "s", left: `Planned ${o.start ? ctx.when(o.start) : "—"} → ${o.finish ? ctx.when(o.finish) : "—"}`, sub: o.workCenter ? `Work centre ${o.workCenter}` : undefined, right: o.stage === "working" && o.start && o.finish ? <Bar share={(ctx.dash && Date.now() - o.start) / (o.finish - o.start)} tone="info" /> : undefined },
           { key: "v", left: o.stage === "verifying" ? "ULTRON watches the readings after the repair" : o.stage === "closed" ? "Closed in SAP" : "Check after the repair: once SAP confirms the work", tone: o.stage === "verifying" ? "info" : undefined },
         ]}
@@ -678,8 +843,9 @@ export function SapMaterials(ctx: ViewCtx) {
         ]}
       />
       <div className="pg-frame-body sap-stack">
-        <div className="pm-split is-wide-side">
-          <Section id="sap-kit" title={sel ? `${sel.machineId ? machineName(sel.machineId) : "—"} · order ${sapNumber(sel.number)} parts` : "Order parts"} right={sel ? <StateWord label={`${Math.round(kitShare(sel) * 100)} % ready`} tone={kitShare(sel) < 1 ? "warn" : undefined} /> : undefined}>
+        {shortPart ? (
+          <div className="pm-split is-wide-side">
+          <Section id="sap-kit" title={sel ? `Parts for order ${sapNumber(sel.number)}` : "Order parts"} right={sel ? <StateWord label={`${Math.round(kitShare(sel) * 100)} % ready`} tone={kitShare(sel) < 1 ? "warn" : undefined} /> : undefined}>
             {withParts.length > 1 && (
               <div className="sap-pick">
                 <PillNav ariaLabel="Order" items={withParts.slice(0, 8).map((o) => ({ id: o.number, label: `${sapNumber(o.number)}${kitShare(o) < 1 ? " ·" : ""}` }))} activeId={sel?.number ?? ""} onChange={setSelNo} />
@@ -689,7 +855,9 @@ export function SapMaterials(ctx: ViewCtx) {
               <Empty title={m.synced ? "No open order needs parts." : "Sync to read SAP's orders."} />
             ) : (
               <>
-                <p className="pm-note">{sel.description} · {ORDER_WORD[sel.stage].toLowerCase()}{sel.start ? ` · starts ${ctx.when(sel.start)}` : ""}</p>
+                <p className="pm-note">
+                  {[sel.description, sel.machineId ? machineName(sel.machineId) : null, ORDER_WORD[sel.stage].toLowerCase(), sel.start ? `starts ${ctx.when(sel.start)}` : null].filter(Boolean).join(" · ")}
+                </p>
                 <div className="ui-table-container ast-table pm-table">
                   <table className="ui-table">
                     <thead>
@@ -723,11 +891,8 @@ export function SapMaterials(ctx: ViewCtx) {
               </>
             )}
           </Section>
-
-          <Section id="sap-shortage" title="Shortage" right={shortPart ? <StateWord label="Action needed" tone="bad" /> : undefined}>
-            {!shortPart ? (
-              <Empty title="Nothing short on this order." />
-            ) : (
+          <Section id="sap-shortage" title="Short of parts">
+            {shortPart && (
               <>
                 <p className="pm-note">
                   {shortPart.description ?? shortPart.material}: need {qty(shortPart.need, shortPart.unit)}, available {qty(shortPart.available, shortPart.unit)}.
@@ -737,7 +902,57 @@ export function SapMaterials(ctx: ViewCtx) {
               </>
             )}
           </Section>
-        </div>
+          </div>
+        ) : (
+          <>
+          <Section id="sap-kit" title={sel ? `Parts for order ${sapNumber(sel.number)}` : "Order parts"} right={sel ? <StateWord label={`${Math.round(kitShare(sel) * 100)} % ready`} tone={kitShare(sel) < 1 ? "warn" : undefined} /> : undefined}>
+            {withParts.length > 1 && (
+              <div className="sap-pick">
+                <PillNav ariaLabel="Order" items={withParts.slice(0, 8).map((o) => ({ id: o.number, label: `${sapNumber(o.number)}${kitShare(o) < 1 ? " ·" : ""}` }))} activeId={sel?.number ?? ""} onChange={setSelNo} />
+              </div>
+            )}
+            {!sel ? (
+              <Empty title={m.synced ? "No open order needs parts." : "Sync to read SAP's orders."} />
+            ) : (
+              <>
+                <p className="pm-note">
+                  {[sel.description, sel.machineId ? machineName(sel.machineId) : null, ORDER_WORD[sel.stage].toLowerCase(), sel.start ? `starts ${ctx.when(sel.start)}` : null].filter(Boolean).join(" · ")}
+                </p>
+                <div className="ui-table-container ast-table pm-table">
+                  <table className="ui-table">
+                    <thead>
+                      <tr>
+                        <th className="pm-grow">Part</th>
+                        <th>SAP material</th>
+                        <th>Available</th>
+                        <th>Needed</th>
+                        <th>Readiness</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sel.parts.map((p) => (
+                        <tr key={`${p.material}-${p.sloc}`}>
+                          <td className="pm-grow">{p.description ?? p.material}</td>
+                          <td className="ast-num">
+                            {p.material}
+                            {p.sloc ? ` · ${p.sloc}` : ""}
+                          </td>
+                          <td className="ast-num">
+                            {qty(p.available, p.unit)}
+                            <Bar share={p.need ? p.available / p.need : 1} tone={p.available < p.need ? "bad" : undefined} />
+                          </td>
+                          <td className="ast-num">{qty(p.need, p.unit)}</td>
+                          <td>{p.available >= p.need ? <StateWord label="Ready" /> : <StateWord label={`Short by ${qty(p.need - p.available, p.unit)}`} tone="bad" />}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </Section>
+          </>
+        )}
 
         <Section
           id="sap-materials"
@@ -808,7 +1023,6 @@ export function SapProduction(ctx: ViewCtx) {
   // The machine the orders run on (or the picked one).
   const lineMachine = ctx.machineId ?? m.production.find((p) => p.machineId)?.machineId ?? null;
   const orders = m.production.filter((p) => p.end !== null && p.start !== null && p.end > now - 6 * H && p.start < horizon);
-  const active = orders.find((p) => p.start! <= now && p.end! > now) ?? orders.find((p) => p.start! > now) ?? null;
   const risks = pms.findings.filter((f) => f.status === "ACTIVE" && (!lineMachine || f.machineId === lineMachine));
   const worst = [...risks].sort((a, b) => a.priority.localeCompare(b.priority))[0] ?? null;
   const ttl = risks.map((f) => hoursIn(f.timeToLimit)).filter((h): h is number => h !== null);
@@ -830,37 +1044,27 @@ export function SapProduction(ctx: ViewCtx) {
   const pos = (x: number) => `${((Math.max(now, Math.min(horizon, x)) - now) / (horizon - now)) * 100}%`;
   const width = (a: number, b: number) => `${((Math.min(horizon, b) - Math.max(now, a)) / (horizon - now)) * 100}%`;
 
+  const running = orders.find((p) => p.start! <= now && p.end! > now) ?? null;
+  // The week's orders: the next eight show, later ones fold away.
+  const fold = useFold(orders, (o, i) => i >= 8 && o !== running);
+
   if (!m.synced) return <section className="ast-card"><Empty title="Sync to read SAP's production orders." /></section>;
 
   return (
     <>
-      <div className="sap-signals">
-        <div className="ast-card sap-signal">
-          <span className="ast-caption">Machine constraint</span>
-          <StateWord label={worst ? `${machineName(worst.machineId)} · ${worst.plainTitle || worst.name}` : lineMachine ? `${machineName(lineMachine)} · no open problem` : "—"} tone={worst ? (worst.severity === "Critical" ? "bad" : "warn") : undefined} />
-        </div>
-        <div className="ast-card sap-signal">
-          <span className="ast-caption">Safe run envelope</span>
-          <b>{boundary ? `${hoursWord((boundary - now) / H)} to the first limit` : "No limit in sight"}</b>
-        </div>
-        <div className="ast-card sap-signal">
-          <span className="ast-caption">Service window</span>
-          <StateWord label={window ? `${ctx.when(window.start)} · ${hoursWord((window.end - window.start) / H)} free` : "No free window this week"} tone={window ? undefined : "warn"} />
-        </div>
-      </div>
       <KpiStrip
         page
         label="Production summary"
         items={[
-          { label: "Active SAP order", value: active ? (sapNumber(active.number) ?? "—") : "—", text: true, foot: active ? `${active.description ?? active.material ?? ""} · ${active.delivered ? "delivered" : active.released ? "released" : "created"}` : "no order running" },
-          { label: "Order progress", value: active && active.quantity ? `${Math.round(((active.confirmed ?? 0) / active.quantity) * 100)}` : "—", unit: "%", bar: active && active.quantity ? ((active.confirmed ?? 0) / active.quantity) * 100 : 0, foot: active ? `${qty(active.confirmed, null)} / ${qty(active.quantity, active.unit)}` : "—" },
-          { label: "Orders exposed", value: `${exposed.length}`, tone: exposed.length ? "warn" : undefined, foot: boundary ? "run past the first limit" : "no limit this week" },
-          { label: "Output at risk", value: qty(Math.round(exposedQty), null), unit: unit ?? undefined, tone: exposedQty ? "warn" : undefined, foot: window ? "protected by servicing in the window" : "—" },
+          { label: "Time to first limit", value: boundary ? hoursWord((boundary - now) / H) : "No limit", text: true, tone: boundary ? "warn" : undefined, foot: boundary && worst ? `${machineName(worst.machineId)} · ${worst.plainTitle || worst.name}` : worst ? "open problems, none heading to a limit" : "no open problem on the machine" },
+          { label: "Service window", value: window ? ctx.when(window.start) : "None", text: true, tone: window ? undefined : "warn", foot: window ? `${hoursWord((window.end - window.start) / H)} free; the service takes ${hoursWord(serviceHours)}` : "no free time before the first limit" },
+          { label: "Orders after the limit", value: `${exposed.length}`, unit: `of ${orders.length}`, tone: exposed.length ? "warn" : undefined, foot: boundary ? "would run past the first limit" : "no limit this week" },
+          { label: "Output at risk", value: qty(Math.round(exposedQty), null), unit: unitWord(unit) ?? undefined, tone: exposedQty ? "warn" : undefined, foot: exposedQty ? (window ? "unless serviced in the window" : "a planner has to move an order") : "nothing at risk" },
         ]}
       />
       <div className="pg-frame-body sap-stack">
-        <Section id="sap-schedule" title="Schedule · next 7 days" right={boundary ? <StateWord label={`First limit ${ctx.when(boundary)}`} tone="warn" /> : undefined}>
-          <div className="sap-timeline" role="img" aria-label="Production orders, free time, service window and risk boundary over the next 7 days">
+        <Section id="sap-schedule" title="Next 7 days" right={boundary ? <StateWord label={`First limit ${ctx.when(boundary)}`} tone="warn" /> : undefined}>
+          <div className="sap-timeline" role="img" aria-label="Production orders, the service window and the first limit over the next 7 days">
             <div className="sap-tl-days">
               {Array.from({ length: 7 }, (_, i) => (
                 <span key={i} style={{ left: `${(i / 7) * 100}%` }}>
@@ -876,81 +1080,76 @@ export function SapProduction(ctx: ViewCtx) {
               ))}
               {window && (
                 <span className="sap-tl-block" data-kind="service" style={{ left: pos(window.start), width: width(window.start, window.start + serviceHours * H) }} title={`Service ${hoursWord(serviceHours)}`}>
-                  Service {hoursWord(serviceHours)}
+                  Service
                 </span>
               )}
-              {boundary && boundary < horizon && <span className="sap-tl-risk" style={{ left: pos(boundary), width: width(boundary, horizon) }} title="Past the first limit" />}
+              {boundary && boundary < horizon && <span className="sap-tl-risk" style={{ left: pos(boundary), width: width(boundary, horizon) }} title="After the first limit" />}
             </div>
           </div>
           <p className="pm-note">
             {window
-              ? `Best time to service: ${ctx.when(window.start)}. No order moves; ${hoursWord((window.end - window.start) / H)} free; ${exposed.length ? `${exposed.length} later orders protected` : "the week stays safe"}.`
+              ? `Best time to service: ${ctx.when(window.start)}. No order has to move.`
               : "No free time long enough before the first limit: a planner would have to move an order."}
           </p>
         </Section>
 
-        <div className="pm-split is-even">
-          <Section id="sap-impact" title="Order impact">
+        <div className="pm-split is-wide-side">
+          <Section id="sap-impact" title="Orders this week">
             {orders.length === 0 ? (
               <Empty title="SAP has no production orders this week." />
             ) : (
-              <div className="ui-table-container ast-table pm-table">
-                <table className="ui-table">
-                  <thead>
-                    <tr>
-                      <th>Order</th>
-                      <th className="pm-grow">Product</th>
-                      <th>Window</th>
-                      <th>Progress</th>
-                      <th>Exposure</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {orders.map((o) => {
-                      const share = o.quantity ? (o.confirmed ?? 0) / o.quantity : 0;
-                      const over = boundary !== null && o.end! > boundary;
-                      const crosses = over && o.start! < boundary!;
-                      return (
-                        <tr key={o.number}>
-                          <td className="ast-num">{sapNumber(o.number)}</td>
-                          <td className="pm-grow">
-                            <span className="ast-cell-stack">
-                              <span>{o.description ?? o.material ?? "—"}</span>
-                              <span className="ast-cell-sub">{qty(o.quantity, o.unit)}</span>
-                            </span>
-                          </td>
-                          <td className="ast-num pm-muted">{ctx.when(o.start)}</td>
-                          <td>
-                            <Bar share={share} />
-                          </td>
-                          <td>{o.delivered ? <StateWord label="Done" /> : crosses ? <StateWord label="Crosses the limit" tone="bad" /> : over ? <StateWord label="After the limit" tone="warn" /> : <StateWord label="Protected" />}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <>
+                <div className="ui-table-container ast-table pm-table">
+                  <table className="ui-table">
+                    <thead>
+                      <tr>
+                        <th>Order</th>
+                        <th className="pm-grow">Product</th>
+                        <th className="ast-num">Quantity</th>
+                        <th>Start</th>
+                        <th>Done</th>
+                        <th>Against the limit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fold.shown.map((o) => {
+                        const share = o.quantity ? (o.confirmed ?? 0) / o.quantity : 0;
+                        const over = boundary !== null && o.end! > boundary;
+                        const crosses = over && o.start! < boundary!;
+                        return (
+                          <tr key={o.number} className={o === running ? "active" : undefined}>
+                            <td className="ast-num">{sapNumber(o.number)}</td>
+                            <td className="pm-grow">
+                              {o.description ?? o.material ?? "—"}
+                              {o === running && <span className="pm-muted"> · running</span>}
+                            </td>
+                            <td className="ast-num">{qty(o.quantity, o.unit)}</td>
+                            <td className="ast-num pm-muted">{ctx.when(o.start)}</td>
+                            <td>
+                              <span className="sap-progress">
+                                <Bar share={share} />
+                                <span className="ast-num pm-muted">{Math.round(share * 100)} %</span>
+                              </span>
+                            </td>
+                            <td>{o.delivered ? <StateWord label="Delivered" /> : crosses ? <StateWord label="Crosses it" tone="bad" /> : over ? <StateWord label="After it" tone="warn" /> : <StateWord label="Before it" />}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <RestLine rest={fold.rest} shown={fold.shown.length} noun="order" note="later in the week" open={fold.open} onToggle={fold.toggle} />
+              </>
             )}
           </Section>
 
-          <Section id="sap-decision" title="Decision">
-            <div className="sap-scenarios">
-              <div className="sap-scenario" data-tone={exposed.length ? "bad" : undefined}>
-                <b>Run unchanged</b>
-                <span>{exposed.length} orders run past the first limit</span>
-                <span>{qty(Math.round(exposedQty), unit)} output exposed</span>
-              </div>
-              <div className="sap-scenario" data-tone={window ? "good" : undefined}>
-                <b>Service in the window{window ? " · suggested" : ""}</b>
-                <span>{window ? "0 orders moved" : "No window before the limit"}</span>
-                <span>{openOrder ? `SAP order ${sapNumber(openOrder.number)} parts ${Math.round(kitShare(openOrder) * 100)} % ready` : "No maintenance order in SAP yet"}</span>
-              </div>
-            </div>
+          <Section id="sap-decision" title="For the planner">
             <Rows
               items={[
-                { key: "c", left: "Production clearance", right: <StateWord label={window ? "No order moved" : "Needs a planner"} tone={window ? undefined : "warn"} /> },
-                { key: "o", left: "Maintenance order in SAP", right: <StateWord label={openOrder ? `${sapNumber(openOrder.number)} · ${ORDER_WORD[openOrder.stage].toLowerCase()}` : "None yet"} tone={openOrder ? undefined : "warn"} /> },
-                { key: "p", left: "Parts", right: <StateWord label={openOrder ? `${Math.round(kitShare(openOrder) * 100)} % ready` : "—"} tone={openOrder && kitShare(openOrder) < 1 ? "warn" : undefined} /> },
+                { key: "run", left: "Run unchanged", sub: exposed.length ? `${qty(Math.round(exposedQty), unit)} made after the first limit` : "every order ends before it", right: <StateWord label={exposed.length ? `${exposed.length} at risk` : "Safe"} tone={exposed.length ? "bad" : undefined} /> },
+                { key: "svc", left: "Service in the window", sub: window ? `${ctx.when(window.start)} · ${hoursWord(serviceHours)}` : "no window before the limit", right: <StateWord label={window ? "No order moves" : "Needs a planner"} tone={window ? undefined : "warn"} /> },
+                { key: "ord", left: "Maintenance order in SAP", right: <StateWord label={openOrder ? `${sapNumber(openOrder.number)} · ${ORDER_WORD[openOrder.stage].toLowerCase()}` : "None yet"} tone={openOrder ? undefined : "warn"} /> },
+                { key: "parts", left: "Parts for it", right: <StateWord label={openOrder ? `${Math.round(kitShare(openOrder) * 100)} % ready` : "—"} tone={openOrder && kitShare(openOrder) < 1 ? "warn" : undefined} /> },
               ]}
             />
             <p className="pm-note">ULTRON never moves or releases an SAP order; the planner does.</p>
@@ -982,9 +1181,9 @@ export function SapAudit(ctx: ViewCtx) {
   );
   const retry = async (id: number) => {
     setBusy(id);
-    const out = await sapCall(`/outbox/${id}/retry`, "POST", { plantId }, "Could not send it again");
+    const ok = await retryWrite(ctx, id);
     setBusy(null);
-    if ("error" in out) ctx.setNotice({ tone: "bad", text: out.error });
+    return ok;
   };
   const sendDue = async () => {
     setBusy("all");
@@ -992,7 +1191,11 @@ export function SapAudit(ctx: ViewCtx) {
     setBusy(null);
     if ("error" in out) ctx.setNotice({ tone: "bad", text: out.error });
     else ctx.setNotice({ tone: "good", text: out.data.processed ? `Tried ${out.data.processed} waiting writes.` : "Nothing is due to send yet." });
+    return !("error" in out);
   };
+  // Newest first: the latest syncs and exchanges show, older ones that went through fold away.
+  const runs = useFold(dash.syncRuns, (r, i) => i >= 5 && r.failed.length === 0 && r.truncated.length === 0);
+  const log = useFold(dash.audit, (x, i) => i >= 12 && x.status === "success");
   const exportCsv = () => {
     const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const lines = [["When", "What", "Direction", "Status", "HTTP", "ms", "Who", "Trace"].join(","), ...dash.audit.map((a) => [a.at, auditText(dash, a), a.direction, a.status, a.httpStatus, a.durationMs, a.user ?? "System", a.correlationId].map(esc).join(","))];
@@ -1010,99 +1213,107 @@ export function SapAudit(ctx: ViewCtx) {
         page
         label="Sync summary"
         items={[
-          { label: "Success rate", value: recent.length ? `${Math.round((ok / recent.length) * 1000) / 10}` : "—", unit: "%", tone: recent.length && ok / recent.length < 0.95 ? "warn" : undefined, foot: `${ok} of ${recent.length} recent exchanges` },
-          { label: "Median SAP time", value: median !== null ? `${median}` : "—", unit: "ms", foot: p95 !== null ? `95 % within ${p95} ms` : "—" },
-          { label: "Queue", value: `${waiting.length}`, tone: waiting.some((o) => o.state === "failed") ? "bad" : waiting.length ? "warn" : undefined, foot: "writes waiting or retrying" },
+          { label: "Answered", value: recent.length ? `${Math.round((ok / recent.length) * 1000) / 10}` : "—", unit: "%", tone: recent.length && ok / recent.length < 0.95 ? "warn" : undefined, foot: `${ok} of ${recent.length} recent exchanges` },
+          { label: "Typical answer time", value: median !== null ? msWord(median) : "—", text: true, foot: p95 !== null ? `95 % within ${msWord(p95)}` : "—" },
+          { label: "Waiting to send", value: `${waiting.length}`, tone: waiting.some((o) => o.state === "failed") ? "bad" : waiting.length ? "warn" : undefined, foot: waiting.length ? "writes waiting or retrying" : "every write reached SAP" },
           { label: "Sync", value: dash.connection?.syncEveryMin ? `${dash.connection.syncEveryMin}` : "By hand", unit: dash.connection?.syncEveryMin ? "min" : undefined, text: !dash.connection?.syncEveryMin, foot: dash.syncRuns[0] ? `last ${when(dash.syncRuns[0].startedAt)}` : "never synced" },
         ]}
       />
       <div className="pg-frame-body sap-stack">
-        <Section id="sap-health" title="Interface health">
-          <div className="sap-health">
-            {health.map(({ r, last }) => (
-              <div key={r.id} className="sap-health-tile">
-                <b>{r.label}</b>
-                <StateWord label={!last ? "Not used yet" : last.status === "failed" ? `Failing${last.httpStatus ? ` · ${last.httpStatus}` : ""}` : last.status === "warning" ? "Partly" : `${last.httpStatus ?? "OK"}${last.durationMs !== null ? ` · ${last.durationMs} ms` : ""}`} tone={last?.status === "failed" ? "bad" : last?.status === "warning" ? "warn" : undefined} />
-                <span className="ast-cell-sub">
-                  {r.apiName}
-                  {last ? ` · ${when(last.at)}` : ""}
-                </span>
-              </div>
-            ))}
+        {waiting.length > 0 && (
+          <Section id="sap-outbox" title="Waiting to send" right={<PillButton variant="secondary" loading={busy === "all"} onClick={sendDue}>Send due now</PillButton>}>
+            <Rows
+              items={waiting.map((o) => ({
+                key: String(o.id),
+                left: `${o.title ?? resourceLabel(dash, o.resource)} · ${OUTBOX_WORD[o.state].label.toLowerCase()}`,
+                sub: [`try ${o.attempts} of 6`, o.state !== "failed" && o.nextAttemptAt ? `next ${when(o.nextAttemptAt)}` : null, o.lastError].filter(Boolean).join(" · "),
+                tone: OUTBOX_WORD[o.state].tone,
+                right: (
+                  <PillButton variant="secondary" className="pg-diag-sm" loading={busy === o.id} onClick={() => retry(o.id)}>
+                    Send again
+                  </PillButton>
+                ),
+              }))}
+            />
+          </Section>
+        )}
+
+        <Section id="sap-health" title="Interfaces">
+          <div className="ui-table-container ast-table pm-table">
+            <table className="ui-table">
+              <thead>
+                <tr>
+                  <th className="pm-grow">What ULTRON reads or writes</th>
+                  <th>State</th>
+                  <th>Answer time</th>
+                  <th>Last exchange</th>
+                </tr>
+              </thead>
+              <tbody>
+                {health.map(({ r, last }) => (
+                  <tr key={r.id}>
+                    <td className="pm-grow">
+                      <span className="ast-cell-title" title={r.apiName}>
+                        {r.label}
+                      </span>
+                    </td>
+                    <td>
+                      <StateWord label={!last ? "Not used yet" : last.status === "failed" ? `Failing${last.httpStatus ? ` · ${last.httpStatus}` : ""}` : last.status === "warning" ? "Partly" : "Working"} tone={last?.status === "failed" ? "bad" : last?.status === "warning" ? "warn" : undefined} />
+                    </td>
+                    <td className="ast-num pm-muted">{last?.durationMs != null ? msWord(last.durationMs) : "—"}</td>
+                    <td className="ast-num pm-muted">{last ? when(last.at) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </Section>
 
-        <div className="pm-split is-even">
-          <Section id="sap-runs" title="Syncs">
-            {dash.syncRuns.length === 0 ? (
-              <Empty title="No sync yet." />
-            ) : (
-              <Rows
-                items={dash.syncRuns.map((r) => ({
-                  key: String(r.id),
-                  left: !r.finishedAt ? "Running" : r.failed.length ? `Could not read ${r.failed.map((f) => resourceLabel(dash, f.resource).toLowerCase()).join(", ")}` : r.truncated.length ? `Done; more ${r.truncated.map((x) => resourceLabel(dash, x).toLowerCase()).join(", ")} left in SAP` : "Done",
-                  sub: `${r.records} records · ${r.requestedBy ?? "Schedule"}`,
-                  tone: r.failed.length ? "bad" : r.truncated.length ? "warn" : undefined,
-                  right: <span className="pm-muted ast-num">{when(r.startedAt)}</span>,
-                }))}
-              />
-            )}
-          </Section>
-          <Section id="sap-outbox" title="Waiting to send" right={waiting.length > 0 ? <PillButton variant="secondary" loading={busy === "all"} onClick={() => void sendDue()}>Send due now</PillButton> : undefined}>
-            {waiting.length === 0 ? (
-              <Empty title="Nothing waiting: every write reached SAP." />
-            ) : (
-              <Rows
-                items={waiting.map((o) => ({
-                  key: String(o.id),
-                  left: `${o.title ?? resourceLabel(dash, o.resource)} · ${OUTBOX_WORD[o.state].label.toLowerCase()}`,
-                  sub: [`try ${o.attempts} of 6`, o.state !== "failed" && o.nextAttemptAt ? `next ${when(o.nextAttemptAt)}` : null, o.lastError].filter(Boolean).join(" · "),
-                  tone: OUTBOX_WORD[o.state].tone,
-                  right: (
-                    <PillButton variant="secondary" className="pg-diag-sm" loading={busy === o.id} onClick={() => void retry(o.id)}>
-                      Send again
-                    </PillButton>
-                  ),
-                }))}
-              />
-            )}
-          </Section>
-        </div>
+        <Section id="sap-runs" title="Syncs">
+          {dash.syncRuns.length === 0 ? (
+            <Empty title="No sync yet." />
+          ) : (
+            <>
+              <div className="ui-table-container ast-table pm-table">
+                <table className="ui-table">
+                  <thead>
+                    <tr>
+                      <th>Started</th>
+                      <th className="pm-grow">Result</th>
+                      <th className="ast-num">Records</th>
+                      <th>Started by</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {runs.shown.map((r) => (
+                      <tr key={r.id}>
+                        <td className="ast-num pm-muted">{when(r.startedAt)}</td>
+                        <td className="pm-grow">
+                          <StateWord
+                            label={!r.finishedAt ? "Running" : r.failed.length ? `Could not read ${r.failed.map((f) => resourceLabel(dash, f.resource).toLowerCase()).join(", ")}` : r.truncated.length ? `Done; more ${r.truncated.map((x) => resourceLabel(dash, x).toLowerCase()).join(", ")} left in SAP` : "Done"}
+                            tone={r.failed.length ? "bad" : r.truncated.length ? "warn" : undefined}
+                          />
+                        </td>
+                        <td className="ast-num">{r.records.toLocaleString("en-GB")}</td>
+                        <td className="pm-muted">{r.requestedBy ?? "Schedule"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <RestLine rest={runs.rest} shown={runs.shown.length} noun="sync" note="done, nothing missed" open={runs.open} onToggle={runs.toggle} />
+            </>
+          )}
+        </Section>
 
         <Section id="sap-log" title="Log" right={dash.audit.length ? <PillButton variant="secondary" onClick={exportCsv}>Export CSV</PillButton> : undefined}>
           {dash.audit.length === 0 ? (
             <Empty title="Nothing logged yet." />
           ) : (
-            <div className="ui-table-container ast-table pm-table">
-              <table className="ui-table">
-                <thead>
-                  <tr>
-                    <th>When</th>
-                    <th className="pm-grow">What</th>
-                    <th>Direction</th>
-                    <th>Answer</th>
-                    <th>Who</th>
-                    <th title="Reference SAP support can look up">Trace</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dash.audit.map((a) => (
-                    <tr key={a.id}>
-                      <td className="ast-num">{when(a.at)}</td>
-                      <td className="pm-grow">
-                        <StateWord label={auditText(dash, a)} tone={a.status === "failed" ? "bad" : a.status === "warning" ? "warn" : undefined} />
-                      </td>
-                      <td className="pm-muted">{a.direction === "to_sap" ? "To SAP" : a.direction === "from_sap" ? "From SAP" : "In ULTRON"}</td>
-                      <td className="ast-num pm-muted">{[a.httpStatus, a.durationMs !== null ? `${a.durationMs} ms` : null].filter((x) => x !== null).join(" · ") || "—"}</td>
-                      <td className="pm-muted">{a.user ?? "System"}</td>
-                      <td className="ast-num pm-muted" title={a.correlationId ?? undefined}>
-                        {a.correlationId ? `${a.correlationId.slice(0, 8)}…` : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <LogTable ctx={ctx} rows={log.shown} full />
+              <RestLine rest={log.rest} shown={log.shown.length} noun="exchange" note="older, all answered" open={log.open} onToggle={log.toggle} />
+            </>
           )}
         </Section>
       </div>

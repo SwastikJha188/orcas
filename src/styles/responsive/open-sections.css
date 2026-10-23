@@ -1,0 +1,92 @@
+/* ==========================================================================
+   ULTRON · Open sections
+   Outside Home, a card is not a box: each section is set off by a hairline
+   rule above its heading, the white space around it and its heading size
+   (page title h1 24 › section title h2 20 › body 13). Clickable tiles keep their
+   box so they still read as buttons; Home keeps its own look.
+
+   Loads after the other responsive sheets; every selector starts with html:root
+   so it outranks the component card rules (even the long ones) regardless of
+   load order.
+   ========================================================================== */
+
+/* ---- the section: rule on top, no surface, no side padding ---- */
+html:root .workspace > :not(.workspace-keepalive) :is(.ast-card, .ui-card):not(.ast-tile, .ui-tile, .pg-rack-chassis) {
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--separator);
+  border-radius: 0;
+  box-shadow: none;
+  padding: var(--gap-group) 0 0;
+}
+
+/* A block inside a section is part of it: no second rule. */
+html:root .workspace > :not(.workspace-keepalive) :is(.ast-card, .ui-card) :is(.ast-card, .ui-card):not(.ast-tile, .ui-tile, .pg-rack-chassis) {
+  border-top: 0;
+  padding-top: 0;
+}
+
+/* Section headings: weight and spacing here; the size comes from the heading level (headings.css). */
+html:root .workspace > :not(.workspace-keepalive) :is(.pg-analysis-section-title, .ast-card > .ast-card-head .ast-card-title, .ui-card-title) {
+  font-weight: 600;
+  letter-spacing: var(--tracking-heading);
+  line-height: var(--lh-tight);
+}
+
+html:root .workspace > :not(.workspace-keepalive) .pg-table-card .ast-card-head {
+  padding-inline: 0;
+}
+
+/* Tables and setting lists (16px cell gutter) line their text up with the heading; row hover
+   and alarm tint reach into the gutter. */
+html:root .workspace > :not(.workspace-keepalive) :is(.ast-card, .ui-card) :is(.ui-table-container:not(.pm-table), .cfg-settings) {
+  margin-inline: -16px;
+  width: calc(100% + 32px);
+}
+
+/* ---- KPI strip: one ruled band of figures, no tiles ---- */
+html:root .workspace > :not(.workspace-keepalive) :is(.pg-frame-kpis, .ast-kpis) {
+  column-gap: var(--gap-columns);
+  row-gap: var(--gap-group);
+  padding-top: var(--gap-group);
+  border-top: 1px solid var(--separator);
+}
+
+html:root .workspace > :not(.workspace-keepalive) :is(.pg-frame-kpis, .ast-kpis) > .ast-card {
+  border-top: 0;
+  padding: 0;
+  min-height: 0;
+}
+
+/* ---- side by side: without boxes, columns need a wider gutter ---- */
+html:root .workspace > :not(.workspace-keepalive) :is(.pm-split, .pm-grid) {
+  column-gap: var(--gap-columns);
+}
+
+/* ---- cards built with their own inner gutter ----
+   These pad their rows 12px from the card edge; pull them out by that much so the text lines up
+   with the other sections, and draw the rule inset so it starts at the same edge too. */
+html:root .workspace > :not(.workspace-keepalive) .mt-sheet.ast-card {
+  margin-inline: -12px;
+  border-top: 0;
+  background: linear-gradient(var(--separator), var(--separator)) 12px 0 / calc(100% - 24px) 1px no-repeat;
+}
+
+html:root .workspace > :not(.workspace-keepalive) .pg-table-rest {
+  padding-inline: 0;
+}
+
+/* The sensor register's cells have an 8px gutter. */
+html:root .workspace > :not(.workspace-keepalive) :is(.ast-card, .ui-card) .ast-sm-table .ui-table-container {
+  margin-inline: -8px;
+  width: calc(100% + 16px);
+}
+
+/* Headings of tile groups sat 4px in from the edge everything else starts on. */
+html:root .workspace > :not(.workspace-keepalive) .pg-analysis-section.is-bare > .pg-analysis-section-head {
+  padding-inline: 0;
+}
+
+html:root .workspace > :not(.workspace-keepalive) .ui-tiles-head {
+  margin-inline: 0;
+}

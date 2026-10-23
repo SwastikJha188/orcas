@@ -67,7 +67,8 @@
   padding-inline: 8px;
   font-size: var(--fs-xs);
   font-weight: 500;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-caps);
+  word-spacing: var(--word-caps);
   text-transform: uppercase;
   color: var(--text-muted);
 }
@@ -78,7 +79,7 @@
 .aqk-hist {
   flex: 1;
   min-inline-size: 0;
-  padding: 8px 30px 8px 8px;
+  padding: 8px 24px 8px 8px;
   border: none;
   background: transparent;
   color: var(--text-muted);
@@ -127,7 +128,7 @@
   font-size: var(--fs-sm);
   color: var(--page-fg);
 }
-.aqk-undo:empty { padding: 0; border: 0; margin-block-start: -10px; }
+.aqk-undo:empty { padding: 0; border: 0; margin-block-start: -12px; }
 .aqk-undo-btn {
   padding: var(--space-1) var(--space-2);
   border: none;
@@ -163,8 +164,9 @@
 .aqk-hero-title {
   margin: 0;
   font-size: var(--fs-9xl);
+  line-height: var(--lh-tight);
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: var(--tracking-display);
   color: var(--dx-ink);
   text-align: center;
 }
@@ -210,7 +212,7 @@
 .aqk-thread {
   inline-size: min(760px, 100%);
   margin-inline: auto;
-  padding: 28px 24px 40px;
+  padding: 24px 24px 40px;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -218,8 +220,8 @@
 /* Back-to-back answers (insights arriving together) get a rule between them. */
 .aqk-thread > .cp-msg-ai + .cp-msg-ai { padding-block-start: 24px; border-block-start: 1px solid var(--separator); }
 /* Answers read as text on the page, not as bubbles. */
-.aqk-thread .cp-text { font-size: var(--fs-lg); line-height: 1.6; max-width: none; }
-.aqk-thread .cp-user-bubble { max-inline-size: 75%; padding: 8px 12px; font-size: var(--fs-lg); border-radius: var(--radius-lg); }
+.aqk-thread .cp-text { font-size: var(--fs-lg); letter-spacing: var(--tracking-heading); line-height: var(--lh-loose); max-width: none; }
+.aqk-thread .cp-user-bubble { max-inline-size: 75%; padding: 8px 12px; font-size: var(--fs-lg); letter-spacing: var(--tracking-heading); border-radius: var(--radius-lg); }
 .aqk-thread .cp-spark { max-inline-size: 520px; }
 .aqk-thread .cp-body { gap: 12px; }
 /* Actions sit under the answer as a compact row. */
@@ -259,7 +261,8 @@
   color: var(--page-fg);
   font: inherit;
   font-size: var(--fs-lg);
-  line-height: 1.5;
+  letter-spacing: var(--tracking-heading);
+  line-height: var(--lh-body);
   padding: 2px 0;
   max-block-size: 200px;
   overflow-y: auto;
@@ -270,7 +273,7 @@
 .aqk-composer.is-large textarea { min-block-size: 48px; }
 .aqk-composer textarea::placeholder { color: var(--text-muted); }
 .aqk-composer-bar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
-.aqk-count { font-size: var(--fs-xs); color: var(--text-muted); }
+.aqk-count { font-size: var(--fs-xs); letter-spacing: var(--tracking-small); color: var(--text-muted); }
 .aqk-send {
   inline-size: 32px;
   block-size: 32px;
@@ -360,10 +363,10 @@
   .aqk-scrim { display: block; position: absolute; inset: 0; z-index: 2; background: var(--scrim); }
   .aqk-mobile-bar { display: flex; padding: var(--space-3) var(--space-4) 0; }
   .aqk-hero { padding-inline: 16px; }
-  .aqk-hero-title { font-size: var(--fs-5xl); }
+  .aqk-hero-title { font-size: var(--fs-5xl); line-height: var(--lh-tight); letter-spacing: var(--tracking-display); }
   .aqk-thread, .aqk-dock { padding-inline: 16px; }
   /* 16px text so iOS does not zoom on focus. */
-  .aqk-composer textarea { font-size: var(--fs-xl); }
+  .aqk-composer textarea { font-size: var(--fs-xl); letter-spacing: var(--tracking-heading); }
 }
 
 /* ---- AssetIQ chrome: machine and view pills stay on one row ---- */

@@ -19,7 +19,9 @@ export type { PyroDrawing };
 const ALL_DRAWING_MACHINES = [...PYRO_MACHINES, ...VPC_MACHINES];
 
 function fromSheet(machineId: string): PyroDrawing | null {
-  const sheet = LINE_SHEETS.find((s) => s.kind === "overview" && s.machines.includes(machineId));
+  // Its own group's overview first: P-0 also carries the burner's calciner points, but B-0 is the burner's drawing.
+  const overviews = LINE_SHEETS.filter((s) => s.kind === "overview" && s.machines.includes(machineId));
+  const sheet = overviews.find((s) => s.machines[0] === machineId) ?? overviews[0];
   const art = sheet ? LINE_SHEET_ART[sheet.id] : null;
   if (!art) return null;
   // Pads from the generated layout, so the drawing and the seeded sensor positions are the same data.

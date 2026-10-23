@@ -12,7 +12,7 @@ import { useArtBusyMap } from "@/components/assets/art-busy-map";
 import type { LineSheetArt } from "./types";
 
 /** On-screen size of a block's value text (px). */
-const VALUE_PX = 9.5;
+export const VALUE_PX = 9.5;
 
 export interface StageMetrics {
   fontSz: number;
@@ -34,10 +34,12 @@ export interface StageMetrics {
  * overview is ~1,650 units wide, a part sheet ~500–760) so it never dwarfs or
  * vanishes into the drawing on a very small or very large canvas.
  */
-export function stageMetrics(pxPerUnit: number | null, sheetW = 1654, points = 40): StageMetrics {
-  // A dense stage overview caps the text tighter than a part sheet with a handful of points.
-  const cap = sheetW / (points > 30 ? 115 : 70);
-  const fontSz = Math.min(cap, Math.max(sheetW / 175, pxPerUnit ? VALUE_PX / pxPerUnit : sheetW / 140));
+export function stageMetrics(pxPerUnit: number | null, sheetW = 1654, points = 40, valuePx = VALUE_PX): StageMetrics {
+  // A dense stage overview caps the text tighter than a part sheet with a handful of points; larger text
+  // (the operator's reading size) moves the bounds with it.
+  const k = valuePx / VALUE_PX;
+  const cap = (k * sheetW) / (points > 30 ? 115 : 70);
+  const fontSz = Math.min(cap, Math.max((k * sheetW) / 175, pxPerUnit ? valuePx / pxPerUnit : (k * sheetW) / 140));
   const cardH = fontSz * 1.62;
   // The pad sits inside its plate: its halo fits the plate height.
   const padScale = Math.min(1.15, (cardH / 2 - 0.8) / 8.5);

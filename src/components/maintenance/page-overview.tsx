@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { conditionTone, rowActivate, toCondition, type Tone, Loading as LoadingState } from "@/components/ui";
+import { conditionTone, estimateOf, minutesIn, NextActions, RestLine, rowActivate, toCondition, useFold, type NextAction, type Tone, Loading as LoadingState } from "@/components/ui";
+import { formatLocalTime } from "@/lib/time";
+import { useSiteTimeZone } from "@/providers/use-site-time-zone";
 import { isOpenStage, planKey } from "@shared/lib/pms";
 import { useKilnFleet } from "@/providers/kiln-simulation-context";
 import { Empty, KpiStrip, Section } from "@/components/assets/analysis/an-ui";
@@ -20,6 +22,9 @@ import { DAY, ItemCell, PM_ICON, StateWord, occurrences, setPmsFocus, startOfDay
 const ICON_OF = { finding: PM_ICON.finding, wo: PM_ICON.wo, plan: PM_ICON.plan };
 const DAYFMT = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "2-digit" });
 
+/** Queue items shown before the rest fold away. */
+const QUEUE_TOP = 10;
+
 export function PageOverview({ pms }: { pms: PmsModel }) {
   const { data, findings, openWos, dues, now } = pms;
   const nav = usePmsNav();
@@ -28,6 +33,8 @@ export function PageOverview({ pms }: { pms: PmsModel }) {
   const priorities = useWorkOrderPriorities();
   const partsApi = useServiceParts();
   const counter = useRunningHours();
+  const tz = useSiteTimeZone({ machineId: data?.machineIds[0] });
+  const when = (t: number) => formatLocalTime(t, { date: true, seconds: false, timeZone: tz.timeZone });
 
   // Open checks raised by alarms stand in the queue for the alarms themselves (Predictive & planned).
   const checks = useMemo(() => (checksApi.data ?? []).filter((c) => data?.machineIds.includes(c.machineId) && checkState(c, now).open), [checksApi.data, data, now]);
@@ -124,6 +131,65 @@ export function PageOverview({ pms }: { pms: PmsModel }) {
       nav("work");
     }
   };
+  // Next actions: the few things to do first, each done or opened in one click.
+  const next = useMemo<NextAction[]>(() => {
+    const out: NextAction[] = [];
+    const toneOf = (p: string): NextAction["tone"] => (p === "P1" ? "bad" : p === "P2" ? "warn" : "info");
+    for (const c of checks) {
+      const st = checkState(c, now);
+      const m = c.measurement;
+      out.push({
+        key: `c:${c.id}`,
+        tone: st.overdue || (c.alarmActive && c.severity === "Critical") ? "bad" : "warn",
+        rank: c.dueAt ? (Date.parse(c.dueAt) - now) / 60_000 : undefined,
+        what: `${c.title} · ${machineCode(c.machineId)}`,
+        why: [c.priority, m && m.observed !== null ? `${m.name} ${m.observed} ${m.unit}${m.limit !== null ? `, limit ${m.limit} ${m.unit}` : ""}` : c.alarmActive ? "alarm still on" : null, st.overdue ? "past its response time" : c.dueAt ? `check by ${when(Date.parse(c.dueAt))}` : null].filter(Boolean).join(" · "),
+        label: "Go and check",
+        run: () => {
+          setPmsFocus(`c:${c.id}`);
+          nav("predictive");
+        },
+      });
+    }
+    // Problems with no repair asked for yet (and no check standing in for them).
+    for (const f of findings) {
+      if (f.status !== "ACTIVE" || f.workOrderId || checks.some((c) => c.machineId === f.machineId && c.ruleCode === f.ruleId)) continue;
+      const mins = minutesIn(f.timeToLimit);
+      out.push({
+        key: `f:${f.machineId}:${f.ruleId}`,
+        tone: toneOf(f.priority),
+        rank: mins ?? undefined,
+        what: `${f.plainTitle || f.name} · ${machineCode(f.machineId)}`,
+        why: [f.priority, mins !== null ? `limit in ${estimateOf(f.timeToLimit)}` : null, `${Math.round(f.confidence)} % sure`, "no repair asked for yet"].filter(Boolean).join(" · "),
+        label: "Ask for a repair",
+        run: async () => (await pms.propose({ machineId: f.machineId, ruleId: f.ruleId, title: f.plainTitle || f.name, priority: f.priority, notes: f.plainTodo || f.action || null })).tone === "good",
+      });
+    }
+    for (const l of partsDue) {
+      out.push({
+        key: `r:${l.part.id}`,
+        tone: l.state === "over" ? "bad" : "warn",
+        rank: l.runsOut !== null ? (l.runsOut - now) / 60_000 : undefined,
+        what: `${l.part.name} · ${machineCode(l.part.machineId)}`,
+        why: [`${Math.round(l.share * 100)} % of its life used`, l.state === "over" ? "past its service life" : l.runsOut !== null ? `runs out ${when(l.runsOut)}` : null].filter(Boolean).join(" · "),
+        label: "Plan the replacement",
+        run: () => {
+          setPmsFocus(`r:${l.part.id}`);
+          nav("proactive");
+        },
+      });
+    }
+    // Work orders and rounds the queue marks late or stuck.
+    for (const q of queue) {
+      if (q.kind === "finding" || (q.status.tone !== "bad" && q.status.tone !== "warn")) continue;
+      out.push({ key: q.key, tone: q.status.tone === "bad" ? "bad" : "warn", rank: (q.at - now) / 60_000, what: `${q.title} · ${machineCode(q.machineId)}`, why: [q.priority, q.status.label, `next: ${q.next.toLowerCase()}`].filter(Boolean).join(" · "), label: q.kind === "plan" ? "Open the round" : "Open work order", run: () => open(q) });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open/nav/when are stable per render of the same data
+  }, [checks, findings, partsDue, queue, now, pms.propose, tz.timeZone]);
+
+  // The top of the queue shows; the rest folds into one line.
+  const fold = useFold(queue, (_, i) => i >= QUEUE_TOP);
 
   if (!data) return <Loading pms={pms} what="planned maintenance" />;
   // The alarm checks and part lives load on their own; until they arrive their numbers wait.
@@ -160,6 +226,11 @@ export function PageOverview({ pms }: { pms: PmsModel }) {
         ]}
       />
       <div className="pg-frame-body">
+        {next.length > 0 && (
+          <Section id="pm-next" title="Next actions">
+            <NextActions items={next} />
+          </Section>
+        )}
         <div className="pm-split">
           <Section id="pm-queue" title="Priority queue" right={<span className="ast-caption">Sorted by safety, importance, due date and readiness</span>}>
             {checksWait ? (
@@ -179,7 +250,7 @@ export function PageOverview({ pms }: { pms: PmsModel }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {queue.slice(0, 16).map((q) => (
+                    {fold.shown.map((q) => (
                       <tr key={q.key} className="is-clickable" {...rowActivate(() => open(q))}>
                         <td className="pm-pri ast-num" data-tone={q.priority === "P1" ? "bad" : q.priority === "P2" ? "warn" : undefined}>
                           {q.priority}
@@ -200,9 +271,9 @@ export function PageOverview({ pms }: { pms: PmsModel }) {
                     ))}
                   </tbody>
                 </table>
-                {queue.length > 16 && <p className="pm-more ast-caption">{queue.length - 16} more · see Calendar and Work orders</p>}
               </div>
             )}
+            {!checksWait && <RestLine rest={fold.rest} shown={fold.shown.length} noun="item" note="lower in the queue" open={fold.open} onToggle={fold.toggle} />}
           </Section>
 
           <div className="pm-stack">

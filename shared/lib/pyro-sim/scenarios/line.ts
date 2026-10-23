@@ -66,11 +66,11 @@ export const LINE_SCENARIOS: PyroScenario[] = [
     expected: ["SW-PHC-01"],
     documentedDetection: "+2h 18m",
     description:
-      "D5 Table 9.4.5 row 3. Sticky meal builds up in the C5 cone: cone pressure rises toward zero, the hot meal to the kiln cools, and part of the meal is held up in the tower, so the kiln gets less feed than the meter shows (burning zone and inlet run hotter, torque falls). At 5 h the operator stops the feed for cleaning.",
+      "D5 Table 9.4.5 row 3. Sticky meal builds up in the C5 cone: cone pressure rises toward zero, the cone and the hot meal to the kiln cool, and part of the meal is held up in the tower, so the kiln gets less feed than the meter shows (burning zone and inlet run hotter, torque falls). At 5 h the operator stops the feed for cleaning.",
     effects: [
-      { target: sig("PRS-PHC-08"), delta: 3.7, onsetMin: 5, rampMin: 240, shape: "accel" },
+      { target: sig("PRS-PHC-15"), delta: 3.7, onsetMin: 5, rampMin: 240, shape: "accel" },
       { target: sig("TMP-PHC-07"), delta: -30, onsetMin: 5, rampMin: 240, shape: "accel" },
-      { target: sig("TMP-PHC-05"), delta: 12, onsetMin: 5, rampMin: 240, shape: "accel" },
+      { target: sig("TMP-PHC-25"), delta: -22, onsetMin: 5, rampMin: 240, shape: "accel" },
       { target: drv("mealLoss"), delta: 0.12, onsetMin: 60, rampMin: 200, shape: "ramp" },
       { equipment: "kfs-elevator", state: "stopped", onsetMin: 300 },
     ],
@@ -150,7 +150,7 @@ export const LINE_SCENARIOS: PyroScenario[] = [
     description:
       "D5 Table 9.4.5 row 8, Table 3.1 flame → shell chain. The swirl channel blocks: the flame lengthens and impinges near 54–58 m, where the shell runs hot, and sticky molten clinker reaches the cooler (hot discharge, first compartment pressure up).",
     effects: [
-      { target: sig("PRS-BRN-01"), delta: -16, onsetMin: 5, rampMin: 120, shape: "accel" },
+      { target: sig("PRS-BRN-02"), delta: -17, onsetMin: 5, rampMin: 120, shape: "accel" },
       { target: prof("hotBand"), delta: 60, onsetMin: 40, rampMin: 200, shape: "ramp" },
       { target: sig("TMP-CLR-08"), delta: 18, onsetMin: 80, rampMin: 200, shape: "ramp" },
       { target: sig("PRS-CLR-01"), delta: 6, onsetMin: 80, rampMin: 200, shape: "ramp" },
@@ -190,13 +190,13 @@ export const LINE_SCENARIOS: PyroScenario[] = [
   {
     id: "line-grate-trip",
     machine: CLR,
-    name: "Line – grate drive trip, bed builds, kiln output cut",
+    name: "Line – grate drive 1 trip, bed builds, kiln output cut",
     group: "Process change",
     expected: ["R-CLR-03"],
     documentedDetection: "+0h 10m",
     description:
-      "D5 FP-38 effect. The grate hydraulic unit trips: the stroke stops, the clinker bed builds in the hot zone (under-grate pressures rise), the operator cuts the kiln feed 30 % and slows the kiln after 15 min and stops the feed after 45 min.",
-    effects: [{ equipment: "clr-grate-hpu", state: "tripped", onsetMin: 10 }],
+      "D5 FP-38 effect. Hot-zone grate drive 1 trips: its stroke stops, the clinker bed builds in the hot zone (under-grate pressures rise), the operator cuts the kiln feed 30 % and slows the kiln after 15 min and stops the feed after 45 min.",
+    effects: [{ equipment: "clr-grate-1", state: "tripped", onsetMin: 10 }],
   },
   {
     id: "line-vent-fan-trip",
@@ -217,7 +217,7 @@ export const LINE_SCENARIOS: PyroScenario[] = [
     expected: [],
     documentedDetection: "+0h 01m",
     description:
-      "D5 Table 9.4.5 row 10, Table 3.1 clinker chain, FP-41 effect. The crusher trips: the cooler discharge is blocked, the cold-end bed backs up (compartments 4–6 and the grate hydraulics rise), the kiln feed is cut 30 % after 15 min and stopped after 45 min.",
+      "D5 Table 9.4.5 row 10, Table 3.1 clinker chain, FP-41 effect. The crusher trips: the cooler discharge is blocked, the cold-end bed backs up (compartments 4–6 and the grate drive currents rise), the kiln feed is cut 30 % after 15 min and stopped after 45 min.",
     effects: [{ equipment: "hmr-crusher", state: "tripped", onsetMin: 10 }],
   },
   {
@@ -255,8 +255,8 @@ export const LINE_SCENARIOS: PyroScenario[] = [
     description: "D5 FP-32 effect / Table 9.4.5 row 8. The coal conveying line chokes: line pressure rises and the coal reaches the flame in surges, so the burning zone, O₂ and CO at the kiln inlet swing.",
     effects: [
       { target: sig("PRS-BRN-04"), delta: 90, onsetMin: 5, rampMin: 150, shape: "accel" },
-      // Roots blower load follows the line pressure (≈ 0.15 A/mbar at the design point).
-      { target: sig("ELE-BRN-02"), delta: 13.5, onsetMin: 5, rampMin: 150, shape: "accel" },
+      // Roots blower load follows the line pressure (≈ 0.055 % FLA/mbar at the design point).
+      { target: sig("ELE-BRN-02"), delta: 4.9, onsetMin: 5, rampMin: 150, shape: "accel" },
       { target: drv("coalSurge"), delta: 0.5, onsetMin: 60, rampMin: 20, shape: "osc" },
     ],
   },
@@ -270,7 +270,7 @@ export const LINE_SCENARIOS: PyroScenario[] = [
     description: "D5 Table 9.4.5 row 9, Table 3.1 air chain, FP-35 effect. Holes in compartment 2 let the air short-circuit: its pressure falls at a higher fan current, the cooler recuperates less heat, so the secondary air cools and the burning zone and hood follow (fuel use).",
     effects: [
       { target: sig("PRS-CLR-02"), delta: -17.9, onsetMin: 5, rampMin: 200, shape: "accel" },
-      { target: sig("ELE-CLR-02"), delta: 14, onsetMin: 5, rampMin: 200, shape: "accel" },
+      { target: sig("ELE-CLR-02"), delta: 5.4, onsetMin: 5, rampMin: 200, shape: "accel" },
       { target: sig("TMP-CLR-08"), delta: 20, onsetMin: 5, rampMin: 200, shape: "accel" },
       { target: drv("coolerRecup"), delta: 0.12, onsetMin: 5, rampMin: 200, shape: "accel" },
     ],
